@@ -1,0 +1,167 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Themes ──────────────────────────────────────────────────────────────
+   :root holds the "dark" theme's values directly (not just a fallback) so
+   the page still looks right before JS has fetched the saved theme from the
+   backend (this app has no localStorage, so the very first paint always
+   starts here) — [data-theme="dark"] then just restates the same values for
+   clarity/symmetry with the other three. App.tsx sets data-theme on <html>
+   once /api/settings resolves.
+
+   Only the general UI chrome (backgrounds/borders/text/these four accents)
+   is themed. Chart-specific colors defined in TS (ActivityModal's
+   METRIC_DEFS, SPORT_COLOR, BodyTab's per-metric hexes) were validated
+   specifically against the dark --bg-card surface (see CLAUDE.md) and are
+   NOT re-validated per theme here — on light themes they still render, just
+   without a fresh contrast pass. */
+:root {
+  --bg:             #0f1117;
+  --bg-surface:     #181c25;
+  --bg-card:        #1e2330;
+  --bg-danger:      #e24b4a18;
+  --border:         #2a2f3d;
+  --border-strong:  #3a404f;
+
+  --text-primary:   #e8eaf0;
+  --text-secondary: #9aa0b4;
+  --text-muted:     #7d8494;
+
+  --accent-green:   #17a06c;
+  --accent-blue:    #3a8ef5;
+  --accent-red:     #e24b4a;
+  --accent-orange:  #f59e0b;
+
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  --bg-image: none;
+
+  color-scheme: dark;
+}
+
+:root[data-theme="dark"] {
+  --bg:             #0f1117;
+  --bg-surface:     #181c25;
+  --bg-card:        #1e2330;
+  --bg-danger:      #e24b4a18;
+  --border:         #2a2f3d;
+  --border-strong:  #3a404f;
+  --text-primary:   #e8eaf0;
+  --text-secondary: #9aa0b4;
+  --text-muted:     #7d8494;
+  --accent-green:   #17a06c;
+  --accent-blue:    #3a8ef5;
+  --accent-red:     #e24b4a;
+  --accent-orange:  #f59e0b;
+  color-scheme: dark;
+}
+
+/* Cooler, navy-tinted dark variant. */
+:root[data-theme="dark-blue"] {
+  --bg:             #0a0e1a;
+  --bg-surface:     #10162a;
+  --bg-card:        #161d35;
+  --bg-danger:      #ef5a5a18;
+  --border:         #232b47;
+  --border-strong:  #313b5c;
+  --text-primary:   #e6eaf5;
+  --text-secondary: #98a1c0;
+  --text-muted:     #7a82a8;
+  --accent-green:   #2ee0a3;
+  --accent-blue:    #4d9dff;
+  --accent-red:     #ef5a5a;
+  --accent-orange:  #ffab2e;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg:             #f5f6f8;
+  --bg-surface:     #ffffff;
+  --bg-card:        #ffffff;
+  --bg-danger:      #d23f3e14;
+  --border:         #e2e4ea;
+  --border-strong:  #c8cbd6;
+  --text-primary:   #1a1d27;
+  --text-secondary: #565c6d;
+  --text-muted:     #6b7182;
+  --accent-green:   #087a52;
+  --accent-blue:    #2f6fe0;
+  --accent-red:     #d23f3e;
+  --accent-orange:  #d97706;
+  color-scheme: light;
+}
+
+/* Warm, cream/paper-toned light variant. */
+:root[data-theme="light-warm"] {
+  --bg:             #faf6f0;
+  --bg-surface:     #fffdfa;
+  --bg-card:        #fffaf3;
+  --bg-danger:      #c1443e14;
+  --border:         #ece3d6;
+  --border-strong:  #d8ccb8;
+  --text-primary:   #2b2118;
+  --text-secondary: #6b6052;
+  --text-muted:     #7a715f;
+  --accent-green:   #0a6d49;
+  --accent-blue:    #3568c9;
+  --accent-red:     #c1443e;
+  --accent-orange:  #b8650a;
+  color-scheme: light;
+}
+
+html, body, #root { height: 100%; }
+
+body {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Background picture (bundled preset or custom upload) sits behind
+   everything, fixed so it doesn't scroll with the page — --bg-image is set
+   inline via JS (App.tsx's appearance hook), "none" by default. Cards/
+   surfaces stay fully opaque on top (see --bg-card etc. above), so the
+   picture only ever shows through the page's own margins/gaps, never behind
+   text — no readability tradeoff to manage per theme. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+a { color: var(--accent-blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button { cursor: pointer; font-family: inherit; }
+
+input, select {
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus { border-color: var(--accent-blue); }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+@keyframes progress-indeterminate {
+  0%   { transform: translateX(-40%); }
+  100% { transform: translateX(220%); }
+}

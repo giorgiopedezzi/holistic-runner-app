@@ -1,0 +1,444 @@
+import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import path from "path";
+import { fileURLToPath } from "url";
+import { loadConfig, getArg, CONFIG_DIR } from "./config.ts";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname  = path.dirname(__filename);
+
+const config  = loadConfig();
+// Resolved against CONFIG_DIR (not process.cwd()) so the same config.json
+// always points at the same database file, regardless of where a script
+// or IDE run configuration happens to launch node from.
+const DB_PATH_ARG = getArg("--db");
+const DB_PATH = DB_PATH_ARG ? path.resolve(DB_PATH_ARG) : path.resolve(CONFIG_DIR, config.database.path);
+
+export type Db = DatabaseSync;
+
+// Re-export so other modules don't need to import node:sqlite directly
+export type { SQLInputValue };
+export type SQLParams = Record<string, SQLInputValue>;
+
+export function openDb(): DatabaseSync {
+  const db = new DatabaseSync(DB_PATH);
+  db.exec("PRAGMA journal_mode = WAL");
+  db.exec("PRAGMA foreign_keys = ON");
+  return db;
+}
+
+export function initSchema(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS activities (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      filename        TEXT    UNIQUE NOT NULL,
+      activity_date   TEXT    NOT NULL,
+      date_only       TEXT    NOT NULL,
+      sport           TEXT,
+      duration_sec    REAL,
+      distance_m      REAL,
+      avg_pace_minkm  REAL,
+      calories        INTEGER,
+      avg_hr          INTEGER,
+      max_hr          INTEGER,
+      avg_cadence     INTEGER,
+      ascent_m        REAL,
+      descent_m       REAL,
+      avg_speed_ms    REAL,
+      max_speed_ms    REAL,
+      source          TEXT    NOT NULL DEFAULT 'garmin',
+      moving_time_sec REAL,
+      imported_at     TEXT    DEFAULT (datetime('now')),
+      -- Soft delete: deleted_at NULL = active. Non-NULL = in the trash
+      -- (still fully intact, restorable). purged=1 means the trash was
+      -- emptied for this row — track_points and every heavy summary column
+      -- are wiped, but filename/date/source are kept so a resync's
+      -- filename-dedup check still finds it and doesn't reimport it (see
+      -- CLAUDE.md's soft-delete notes). A purged row is never shown in the
+      -- trash UI and can't be restored.
+      deleted_at      TEXT,
+      purged          INTEGER NOT NULL DEFAULT 0,
+      -- AI workout classifier + feedback correction (all NULL = not yet
+      -- classified). The two methods (ai_classification/ai_explanation from
+      -- ollama-service.ts, statistical_classification/statistical_explanation
+      -- from stats-classifier.ts) are independent, separately-stored slots —
+      -- the UI runs them from two separate buttons so the user can compare
+      -- both results side by side, and running one never overwrites or
+      -- clears the other. Each is persisted as soon as it's computed, before
+      -- any human review (a "pending" classification is still a stored one).
+      -- user_feedback is NULL (pending review, "yellow") until the user
+      -- thumbs up/down *one specific* result ('approved'/'rejected',
+      -- "green") — there is exactly one shared verdict per activity, not one
+      -- per method. final_classification is the reviewed ground truth: the
+      -- approved card's classification, or the user's corrected pick on
+      -- rejection. classification_method here records which card (ai or
+      -- statistical) the verdict came from — set at feedback time, not
+      -- classify time. Reclassifying either method always resets
+      -- user_feedback/user_correction_reason/final_classification/
+      -- classification_method back to NULL — a fresh opinion needs fresh
+      -- review, old feedback doesn't carry over, even if the reclassified
+      -- method wasn't the one the old verdict was about (simplicity over
+      -- tracking which specific method's reclassify should or shouldn't
+      -- invalidate the shared verdict). Not part of ActivityRow/
+      -- activityParams() — same reasoning as deleted_at/purged: populated by
+      -- a separate later code path (the classify/feedback routes), not the
+      -- sync insert path.
+      ai_classification      TEXT,
+      ai_explanation         TEXT,
+      statistical_classification TEXT,
+      statistical_explanation    TEXT,
+      user_feedback          TEXT,
+      user_correction_reason TEXT,
+      final_classification   TEXT,
+      classification_method  TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS track_points (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      activity_id    INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      elapsed_sec    REAL,
+      timestamp_unix INTEGER,
+      distance_m     REAL,
+      heart_rate     INTEGER,
+      speed_ms       REAL,
+      cadence        INTEGER,
+      altitude_m     REAL,
+      temperature    INTEGER,
+      power          INTEGER,
+      lat            REAL,
+      lon            REAL
+    );
+
+    CREATE TABLE IF NOT EXISTS body_measurements (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      measured_at    TEXT    NOT NULL,
+      date_only      TEXT    NOT NULL,
+      weight_kg      REAL,
+      fat_ratio      REAL,
+      fat_mass_kg    REAL,
+      muscle_mass_kg REAL,
+      hydration_kg   REAL,
+      bone_mass_kg   REAL,
+      bmi            REAL,
+      heart_rate     INTEGER,
+      -- Same soft-delete/trash/purge model as activities.deleted_at/purged
+      -- above — measured_at (UNIQUE) is what a purged row keeps, blocking
+      -- sync-withings.ts's INSERT OR IGNORE from resurrecting it.
+      deleted_at     TEXT,
+      purged         INTEGER NOT NULL DEFAULT 0,
+      UNIQUE(measured_at)
+    );
+
+    CREATE TABLE IF NOT EXISTS withings_tokens (
+      id            INTEGER PRIMARY KEY CHECK (id = 1),
+      access_token  TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at    INTEGER NOT NULL,
+      scope         TEXT,
+      updated_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS strava_tokens (
+      id            INTEGER PRIMARY KEY CHECK (id = 1),
+      access_token  TEXT NOT NULL,
+      refresh_token TEXT NOT NULL,
+      expires_at    INTEGER NOT NULL,
+      scope         TEXT,
+      updated_at    TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Single global row (id=1), same pattern as *_tokens. Outlier-detection
+    -- thresholds are a "change per second" a human can reason about (e.g.
+    -- "speed can't plausibly jump more than 2 m/s in one second") rather
+    -- than a statistical parameter — see ActivityModal.tsx's outlier logic.
+    CREATE TABLE IF NOT EXISTS settings (
+      id                            INTEGER PRIMARY KEY CHECK (id = 1),
+      outlier_speed_delta_per_sec   REAL NOT NULL DEFAULT 2.0,
+      outlier_cadence_delta_per_sec REAL NOT NULL DEFAULT 60.0,
+      outlier_min_speed_kmh         REAL NOT NULL DEFAULT 6.0,
+      -- Appearance: theme is one of the app's 4 predefined names, OR 'auto'
+      -- meaning "not yet explicitly chosen — resolve from the OS's
+      -- prefers-color-scheme at render time" (applied via a data-theme
+      -- attribute, see index.css; resolution happens in useAppearance.ts,
+      -- never stored as anything but 'auto' itself once selected).
+      -- background_kind is 'none' | 'bundled' | 'custom' — 'bundled' selects
+      -- one of the shipped CSS-gradient presets by id (background_value),
+      -- 'custom' points at an uploaded file's name under
+      -- garmin-stats/backgrounds/. unit_system is 'metric' | 'imperial' |
+      -- 'auto' (resolved from the browser's locale region — see
+      -- utils/units.ts — since there's no direct "OS measurement system"
+      -- API available to a web page).
+      theme                         TEXT NOT NULL DEFAULT 'auto',
+      background_kind               TEXT NOT NULL DEFAULT 'none',
+      background_value              TEXT,
+      unit_system                   TEXT NOT NULL DEFAULT 'auto',
+      -- Overview & Trends: minimum activities (single mode) or groups
+      -- (week/month mode) before a sport's trend chart is worth showing —
+      -- below this, a "too few activities" message is shown instead. Same
+      -- number governs both, see OverviewTab.tsx.
+      min_trend_group_size          INTEGER NOT NULL DEFAULT 5,
+      -- 'accordion' (default) expands an activity's detail inline in
+      -- ActivitiesTab; 'modal' opens it as a popup (the original behavior).
+      activity_detail_view          TEXT NOT NULL DEFAULT 'accordion',
+      updated_at                    TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
+    CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
+    CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
+  `);
+
+  // Ensure the single settings row exists — CREATE TABLE IF NOT EXISTS above
+  // creates the table but not a row; column DEFAULTs populate it on first run.
+  db.exec("INSERT OR IGNORE INTO settings (id) VALUES (1)");
+
+  // Migrations for columns added after activities/track_points already
+  // existed in the wild. CREATE TABLE IF NOT EXISTS above won't add columns
+  // to an already-existing table, so patch them in directly — idempotent,
+  // safe to run every startup.
+  const activityCols = db.prepare("PRAGMA table_info(activities)").all() as { name: string }[];
+  if (!activityCols.some(c => c.name === "source")) {
+    // Existing rows correctly default to 'garmin' (the only source that
+    // existed before Strava support was added).
+    db.exec("ALTER TABLE activities ADD COLUMN source TEXT NOT NULL DEFAULT 'garmin'");
+  }
+  if (!activityCols.some(c => c.name === "moving_time_sec")) {
+    // NULL for existing rows until reprocess-fit-archive.ts backfills them.
+    db.exec("ALTER TABLE activities ADD COLUMN moving_time_sec REAL");
+  }
+  if (!activityCols.some(c => c.name === "deleted_at")) {
+    db.exec("ALTER TABLE activities ADD COLUMN deleted_at TEXT");
+  }
+  if (!activityCols.some(c => c.name === "purged")) {
+    db.exec("ALTER TABLE activities ADD COLUMN purged INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!activityCols.some(c => c.name === "ai_classification")) {
+    db.exec("ALTER TABLE activities ADD COLUMN ai_classification TEXT");
+  }
+  if (!activityCols.some(c => c.name === "ai_explanation")) {
+    db.exec("ALTER TABLE activities ADD COLUMN ai_explanation TEXT");
+  }
+  // Track whether this is the column's very first creation — the backfill
+  // below must run exactly once, right when the split happens, not on every
+  // server start afterward (it would be a no-op the second time anyway,
+  // since ai_classification is already NULL for the rows it moves, but no
+  // reason to re-run it).
+  const addingStatisticalSplit = !activityCols.some(c => c.name === "statistical_classification");
+  if (addingStatisticalSplit) {
+    db.exec("ALTER TABLE activities ADD COLUMN statistical_classification TEXT");
+  }
+  if (!activityCols.some(c => c.name === "statistical_explanation")) {
+    db.exec("ALTER TABLE activities ADD COLUMN statistical_explanation TEXT");
+  }
+  if (addingStatisticalSplit) {
+    // Pre-split rows stored whichever method ran most recently in
+    // ai_classification/ai_explanation, with classification_method
+    // recording which one produced it. Rows whose last classify call was
+    // 'statistical' have their real result sitting in the wrong (ai_*)
+    // column post-split — move it to the new statistical_* columns so it
+    // shows under the correct card, and clear the old slot since it was
+    // never actually an AI result.
+    db.exec(`
+      UPDATE activities
+      SET statistical_classification = ai_classification, statistical_explanation = ai_explanation,
+          ai_classification = NULL, ai_explanation = NULL
+      WHERE classification_method = 'statistical' AND ai_classification IS NOT NULL
+    `);
+    // classification_method's meaning also changed — it used to record
+    // "which method last ran" (set on every classify), now it only means
+    // "which card the confirmed verdict came from" (set on feedback). A
+    // pending (never-reviewed) row's old value is stale under the new
+    // meaning and would incorrectly mark one card as the confirmed source
+    // in the UI even though nothing's been approved/rejected yet.
+    db.exec("UPDATE activities SET classification_method = NULL WHERE user_feedback IS NULL AND classification_method IS NOT NULL");
+  }
+  if (!activityCols.some(c => c.name === "user_feedback")) {
+    db.exec("ALTER TABLE activities ADD COLUMN user_feedback TEXT");
+  }
+  if (!activityCols.some(c => c.name === "user_correction_reason")) {
+    db.exec("ALTER TABLE activities ADD COLUMN user_correction_reason TEXT");
+  }
+  if (!activityCols.some(c => c.name === "final_classification")) {
+    db.exec("ALTER TABLE activities ADD COLUMN final_classification TEXT");
+  }
+  if (!activityCols.some(c => c.name === "classification_method")) {
+    db.exec("ALTER TABLE activities ADD COLUMN classification_method TEXT");
+  }
+
+  const trackCols = db.prepare("PRAGMA table_info(track_points)").all() as { name: string }[];
+  if (!trackCols.some(c => c.name === "timestamp_unix")) {
+    db.exec("ALTER TABLE track_points ADD COLUMN timestamp_unix INTEGER");
+  }
+
+  const bodyCols = db.prepare("PRAGMA table_info(body_measurements)").all() as { name: string }[];
+  if (!bodyCols.some(c => c.name === "deleted_at")) {
+    db.exec("ALTER TABLE body_measurements ADD COLUMN deleted_at TEXT");
+  }
+  if (!bodyCols.some(c => c.name === "purged")) {
+    db.exec("ALTER TABLE body_measurements ADD COLUMN purged INTEGER NOT NULL DEFAULT 0");
+  }
+
+  const settingsCols = db.prepare("PRAGMA table_info(settings)").all() as { name: string }[];
+  if (!settingsCols.some(c => c.name === "outlier_min_speed_kmh")) {
+    db.exec("ALTER TABLE settings ADD COLUMN outlier_min_speed_kmh REAL NOT NULL DEFAULT 6.0");
+  }
+  if (!settingsCols.some(c => c.name === "theme")) {
+    db.exec("ALTER TABLE settings ADD COLUMN theme TEXT NOT NULL DEFAULT 'dark'");
+  }
+  if (!settingsCols.some(c => c.name === "background_kind")) {
+    db.exec("ALTER TABLE settings ADD COLUMN background_kind TEXT NOT NULL DEFAULT 'none'");
+  }
+  if (!settingsCols.some(c => c.name === "background_value")) {
+    db.exec("ALTER TABLE settings ADD COLUMN background_value TEXT");
+  }
+  if (!settingsCols.some(c => c.name === "unit_system")) {
+    db.exec("ALTER TABLE settings ADD COLUMN unit_system TEXT NOT NULL DEFAULT 'auto'");
+  }
+  if (!settingsCols.some(c => c.name === "min_trend_group_size")) {
+    db.exec("ALTER TABLE settings ADD COLUMN min_trend_group_size INTEGER NOT NULL DEFAULT 5");
+  }
+  if (!settingsCols.some(c => c.name === "activity_detail_view")) {
+    db.exec("ALTER TABLE settings ADD COLUMN activity_detail_view TEXT NOT NULL DEFAULT 'accordion'");
+  }
+}
+
+// ── Typed row shapes ──────────────────────────────────────────────────────
+
+export interface ActivityRow {
+  id: number;
+  filename: string;
+  activity_date: string;
+  date_only: string;
+  sport: string | null;
+  duration_sec: number | null;
+  distance_m: number | null;
+  avg_pace_minkm: number | null;
+  calories: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
+  avg_cadence: number | null;
+  ascent_m: number | null;
+  descent_m: number | null;
+  avg_speed_ms: number | null;
+  max_speed_ms: number | null;
+  source: string;
+  moving_time_sec: number | null;
+}
+
+export interface TrackPointRow {
+  activity_id: number;
+  elapsed_sec: number | null;
+  timestamp_unix: number | null;
+  distance_m: number | null;
+  heart_rate: number | null;
+  speed_ms: number | null;
+  cadence: number | null;
+  altitude_m: number | null;
+  temperature: number | null;
+  power: number | null;
+  lat: number | null;
+  lon: number | null;
+}
+
+export interface BodyMeasurementRow {
+  measured_at: string;
+  date_only: string;
+  weight_kg: number | null;
+  fat_ratio: number | null;
+  fat_mass_kg: number | null;
+  muscle_mass_kg: number | null;
+  hydration_kg: number | null;
+  bone_mass_kg: number | null;
+  bmi: number | null;
+  heart_rate: number | null;
+}
+
+export interface WithingsTokenRow {
+  id: 1;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  scope: string | null;
+}
+
+export interface StravaTokenRow {
+  id: 1;
+  access_token: string;
+  refresh_token: string;
+  expires_at: number;
+  scope: string | null;
+}
+
+export interface SettingsRow {
+  outlier_speed_delta_per_sec: number;
+  outlier_cadence_delta_per_sec: number;
+  // Absolute floor, not delta-based like the two above: any speed sample
+  // below this (default 6 km/h = 10:00 min/km, i.e. walking pace or slower)
+  // is treated as an outlier outright, regardless of how it compares to its
+  // neighbors — a deliberate "running-only" filter, distinct from the
+  // isolated-spike noise filter the delta thresholds implement.
+  outlier_min_speed_kmh: number;
+  theme: string;
+  background_kind: string;
+  background_value: string | null;
+  unit_system: string;
+  min_trend_group_size: number;
+  activity_detail_view: string;
+}
+
+// ── Typed param builders ──────────────────────────────────────────────────
+// These convert our typed row interfaces into the $-prefixed SQLParams
+// that node:sqlite expects, with proper SQLInputValue types.
+
+export function activityParams(a: Omit<ActivityRow, "id" | "imported_at">): SQLParams {
+  return {
+    $filename:       a.filename,
+    $activity_date:  a.activity_date,
+    $date_only:      a.date_only,
+    $sport:          a.sport,
+    $duration_sec:   a.duration_sec,
+    $distance_m:     a.distance_m,
+    $avg_pace_minkm: a.avg_pace_minkm,
+    $calories:       a.calories,
+    $avg_hr:         a.avg_hr,
+    $max_hr:         a.max_hr,
+    $avg_cadence:    a.avg_cadence,
+    $ascent_m:       a.ascent_m,
+    $descent_m:      a.descent_m,
+    $avg_speed_ms:   a.avg_speed_ms,
+    $max_speed_ms:   a.max_speed_ms,
+    $source:         a.source,
+    $moving_time_sec: a.moving_time_sec,
+  };
+}
+
+export function trackPointParams(p: TrackPointRow): SQLParams {
+  return {
+    $activity_id: p.activity_id,
+    $elapsed_sec: p.elapsed_sec,
+    $timestamp_unix: p.timestamp_unix,
+    $distance_m:  p.distance_m,
+    $heart_rate:  p.heart_rate,
+    $speed_ms:    p.speed_ms,
+    $cadence:     p.cadence,
+    $altitude_m:  p.altitude_m,
+    $temperature: p.temperature,
+    $power:       p.power,
+    $lat:         p.lat,
+    $lon:         p.lon,
+  };
+}
+
+export function bodyMeasurementParams(r: BodyMeasurementRow): SQLParams {
+  return {
+    $measured_at:    r.measured_at,
+    $date_only:      r.date_only,
+    $weight_kg:      r.weight_kg,
+    $fat_ratio:      r.fat_ratio,
+    $fat_mass_kg:    r.fat_mass_kg,
+    $muscle_mass_kg: r.muscle_mass_kg,
+    $hydration_kg:   r.hydration_kg,
+    $bone_mass_kg:   r.bone_mass_kg,
+    $bmi:            r.bmi,
+    $heart_rate:     r.heart_rate,
+  };
+}

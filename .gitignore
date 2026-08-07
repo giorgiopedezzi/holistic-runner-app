@@ -1,0 +1,50 @@
+# ── credentials & secrets ────────────────────────────────────────────────
+config.json
+
+# ── database ──────────────────────────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+*.db.*.bak
+*.db-shm.*.bak
+*.db-wal.*.bak
+
+# ── local DB backups (personal health data — never commit) ─────────────────
+backups/
+
+# ── raw .FIT archive (kept locally for richer re-parsing, not committed) ───
+garmin-stats/fit-archive/
+
+# ── raw Strava API responses (kept locally, same reasoning as fit-archive) ─
+garmin-stats/strava-archive/
+
+# ── uploaded custom background images (Settings tab appearance) ────────────
+garmin-stats/backgrounds/
+
+# ── dependencies ──────────────────────────────────────────────────────────
+node_modules/
+
+# ── build output ──────────────────────────────────────────────────────────
+dist/
+garmin-dashboard/dist/
+
+# ── TypeScript ────────────────────────────────────────────────────────────
+*.tsbuildinfo
+
+# ── Vite ──────────────────────────────────────────────────────────────────
+.vite/
+
+# ── env files ─────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── OS ────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── editors ───────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo

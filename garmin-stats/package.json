@@ -1,0 +1,25 @@
+{
+  "name": "garmin-stats",
+  "version": "2.0.0",
+  "description": "Personal health dashboard — Garmin 965 + Withings",
+  "type": "module",
+  "scripts": {
+    "sync:garmin": "node src/sync-garmin.ts",
+    "sync:garmin:v": "node src/sync-garmin.ts --verbose",
+    "auth:withings": "node src/auth-withings.ts",
+    "sync:withings": "node src/sync-withings.ts",
+    "sync:strava": "node src/sync-strava.ts",
+    "sync:all": "node src/sync-garmin.ts && node src/sync-withings.ts && node src/sync-strava.ts",
+    "server": "node src/server.ts",
+    "server:watch": "node --watch src/server.ts",
+    "reprocess:fit": "node src/reprocess-fit-archive.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^6.0.0"
+  },
+  "dependencies": {
+    "fit-file-parser": "^4.1.0"
+  }
+}
