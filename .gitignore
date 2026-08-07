@@ -12,6 +12,11 @@ config.json
 # ── local DB backups (personal health data — never commit) ─────────────────
 backups/
 
+# ── API golden-master snapshots (contain personal health data — local only) ─
+tests/baseline/
+tests/after/
+tests/_verify/
+
 # ── raw .FIT archive (kept locally for richer re-parsing, not committed) ───
 garmin-stats/fit-archive/
 
