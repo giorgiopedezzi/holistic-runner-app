@@ -1,0 +1,379 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Garmin Stats — Local Health Dashboard API",
+    "version": "2.0.0",
+    "description": "Local-only REST API (binds 127.0.0.1) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nThis spec documents the CURRENT contract as-is: unversioned `/api` paths, ad-hoc `{ \"error\": \"...\" }` error bodies, and bare-array list responses (no pagination envelope). Those are intentionally NOT yet conformant with rest-api-standards — the conformance changes live in the separate contract-hardening epic (HRA-36), and this spec is updated when they land. Drift between this file and the running API is treated as a bug."
+  },
+  "servers": [
+    { "url": "http://127.0.0.1:3001", "description": "Local API server" }
+  ],
+  "tags": [
+    { "name": "activities", "description": "Activities, track points, and the workout classifier workflow" },
+    { "name": "trends", "description": "Per-sport aggregate views (summary / weekly / monthly)" },
+    { "name": "body", "description": "Withings body measurements + km/weight correlation" },
+    { "name": "settings", "description": "Settings + appearance (theme, background, units)" },
+    { "name": "sync", "description": "Trigger data syncs (Garmin stream, Withings, Strava)" },
+    { "name": "integrations", "description": "Device presence + Withings/Strava OAuth" },
+    { "name": "docs", "description": "This API contract and its rendered docs" }
+  ],
+  "components": {
+    "parameters": {
+      "from": { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive start date (YYYY-MM-DD). Defaults to 30 days ago." },
+      "to": { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive end date (YYYY-MM-DD). Defaults to today." },
+      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Activity id." }
+    },
+    "responses": {
+      "BadRequest": { "description": "Malformed/invalid input.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Resource not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "ServerError": { "description": "Unexpected error. NOTE: the current API also returns 500 for a malformed JSON request body (should be 400) — see HRA-33/HRA-37.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "description": "Ad-hoc error body used by every 4xx/5xx (to be replaced by problem+json in HRA-37).",
+        "properties": { "error": { "type": "string" } },
+        "required": ["error"]
+      },
+      "DateRangeInfo": {
+        "type": "object",
+        "properties": {
+          "min_date": { "type": ["string", "null"], "format": "date" },
+          "max_date": { "type": ["string", "null"], "format": "date" }
+        }
+      },
+      "Count": { "type": "object", "properties": { "count": { "type": "integer" } } },
+      "Activity": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "filename": { "type": "string", "description": "Original .FIT filename (Garmin) or strava-<id>.json (Strava)." },
+          "activity_date": { "type": "string", "description": "ISO 8601 timestamp." },
+          "date_only": { "type": "string", "format": "date" },
+          "sport": { "type": ["string", "null"], "examples": ["running", "cycling", "walking", "hiking", "swimming", "other"] },
+          "duration_sec": { "type": ["number", "null"], "description": "Total elapsed time incl. pauses." },
+          "moving_time_sec": { "type": ["number", "null"], "description": "Active/moving time excl. pauses. Null on pre-migration rows." },
+          "distance_m": { "type": ["number", "null"] },
+          "avg_pace_minkm": { "type": ["number", "null"] },
+          "calories": { "type": ["integer", "null"] },
+          "avg_hr": { "type": ["integer", "null"] },
+          "max_hr": { "type": ["integer", "null"] },
+          "avg_cadence": { "type": ["integer", "null"] },
+          "ascent_m": { "type": ["number", "null"] },
+          "descent_m": { "type": ["number", "null"], "description": "Always null for Strava rows (not exposed by Strava)." },
+          "avg_speed_ms": { "type": ["number", "null"] },
+          "max_speed_ms": { "type": ["number", "null"] },
+          "source": { "type": "string", "enum": ["garmin", "strava"] },
+          "ai_classification": { "type": ["string", "null"] },
+          "ai_explanation": { "type": ["string", "null"] },
+          "statistical_classification": { "type": ["string", "null"] },
+          "statistical_explanation": { "type": ["string", "null"] },
+          "user_feedback": { "type": ["string", "null"], "enum": ["approved", "rejected", null] },
+          "user_correction_reason": { "type": ["string", "null"] },
+          "final_classification": { "type": ["string", "null"] },
+          "classification_method": { "type": ["string", "null"], "enum": ["ai", "statistical", null] }
+        }
+      },
+      "TrackPoint": {
+        "type": "object",
+        "properties": {
+          "elapsed_sec": { "type": ["number", "null"] },
+          "timestamp_unix": { "type": ["integer", "null"], "description": "Real wall-clock unix seconds (Garmin only)." },
+          "distance_m": { "type": ["number", "null"] },
+          "heart_rate": { "type": ["integer", "null"] },
+          "speed_ms": { "type": ["number", "null"] },
+          "cadence": { "type": ["integer", "null"] },
+          "altitude_m": { "type": ["number", "null"] },
+          "temperature": { "type": ["number", "null"] },
+          "power": { "type": ["integer", "null"] }
+        }
+      },
+      "BodyMeasurement": {
+        "type": "object",
+        "properties": {
+          "measured_at": { "type": "string" },
+          "date_only": { "type": "string", "format": "date" },
+          "weight_kg": { "type": ["number", "null"] },
+          "fat_ratio": { "type": ["number", "null"] },
+          "fat_mass_kg": { "type": ["number", "null"] },
+          "muscle_mass_kg": { "type": ["number", "null"] },
+          "hydration_kg": { "type": ["number", "null"] },
+          "bone_mass_kg": { "type": ["number", "null"] },
+          "bmi": { "type": ["number", "null"] },
+          "heart_rate": { "type": ["integer", "null"] }
+        }
+      },
+      "SportSummary": {
+        "type": "object",
+        "properties": {
+          "sport": { "type": "string" },
+          "total_activities": { "type": "integer" },
+          "total_km": { "type": "number" },
+          "total_hours": { "type": "number" },
+          "total_calories": { "type": ["integer", "null"] },
+          "avg_hr": { "type": ["number", "null"] },
+          "avg_pace": { "type": ["number", "null"] },
+          "total_ascent": { "type": ["number", "null"] }
+        }
+      },
+      "WeeklyPoint": {
+        "type": "object",
+        "properties": {
+          "week": { "type": "string", "description": "strftime %Y-W%W." },
+          "runs": { "type": "integer" }, "km": { "type": "number" },
+          "avg_hr": { "type": ["number", "null"] }, "avg_pace": { "type": ["number", "null"] }
+        }
+      },
+      "MonthlyPoint": {
+        "type": "object",
+        "properties": {
+          "month": { "type": "string", "description": "strftime %Y-%m." },
+          "runs": { "type": "integer" }, "km": { "type": "number" },
+          "avg_hr": { "type": ["number", "null"] }, "avg_pace": { "type": ["number", "null"] },
+          "ascent": { "type": ["number", "null"] }
+        }
+      },
+      "BodyMonthlyPoint": {
+        "type": "object",
+        "properties": {
+          "month": { "type": "string" },
+          "avg_weight": { "type": ["number", "null"] }, "min_weight": { "type": ["number", "null"] },
+          "max_weight": { "type": ["number", "null"] }, "avg_fat_ratio": { "type": ["number", "null"] },
+          "avg_muscle_mass": { "type": ["number", "null"] }
+        }
+      },
+      "CorrelationPoint": {
+        "type": "object",
+        "properties": {
+          "week": { "type": "string" }, "km": { "type": "number" },
+          "avg_hr": { "type": ["number", "null"] }, "runs": { "type": "integer" },
+          "avg_weight": { "type": ["number", "null"] }, "avg_fat_ratio": { "type": ["number", "null"] }
+        }
+      },
+      "ActivityTrashRow": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" }, "filename": { "type": "string" },
+          "date_only": { "type": "string", "format": "date" }, "sport": { "type": ["string", "null"] },
+          "distance_m": { "type": ["number", "null"] }, "source": { "type": "string" },
+          "deleted_at": { "type": "string" }
+        }
+      },
+      "BodyTrashRow": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" }, "measured_at": { "type": "string" },
+          "date_only": { "type": "string", "format": "date" }, "weight_kg": { "type": ["number", "null"] },
+          "deleted_at": { "type": "string" }
+        }
+      },
+      "Settings": {
+        "type": "object",
+        "properties": {
+          "outlier_speed_delta_per_sec": { "type": "number" },
+          "outlier_cadence_delta_per_sec": { "type": "number" },
+          "outlier_min_speed_kmh": { "type": "number" },
+          "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] },
+          "background_kind": { "type": "string", "enum": ["none", "bundled", "custom"] },
+          "background_value": { "type": ["string", "null"] },
+          "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] },
+          "min_trend_group_size": { "type": "integer" },
+          "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] }
+        }
+      },
+      "SyncResult": {
+        "type": "object",
+        "properties": { "imported": { "type": "integer" }, "skipped": { "type": "integer" }, "errors": { "type": "integer" } }
+      },
+      "TokenStatus": {
+        "type": "object",
+        "properties": {
+          "present": { "type": "boolean" }, "valid": { "type": "boolean" },
+          "expiresAt": { "type": "integer" }, "scope": { "type": "string" }, "error": { "type": "string" }
+        }
+      },
+      "DeviceStatus": {
+        "type": "object",
+        "properties": {
+          "connected": { "type": "boolean" },
+          "reason": { "type": "string", "enum": ["timeout", "powershell_error", "parse_error"] },
+          "name": { "type": "string" }
+        }
+      },
+      "LoginUrl": { "type": "object", "properties": { "url": { "type": "string", "format": "uri" } } }
+    }
+  },
+  "paths": {
+    "/api/range": {
+      "get": { "tags": ["activities"], "summary": "Min/max activity date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
+    },
+    "/api/activities": {
+      "get": {
+        "tags": ["activities"], "summary": "List activities in a date range (any source)",
+        "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
+        "responses": { "200": { "description": "Bare array of activities (no pagination envelope — see HRA-38).", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Activity" } } } } } }
+      },
+      "delete": {
+        "tags": ["activities"], "summary": "Soft-delete activities in a date range (moves to trash)",
+        "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
+        "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } }
+      }
+    },
+    "/api/activities/count": {
+      "get": { "tags": ["activities"], "summary": "Count activities in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
+    },
+    "/api/activities/trash": {
+      "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } } } } } } }
+    },
+    "/api/activity/{id}": {
+      "get": {
+        "tags": ["activities"], "summary": "Get one activity",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": {
+          "200": { "description": "The activity. QUIRK: for a missing/deleted id the current API returns 200 with an EMPTY body (should be 404) — see HRA-34/HRA-37.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      },
+      "delete": {
+        "tags": ["activities"], "summary": "Soft-delete one activity",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "Deleted id.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/track/{id}": {
+      "get": { "tags": ["activities"], "summary": "Track points for one activity", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "Track points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TrackPoint" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/activity/{id}/classify": {
+      "post": {
+        "tags": ["activities"], "summary": "Classify a running activity (AI or statistical)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "splitMeters": { "type": "number", "default": 1000 }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } },
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "500": { "$ref": "#/components/responses/ServerError" } }
+      }
+    },
+    "/api/activity/{id}/feedback": {
+      "post": {
+        "tags": ["activities"], "summary": "Approve/reject a classification",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["feedback", "source"], "properties": { "feedback": { "type": "string", "enum": ["approved", "rejected"] }, "source": { "type": "string", "enum": ["ai", "statistical"] }, "correctionReason": { "type": "string", "description": "Required when feedback=rejected." }, "finalClassification": { "type": "string", "description": "Required when feedback=rejected." } } } } } },
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/activities/confirm": {
+      "post": { "tags": ["activities"], "summary": "Bulk-confirm classifications", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } }, "responses": { "200": { "description": "Confirmed count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "confirmed": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/activities/restore": {
+      "post": { "tags": ["activities"], "summary": "Restore activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/activities/purge": {
+      "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/summary": {
+      "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } } } } } } }
+    },
+    "/api/weekly": {
+      "get": { "tags": ["trends"], "summary": "Weekly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Weekly points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/WeeklyPoint" } } } } } } }
+    },
+    "/api/monthly": {
+      "get": { "tags": ["trends"], "summary": "Monthly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } } } } } } }
+    },
+    "/api/body/range": {
+      "get": { "tags": ["body"], "summary": "Min/max body-measurement date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
+    },
+    "/api/body/list": {
+      "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } } } } } } }
+    },
+    "/api/body/count": {
+      "get": { "tags": ["body"], "summary": "Count body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
+    },
+    "/api/body/monthly": {
+      "get": { "tags": ["body"], "summary": "Monthly body averages", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly body points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMonthlyPoint" } } } } } } }
+    },
+    "/api/body/correlation": {
+      "get": {
+        "tags": ["body"], "summary": "Weekly km vs avg weight correlation",
+        "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
+        "responses": {
+          "200": { "description": "Correlation points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CorrelationPoint" } } } } },
+          "204": { "description": "QUIRK: returns 204 No Content when there is not enough data (>1 week with at least one body match), instead of 200 []. Inconsistent with other list endpoints — see HRA-32/HRA-37." }
+        }
+      }
+    },
+    "/api/body/trash": {
+      "get": { "tags": ["body"], "summary": "List soft-deleted (not purged) body measurements", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyTrashRow" } } } } } } }
+    },
+    "/api/body": {
+      "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
+    },
+    "/api/body/restore": {
+      "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/body/purge": {
+      "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/settings": {
+      "get": { "tags": ["settings"], "summary": "Get settings", "responses": { "200": { "description": "Settings row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } } },
+      "put": {
+        "tags": ["settings"], "summary": "Update outlier + trend thresholds",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["outlier_speed_delta_per_sec", "outlier_cadence_delta_per_sec", "outlier_min_speed_kmh", "min_trend_group_size"], "properties": { "outlier_speed_delta_per_sec": { "type": "number" }, "outlier_cadence_delta_per_sec": { "type": "number" }, "outlier_min_speed_kmh": { "type": "number" }, "min_trend_group_size": { "type": "integer", "minimum": 2 } } } } } },
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/settings/theme": {
+      "put": { "tags": ["settings"], "summary": "Set theme", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/settings/background": {
+      "put": { "tags": ["settings"], "summary": "Select a bundled background preset or clear it", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["background_kind"], "properties": { "background_kind": { "type": "string", "enum": ["none", "bundled"] }, "background_value": { "type": "string", "description": "Preset id, required when background_kind=bundled." } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/settings/units": {
+      "put": { "tags": ["settings"], "summary": "Set unit system", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["unit_system"], "properties": { "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/settings/detail-view": {
+      "put": { "tags": ["settings"], "summary": "Set activity detail view", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/settings/background-image": {
+      "get": { "tags": ["settings"], "summary": "Stream the current custom background image", "responses": { "200": { "description": "The image bytes.", "content": { "image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/settings/background/upload": {
+      "post": {
+        "tags": ["settings"], "summary": "Upload a custom background image (raw bytes)",
+        "parameters": [ { "name": "ext", "in": "query", "required": true, "schema": { "type": "string", "enum": ["jpg", "jpeg", "png", "webp", "gif"] } } ],
+        "requestBody": { "required": true, "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } }, "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/webp": { "schema": { "type": "string", "format": "binary" } }, "image/gif": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+      }
+    },
+    "/api/sync/garmin": {
+      "post": { "tags": ["sync"], "summary": "Sync from the plugged-in Garmin device (streaming)", "description": "Streams NDJSON progress events: {type:'progress',phase,current,total,label}, ending with {type:'done',imported,skipped,errors} or {type:'error',message}.", "responses": { "200": { "description": "NDJSON progress stream.", "content": { "application/x-ndjson": {} } } } }
+    },
+    "/api/sync/withings": {
+      "post": { "tags": ["sync"], "summary": "Sync from Withings (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } } } }
+    },
+    "/api/sync/strava": {
+      "post": { "tags": ["sync"], "summary": "Sync from Strava (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary (skipped folds in cross-source duplicates).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } } } }
+    },
+    "/api/garmin/status": {
+      "get": { "tags": ["integrations"], "summary": "Is the Garmin device plugged in?", "description": "Runs a ~15s PowerShell device probe.", "responses": { "200": { "description": "Device status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceStatus" } } } } } }
+    },
+    "/api/withings/status": {
+      "get": { "tags": ["integrations"], "summary": "Withings token status", "responses": { "200": { "description": "Token status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenStatus" } } } } } }
+    },
+    "/api/withings/login-url": {
+      "get": { "tags": ["integrations"], "summary": "Generate a Withings OAuth login URL", "responses": { "200": { "description": "Login URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginUrl" } } } } } }
+    },
+    "/api/strava/status": {
+      "get": { "tags": ["integrations"], "summary": "Strava token status", "responses": { "200": { "description": "Token status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenStatus" } } } } } }
+    },
+    "/api/strava/login-url": {
+      "get": { "tags": ["integrations"], "summary": "Generate a Strava OAuth login URL", "responses": { "200": { "description": "Login URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginUrl" } } } } } }
+    },
+    "/api/strava/callback": {
+      "get": { "tags": ["integrations"], "summary": "Strava OAuth redirect target", "description": "Handled on the main port (3001). Returns an HTML page.", "parameters": [ { "name": "code", "in": "query", "schema": { "type": "string" } }, { "name": "state", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "HTML result page.", "content": { "text/html": {} } } } }
+    },
+    "/api/docs": {
+      "get": { "tags": ["docs"], "summary": "Rendered API documentation (self-contained HTML)", "responses": { "200": { "description": "Docs page.", "content": { "text/html": {} } } } }
+    },
+    "/api/openapi.json": {
+      "get": { "tags": ["docs"], "summary": "This OpenAPI spec", "responses": { "200": { "description": "The OpenAPI document.", "content": { "application/json": {} } } } }
+    }
+  }
+}

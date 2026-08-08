@@ -15,6 +15,7 @@ import { createBodyController } from "../controllers/body.controller.ts";
 import { createSettingsController } from "../controllers/settings.controller.ts";
 import { createSyncController } from "../controllers/sync.controller.ts";
 import { createIntegrationsController } from "../controllers/integrations.controller.ts";
+import { createDocsController } from "../controllers/docs.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -23,6 +24,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const settings     = createSettingsController(ctx);
   const sync         = createSyncController(ctx);
   const integrations = createIntegrationsController(ctx);
+  const docs         = createDocsController(ctx);
   const { port } = ctx;
 
   return async (req, res) => {
@@ -40,6 +42,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
 
     try {
       if (req.method === "GET") {
+        if (route === "/api/docs")                     return await docs.ui(req, res, url);
+        if (route === "/api/openapi.json")             return await docs.spec(req, res, url);
         if (route === "/api/range")                    return await activities.range(req, res, url);
         if (route === "/api/body/range")               return await body.range(req, res, url);
         if (route === "/api/garmin/status")            return await integrations.garminStatus(req, res, url);
