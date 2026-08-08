@@ -11,9 +11,12 @@ import path from "path";
 import fs from "fs";
 import { URL } from "url";
 import { randomUUID } from "crypto";
-import type { DatabaseSync, StatementSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import type { Config } from "../config.ts";
 import type { SettingsRow } from "../db.ts";
+import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
+import type { BodyRepo } from "../repositories/body.repo.ts";
+import type { SettingsRepo } from "../repositories/settings.repo.ts";
 import { send, sendNoContent } from "./respond.ts";
 import { dateRange, readBody, readBodyBuffer } from "./request.ts";
 import { oauthState, oauthCallbackPage } from "./oauth.ts";
@@ -46,7 +49,7 @@ export interface ApiContext {
   port: number;
   db: DatabaseSync;
   config: Config;
-  q: Record<string, StatementSync>;
+  repos: { activities: ActivitiesRepo; body: BodyRepo; settings: SettingsRepo };
   backgroundsDir: string;
   checkGarminDevice: () => Promise<unknown>;
   streamSyncScript: (res: http.ServerResponse, scriptName: string) => void;
@@ -55,7 +58,8 @@ export interface ApiContext {
 }
 
 export function createApiHandler(ctx: ApiContext): http.RequestListener {
-  const { port, db, config, q, backgroundsDir, checkGarminDevice, streamSyncScript, runSyncScript, classifyActivity } = ctx;
+  const { port, db, config, repos, backgroundsDir, checkGarminDevice, streamSyncScript, runSyncScript, classifyActivity } = ctx;
+  const { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo } = repos;
 
   return async (req, res) => {
     if (req.method === "OPTIONS") {
@@ -74,17 +78,17 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
     try {
       // ── GET Garmin ────────────────────────────────────────────────────────
       if (req.method === "GET") {
-        if (route === "/api/range")            return send(res, q.range.get());
-        if (route === "/api/body/range")       return send(res, q.bodyRange.get());
+        if (route === "/api/range")            return send(res, activitiesRepo.dateRange());
+        if (route === "/api/body/range")       return send(res, bodyRepo.dateRange());
         if (route === "/api/garmin/status")    return send(res, await checkGarminDevice());
         if (route === "/api/withings/status")  return send(res, await getTokenStatus(config, db));
         if (route === "/api/withings/login-url") {
           oauthState.withings = randomUUID();
           return send(res, { url: getAuthUrl(config, oauthState.withings) });
         }
-        if (route === "/api/settings")         return send(res, q.settingsGet.get());
+        if (route === "/api/settings")         return send(res, settingsRepo.get());
         if (route === "/api/settings/background-image") {
-          const row = q.settingsGet.get() as unknown as SettingsRow;
+          const row = settingsRepo.get() as unknown as SettingsRow;
           if (row.background_kind !== "custom" || !row.background_value) return send(res, { error: "No custom background set" }, 404);
           const filePath = path.join(backgroundsDir, row.background_value);
           if (!fs.existsSync(filePath)) return send(res, { error: "Background file missing" }, 404);
@@ -122,18 +126,18 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
 
         const { from, to } = dateRange(p);
 
-        if (route === "/api/activities")       return send(res, q.activities.all(from, to));
-        if (route === "/api/activities/count") return send(res, q.countInRange.get(from, to));
-        if (route === "/api/activities/trash") return send(res, q.activitiesTrash.all());
-        if (route === "/api/body/count")       return send(res, q.bodyCountInRange.get(from, to));
-        if (route === "/api/body/trash")       return send(res, q.bodyTrash.all());
-        if (route === "/api/summary")          return send(res, q.summary.all(from, to));
-        if (route === "/api/weekly")           return send(res, q.weekly.all(from, to));
-        if (route === "/api/monthly")          return send(res, q.monthly.all(from, to));
-        if (route === "/api/body/list")        return send(res, q.bodyList.all(from, to));
-        if (route === "/api/body/monthly")     return send(res, q.bodyMonthly.all(from, to));
+        if (route === "/api/activities")       return send(res, activitiesRepo.list(from, to));
+        if (route === "/api/activities/count") return send(res, activitiesRepo.countInRange(from, to));
+        if (route === "/api/activities/trash") return send(res, activitiesRepo.trash());
+        if (route === "/api/body/count")       return send(res, bodyRepo.countInRange(from, to));
+        if (route === "/api/body/trash")       return send(res, bodyRepo.trash());
+        if (route === "/api/summary")          return send(res, activitiesRepo.summary(from, to));
+        if (route === "/api/weekly")           return send(res, activitiesRepo.weekly(from, to));
+        if (route === "/api/monthly")          return send(res, activitiesRepo.monthly(from, to));
+        if (route === "/api/body/list")        return send(res, bodyRepo.list(from, to));
+        if (route === "/api/body/monthly")     return send(res, bodyRepo.monthly(from, to));
         if (route === "/api/body/correlation") {
-          const rows = q.correlation.all(from, to) as { avg_weight: number | null }[];
+          const rows = bodyRepo.correlation(from, to) as { avg_weight: number | null }[];
           // Matches the threshold the chart itself needs to be worth showing:
           // more than one week, with at least one of them having a body match.
           const hasData = rows.length > 1 && rows.some(r => r.avg_weight != null);
@@ -144,13 +148,13 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
         if (route.startsWith("/api/track/")) {
           const id = parseInt(route.split("/").pop() ?? "");
           if (isNaN(id)) return send(res, { error: "Invalid ID" }, 400);
-          return send(res, q.track.all(id));
+          return send(res, activitiesRepo.track(id));
         }
 
         if (route.startsWith("/api/activity/")) {
           const id = parseInt(route.split("/").pop() ?? "");
           if (isNaN(id)) return send(res, { error: "Invalid ID" }, 400);
-          return send(res, q.activityById.get(id));
+          return send(res, activitiesRepo.byId(id));
         }
       }
 
@@ -165,10 +169,10 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
 
         // DELETE /api/activities?from=...&to=...
         if (route === "/api/activities") {
-          const count = (q.countInRange.get(from, to) as { count: number }).count;
+          const count = (activitiesRepo.countInRange(from, to) as { count: number }).count;
           db.exec("BEGIN");
           try {
-            q.deleteActivitiesRange.run(from, to);
+            activitiesRepo.softDeleteRange(from, to);
             db.exec("COMMIT");
           } catch (e) { db.exec("ROLLBACK"); throw e; }
           return send(res, { deleted: count, from, to });
@@ -178,16 +182,16 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
         if (route.startsWith("/api/activity/")) {
           const id = parseInt(route.split("/").pop() ?? "");
           if (isNaN(id)) return send(res, { error: "Invalid ID" }, 400);
-          q.deleteActivityById.run(id);
+          activitiesRepo.softDeleteById(id);
           return send(res, { deleted: id });
         }
 
         // DELETE /api/body?from=...&to=...
         if (route === "/api/body") {
-          const count = (q.bodyCountInRange.get(from, to) as { count: number }).count;
+          const count = (bodyRepo.countInRange(from, to) as { count: number }).count;
           db.exec("BEGIN");
           try {
-            q.bodyDeleteRange.run(from, to);
+            bodyRepo.softDeleteRange(from, to);
             db.exec("COMMIT");
           } catch (e) { db.exec("ROLLBACK"); throw e; }
           return send(res, { deleted: count, from, to });
@@ -208,8 +212,8 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (!Number.isInteger(minTrendGroupSize) || minTrendGroupSize < 2) {
             return send(res, { error: "min_trend_group_size must be an integer of at least 2" }, 400);
           }
-          q.settingsUpdate.run({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh, $min_trend_group_size: minTrendGroupSize });
-          return send(res, q.settingsGet.get());
+          settingsRepo.updateOutliers({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh, $min_trend_group_size: minTrendGroupSize });
+          return send(res, settingsRepo.get());
         }
 
         if (route === "/api/settings/theme") {
@@ -217,8 +221,8 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (!body.theme || !THEME_NAMES.includes(body.theme)) {
             return send(res, { error: `theme must be one of: ${THEME_NAMES.join(", ")}` }, 400);
           }
-          q.themeUpdate.run({ $theme: body.theme });
-          return send(res, q.settingsGet.get());
+          settingsRepo.updateTheme({ $theme: body.theme });
+          return send(res, settingsRepo.get());
         }
 
         // PUT /api/settings/background — selects a bundled preset, or clears
@@ -232,11 +236,11 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (body.background_kind === "bundled" && !body.background_value) {
             return send(res, { error: "background_value (preset id) is required when background_kind is 'bundled'" }, 400);
           }
-          q.backgroundUpdate.run({
+          settingsRepo.updateBackground({
             $background_kind: body.background_kind,
             $background_value: body.background_kind === "bundled" ? (body.background_value ?? null) : null,
           });
-          return send(res, q.settingsGet.get());
+          return send(res, settingsRepo.get());
         }
 
         if (route === "/api/settings/units") {
@@ -244,8 +248,8 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (!body.unit_system || !UNIT_SYSTEMS.includes(body.unit_system)) {
             return send(res, { error: `unit_system must be one of: ${UNIT_SYSTEMS.join(", ")}` }, 400);
           }
-          q.unitsUpdate.run({ $unit_system: body.unit_system });
-          return send(res, q.settingsGet.get());
+          settingsRepo.updateUnits({ $unit_system: body.unit_system });
+          return send(res, settingsRepo.get());
         }
 
         if (route === "/api/settings/detail-view") {
@@ -253,8 +257,8 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (!body.activity_detail_view || !DETAIL_VIEWS.includes(body.activity_detail_view)) {
             return send(res, { error: `activity_detail_view must be one of: ${DETAIL_VIEWS.join(", ")}` }, 400);
           }
-          q.detailViewUpdate.run({ $activity_detail_view: body.activity_detail_view });
-          return send(res, q.settingsGet.get());
+          settingsRepo.updateDetailView({ $activity_detail_view: body.activity_detail_view });
+          return send(res, settingsRepo.get());
         }
       }
 
@@ -293,7 +297,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
               return send(res, { error: "method must be 'ai' or 'statistical'" }, 400);
             }
             await classifyActivity(id, splitMeters, method);
-            return send(res, q.activityById.get(id));
+            return send(res, activitiesRepo.byId(id));
           }
         }
 
@@ -312,7 +316,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
             if (body.source !== "ai" && body.source !== "statistical") {
               return send(res, { error: "source must be 'ai' or 'statistical'" }, 400);
             }
-            const current = q.activityById.get(id) as unknown as
+            const current = activitiesRepo.byId(id) as unknown as
               { ai_classification: string | null; statistical_classification: string | null } | undefined;
             if (!current) return send(res, { error: "Activity not found" }, 404);
             const sourceClassification = body.source === "ai" ? current.ai_classification : current.statistical_classification;
@@ -333,11 +337,11 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
               correctionReason = body.correctionReason;
               finalClassification = body.finalClassification;
             }
-            q.feedbackUpdate.run({
+            activitiesRepo.updateFeedback({
               $id: id, $user_feedback: body.feedback, $user_correction_reason: correctionReason,
               $final_classification: finalClassification, $classification_method: body.source,
             });
-            return send(res, q.activityById.get(id));
+            return send(res, activitiesRepo.byId(id));
           }
         }
 
@@ -353,7 +357,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           }
           db.exec("BEGIN");
           try {
-            for (const id of ids) q.confirmActivityById.run({ $id: id, $source: method });
+            for (const id of ids) activitiesRepo.confirmById({ $id: id, $source: method });
             db.exec("COMMIT");
           } catch (e) { db.exec("ROLLBACK"); throw e; }
           return send(res, { confirmed: ids.length });
@@ -370,8 +374,8 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           db.exec("BEGIN");
           try {
             for (const id of ids) {
-              if (purge) { q.deleteTrackPointsByActivity.run(id); q.purgeActivityById.run(id); }
-              else q.restoreActivityById.run(id);
+              if (purge) { activitiesRepo.deleteTrackPoints(id); activitiesRepo.purgeById(id); }
+              else activitiesRepo.restoreById(id);
             }
             db.exec("COMMIT");
           } catch (e) { db.exec("ROLLBACK"); throw e; }
@@ -386,8 +390,8 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           db.exec("BEGIN");
           try {
             for (const id of ids) {
-              if (purge) q.purgeBodyById.run(id);
-              else q.restoreBodyById.run(id);
+              if (purge) bodyRepo.purgeById(id);
+              else bodyRepo.restoreById(id);
             }
             db.exec("COMMIT");
           } catch (e) { db.exec("ROLLBACK"); throw e; }
@@ -405,14 +409,14 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (buf.length === 0) return send(res, { error: "Empty upload" }, 400);
           if (buf.length > 10 * 1024 * 1024) return send(res, { error: "Image too large (max 10MB)" }, 400);
 
-          const prev = q.settingsGet.get() as unknown as SettingsRow;
+          const prev = settingsRepo.get() as unknown as SettingsRow;
           const filename = `bg-${Date.now()}.${ext}`;
           fs.writeFileSync(path.join(backgroundsDir, filename), buf);
           if (prev.background_kind === "custom" && prev.background_value) {
             try { fs.unlinkSync(path.join(backgroundsDir, prev.background_value)); } catch { /* already gone, fine */ }
           }
-          q.backgroundUpdate.run({ $background_kind: "custom", $background_value: filename });
-          return send(res, q.settingsGet.get());
+          settingsRepo.updateBackground({ $background_kind: "custom", $background_value: filename });
+          return send(res, settingsRepo.get());
         }
       }
 

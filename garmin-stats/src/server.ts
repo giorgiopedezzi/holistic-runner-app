@@ -18,6 +18,9 @@ import { classifyWorkout } from "./ollama-service.ts";
 import { classifyByStatistics } from "./stats-classifier.ts";
 import { oauthState, oauthCallbackPage } from "./http/oauth.ts";
 import { createApiHandler } from "./http/router.ts";
+import { createActivitiesRepo } from "./repositories/activities.repo.ts";
+import { createBodyRepo } from "./repositories/body.repo.ts";
+import { createSettingsRepo } from "./repositories/settings.repo.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -28,104 +31,10 @@ const PORT   = parseInt(getArg("--port") ?? "3001");
 const db = openDb();
 initSchema(db);
 
-const q = {
-  range:       db.prepare("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE deleted_at IS NULL"),
-  activities:  db.prepare("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC"),
-  activityById:db.prepare("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method FROM activities WHERE id = ? AND deleted_at IS NULL"),
-  summary:     db.prepare("SELECT sport,COUNT(*) AS total_activities,ROUND(SUM(distance_m)/1000,2) AS total_km,ROUND(SUM(duration_sec)/3600,2) AS total_hours,SUM(calories) AS total_calories,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace,ROUND(SUM(ascent_m)) AS total_ascent FROM activities WHERE date_only BETWEEN ? AND ? AND sport IS NOT NULL AND deleted_at IS NULL GROUP BY sport ORDER BY total_km DESC"),
-  weekly:      db.prepare("SELECT strftime('%Y-W%W',date_only) AS week,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY week ORDER BY week"),
-  monthly:     db.prepare("SELECT strftime('%Y-%m',date_only) AS month,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace,ROUND(SUM(ascent_m)) AS ascent FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY month ORDER BY month"),
-  track:       db.prepare("SELECT elapsed_sec,timestamp_unix,distance_m,heart_rate,speed_ms,cadence,altitude_m,temperature,power FROM track_points WHERE activity_id=? ORDER BY COALESCE(elapsed_sec,distance_m) ASC"),
-
-  // delete (soft) / trash / restore / purge
-  deleteActivitiesRange: db.prepare("UPDATE activities SET deleted_at = datetime('now') WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL"),
-  deleteActivityById:    db.prepare("UPDATE activities SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL"),
-  countInRange:          db.prepare("SELECT COUNT(*) AS count FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL"),
-  activitiesTrash:       db.prepare("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC"),
-  restoreActivityById:   db.prepare("UPDATE activities SET deleted_at = NULL WHERE id = ? AND purged = 0"),
-  deleteTrackPointsByActivity: db.prepare("DELETE FROM track_points WHERE activity_id = ?"),
-  // Purge (empty the trash): wipes track_points + every heavy/summary column
-  // to actually reclaim space, but deliberately keeps filename (+ date/sport/
-  // source, negligible size) — sync-garmin.ts's dedup check reads filenames
-  // unconditionally, so keeping it is what stops a resync from reimporting
-  // this activity. Never shown in the trash list again (purged=1) and can't
-  // be restored.
-  purgeActivityById: db.prepare(`
-    UPDATE activities SET
-      purged = 1, distance_m = NULL, avg_pace_minkm = NULL, calories = NULL,
-      avg_hr = NULL, max_hr = NULL, avg_cadence = NULL, ascent_m = NULL,
-      descent_m = NULL, avg_speed_ms = NULL, max_speed_ms = NULL,
-      moving_time_sec = NULL, duration_sec = NULL
-    WHERE id = ?
-  `),
-
-  // AI workout classifier + feedback. classifyUpdateAi/classifyUpdateStatistical
-  // each write only their own method's pair of columns — running one never
-  // touches the other's stored result, so both can be computed independently
-  // and compared. Either always resets the four shared-verdict columns to
-  // NULL — a fresh classification (first time or a reclassify, either
-  // method) is always "pending review" again, old feedback doesn't carry
-  // over. confirmActivityById is the bulk-equivalent of a thumbs-up with no
-  // reason — it takes an explicit $source (the bulk UI's AI/Statistical
-  // switch, same as bulk classify uses) rather than guessing/preferring one
-  // slot, since a row can have both populated (classified with one method,
-  // then reclassified with the other) and only the caller knows which one
-  // the switch was on when "Confirm selected" was clicked.
-  classifyUpdateAi: db.prepare(`
-    UPDATE activities SET
-      ai_classification = $classification, ai_explanation = $explanation,
-      user_feedback = NULL, user_correction_reason = NULL, final_classification = NULL, classification_method = NULL
-    WHERE id = $id
-  `),
-  classifyUpdateStatistical: db.prepare(`
-    UPDATE activities SET
-      statistical_classification = $classification, statistical_explanation = $explanation,
-      user_feedback = NULL, user_correction_reason = NULL, final_classification = NULL, classification_method = NULL
-    WHERE id = $id
-  `),
-  feedbackUpdate: db.prepare(`
-    UPDATE activities SET
-      user_feedback = $user_feedback, user_correction_reason = $user_correction_reason,
-      final_classification = $final_classification, classification_method = $classification_method
-    WHERE id = $id
-  `),
-  confirmActivityById: db.prepare(`
-    UPDATE activities SET
-      user_feedback = 'approved',
-      final_classification = CASE WHEN $source = 'ai' THEN ai_classification ELSE statistical_classification END,
-      classification_method = $source,
-      user_correction_reason = NULL
-    WHERE id = $id
-      AND (CASE WHEN $source = 'ai' THEN ai_classification ELSE statistical_classification END) IS NOT NULL
-  `),
-
-  // withings
-  bodyRange:   db.prepare("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM body_measurements WHERE deleted_at IS NULL"),
-  bodyList:    db.prepare("SELECT measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY measured_at ASC"),
-  bodyMonthly: db.prepare("SELECT strftime('%Y-%m',date_only) AS month,ROUND(AVG(weight_kg),2) AS avg_weight,ROUND(MIN(weight_kg),2) AS min_weight,ROUND(MAX(weight_kg),2) AS max_weight,ROUND(AVG(fat_ratio),1) AS avg_fat_ratio,ROUND(AVG(muscle_mass_kg),2) AS avg_muscle_mass FROM body_measurements WHERE date_only BETWEEN ? AND ? AND weight_kg IS NOT NULL AND deleted_at IS NULL GROUP BY month ORDER BY month"),
-  bodyDeleteRange: db.prepare("UPDATE body_measurements SET deleted_at = datetime('now') WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL"),
-  bodyCountInRange: db.prepare("SELECT COUNT(*) AS count FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL"),
-  bodyTrash:        db.prepare("SELECT id,measured_at,date_only,weight_kg,deleted_at FROM body_measurements WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC"),
-  restoreBodyById:  db.prepare("UPDATE body_measurements SET deleted_at = NULL WHERE id = ? AND purged = 0"),
-  // Keeps measured_at (blocks sync-withings.ts's INSERT OR IGNORE from
-  // resurrecting it) + date_only; wipes every actual measurement value.
-  purgeBodyById: db.prepare(`
-    UPDATE body_measurements SET
-      purged = 1, weight_kg = NULL, fat_ratio = NULL, fat_mass_kg = NULL,
-      muscle_mass_kg = NULL, hydration_kg = NULL, bone_mass_kg = NULL,
-      bmi = NULL, heart_rate = NULL
-    WHERE id = ?
-  `),
-  correlation: db.prepare("SELECT a.week,a.km,a.avg_hr,a.runs,ROUND(AVG(b.weight_kg),2) AS avg_weight,ROUND(AVG(b.fat_ratio),1) AS avg_fat_ratio FROM (SELECT strftime('%Y-W%W',date_only) AS week,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,COUNT(*) AS runs FROM activities WHERE date_only BETWEEN ? AND ? AND sport='running' AND deleted_at IS NULL GROUP BY week) a LEFT JOIN body_measurements b ON strftime('%Y-W%W',b.date_only)=a.week AND b.deleted_at IS NULL GROUP BY a.week ORDER BY a.week"),
-
-  // settings
-  settingsGet:    db.prepare("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, min_trend_group_size, activity_detail_view FROM settings WHERE id = 1"),
-  settingsUpdate: db.prepare("UPDATE settings SET outlier_speed_delta_per_sec = $outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec = $outlier_cadence_delta_per_sec, outlier_min_speed_kmh = $outlier_min_speed_kmh, min_trend_group_size = $min_trend_group_size, updated_at = datetime('now') WHERE id = 1"),
-  themeUpdate:      db.prepare("UPDATE settings SET theme = $theme, updated_at = datetime('now') WHERE id = 1"),
-  backgroundUpdate: db.prepare("UPDATE settings SET background_kind = $background_kind, background_value = $background_value, updated_at = datetime('now') WHERE id = 1"),
-  unitsUpdate:      db.prepare("UPDATE settings SET unit_system = $unit_system, updated_at = datetime('now') WHERE id = 1"),
-  detailViewUpdate: db.prepare("UPDATE settings SET activity_detail_view = $activity_detail_view, updated_at = datetime('now') WHERE id = 1"),
-};
+// ── repositories (data-access layer — the only layer that runs SQL) ─────────
+const activitiesRepo = createActivitiesRepo(db);
+const bodyRepo       = createBodyRepo(db);
+const settingsRepo   = createSettingsRepo(db);
 
 // ── Appearance: theme + background image ────────────────────────────────
 // Custom-uploaded backgrounds land here (gitignored, not committed). The
@@ -306,16 +215,16 @@ interface ActivityForClassify {
 type ClassificationMethod = "ai" | "statistical";
 
 async function classifyActivity(id: number, splitMeters: number, method: ClassificationMethod): Promise<void> {
-  const activity = q.activityById.get(id) as unknown as ActivityForClassify | undefined;
+  const activity = activitiesRepo.byId(id) as unknown as ActivityForClassify | undefined;
   if (!activity) throw new Error(`Activity ${id} not found`);
-  const points = q.track.all(id) as unknown as WorkoutTrackPoint[];
+  const points = activitiesRepo.track(id) as unknown as WorkoutTrackPoint[];
   const summary = summarizeWorkout(activity, points, { splitMeters });
   if (method === "statistical") {
     const result = classifyByStatistics(summary);
-    q.classifyUpdateStatistical.run({ $id: id, $classification: result.classification, $explanation: result.explanation });
+    activitiesRepo.updateStatisticalClassification({ $id: id, $classification: result.classification, $explanation: result.explanation });
   } else {
     const result = await classifyWorkout(summary);
-    q.classifyUpdateAi.run({ $id: id, $classification: result.classification, $explanation: result.explanation });
+    activitiesRepo.updateAiClassification({ $id: id, $classification: result.classification, $explanation: result.explanation });
   }
 }
 
@@ -325,7 +234,8 @@ async function classifyActivity(id: number, splitMeters: number, method: Classif
 // wires it to the http server. Behavior is byte-identical to the previous
 // inline handler.
 const server = http.createServer(createApiHandler({
-  port: PORT, db, config, q, backgroundsDir,
+  port: PORT, db, config, backgroundsDir,
+  repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo },
   checkGarminDevice, streamSyncScript, runSyncScript, classifyActivity,
 }));
 
