@@ -17,6 +17,11 @@ import type { SettingsRow } from "../db.ts";
 import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
 import type { BodyRepo } from "../repositories/body.repo.ts";
 import type { SettingsRepo } from "../repositories/settings.repo.ts";
+import type { ActivitiesService } from "../services/activities.service.ts";
+import type { BodyService } from "../services/body.service.ts";
+import type { ClassificationService } from "../services/classification.service.ts";
+import type { SyncService } from "../services/sync.service.ts";
+import type { IntegrationsService } from "../services/integrations.service.ts";
 import { send, sendNoContent } from "./respond.ts";
 import { dateRange, readBody, readBodyBuffer } from "./request.ts";
 import { oauthState, oauthCallbackPage } from "./oauth.ts";
@@ -50,16 +55,21 @@ export interface ApiContext {
   db: DatabaseSync;
   config: Config;
   repos: { activities: ActivitiesRepo; body: BodyRepo; settings: SettingsRepo };
+  services: {
+    activities: ActivitiesService;
+    body: BodyService;
+    classification: ClassificationService;
+    sync: SyncService;
+    integrations: IntegrationsService;
+  };
   backgroundsDir: string;
-  checkGarminDevice: () => Promise<unknown>;
   streamSyncScript: (res: http.ServerResponse, scriptName: string) => void;
-  runSyncScript: (scriptName: string, extraArgs?: string[]) => Promise<unknown>;
-  classifyActivity: (id: number, splitMeters: number, method: "ai" | "statistical") => Promise<void>;
 }
 
 export function createApiHandler(ctx: ApiContext): http.RequestListener {
-  const { port, db, config, repos, backgroundsDir, checkGarminDevice, streamSyncScript, runSyncScript, classifyActivity } = ctx;
+  const { port, db, config, repos, services, backgroundsDir, streamSyncScript } = ctx;
   const { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo } = repos;
+  const { activities: activitiesService, body: bodyService, classification: classificationService, sync: syncService, integrations: integrationsService } = services;
 
   return async (req, res) => {
     if (req.method === "OPTIONS") {
@@ -80,7 +90,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
       if (req.method === "GET") {
         if (route === "/api/range")            return send(res, activitiesRepo.dateRange());
         if (route === "/api/body/range")       return send(res, bodyRepo.dateRange());
-        if (route === "/api/garmin/status")    return send(res, await checkGarminDevice());
+        if (route === "/api/garmin/status")    return send(res, await integrationsService.checkGarminDevice());
         if (route === "/api/withings/status")  return send(res, await getTokenStatus(config, db));
         if (route === "/api/withings/login-url") {
           oauthState.withings = randomUUID();
@@ -137,10 +147,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
         if (route === "/api/body/list")        return send(res, bodyRepo.list(from, to));
         if (route === "/api/body/monthly")     return send(res, bodyRepo.monthly(from, to));
         if (route === "/api/body/correlation") {
-          const rows = bodyRepo.correlation(from, to) as { avg_weight: number | null }[];
-          // Matches the threshold the chart itself needs to be worth showing:
-          // more than one week, with at least one of them having a body match.
-          const hasData = rows.length > 1 && rows.some(r => r.avg_weight != null);
+          const { hasData, rows } = bodyService.correlation(from, to);
           if (!hasData) { sendNoContent(res); return; }
           return send(res, rows);
         }
@@ -169,32 +176,19 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
 
         // DELETE /api/activities?from=...&to=...
         if (route === "/api/activities") {
-          const count = (activitiesRepo.countInRange(from, to) as { count: number }).count;
-          db.exec("BEGIN");
-          try {
-            activitiesRepo.softDeleteRange(from, to);
-            db.exec("COMMIT");
-          } catch (e) { db.exec("ROLLBACK"); throw e; }
-          return send(res, { deleted: count, from, to });
+          return send(res, activitiesService.softDeleteRange(from, to));
         }
 
         // DELETE /api/activity/:id
         if (route.startsWith("/api/activity/")) {
           const id = parseInt(route.split("/").pop() ?? "");
           if (isNaN(id)) return send(res, { error: "Invalid ID" }, 400);
-          activitiesRepo.softDeleteById(id);
-          return send(res, { deleted: id });
+          return send(res, activitiesService.softDeleteById(id));
         }
 
         // DELETE /api/body?from=...&to=...
         if (route === "/api/body") {
-          const count = (bodyRepo.countInRange(from, to) as { count: number }).count;
-          db.exec("BEGIN");
-          try {
-            bodyRepo.softDeleteRange(from, to);
-            db.exec("COMMIT");
-          } catch (e) { db.exec("ROLLBACK"); throw e; }
-          return send(res, { deleted: count, from, to });
+          return send(res, bodyService.softDeleteRange(from, to));
         }
       }
 
@@ -271,7 +265,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           const wTo   = p.get("to");
           if (wFrom) args.push("--from", wFrom);
           if (wTo)   args.push("--to", wTo);
-          return send(res, await runSyncScript("sync-withings.ts", args));
+          return send(res, await syncService.runSyncScript("sync-withings.ts", args));
         }
         if (route === "/api/sync/strava") {
           const args: string[] = [];
@@ -279,7 +273,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           const sTo   = p.get("to");
           if (sFrom) args.push("--from", sFrom);
           if (sTo)   args.push("--to", sTo);
-          return send(res, await runSyncScript("sync-strava.ts", args));
+          return send(res, await syncService.runSyncScript("sync-strava.ts", args));
         }
 
         // POST /api/activity/:id/classify — body { splitMeters?: number, method?: 'ai'|'statistical' }.
@@ -296,7 +290,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
             if (method !== "ai" && method !== "statistical") {
               return send(res, { error: "method must be 'ai' or 'statistical'" }, 400);
             }
-            await classifyActivity(id, splitMeters, method);
+            await classificationService.classify(id, splitMeters, method);
             return send(res, activitiesRepo.byId(id));
           }
         }
@@ -355,12 +349,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           if (method !== "ai" && method !== "statistical") {
             return send(res, { error: "method must be 'ai' or 'statistical'" }, 400);
           }
-          db.exec("BEGIN");
-          try {
-            for (const id of ids) activitiesRepo.confirmById({ $id: id, $source: method });
-            db.exec("COMMIT");
-          } catch (e) { db.exec("ROLLBACK"); throw e; }
-          return send(res, { confirmed: ids.length });
+          return send(res, activitiesService.confirm(ids, method));
         }
 
         // Trash actions — body is always {ids: number[]}. Looping single-row
@@ -371,15 +360,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           const ids = Array.isArray(body.ids) ? body.ids.filter((n): n is number => Number.isInteger(n)) : [];
           if (ids.length === 0) return send(res, { error: "ids must be a non-empty array of integers" }, 400);
           const purge = route.endsWith("/purge");
-          db.exec("BEGIN");
-          try {
-            for (const id of ids) {
-              if (purge) { activitiesRepo.deleteTrackPoints(id); activitiesRepo.purgeById(id); }
-              else activitiesRepo.restoreById(id);
-            }
-            db.exec("COMMIT");
-          } catch (e) { db.exec("ROLLBACK"); throw e; }
-          return send(res, { [purge ? "purged" : "restored"]: ids.length });
+          return send(res, purge ? activitiesService.purge(ids) : activitiesService.restore(ids));
         }
 
         if (route === "/api/body/restore" || route === "/api/body/purge") {
@@ -387,15 +368,7 @@ export function createApiHandler(ctx: ApiContext): http.RequestListener {
           const ids = Array.isArray(body.ids) ? body.ids.filter((n): n is number => Number.isInteger(n)) : [];
           if (ids.length === 0) return send(res, { error: "ids must be a non-empty array of integers" }, 400);
           const purge = route.endsWith("/purge");
-          db.exec("BEGIN");
-          try {
-            for (const id of ids) {
-              if (purge) bodyRepo.purgeById(id);
-              else bodyRepo.restoreById(id);
-            }
-            db.exec("COMMIT");
-          } catch (e) { db.exec("ROLLBACK"); throw e; }
-          return send(res, { [purge ? "purged" : "restored"]: ids.length });
+          return send(res, purge ? bodyService.purge(ids) : bodyService.restore(ids));
         }
 
         // POST /api/settings/background/upload?ext=jpg — raw image bytes as

@@ -13,14 +13,16 @@ import readline from "readline";
 import { loadConfig, getArg } from "./config.ts";
 import { openDb, initSchema } from "./db.ts";
 import { exchangeCode } from "./withings-auth.ts";
-import { summarizeWorkout, type WorkoutTrackPoint } from "./workout-metrics.ts";
-import { classifyWorkout } from "./ollama-service.ts";
-import { classifyByStatistics } from "./stats-classifier.ts";
 import { oauthState, oauthCallbackPage } from "./http/oauth.ts";
 import { createApiHandler } from "./http/router.ts";
 import { createActivitiesRepo } from "./repositories/activities.repo.ts";
 import { createBodyRepo } from "./repositories/body.repo.ts";
 import { createSettingsRepo } from "./repositories/settings.repo.ts";
+import { createActivitiesService } from "./services/activities.service.ts";
+import { createBodyService } from "./services/body.service.ts";
+import { createClassificationService } from "./services/classification.service.ts";
+import { createSyncService } from "./services/sync.service.ts";
+import { createIntegrationsService } from "./services/integrations.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -36,6 +38,13 @@ const activitiesRepo = createActivitiesRepo(db);
 const bodyRepo       = createBodyRepo(db);
 const settingsRepo   = createSettingsRepo(db);
 
+// ── services (business logic — no http, no SQL of their own) ─────────────────
+const activitiesService     = createActivitiesService(db, activitiesRepo);
+const bodyService           = createBodyService(db, bodyRepo);
+const classificationService = createClassificationService(activitiesRepo);
+const syncService           = createSyncService(__dirname);
+const integrationsService   = createIntegrationsService(__dirname);
+
 // ── Appearance: theme + background image ────────────────────────────────
 // Custom-uploaded backgrounds land here (gitignored, not committed). The
 // upload handler best-effort deletes the previous custom file on replace —
@@ -44,34 +53,10 @@ const settingsRepo   = createSettingsRepo(db);
 const backgroundsDir = path.resolve(__dirname, "../backgrounds");
 if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: true });
 
-// ── sync scripts ─────────────────────────────────────────────────────────
-interface SyncResult { imported: number; skipped: number; errors: number }
-
-function runSyncScript(scriptName: string, extraArgs: string[] = []): Promise<SyncResult> {
-  const scriptPath = path.join(__dirname, scriptName);
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [...process.execArgv, scriptPath, ...extraArgs], {
-      cwd: process.cwd(),
-    });
-
-    let stdout = "";
-    child.stdout.on("data", chunk => stdout += chunk);
-    child.stderr.on("data", chunk => stdout += chunk);
-    child.on("error", reject);
-    child.on("close", code => {
-      if (code !== 0) {
-        reject(new Error(`${scriptName} exited with code ${code}: ${stdout.slice(-1000)}`));
-        return;
-      }
-      const imported = parseInt(stdout.match(/Imported\s*:\s*(\d+)/)?.[1] ?? "0");
-      const skipped  = parseInt(stdout.match(/Skipped\s*:\s*(\d+)/)?.[1]  ?? "0");
-      const errors   = parseInt(stdout.match(/Errors\s*:\s*(\d+)/)?.[1]   ?? "0");
-      resolve({ imported, skipped, errors });
-    });
-  });
-}
-
-// Same spawn as runSyncScript, but relays sync-garmin.ts's "PROGRESS <phase>
+// ── sync (streaming) ─────────────────────────────────────────────────────
+// The blocking sync runner moved to services/sync.service.ts; this streaming
+// variant stays here because it writes NDJSON straight to the http response.
+// Relays sync-garmin.ts's "PROGRESS <phase>
 // <current> <total> [<label>]" stdout lines to the client live as NDJSON
 // instead of waiting for the whole run to finish, so the dashboard can show
 // a real progress bar for the download and import phases.
@@ -122,44 +107,6 @@ function streamSyncScript(res: http.ServerResponse, scriptName: string): void {
   });
 }
 
-// ── Garmin device check ──────────────────────────────────────────────────
-// Cheap presence check for the "Sync from device" button: walks the same MTP
-// shell path the sync bridge uses but never copies anything, so it's fast.
-// Same non-inherited, timed-out spawn pattern as the sync scripts — this COM
-// automation can hang without a real console attached.
-interface DeviceStatus { connected: boolean; reason?: string; name?: string; }
-
-function checkGarminDevice(): Promise<DeviceStatus> {
-  const scriptPath = path.join(__dirname, "check-garmin-device.ps1");
-  return new Promise(resolve => {
-    // No -DeviceName: auto-detect by protocol (MTP vs filesystem) instead of
-    // requiring an exact name match, which is what actually connects/plugs
-    // in — Windows' reported device name isn't always what's in config.json.
-    const child = spawn("powershell.exe", [
-      "-NoProfile", "-ExecutionPolicy", "Bypass",
-      "-File", scriptPath,
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-
-    let out = "";
-    child.stdout.on("data", chunk => out += chunk);
-
-    const timer = setTimeout(() => {
-      child.kill();
-      resolve({ connected: false, reason: "timeout" });
-    }, 15_000);
-
-    child.on("error", () => { clearTimeout(timer); resolve({ connected: false, reason: "powershell_error" }); });
-    child.on("close", () => {
-      clearTimeout(timer);
-      try {
-        resolve(JSON.parse(out.trim().split("\n").pop() ?? "{}") as DeviceStatus);
-      } catch {
-        resolve({ connected: false, reason: "parse_error" });
-      }
-    });
-  });
-}
-
 // ── Withings OAuth callback ─────────────────────────────────────────────
 // Always-on (whenever server.ts is running) so the dashboard's "Login to
 // Withings" button can open a real popup straight at Withings' login page —
@@ -196,47 +143,18 @@ withingsCallbackServer.on("error", err => {
 
 withingsCallbackServer.listen(WITHINGS_CALLBACK_PORT, "127.0.0.1");
 
-// ── Workout classifier ────────────────────────────────────────────────────
-// Shared by the single-activity classify route (and looped by the frontend
-// for bulk — see ManageTab.tsx's note on why there's no bulk route). Never
-// called from a sync script — classification is strictly on-demand, so a
-// slow/down Ollama can never block or slow down a sync (see
-// ollama-service.ts's header comment). Two independent methods: 'ai'
-// (ollama-service.ts, a local LLM) and 'statistical' (stats-classifier.ts,
-// deterministic rules over the same summary numbers, no LLM/network call —
-// instant, and works even if Ollama isn't running).
-interface ActivityForClassify {
-  sport: string | null;
-  distance_m: number | null;
-  duration_sec: number | null;
-  avg_hr: number | null;
-}
-
-type ClassificationMethod = "ai" | "statistical";
-
-async function classifyActivity(id: number, splitMeters: number, method: ClassificationMethod): Promise<void> {
-  const activity = activitiesRepo.byId(id) as unknown as ActivityForClassify | undefined;
-  if (!activity) throw new Error(`Activity ${id} not found`);
-  const points = activitiesRepo.track(id) as unknown as WorkoutTrackPoint[];
-  const summary = summarizeWorkout(activity, points, { splitMeters });
-  if (method === "statistical") {
-    const result = classifyByStatistics(summary);
-    activitiesRepo.updateStatisticalClassification({ $id: id, $classification: result.classification, $explanation: result.explanation });
-  } else {
-    const result = await classifyWorkout(summary);
-    activitiesRepo.updateAiClassification({ $id: id, $classification: result.classification, $explanation: result.explanation });
-  }
-}
-
 // ── main API server ─────────────────────────────────────────────────────────
-// The request handler now lives in http/router.ts; server.ts builds the
-// dependency context (deps not yet extracted into repositories/services) and
-// wires it to the http server. Behavior is byte-identical to the previous
-// inline handler.
+// The request handler lives in http/router.ts; server.ts builds the dependency
+// context (repositories + services + the streaming sync helper) and wires it to
+// the http server, alongside the always-on Withings callback server above.
 const server = http.createServer(createApiHandler({
   port: PORT, db, config, backgroundsDir,
   repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo },
-  checkGarminDevice, streamSyncScript, runSyncScript, classifyActivity,
+  services: {
+    activities: activitiesService, body: bodyService, classification: classificationService,
+    sync: syncService, integrations: integrationsService,
+  },
+  streamSyncScript,
 }));
 
 server.listen(PORT, "127.0.0.1", () => {
