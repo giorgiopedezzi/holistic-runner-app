@@ -11,13 +11,13 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { openDb, initSchema, activityParams, trackPointParams } from "./db.ts";
-import { parseFit } from "./domain/fit-parser.ts";
+import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
+import { parseFit } from "../domain/fit-parser.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
-const fitArchivePath = path.resolve(__dirname, "../fit-archive");
+const fitArchivePath = path.resolve(__dirname, "../../fit-archive");
 
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Reprocess FIT Archive ===\n");

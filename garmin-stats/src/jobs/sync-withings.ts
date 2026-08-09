@@ -4,10 +4,10 @@
  * Usage: npm run sync:withings [-- --from 2023-01-01] [-- --to 2023-06-01] [-- --verbose]
  */
 
-import { loadConfig, getArg, hasFlag } from "./config.ts";
-import { openDb, initSchema, bodyMeasurementParams } from "./db.ts";
-import { getValidToken } from "./integrations/withings.ts";
-import type { BodyMeasurementRow } from "./db.ts";
+import { loadConfig, getArg, hasFlag } from "../config.ts";
+import { openDb, initSchema, bodyMeasurementParams } from "../db.ts";
+import { getValidToken } from "../integrations/withings.ts";
+import type { BodyMeasurementRow } from "../db.ts";
 
 const config  = loadConfig();
 const VERBOSE = hasFlag("--verbose") || hasFlag("-v");

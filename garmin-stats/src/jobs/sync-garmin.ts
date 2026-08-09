@@ -9,10 +9,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import readline from "readline";
-import { loadConfig, getArg, hasFlag } from "./config.ts";
-import { openDb, initSchema, activityParams, trackPointParams } from "./db.ts";
-import { parseFit } from "./domain/fit-parser.ts";
-import { crossValidateFitParser } from "./domain/fit-file-parser-validate.ts";
+import { loadConfig, getArg, hasFlag } from "../config.ts";
+import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
+import { parseFit } from "../domain/fit-parser.ts";
+import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
 
 // Handle ESM path resolution requirements natively
 const __filename = fileURLToPath(import.meta.url);
@@ -101,7 +101,7 @@ function runPowershellStreaming(args: string[], onLine: (line: string) => void, 
 }
 
 async function runMtpExtractionPipeline(archiveFolder: string): Promise<void> {
-  const scriptPath = path.join(__dirname, "activities-file-extractor.ps1");
+  const scriptPath = path.join(__dirname, "..", "powershell", "activities-file-extractor.ps1");
   const tempJsonPath = path.join(__dirname, "existing_activities.json");
 
   console.log(`📊 Found ${existingFilenames.size} records. Compiling exchange file...`);
@@ -212,7 +212,7 @@ async function processLocalSync(targetFolder: string): Promise<void> {
 
 // Permanent archive of raw .FIT files, kept alongside the DB (not under src/,
 // not deleted after import) so richer re-parsing/analysis stays possible later.
-const fitArchivePath = path.resolve(__dirname, "../fit-archive");
+const fitArchivePath = path.resolve(__dirname, "../../fit-archive");
 
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Controlled Native PowerShell Sync ===\n");

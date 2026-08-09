@@ -13,9 +13,9 @@ import { getAuthUrl as getStravaAuthUrl, exchangeCode as exchangeStravaCode, get
 
 export function createIntegrationsController(ctx: AppContext) {
   const { config, db } = ctx;
-  const integrations = ctx.services.integrations;
+  const device = ctx.services.device;
 
-  const garminStatus: Handler = async (_req, res) => send(res, await integrations.checkGarminDevice());
+  const garminStatus: Handler = async (_req, res) => send(res, await device.checkGarminDevice());
 
   const withingsStatus: Handler = async (_req, res) => send(res, await getTokenStatus(config, db));
 

@@ -11,10 +11,10 @@
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { loadConfig, getArg, hasFlag } from "./config.ts";
-import { openDb, initSchema, activityParams, trackPointParams } from "./db.ts";
-import { getValidToken } from "./integrations/strava.ts";
-import type { ActivityRow, TrackPointRow } from "./db.ts";
+import { loadConfig, getArg, hasFlag } from "../config.ts";
+import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
+import { getValidToken } from "../integrations/strava.ts";
+import type { ActivityRow, TrackPointRow } from "../db.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -28,7 +28,7 @@ const API_BASE = "https://www.strava.com/api/v3";
 
 // Permanent archive of raw Strava API responses, kept alongside fit-archive/
 // (not deleted after import) for future AI-driven analysis.
-const archivePath = path.resolve(__dirname, "../strava-archive");
+const archivePath = path.resolve(__dirname, "../../strava-archive");
 if (!fs.existsSync(archivePath)) fs.mkdirSync(archivePath, { recursive: true });
 
 // sport_type is the modern, more granular field; type is its deprecated

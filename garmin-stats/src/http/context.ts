@@ -16,11 +16,11 @@ import type { ActivitiesService } from "../services/activities.service.ts";
 import type { BodyService } from "../services/body.service.ts";
 import type { ClassificationService } from "../services/classification.service.ts";
 import type { SyncService } from "../services/sync.service.ts";
-import type { IntegrationsService } from "../services/integrations.service.ts";
+import type { DeviceService } from "../services/device.service.ts";
 
 export interface AppContext {
   port: number;          // used by the router to build the URL base
-  scriptsDir: string;    // where the sync/device scripts live (src/)
+  scriptsDir: string;    // src root; sync jobs in jobs/, ps1 helpers in powershell/
   backgroundsDir: string;
   config: Config;
   db: DatabaseSync;
@@ -30,7 +30,7 @@ export interface AppContext {
     body: BodyService;
     classification: ClassificationService;
     sync: SyncService;
-    integrations: IntegrationsService;
+    device: DeviceService;
   };
 }
 

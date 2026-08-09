@@ -1,5 +1,5 @@
 /**
- * services/integrations.service.ts
+ * services/device.service.ts
  * External-device/integration checks. Currently the Garmin "is the watch plugged
  * in" presence check (walks the MTP shell path but copies nothing, so it's fast).
  * No http. `scriptsDir` is injected so __dirname resolution is independent of where
@@ -12,9 +12,9 @@ import { spawn } from "child_process";
 
 export interface DeviceStatus { connected: boolean; reason?: string; name?: string; }
 
-export function createIntegrationsService(scriptsDir: string) {
+export function createDeviceService(scriptsDir: string) {
   function checkGarminDevice(): Promise<DeviceStatus> {
-    const scriptPath = path.join(scriptsDir, "check-garmin-device.ps1");
+    const scriptPath = path.join(scriptsDir, "powershell", "check-garmin-device.ps1");
     return new Promise(resolve => {
       // No -DeviceName: auto-detect by protocol (MTP vs filesystem) instead of
       // requiring an exact name match, which is what actually connects/plugs in —
@@ -47,4 +47,4 @@ export function createIntegrationsService(scriptsDir: string) {
   return { checkGarminDevice };
 }
 
-export type IntegrationsService = ReturnType<typeof createIntegrationsService>;
+export type DeviceService = ReturnType<typeof createDeviceService>;
