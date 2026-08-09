@@ -12,7 +12,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { openDb, initSchema, activityParams, trackPointParams } from "./db.ts";
-import { parseFit } from "./fit-parser.ts";
+import { parseFit } from "./domain/fit-parser.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);

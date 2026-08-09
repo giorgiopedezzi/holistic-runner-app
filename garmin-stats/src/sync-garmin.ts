@@ -11,8 +11,8 @@ import { spawn } from "child_process";
 import readline from "readline";
 import { loadConfig, getArg, hasFlag } from "./config.ts";
 import { openDb, initSchema, activityParams, trackPointParams } from "./db.ts";
-import { parseFit } from "./fit-parser.ts";
-import { crossValidateFitParser } from "./fit-file-parser-validate.ts";
+import { parseFit } from "./domain/fit-parser.ts";
+import { crossValidateFitParser } from "./domain/fit-file-parser-validate.ts";
 
 // Handle ESM path resolution requirements natively
 const __filename = fileURLToPath(import.meta.url);

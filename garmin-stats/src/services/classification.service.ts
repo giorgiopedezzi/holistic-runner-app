@@ -9,9 +9,9 @@
  * if Ollama isn't running). Never called from a sync script — strictly on-demand.
  */
 import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
-import { summarizeWorkout, type WorkoutTrackPoint } from "../workout-metrics.ts";
+import { summarizeWorkout, type WorkoutTrackPoint } from "../domain/workout-metrics.ts";
 import { classifyWorkout } from "../ollama-service.ts";
-import { classifyByStatistics } from "../stats-classifier.ts";
+import { classifyByStatistics } from "../domain/stats-classifier.ts";
 
 export type ClassificationMethod = "ai" | "statistical";
 

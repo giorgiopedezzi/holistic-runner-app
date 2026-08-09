@@ -9,7 +9,7 @@
 // down can never block or slow down a sync.
 
 import { loadConfig } from "./config.ts";
-import type { WorkoutSummary } from "./workout-metrics.ts";
+import type { WorkoutSummary } from "./domain/workout-metrics.ts";
 
 // The six canonical labels — also duplicated in garmin-dashboard's
 // types/api.ts (no shared package between the two npm projects in this
