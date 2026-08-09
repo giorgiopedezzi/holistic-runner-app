@@ -13,18 +13,50 @@ import type {
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
+// Error carrying the HTTP status (0 = the request never reached the server), so
+// callers can branch on it if they need to. Its message is already human — see
+// buildApiError. (HRA-43)
+export class ApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+// Turn a non-OK response into a human-readable ApiError.
+// - 502/503/504: a gateway failure — almost always a long request being dropped
+//   (most often the AI classifier, which holds the connection ~15-25s while the
+//   local Ollama model runs with stream:false). The request may still have
+//   completed server-side; tell the user to wait/retry rather than showing a
+//   bare status code.
+// - our own 4xx/5xx: surface the API's own {error} message instead of the code.
+async function buildApiError(res: Response, path: string): Promise<ApiError> {
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return new ApiError(res.status, `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`);
+  }
+  const detail = (await res.json().catch(() => null)) as { error?: string } | null;
+  return new ApiError(res.status, detail?.error ? detail.error : `API error ${res.status}: ${path}`);
+}
+
 async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
   const url = new URL(`${BASE}${path}`, window.location.origin);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
-  const res = await fetch(url.toString(), {
-    method,
-    ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
-  });
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      method,
+      ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+    });
+  } catch {
+    // fetch() rejects only on a network-level failure (server down, connection
+    // reset) — never on an HTTP error status. Give the same human message.
+    throw new ApiError(0, "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted — the operation may still have finished, so wait a moment and try again.");
+  }
   // 204 means "query succeeded, deliberately nothing to show" (e.g. no
   // overlapping data for correlation) — distinct from a 200 empty array,
   // which callers that can receive it should type as `T | null`.
   if (res.status === 204) return null as T;
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) throw await buildApiError(res, path);
   return res.json() as Promise<T>;
 }
 
