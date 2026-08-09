@@ -84,12 +84,12 @@ export const api = {
   garmin: {
     range:       ()                          => request<DateRange>("/api/range"),
     activities:  (from: string, to: string)  => request<Activity[]>("/api/activities", "GET", rp(from, to)),
-    activity:    (id: number)                => request<Activity>(`/api/activity/${id}`),
+    activity:    (id: number)                => request<Activity>(`/api/activities/${id}`),
     summary:     (from: string, to: string)  => request<SportSummary[]>("/api/summary", "GET", rp(from, to)),
-    track:       (id: number)                => request<TrackPoint[]>(`/api/track/${id}`),
+    track:       (id: number)                => request<TrackPoint[]>(`/api/activities/${id}/track`),
     count:       (from: string, to: string)  => request<CountResult>("/api/activities/count", "GET", rp(from, to)),
     deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/activities", "DELETE", rp(from, to)),
-    deleteOne:   (id: number)                => request<DeleteResult>(`/api/activity/${id}`, "DELETE"),
+    deleteOne:   (id: number)                => request<DeleteResult>(`/api/activities/${id}`, "DELETE"),
     sync:        ()                          => request<SyncResult>("/api/sync/garmin", "POST"),
     deviceStatus:()                          => request<DeviceStatus>("/api/garmin/status"),
     // Trash — deletes above are soft (deleted_at set, restorable). These
@@ -103,8 +103,8 @@ export const api = {
     // sequentially for real per-item progress — see server.ts's note on why
     // there's no bulk classify route.
     classify:     (id: number, splitMeters?: number, method?: ClassificationMethod) =>
-      request<Activity>(`/api/activity/${id}/classify`, "POST", undefined, { splitMeters, method }),
-    feedback:     (id: number, body: FeedbackBody) => request<Activity>(`/api/activity/${id}/feedback`, "POST", undefined, body),
+      request<Activity>(`/api/activities/${id}/classify`, "POST", undefined, { splitMeters, method }),
+    feedback:     (id: number, body: FeedbackBody) => request<Activity>(`/api/activities/${id}/feedback`, "POST", undefined, body),
     confirmBulk:  (ids: number[], method?: ClassificationMethod) =>
       request<ConfirmResult>("/api/activities/confirm", "POST", undefined, { ids, method }),
   },

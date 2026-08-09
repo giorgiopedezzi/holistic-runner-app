@@ -48,7 +48,8 @@ export function createActivitiesController(ctx: AppContext) {
   };
 
   const track: Handler = (_req, res, url) => {
-    const id = parseId(url.pathname);
+    // Path is /api/activities/:id/track — the id is the middle segment, not the last.
+    const id = parseInt(url.pathname.match(/^\/api\/activities\/(\d+)\/track$/)?.[1] ?? "");
     if (isNaN(id)) return send(res, { error: "Invalid ID" }, 400);
     return send(res, repo.track(id));
   };
@@ -64,9 +65,9 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, service.softDeleteById(id));
   };
 
-  // POST /api/activity/:id/classify — body { splitMeters?: number, method?: 'ai'|'statistical' }.
+  // POST /api/activities/:id/classify — body { splitMeters?: number, method?: 'ai'|'statistical' }.
   const classify: Handler = async (req, res, url) => {
-    const id = parseInt(url.pathname.match(/^\/api\/activity\/(\d+)\/classify$/)![1]);
+    const id = parseInt(url.pathname.match(/^\/api\/activities\/(\d+)\/classify$/)![1]);
     const body = JSON.parse((await readBody(req)) || "{}") as { splitMeters?: unknown; method?: unknown };
     const splitMeters = body.splitMeters != null ? Number(body.splitMeters) : 1000;
     if (!Number.isFinite(splitMeters) || splitMeters <= 0) {
@@ -80,10 +81,10 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, repo.byId(id));
   };
 
-  // POST /api/activity/:id/feedback — body
+  // POST /api/activities/:id/feedback — body
   // { feedback: 'approved'|'rejected', source: 'ai'|'statistical', correctionReason?, finalClassification? }.
   const feedback: Handler = async (req, res, url) => {
-    const id = parseInt(url.pathname.match(/^\/api\/activity\/(\d+)\/feedback$/)![1]);
+    const id = parseInt(url.pathname.match(/^\/api\/activities\/(\d+)\/feedback$/)![1]);
     const body = JSON.parse((await readBody(req)) || "{}") as {
       feedback?: unknown; source?: unknown; correctionReason?: unknown; finalClassification?: unknown;
     };

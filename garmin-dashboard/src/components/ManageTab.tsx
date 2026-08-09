@@ -833,7 +833,7 @@ function TrashList<T extends { id: number; deleted_at: string }>({
 // Same date-range → checkbox-list → bulk-action shape as DeleteSection/
 // TrashSection above, but with two distinct actions (classify/reclassify vs
 // confirm) and live progress, since classifying is genuinely slow. No bulk
-// backend endpoint for classify — this loops POST /api/activity/:id/classify
+// backend endpoint for classify — this loops POST /api/activities/:id/classify
 // sequentially so the "Classifying N/M…" counter is real, not simulated
 // (see server.ts's note on why there's no bulk classify route). Confirm is
 // fast/DB-only, so it does use the real bulk endpoint.

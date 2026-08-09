@@ -71,8 +71,8 @@ fetch body_list_narrow      "/api/body/list?${NARROW}"
 fetch body_correlation_narrow "/api/body/correlation?${NARROW}"
 
 # id endpoints
-fetch activity_200          "/api/activity/${ACT_ID}"
-fetch activity_1            "/api/activity/${ACT_ID2}"
-fetch track_200            "/api/track/${TRACK_ID}"
+fetch activity_200          "/api/activities/${ACT_ID}"
+fetch activity_1            "/api/activities/${ACT_ID2}"
+fetch track_200            "/api/activities/${TRACK_ID}/track"
 
 echo "Done. $(ls -1 "${OUT}"/*.json | wc -l) snapshot files in ${OUT}/"

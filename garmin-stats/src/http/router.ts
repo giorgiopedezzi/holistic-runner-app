@@ -65,13 +65,13 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/body/list")                return await body.list(req, res, url);
         if (route === "/api/body/monthly")             return await body.monthly(req, res, url);
         if (route === "/api/body/correlation")         return await body.correlation(req, res, url);
-        if (route.startsWith("/api/track/"))           return await activities.track(req, res, url);
-        if (route.startsWith("/api/activity/"))        return await activities.getById(req, res, url);
+        if (/^\/api\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
+        if (/^\/api\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
 
       if (req.method === "DELETE") {
         if (route === "/api/activities")               return await activities.deleteRange(req, res, url);
-        if (route.startsWith("/api/activity/"))        return await activities.deleteById(req, res, url);
+        if (/^\/api\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
         if (route === "/api/body")                     return await body.deleteRange(req, res, url);
       }
 
@@ -87,8 +87,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/sync/garmin")              return await sync.garmin(req, res, url);
         if (route === "/api/sync/withings")            return await sync.withings(req, res, url);
         if (route === "/api/sync/strava")              return await sync.strava(req, res, url);
-        if (/^\/api\/activity\/\d+\/classify$/.test(route)) return await activities.classify(req, res, url);
-        if (/^\/api\/activity\/\d+\/feedback$/.test(route)) return await activities.feedback(req, res, url);
+        if (/^\/api\/activities\/\d+\/classify$/.test(route)) return await activities.classify(req, res, url);
+        if (/^\/api\/activities\/\d+\/feedback$/.test(route)) return await activities.feedback(req, res, url);
         if (route === "/api/activities/confirm")       return await activities.confirm(req, res, url);
         if (route === "/api/activities/restore" || route === "/api/activities/purge") return await activities.restorePurge(req, res, url);
         if (route === "/api/body/restore" || route === "/api/body/purge")             return await body.restorePurge(req, res, url);

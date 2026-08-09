@@ -225,7 +225,7 @@
     "/api/activities/trash": {
       "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } } } } } } }
     },
-    "/api/activity/{id}": {
+    "/api/activities/{id}": {
       "get": {
         "tags": ["activities"], "summary": "Get one activity",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -240,10 +240,10 @@
         "responses": { "200": { "description": "Deleted id.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
-    "/api/track/{id}": {
+    "/api/activities/{id}/track": {
       "get": { "tags": ["activities"], "summary": "Track points for one activity", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "Track points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TrackPoint" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
     },
-    "/api/activity/{id}/classify": {
+    "/api/activities/{id}/classify": {
       "post": {
         "tags": ["activities"], "summary": "Classify a running activity (AI or statistical)",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -251,7 +251,7 @@
         "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "500": { "$ref": "#/components/responses/ServerError" } }
       }
     },
-    "/api/activity/{id}/feedback": {
+    "/api/activities/{id}/feedback": {
       "post": {
         "tags": ["activities"], "summary": "Approve/reject a classification",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
