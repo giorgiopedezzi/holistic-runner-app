@@ -26,23 +26,33 @@ garmin_and_withings/
 │   ├── fit-archive/                  # permanent store of raw .FIT files (gitignored, never deleted)
 │   ├── strava-archive/               # permanent store of raw Strava API JSON (summary+detail+streams; gitignored, never deleted)
 │   ├── backgrounds/                  # uploaded custom background images for the Settings tab (gitignored)
-│   └── src/
-│       ├── config.ts                 # loads config.json, CLI arg helpers
-│       ├── db.ts                     # node:sqlite schema, typed row interfaces, param builders
-│       ├── fit-parser.ts             # binary .FIT decoder (many subtle fixes — do not simplify)
-│       ├── sync-garmin.ts            # PowerShell MTP bridge → SQLite
-│       ├── activities-file-extractor.ps1  # PowerShell script called by sync-garmin.ts
-│       ├── check-garmin-device.ps1   # lightweight "is the watch plugged in" check, no copying
-│       ├── withings-auth.ts          # shared OAuth logic (auth URL, exchange, refresh, status)
-│       ├── auth-withings.ts          # standalone CLI OAuth flow (port 3002 callback) — don't run alongside server.ts, see below
-│       ├── sync-withings.ts          # Withings API → SQLite
-│       ├── strava-auth.ts            # shared OAuth logic for Strava, structural mirror of withings-auth.ts
-│       ├── sync-strava.ts            # Strava API → SQLite (+ track_points from streams, + raw JSON archive, + dedup vs existing activities)
-│       ├── reprocess-fit-archive.ts  # one-time backfill: re-parses fit-archive/*.fit with the current fit-parser.ts, rewrites matching activities/track_points rows in place (run via `npm run reprocess:fit` after adding a new field to fit-parser.ts that old rows don't have yet)
-│       ├── workout-metrics.ts        # pure functions: reduces track_points into a compact summary (pace stdev, zero-pace events, splits) for the AI classifier prompt — see "AI workout classifier" below
-│       ├── ollama-service.ts         # calls local Ollama, hardcoded classification rules, validates output against the 6 known labels
-│       ├── stats-classifier.ts       # second, independent classifier — deterministic rules over the same summary stats, no LLM, instant
-│       └── server.ts                 # HTTP API server on port 3001 + always-on Withings OAuth callback on port 3002 (Strava's callback lives on 3001 itself, see below)
+│   └── src/                         # reorganized 2026-08-09 (Epic HRA-52) — see "src/ layout" note below
+│       ├── config.ts                 # (root) loads config.json, CLI arg helpers
+│       ├── db.ts                     # (root) node:sqlite schema, typed row interfaces, param builders
+│       ├── server.ts                 # (root) entry: wiring only — build repos/services, start both HTTP servers (3001 API + 3002 Withings callback)
+│       ├── http/                     # request pipeline: router, respond, request, context (AppContext/Handler), oauth, stream-sync, withings-callback
+│       ├── controllers/              # HTTP↔domain, one per resource: activities, body, trends, settings, sync, integrations, docs
+│       ├── services/                 # business logic (no http/SQL): activities, body, classification, sync, device (device.service.ts = Garmin "is it plugged in" check; was integrations.service.ts)
+│       ├── repositories/             # data access — the only layer that runs SQL: activities.repo, body.repo, settings.repo
+│       ├── domain/                   # pure, framework-agnostic logic (no I/O)
+│       │   ├── fit-parser.ts             # binary .FIT decoder (many subtle fixes — do not simplify)
+│       │   ├── fit-file-parser-validate.ts  # cross-validates fit-parser.ts vs the fit-file-parser npm dep (never persists)
+│       │   ├── workout-metrics.ts        # reduces track_points into a compact summary (pace stdev, pauses, splits) for the classifier
+│       │   └── stats-classifier.ts       # deterministic, no-LLM workout classifier over the same summary
+│       ├── integrations/             # external-service clients (module = noun)
+│       │   ├── withings.ts               # Withings OAuth+token client (was withings-auth.ts)
+│       │   ├── strava.ts                 # Strava OAuth+token client, rotating refresh token (was strava-auth.ts)
+│       │   └── ollama.ts                 # local Ollama classifier client (was ollama-service.ts)
+│       ├── jobs/                     # runnable batch / CLI — spawned by the server or run via npm (command = verb)
+│       │   ├── sync-garmin.ts            # PowerShell MTP bridge → SQLite (spawns powershell/activities-file-extractor.ps1)
+│       │   ├── sync-withings.ts          # Withings API → SQLite
+│       │   ├── sync-strava.ts            # Strava API → SQLite (+ track_points from streams, raw JSON archive, cross-source dedup)
+│       │   ├── reprocess-fit-archive.ts  # one-time backfill: re-parse fit-archive/*.fit with current domain/fit-parser.ts (`npm run reprocess:fit`)
+│       │   └── withings-login.ts         # standalone CLI OAuth flow, port 3002 (was auth-withings.ts; `npm run withings:login`) — don't run alongside server.ts
+│       ├── powershell/               # native PowerShell helpers — spawned; take -Target/-ExistingJsonFiles as args, no self-relative paths
+│       │   ├── activities-file-extractor.ps1  # MTP file copy off the watch, called by jobs/sync-garmin.ts
+│       │   └── check-garmin-device.ps1        # lightweight "is the watch plugged in" check, no copying
+│       └── @types/                   # ambient type declarations (webmtp.d.ts)
 │
 └── garmin-dashboard/                 # Vite 8 + React 18 + TypeScript 6 frontend
     ├── vite.config.ts                # proxies /api/* → localhost:3001, @/ alias
@@ -72,6 +82,8 @@ garmin_and_withings/
             ├── ManageTab.tsx         # sync trigger (device/token status-gated), login popup, delete range (soft), trash (restore/purge) — tab label "Data & Sync"
             └── SettingsTab.tsx       # outlier-detection thresholds, trend threshold, activity detail view, appearance (theme, background, units), persisted server-side
 ```
+
+**src/ layout (Epic HRA-52, 2026-08-09).** Only `config.ts`, `db.ts`, `server.ts` sit at `src/` root; everything else is grouped by concern. The layered request pipeline is `http/` → `controllers/` → `services/` → `repositories/`. Beyond that: `domain/` = pure logic (no I/O), `integrations/` = external-service clients, `jobs/` = runnable batch/CLI (spawned by the server or run via npm), `powershell/` = the two `.ps1` MTP helpers. Naming rule: **module = noun** (`integrations/withings.ts`, the client), **command = verb** (`jobs/withings-login.ts`, the CLI). Renames from the reorg: `withings-auth.ts`→`integrations/withings.ts`, `strava-auth.ts`→`integrations/strava.ts`, `ollama-service.ts`→`integrations/ollama.ts`, `auth-withings.ts`→`jobs/withings-login.ts` (npm `auth:withings`→`withings:login`), `services/integrations.service.ts`→`services/device.service.ts`. Jobs anchor data dirs via `__dirname` at the new depth (`../../fit-archive` etc.); `scriptsDir` injected into services stays `src/` (the `.ps1` join adds `powershell/`, the sync scriptName strings add `jobs/`).
 
 ---
 
@@ -253,14 +265,14 @@ Both phases (download, import) emit `PROGRESS <phase> <current> <total> [<label>
 
 ## Withings OAuth
 - Callback: `http://localhost:3002/callback` — must match Withings developer console exactly
-- Two ways to run the OAuth flow, sharing all logic via `withings-auth.ts`:
+- Two ways to run the OAuth flow, sharing all logic via `integrations/withings.ts`:
   - **In-app (primary)**: `server.ts` binds port 3002 permanently, for as long as it's running. Dashboard's "Login to Withings" button (`ManageTab.tsx`) fetches `GET /api/withings/login-url`, opens it in a real popup (`window.open`, not an iframe — Withings blocks framing), then polls `popup.closed` + `GET /api/withings/status` every ~1.5s. On success it closes the popup itself and flips the button state — no manual "close this tab" needed. If the popup is closed without completing, state just reverts (not treated as an error).
-  - **Standalone CLI**: `npm run auth:withings` spins up its own short-lived server on the same port and opens the OS default browser. **Don't run this while `server.ts` is up** — both bind port 3002, so the second one loses (server.ts logs a warning and keeps running on 3001; it doesn't crash).
-- Tokens stored in `withings_tokens` table, auto-refreshed when < 5 min to expiry (`getValidToken` in `withings-auth.ts`, used by both sync and the status check)
+  - **Standalone CLI**: `npm run withings:login` spins up its own short-lived server on the same port and opens the OS default browser. **Don't run this while `server.ts` is up** — both bind port 3002, so the second one loses (server.ts logs a warning and keeps running on 3001; it doesn't crash).
+- Tokens stored in `withings_tokens` table, auto-refreshed when < 5 min to expiry (`getValidToken` in `integrations/withings.ts`, used by both sync and the status check)
 - Scopes: `user.metrics, user.activity, user.sleepevents`
 
 ## Strava sync
-- **OAuth**: structurally identical popup-login flow to Withings (`strava-auth.ts` mirrors `withings-auth.ts`), but the callback (`GET /api/strava/callback`) lives on the main server port (3001), not a dedicated second port — Strava's API app settings only require an "Authorization Callback Domain" (`localhost`) to match, not an exact URL, so no reason to open another port. Strava also **rotates the refresh token on every use**, unlike Withings — `strava-auth.ts` always persists the new one from the response, or the next refresh fails.
+- **OAuth**: structurally identical popup-login flow to Withings (`integrations/strava.ts` mirrors `integrations/withings.ts`), but the callback (`GET /api/strava/callback`) lives on the main server port (3001), not a dedicated second port — Strava's API app settings only require an "Authorization Callback Domain" (`localhost`) to match, not an exact URL, so no reason to open another port. Strava also **rotates the refresh token on every use**, unlike Withings — `integrations/strava.ts` always persists the new one from the response, or the next refresh fails.
 - Scope: `activity:read_all` (includes private activities).
 - **No raw .FIT equivalent**: Strava's public API has no "download original file" endpoint for third-party apps. The permanent archive (`strava-archive/<id>.json`, same never-deleted spirit as `fit-archive/`) stores the raw summary + detail + `streams` API responses instead — richer than the SQLite rows, but JSON, not FIT.
 - **Field mapping** (`sync-strava.ts`): `start_date_local` → `activity_date` (Z-suffix stripped, same convention as Withings' timestamps); `type`/`sport_type` → `sport` via a lookup table, default `other`; `average_cadence` → `avg_cadence` **×2 for running** (Strava reports single-leg cadence for runs, same as the FIT parser's raw field — see the FIT parser notes above — so this keeps Garmin and Strava runs comparable on the same charts); `calories` comes from the *detail* endpoint (`GET /activities/{id}`), not the list endpoint, which omits it.
@@ -352,7 +364,7 @@ Classifies a **running** activity's `track_points` into one of six hardcoded cat
   - `computePaceStdDev` — stdev of per-point pace, excluding `speed_ms <= 0.05` (same threshold `ActivityModal.tsx`'s `metricValue()` uses — pace is undefined near zero, would blow up the variance meaninglessly).
   - `countZeroPaceEvents` — a **direct server-side port of `ActivityModal.tsx`'s `detectPausesFromTimestamps`/`detectPausesHeuristic`** (not a naive "speed near zero" scan) — this project already learned the hard way (see "FIT parser notes") that `timestamp_unix` gaps are the reliable signal for a real stop, with the speed-threshold heuristic only as a fallback for data without it (Strava, pre-backfill Garmin rows).
   - `computeSplits(points, splitMeters)` — buckets by cumulative `distance_m`; each split's pace is segment-duration ÷ segment-distance (not an average of instantaneous per-point paces). **`splitMeters` defaults to 1000 but is a real parameter** — reclassifying with `0.5km` splits instead of `1km` can surface short interval structure a coarser split smoothed out (verified live: the same reference activity classified as `Repeats/Intervals` at 1km splits and `Fartlek` at 0.5km splits — genuinely different signal, not a bug).
-- **`ollama-service.ts`**: plain `fetch` to `${config.ollama.host}/api/generate` (config.json's `ollama.host`/`ollama.model` — default `http://localhost:11434` / `phi3:mini`, a small model deliberately chosen over something larger since this is a narrow six-category classification task, not open-ended generation, and the bulk workflow means many sequential calls where per-call latency matters). Uses Ollama's real `format: "json"` parameter to constrain output, then **validates the returned classification string is exactly one of the six known labels** — a model drifting from the enum surfaces as a clean error, never a silently-persisted bogus value. A connection failure throws `"Ollama not reachable at <host> — is it running?"`, not a raw stack trace.
+- **`integrations/ollama.ts`**: plain `fetch` to `${config.ollama.host}/api/generate` (config.json's `ollama.host`/`ollama.model` — default `http://localhost:11434` / `phi3:mini`, a small model deliberately chosen over something larger since this is a narrow six-category classification task, not open-ended generation, and the bulk workflow means many sequential calls where per-call latency matters). Uses Ollama's real `format: "json"` parameter to constrain output, then **validates the returned classification string is exactly one of the six known labels** — a model drifting from the enum surfaces as a clean error, never a silently-persisted bogus value. A connection failure throws `"Ollama not reachable at <host> — is it running?"`, not a raw stack trace.
 - **`stats-classifier.ts`**: a second, independent classification method — `classifyByStatistics(summary)`, deterministic rules over the exact same `WorkoutSummary` (pace stdev, splits, zero-pace events, distance/duration), **no LLM, no network call, instant** (~0.1s vs ~20s for Ollama on CPU). Deliberately uses no heart-rate thresholds — this app has no HR-zone/max-HR setting to make "Zone 1/2" well-defined statistically, and pace-variance/splits/pauses/distance/duration are sufficient to distinguish all six categories on their own (matches how the feature was actually requested: "through statistics and pause analyses," not heart rate). Rule order (most-specific/unambiguous signal checked first): `zeroPaceEvents >= 2` → Tapasciata; ≥70% of consecutive splits getting faster → Progressive Run; high pace-variance (`stdev >= 0.5 min/km`) *and* ≥50% of consecutive split-pairs reversing direction → Repeats/Intervals; high variance alone (didn't match the structured patterns above) → Fartlek; else distance/duration threshold (15km/90min) splits Long Session vs Recovery Run. All thresholds are hardcoded constants in `stats-classifier.ts` for now, not settings — same "start fixed, make configurable later if wrong" path the outlier-detection thresholds took.
 - **Two independent result slots (2026-08-07 redesign)**: `ai_classification`/`ai_explanation` and `statistical_classification`/`statistical_explanation` are separate column pairs — running one method never overwrites the other's stored result, so both can exist at once and be compared. This replaced an earlier single-slot design where `ai_classification` held whichever method ran most recently (with `classification_method` recording which one produced it) — that made "compare AI vs statistical on this activity" impossible without reclassifying back and forth, overwriting the very thing you wanted to compare. Both slots are persisted as soon as they're computed, **before** any human review — a "pending" (unreviewed) classification is still a stored one, not held back until confirmed.
   - **One-time backfill on the same migration** (`db.ts`'s `addingStatisticalSplit` guard, runs exactly once when `statistical_classification` is first added): pre-split rows whose *last* classify call was `'statistical'` have their real result sitting in `ai_classification`/`ai_explanation` (the old shared slot) — without moving it, that result would render under the AI card post-split, not the Statistical one (a real bug hit on first use after this redesign — a plain `ALTER TABLE ADD COLUMN` doesn't relocate existing data, only creates the new empty columns). Fixed by moving `ai_classification`/`ai_explanation` → `statistical_classification`/`statistical_explanation` and clearing the old slot wherever `classification_method = 'statistical' AND ai_classification IS NOT NULL`. The same one-time step also NULLs `classification_method` on any row where `user_feedback IS NULL` — its old meaning ("which method last ran") no longer applies once it's repurposed to mean "which card the *confirmed* verdict came from," so a stale value on a still-pending row would otherwise make the frontend show a false "✓ confirmed" tag on whichever card happens to match. The frontend also guards against this independently (`isVerdictSource` requires `user_feedback != null`, not just a `classification_method` match) as a second layer, in case any other stale-data path surfaces the same symptom later.

@@ -14,11 +14,15 @@ garmin-stats/
 └── src/
     ├── config.ts            ← config loader + CLI arg helpers
     ├── db.ts                ← schema, typed row interfaces, DB factory
-    ├── fit-parser.ts        ← binary .FIT decoder
-    ├── sync-garmin.ts       ← imports .FIT files → SQLite
-    ├── auth-withings.ts     ← one-time OAuth2 flow
-    ├── sync-withings.ts     ← fetches Withings measurements → SQLite
-    └── server.ts            ← local REST API (port 3001)
+    ├── server.ts            ← local REST API (port 3001) — wiring only
+    ├── http/                ← request pipeline (router, respond/request, OAuth callbacks, sync streaming)
+    ├── controllers/         ← HTTP handlers, one per resource
+    ├── services/            ← business logic (incl. device.service = watch-presence check)
+    ├── repositories/        ← SQL data access
+    ├── domain/              ← pure logic: fit-parser, fit-file-parser-validate, workout-metrics, stats-classifier
+    ├── integrations/        ← external clients: withings, strava, ollama
+    ├── jobs/                ← runnable CLI/batch: sync-garmin, sync-withings, sync-strava, withings-login, reprocess-fit-archive
+    └── powershell/          ← MTP helpers: activities-file-extractor.ps1, check-garmin-device.ps1
 ```
 
 ## Setup
@@ -60,7 +64,7 @@ npm run sync:garmin:v        # verbose — shows every file
 
 ### 6. Authenticate with Withings (one-time)
 ```bash
-npm run auth:withings
+npm run withings:login
 ```
 This opens your browser, you log in with your Withings account, and the tokens are saved to the DB automatically. You won't need to do this again unless you revoke access.
 
@@ -147,10 +151,10 @@ npm run server     # start the API if not already running
 → Check `activities_path` in `config.json`. Use `\\` as separator.
 
 **"No Withings token found"**
-→ Run `npm run auth:withings` first.
+→ Run `npm run withings:login` first.
 
 **Token refresh fails**
-→ Delete the `withings_tokens` row from the DB and re-run `auth:withings`.
+→ Delete the `withings_tokens` row from the DB and re-run `withings:login`.
 
 **Server unreachable in dashboard**
 → Make sure `npm run server` is running in a terminal.

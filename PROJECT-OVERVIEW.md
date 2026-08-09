@@ -47,11 +47,11 @@ itself never leaves the machine either. Concretely:
 
 | Area | Files | What it does |
 |---|---|---|
-| FIT parsing | `fit-parser.ts` | From-scratch binary decoder for Garmin's `.FIT` format — session summaries, per-second track points, developer-field extensions. Cross-validated on import against a second, independent third-party parser (`fit-file-parser-validate.ts`) purely as a sanity check; never the source of truth. |
-| Garmin sync | `sync-garmin.ts`, `activities-file-extractor.ps1`, `check-garmin-device.ps1` | Shells out to a PowerShell/MTP bridge to copy new `.FIT` files off the watch, then parses and imports them. Raw files are archived permanently, never deleted. |
-| Withings | `withings-auth.ts`, `auth-withings.ts`, `sync-withings.ts` | OAuth2 flow (in-app popup or standalone CLI) + incremental measurement sync. |
-| Strava | `strava-auth.ts`, `sync-strava.ts` | OAuth2 flow (rotating refresh tokens) + activity/stream sync, with cross-source duplicate detection against existing Garmin activities. |
-| AI classifier | `workout-metrics.ts`, `ollama-service.ts`, `stats-classifier.ts` | Reduces a run's raw track points into a compact summary, then classifies it via either a local LLM or deterministic rules — two independently-stored results per activity, so both can be run and compared before either is confirmed as ground truth. |
+| FIT parsing | `domain/fit-parser.ts` | From-scratch binary decoder for Garmin's `.FIT` format — session summaries, per-second track points, developer-field extensions. Cross-validated on import against a second, independent third-party parser (`domain/fit-file-parser-validate.ts`) purely as a sanity check; never the source of truth. |
+| Garmin sync | `jobs/sync-garmin.ts`, `powershell/activities-file-extractor.ps1`, `powershell/check-garmin-device.ps1` | Shells out to a PowerShell/MTP bridge to copy new `.FIT` files off the watch, then parses and imports them. Raw files are archived permanently, never deleted. |
+| Withings | `integrations/withings.ts`, `jobs/withings-login.ts`, `jobs/sync-withings.ts` | OAuth2 flow (in-app popup or standalone CLI) + incremental measurement sync. |
+| Strava | `integrations/strava.ts`, `jobs/sync-strava.ts` | OAuth2 flow (rotating refresh tokens) + activity/stream sync, with cross-source duplicate detection against existing Garmin activities. |
+| AI classifier | `domain/workout-metrics.ts`, `integrations/ollama.ts`, `domain/stats-classifier.ts` | Reduces a run's raw track points into a compact summary, then classifies it via either a local LLM or deterministic rules — two independently-stored results per activity, so both can be run and compared before either is confirmed as ground truth. |
 | Storage & API | `db.ts`, `server.ts`, `config.ts` | SQLite schema (with soft-delete/trash/purge for both activities and body measurements) and a local REST API on port 3001 covering activities, body measurements, sync triggers, settings, and the classifier workflow. |
 
 ### Frontend — `garmin-dashboard/` (Vite + React 18 + TypeScript, strict)
