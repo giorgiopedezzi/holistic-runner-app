@@ -13,7 +13,7 @@
 // workout-metrics.ts itself.
 
 import type { WorkoutSummary } from "./workout-metrics.ts";
-import type { WorkoutClassification } from "../ollama-service.ts";
+import type { WorkoutClassification } from "../integrations/ollama.ts";
 
 export interface StatsClassificationResult {
   classification: WorkoutClassification;

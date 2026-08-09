@@ -8,8 +8,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { Config } from "./config.ts";
-import type { StravaTokenRow } from "./db.ts";
+import type { Config } from "../config.ts";
+import type { StravaTokenRow } from "../db.ts";
 
 const AUTH_URL  = "https://www.strava.com/oauth/authorize";
 const TOKEN_URL = "https://www.strava.com/oauth/token";

@@ -7,8 +7,8 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { Config } from "./config.ts";
-import type { WithingsTokenRow } from "./db.ts";
+import type { Config } from "../config.ts";
+import type { WithingsTokenRow } from "../db.ts";
 
 const AUTH_URL  = "https://account.withings.com/oauth2_user/authorize2";
 const TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2";

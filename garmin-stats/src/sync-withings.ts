@@ -6,7 +6,7 @@
 
 import { loadConfig, getArg, hasFlag } from "./config.ts";
 import { openDb, initSchema, bodyMeasurementParams } from "./db.ts";
-import { getValidToken } from "./withings-auth.ts";
+import { getValidToken } from "./integrations/withings.ts";
 import type { BodyMeasurementRow } from "./db.ts";
 
 const config  = loadConfig();

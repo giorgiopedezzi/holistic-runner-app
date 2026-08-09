@@ -7,7 +7,7 @@
 import type { AppContext, Handler } from "../http/context.ts";
 import { send } from "../http/respond.ts";
 import { dateRange, readBody } from "../http/request.ts";
-import { WORKOUT_CLASSIFICATIONS } from "../ollama-service.ts";
+import { WORKOUT_CLASSIFICATIONS } from "../integrations/ollama.ts";
 
 // Correction reasons for the thumbs-down flow (also duplicated in the dashboard's
 // types/api.ts — no shared package between the two npm projects).

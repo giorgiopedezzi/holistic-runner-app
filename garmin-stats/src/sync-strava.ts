@@ -13,7 +13,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { loadConfig, getArg, hasFlag } from "./config.ts";
 import { openDb, initSchema, activityParams, trackPointParams } from "./db.ts";
-import { getValidToken } from "./strava-auth.ts";
+import { getValidToken } from "./integrations/strava.ts";
 import type { ActivityRow, TrackPointRow } from "./db.ts";
 
 const __filename = fileURLToPath(import.meta.url);

@@ -14,7 +14,7 @@ import { exec } from "child_process";
 import { URL } from "url";
 import { loadConfig } from "./config.ts";
 import { openDb, initSchema } from "./db.ts";
-import { getAuthUrl, exchangeCode, loadToken } from "./withings-auth.ts";
+import { getAuthUrl, exchangeCode, loadToken } from "./integrations/withings.ts";
 
 const config = loadConfig();
 const CALLBACK_PORT = 3002;

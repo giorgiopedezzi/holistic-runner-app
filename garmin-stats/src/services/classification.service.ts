@@ -10,7 +10,7 @@
  */
 import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
 import { summarizeWorkout, type WorkoutTrackPoint } from "../domain/workout-metrics.ts";
-import { classifyWorkout } from "../ollama-service.ts";
+import { classifyWorkout } from "../integrations/ollama.ts";
 import { classifyByStatistics } from "../domain/stats-classifier.ts";
 
 export type ClassificationMethod = "ai" | "statistical";

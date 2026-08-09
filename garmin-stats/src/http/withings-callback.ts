@@ -11,7 +11,7 @@ import http from "http";
 import { URL } from "url";
 import type { DatabaseSync } from "node:sqlite";
 import type { Config } from "../config.ts";
-import { exchangeCode } from "../withings-auth.ts";
+import { exchangeCode } from "../integrations/withings.ts";
 import { oauthState, oauthCallbackPage } from "./oauth.ts";
 
 const WITHINGS_CALLBACK_PORT = 3002;

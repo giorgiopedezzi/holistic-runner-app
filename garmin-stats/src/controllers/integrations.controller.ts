@@ -8,8 +8,8 @@ import { randomUUID } from "crypto";
 import type { AppContext, Handler } from "../http/context.ts";
 import { send } from "../http/respond.ts";
 import { oauthState, oauthCallbackPage } from "../http/oauth.ts";
-import { getAuthUrl, getTokenStatus } from "../withings-auth.ts";
-import { getAuthUrl as getStravaAuthUrl, exchangeCode as exchangeStravaCode, getTokenStatus as getStravaTokenStatus } from "../strava-auth.ts";
+import { getAuthUrl, getTokenStatus } from "../integrations/withings.ts";
+import { getAuthUrl as getStravaAuthUrl, exchangeCode as exchangeStravaCode, getTokenStatus as getStravaTokenStatus } from "../integrations/strava.ts";
 
 export function createIntegrationsController(ctx: AppContext) {
   const { config, db } = ctx;
