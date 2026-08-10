@@ -1,4 +1,5 @@
-import { defineConfig } from "vite";
+/// <reference types="vitest/config" />
+import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -11,6 +12,15 @@ export default defineConfig({
     alias: {
       "@": path.resolve(__dirname, "src"),
     },
+  },
+  // Vitest (T4/HRA-62). jsdom for React component tests; the setup file
+  // registers @testing-library/jest-dom matchers. Reuses this file's `@/`
+  // alias + the react plugin, so tests resolve imports exactly like the app.
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: ["./src/test/setup.ts"],
+    css: false,
   },
   server: {
     port: 5173,
