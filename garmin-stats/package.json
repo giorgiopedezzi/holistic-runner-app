@@ -13,6 +13,8 @@
     "server": "node src/server.ts",
     "server:watch": "node --watch src/server.ts",
     "reprocess:fit": "node src/jobs/reprocess-fit-archive.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "test:watch": "node --test --watch \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
