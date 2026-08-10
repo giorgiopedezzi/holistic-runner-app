@@ -198,7 +198,8 @@ function sampleGapSec(a: TrackPoint, b: TrackPoint): number {
   return 1;
 }
 
-function computeOutlierMask(points: TrackPoint[], valueOf: (p: TrackPoint) => number | null, deltaPerSecThreshold: number): boolean[] {
+// Exported for unit testing (HRA-63) — otherwise module-private.
+export function computeOutlierMask(points: TrackPoint[], valueOf: (p: TrackPoint) => number | null, deltaPerSecThreshold: number): boolean[] {
   const mask = points.map(() => false);
   if (!(deltaPerSecThreshold > 0)) return mask;
 
@@ -231,7 +232,8 @@ function computeOutlierMask(points: TrackPoint[], valueOf: (p: TrackPoint) => nu
 // "running only" view) from the isolated-spike rule above, which is why it
 // has its own setting (`outlier_min_speed_kmh`) rather than reusing the
 // delta threshold.
-function computeMinSpeedMask(points: TrackPoint[], minSpeedKmh: number): boolean[] {
+// Exported for unit testing (HRA-63) — otherwise module-private.
+export function computeMinSpeedMask(points: TrackPoint[], minSpeedKmh: number): boolean[] {
   if (!(minSpeedKmh > 0)) return points.map(() => false);
   const minSpeedMs = minSpeedKmh / 3.6;
   return points.map(p => p.speed_ms != null && p.speed_ms < minSpeedMs);
