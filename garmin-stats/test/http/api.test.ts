@@ -161,26 +161,39 @@ test("GET /api/settings returns the seeded singleton with defaults", async () =>
   });
 });
 
-test("PUT /api/settings/theme persists a valid theme and rejects an invalid one", async () => {
+const mergePatch = (body: unknown): RequestInit => ({
+  method: "PATCH",
+  headers: { "Content-Type": "application/merge-patch+json" },
+  body: JSON.stringify(body),
+});
+
+test("PATCH /api/settings/theme persists a valid theme and rejects an invalid one", async () => {
   await withServer(async (s) => {
-    const ok = await s.api("/api/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "dark" }) });
+    const ok = await s.api("/api/settings/theme", mergePatch({ theme: "dark" }));
     assert.equal(ok.status, 200);
     assert.equal((ok.json as { theme: string }).theme, "dark");
 
-    const bad = await s.api("/api/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "neon" }) });
+    const bad = await s.api("/api/settings/theme", mergePatch({ theme: "neon" }));
     assert.equal(bad.status, 422); // validation failure (parsed OK, breaks the rule) — HRA-37
   });
 });
 
-test("PUT /api/settings persists valid outlier thresholds and rejects bad ones", async () => {
+test("PATCH /api/settings persists valid outlier thresholds and rejects bad ones", async () => {
   await withServer(async (s) => {
     const body = { outlier_speed_delta_per_sec: 3, outlier_cadence_delta_per_sec: 70, outlier_min_speed_kmh: 5, min_trend_group_size: 4 };
-    const ok = await s.api("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const ok = await s.api("/api/settings", mergePatch(body));
     assert.equal(ok.status, 200);
     assert.equal((ok.json as { min_trend_group_size: number }).min_trend_group_size, 4);
 
-    const bad = await s.api("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, outlier_speed_delta_per_sec: -1 }) });
+    const bad = await s.api("/api/settings", mergePatch({ ...body, outlier_speed_delta_per_sec: -1 }));
     assert.equal(bad.status, 422); // validation failure — HRA-37
+  });
+});
+
+test("the old PUT method on a settings route is no longer accepted (404)", async () => {
+  await withServer(async (s) => {
+    const res = await s.api("/api/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "dark" }) });
+    assert.equal(res.status, 404); // clean break — no PUT alias (HRA-40)
   });
 });
 
@@ -225,7 +238,7 @@ test("OPTIONS preflight advertises the mutating methods", async () => {
     const res = await fetch(`${s.baseUrl}/api/activities`, { method: "OPTIONS" });
     assert.equal(res.status, 204);
     const allow = res.headers.get("access-control-allow-methods") ?? "";
-    for (const m of ["GET", "POST", "PUT", "DELETE"]) assert.ok(allow.includes(m), `Allow-Methods should include ${m}`);
+    for (const m of ["GET", "POST", "PATCH", "DELETE"]) assert.ok(allow.includes(m), `Allow-Methods should include ${m}`);
   });
 });
 

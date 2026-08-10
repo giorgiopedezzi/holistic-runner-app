@@ -33,7 +33,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
       });
       res.end(); return;
     }
@@ -76,7 +76,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/body-measurements")        return await body.deleteRange(req, res, url);
       }
 
-      if (req.method === "PUT") {
+      // Settings edits are PARTIAL updates to the settings singleton (each route
+      // touches a subset of fields), so PATCH, not PUT (HRA-40 / rest-api §2).
+      if (req.method === "PATCH") {
         if (route === "/api/settings")                 return await settings.updateOutliers(req, res, url);
         if (route === "/api/settings/theme")           return await settings.updateTheme(req, res, url);
         if (route === "/api/settings/background")       return await settings.updateBackground(req, res, url);

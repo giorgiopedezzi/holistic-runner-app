@@ -17,6 +17,9 @@ import type {
 // caps limit at 100000, comfortably above this app's single-user data volumes.
 const ALL = "100000";
 
+// JSON Merge Patch content type for PATCH settings updates (HRA-40).
+const MERGE_PATCH = "application/merge-patch+json";
+
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
 // Error carrying the HTTP status (0 = the request never reached the server), so
@@ -46,14 +49,15 @@ async function buildApiError(res: Response, path: string): Promise<ApiError> {
   return new ApiError(res.status, message);
 }
 
-async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
+async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown, contentType = "application/json"): Promise<T> {
   const url = new URL(`${BASE}${path}`, window.location.origin);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   let res: Response;
   try {
     res = await fetch(url.toString(), {
       method,
-      ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+      // contentType lets PATCH calls send application/merge-patch+json (HRA-40).
+      ...(body !== undefined ? { headers: { "Content-Type": contentType }, body: JSON.stringify(body) } : {}),
     });
   } catch {
     // fetch() rejects only on a network-level failure (server down, connection
@@ -141,12 +145,14 @@ export const api = {
   },
   settings: {
     get:    ()               => request<Settings>("/api/settings"),
-    update: (s: Settings)    => request<Settings>("/api/settings", "PUT", undefined, s),
-    setTheme: (theme: StoredTheme) => request<Settings>("/api/settings/theme", "PUT", undefined, { theme }),
+    // PATCH (partial updates to the settings singleton) with JSON Merge Patch
+    // content type — HRA-40.
+    update: (s: Settings)    => request<Settings>("/api/settings", "PATCH", undefined, s, MERGE_PATCH),
+    setTheme: (theme: StoredTheme) => request<Settings>("/api/settings/theme", "PATCH", undefined, { theme }, MERGE_PATCH),
     setBackground: (kind: BackgroundKind, value?: string) =>
-      request<Settings>("/api/settings/background", "PUT", undefined, { background_kind: kind, background_value: value }),
-    setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/settings/units", "PUT", undefined, { unit_system: unitSystem }),
-    setDetailView: (view: ActivityDetailView) => request<Settings>("/api/settings/detail-view", "PUT", undefined, { activity_detail_view: view }),
+      request<Settings>("/api/settings/background", "PATCH", undefined, { background_kind: kind, background_value: value }, MERGE_PATCH),
+    setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/settings/units", "PATCH", undefined, { unit_system: unitSystem }, MERGE_PATCH),
+    setDetailView: (view: ActivityDetailView) => request<Settings>("/api/settings/detail-view", "PATCH", undefined, { activity_detail_view: view }, MERGE_PATCH),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {
