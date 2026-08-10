@@ -197,9 +197,9 @@ test("feedback on a missing activity returns 404 problem+json with a clear detai
   });
 });
 
-test("GET /api/body/correlation returns 200 with [] when empty, not 204 — HRA-32", async () => {
+test("GET /api/body-measurements/correlation returns 200 with [] when empty, not 204 — HRA-32", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/body/correlation?from=1999-01-01&to=1999-12-31");
+    const res = await s.api("/api/body-measurements/correlation?from=1999-01-01&to=1999-12-31");
     assert.equal(res.status, 200);
     assert.deepEqual(res.json, []);
   });

@@ -46,7 +46,7 @@ export function createBodyController(ctx: AppContext) {
     return send(res, service.softDeleteRange(from, to));
   };
 
-  // POST /api/body/restore | /api/body/purge — body { ids: number[] }.
+  // POST /api/body-measurements/restore | /api/body-measurements/purge — body { ids: number[] }.
   const restorePurge: Handler = async (req, res, url) => {
     const body = await readJsonBody<{ ids?: unknown }>(req);
     const ids = Array.isArray(body.ids) ? body.ids.filter((n): n is number => Number.isInteger(n)) : [];

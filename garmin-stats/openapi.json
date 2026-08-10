@@ -287,19 +287,20 @@
     "/api/monthly": {
       "get": { "tags": ["trends"], "summary": "Monthly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } } } } } } }
     },
-    "/api/body/range": {
+    "/api/body-measurements/range": {
       "get": { "tags": ["body"], "summary": "Min/max body-measurement date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
     },
-    "/api/body/list": {
-      "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } } } } } } }
+    "/api/body-measurements": {
+      "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } } } } } } },
+      "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
     },
-    "/api/body/count": {
+    "/api/body-measurements/count": {
       "get": { "tags": ["body"], "summary": "Count body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
     },
-    "/api/body/monthly": {
+    "/api/body-measurements/monthly": {
       "get": { "tags": ["body"], "summary": "Monthly body averages", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly body points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMonthlyPoint" } } } } } } }
     },
-    "/api/body/correlation": {
+    "/api/body-measurements/correlation": {
       "get": {
         "tags": ["body"], "summary": "Weekly km vs avg weight correlation",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
@@ -308,16 +309,13 @@
         }
       }
     },
-    "/api/body/trash": {
+    "/api/body-measurements/trash": {
       "get": { "tags": ["body"], "summary": "List soft-deleted (not purged) body measurements", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyTrashRow" } } } } } } }
     },
-    "/api/body": {
-      "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
-    },
-    "/api/body/restore": {
+    "/api/body-measurements/restore": {
       "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/body/purge": {
+    "/api/body-measurements/purge": {
       "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/settings": {

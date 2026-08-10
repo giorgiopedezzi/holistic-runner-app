@@ -46,7 +46,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/docs")                     return await docs.ui(req, res, url);
         if (route === "/api/openapi.json")             return await docs.spec(req, res, url);
         if (route === "/api/range")                    return await activities.range(req, res, url);
-        if (route === "/api/body/range")               return await body.range(req, res, url);
+        if (route === "/api/body-measurements/range")               return await body.range(req, res, url);
         if (route === "/api/garmin/status")            return await integrations.garminStatus(req, res, url);
         if (route === "/api/withings/status")          return await integrations.withingsStatus(req, res, url);
         if (route === "/api/withings/login-url")       return await integrations.withingsLoginUrl(req, res, url);
@@ -58,14 +58,14 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/activities")               return await activities.list(req, res, url);
         if (route === "/api/activities/count")         return await activities.count(req, res, url);
         if (route === "/api/activities/trash")         return await activities.trash(req, res, url);
-        if (route === "/api/body/count")               return await body.count(req, res, url);
-        if (route === "/api/body/trash")               return await body.trash(req, res, url);
+        if (route === "/api/body-measurements/count")               return await body.count(req, res, url);
+        if (route === "/api/body-measurements/trash")               return await body.trash(req, res, url);
         if (route === "/api/summary")                  return await trends.summary(req, res, url);
         if (route === "/api/weekly")                   return await trends.weekly(req, res, url);
         if (route === "/api/monthly")                  return await trends.monthly(req, res, url);
-        if (route === "/api/body/list")                return await body.list(req, res, url);
-        if (route === "/api/body/monthly")             return await body.monthly(req, res, url);
-        if (route === "/api/body/correlation")         return await body.correlation(req, res, url);
+        if (route === "/api/body-measurements")        return await body.list(req, res, url);
+        if (route === "/api/body-measurements/monthly")             return await body.monthly(req, res, url);
+        if (route === "/api/body-measurements/correlation")         return await body.correlation(req, res, url);
         if (/^\/api\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
         if (/^\/api\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
@@ -73,7 +73,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       if (req.method === "DELETE") {
         if (route === "/api/activities")               return await activities.deleteRange(req, res, url);
         if (/^\/api\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
-        if (route === "/api/body")                     return await body.deleteRange(req, res, url);
+        if (route === "/api/body-measurements")        return await body.deleteRange(req, res, url);
       }
 
       if (req.method === "PUT") {
@@ -92,7 +92,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/activities\/\d+\/feedback$/.test(route)) return await activities.feedback(req, res, url);
         if (route === "/api/activities/confirm")       return await activities.confirm(req, res, url);
         if (route === "/api/activities/restore" || route === "/api/activities/purge") return await activities.restorePurge(req, res, url);
-        if (route === "/api/body/restore" || route === "/api/body/purge")             return await body.restorePurge(req, res, url);
+        if (route === "/api/body-measurements/restore" || route === "/api/body-measurements/purge") return await body.restorePurge(req, res, url);
         if (route === "/api/settings/background/upload") return await settings.uploadBackground(req, res, url);
       }
 
