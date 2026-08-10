@@ -69,6 +69,6 @@ const server = http.createServer(createApiHandler({
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log("=== Garmin Stats — API Server ===\n");
-  console.log(`Listening on http://127.0.0.1:${PORT}/api/`);
+  console.log(`Listening on http://127.0.0.1:${PORT}/api/v1/`);
   console.log("\nCtrl+C to stop.");
 });

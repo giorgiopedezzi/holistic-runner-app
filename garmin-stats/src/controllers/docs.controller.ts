@@ -1,7 +1,7 @@
 /**
  * controllers/docs.controller.ts
- * Serves the API contract (GET /api/openapi.json) and a rendered docs page
- * (GET /api/docs). The docs page is a SELF-CONTAINED, dependency-free, no-CDN
+ * Serves the API contract (GET /api/v1/openapi.json) and a rendered docs page
+ * (GET /api/v1/docs). The docs page is a SELF-CONTAINED, dependency-free, no-CDN
  * HTML/JS renderer (fetches the spec same-origin and lists every endpoint) — it
  * honours the project's zero-runtime-dependency + local-only constraints, which a
  * CDN-loaded Swagger UI / Redoc would violate. Additive routes: no existing
@@ -12,7 +12,7 @@ import path from "path";
 import type { AppContext, Handler } from "../http/context.ts";
 import { notFound } from "../http/problem.ts";
 
-// Self-contained docs page. No external resources; fetches /api/openapi.json
+// Self-contained docs page. No external resources; fetches /api/v1/openapi.json
 // (same origin) and renders it with vanilla JS. Kept free of backticks / ${…}
 // so it embeds cleanly in this module's own template literal.
 const DOCS_HTML = [
@@ -39,10 +39,10 @@ const DOCS_HTML = [
   'a{color:#3a8ef5}',
   '</style></head><body><div class="wrap">',
   '<h1 id="title">API docs</h1><p class="desc" id="desc"></p>',
-  '<p class="mut">Raw spec: <a href="/api/openapi.json">/api/openapi.json</a></p>',
+  '<p class="mut">Raw spec: <a href="/api/v1/openapi.json">/api/v1/openapi.json</a></p>',
   '<div id="out">Loading…</div></div>',
   '<script>',
-  'fetch("/api/openapi.json").then(function(r){return r.json()}).then(function(s){',
+  'fetch("/api/v1/openapi.json").then(function(r){return r.json()}).then(function(s){',
   '  document.getElementById("title").textContent=s.info.title+" v"+s.info.version;',
   '  document.getElementById("desc").textContent=s.info.description||"";',
   '  var byTag={};var order=[];',

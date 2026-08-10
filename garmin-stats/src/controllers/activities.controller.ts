@@ -59,7 +59,7 @@ export function createActivitiesController(ctx: AppContext) {
 
   const track: Handler = (_req, res, url) => {
     // Path is /api/activities/:id/track — the id is the middle segment, not the last.
-    const id = parseInt(url.pathname.match(/^\/api\/activities\/(\d+)\/track$/)?.[1] ?? "");
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/track$/)?.[1] ?? "");
     if (isNaN(id)) throw badRequest("Invalid activity id.");
     return send(res, repo.track(id));
   };
@@ -77,7 +77,7 @@ export function createActivitiesController(ctx: AppContext) {
 
   // POST /api/activities/:id/classify — body { splitMeters?: number, method?: 'ai'|'statistical' }.
   const classify: Handler = async (req, res, url) => {
-    const id = parseInt(url.pathname.match(/^\/api\/activities\/(\d+)\/classify$/)![1]);
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/classify$/)![1]);
     const body = await readJsonBody<{ splitMeters?: unknown; method?: unknown }>(req);
     const splitMeters = body.splitMeters != null ? Number(body.splitMeters) : 1000;
     if (!Number.isFinite(splitMeters) || splitMeters <= 0) {
@@ -94,7 +94,7 @@ export function createActivitiesController(ctx: AppContext) {
   // POST /api/activities/:id/feedback — body
   // { feedback: 'approved'|'rejected', source: 'ai'|'statistical', correctionReason?, finalClassification? }.
   const feedback: Handler = async (req, res, url) => {
-    const id = parseInt(url.pathname.match(/^\/api\/activities\/(\d+)\/feedback$/)![1]);
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/feedback$/)![1]);
     const body = await readJsonBody<{
       feedback?: unknown; source?: unknown; correctionReason?: unknown; finalClassification?: unknown;
     }>(req);

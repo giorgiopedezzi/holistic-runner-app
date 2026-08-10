@@ -43,59 +43,59 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
 
     try {
       if (req.method === "GET") {
-        if (route === "/api/docs")                     return await docs.ui(req, res, url);
-        if (route === "/api/openapi.json")             return await docs.spec(req, res, url);
-        if (route === "/api/range")                    return await activities.range(req, res, url);
-        if (route === "/api/body-measurements/range")               return await body.range(req, res, url);
-        if (route === "/api/garmin/status")            return await integrations.garminStatus(req, res, url);
-        if (route === "/api/withings/status")          return await integrations.withingsStatus(req, res, url);
-        if (route === "/api/withings/login-url")       return await integrations.withingsLoginUrl(req, res, url);
-        if (route === "/api/settings")                 return await settings.get(req, res, url);
-        if (route === "/api/settings/background-image") return await settings.backgroundImage(req, res, url);
-        if (route === "/api/strava/status")            return await integrations.stravaStatus(req, res, url);
-        if (route === "/api/strava/login-url")         return await integrations.stravaLoginUrl(req, res, url);
-        if (route === "/api/strava/callback")          return await integrations.stravaCallback(req, res, url);
-        if (route === "/api/activities")               return await activities.list(req, res, url);
-        if (route === "/api/activities/count")         return await activities.count(req, res, url);
-        if (route === "/api/activities/trash")         return await activities.trash(req, res, url);
-        if (route === "/api/body-measurements/count")               return await body.count(req, res, url);
-        if (route === "/api/body-measurements/trash")               return await body.trash(req, res, url);
-        if (route === "/api/summary")                  return await trends.summary(req, res, url);
-        if (route === "/api/weekly")                   return await trends.weekly(req, res, url);
-        if (route === "/api/monthly")                  return await trends.monthly(req, res, url);
-        if (route === "/api/body-measurements")        return await body.list(req, res, url);
-        if (route === "/api/body-measurements/monthly")             return await body.monthly(req, res, url);
-        if (route === "/api/body-measurements/correlation")         return await body.correlation(req, res, url);
-        if (/^\/api\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
-        if (/^\/api\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
+        if (route === "/api/v1/docs")                     return await docs.ui(req, res, url);
+        if (route === "/api/v1/openapi.json")             return await docs.spec(req, res, url);
+        if (route === "/api/v1/range")                    return await activities.range(req, res, url);
+        if (route === "/api/v1/body-measurements/range")               return await body.range(req, res, url);
+        if (route === "/api/v1/garmin/status")            return await integrations.garminStatus(req, res, url);
+        if (route === "/api/v1/withings/status")          return await integrations.withingsStatus(req, res, url);
+        if (route === "/api/v1/withings/login-url")       return await integrations.withingsLoginUrl(req, res, url);
+        if (route === "/api/v1/settings")                 return await settings.get(req, res, url);
+        if (route === "/api/v1/settings/background-image") return await settings.backgroundImage(req, res, url);
+        if (route === "/api/v1/strava/status")            return await integrations.stravaStatus(req, res, url);
+        if (route === "/api/v1/strava/login-url")         return await integrations.stravaLoginUrl(req, res, url);
+        if (route === "/api/v1/strava/callback")          return await integrations.stravaCallback(req, res, url);
+        if (route === "/api/v1/activities")               return await activities.list(req, res, url);
+        if (route === "/api/v1/activities/count")         return await activities.count(req, res, url);
+        if (route === "/api/v1/activities/trash")         return await activities.trash(req, res, url);
+        if (route === "/api/v1/body-measurements/count")               return await body.count(req, res, url);
+        if (route === "/api/v1/body-measurements/trash")               return await body.trash(req, res, url);
+        if (route === "/api/v1/summary")                  return await trends.summary(req, res, url);
+        if (route === "/api/v1/weekly")                   return await trends.weekly(req, res, url);
+        if (route === "/api/v1/monthly")                  return await trends.monthly(req, res, url);
+        if (route === "/api/v1/body-measurements")        return await body.list(req, res, url);
+        if (route === "/api/v1/body-measurements/monthly")             return await body.monthly(req, res, url);
+        if (route === "/api/v1/body-measurements/correlation")         return await body.correlation(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
 
       if (req.method === "DELETE") {
-        if (route === "/api/activities")               return await activities.deleteRange(req, res, url);
-        if (/^\/api\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
-        if (route === "/api/body-measurements")        return await body.deleteRange(req, res, url);
+        if (route === "/api/v1/activities")               return await activities.deleteRange(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
+        if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
       }
 
       // Settings edits are PARTIAL updates to the settings singleton (each route
       // touches a subset of fields), so PATCH, not PUT (HRA-40 / rest-api §2).
       if (req.method === "PATCH") {
-        if (route === "/api/settings")                 return await settings.updateOutliers(req, res, url);
-        if (route === "/api/settings/theme")           return await settings.updateTheme(req, res, url);
-        if (route === "/api/settings/background")       return await settings.updateBackground(req, res, url);
-        if (route === "/api/settings/units")           return await settings.updateUnits(req, res, url);
-        if (route === "/api/settings/detail-view")     return await settings.updateDetailView(req, res, url);
+        if (route === "/api/v1/settings")                 return await settings.updateOutliers(req, res, url);
+        if (route === "/api/v1/settings/theme")           return await settings.updateTheme(req, res, url);
+        if (route === "/api/v1/settings/background")       return await settings.updateBackground(req, res, url);
+        if (route === "/api/v1/settings/units")           return await settings.updateUnits(req, res, url);
+        if (route === "/api/v1/settings/detail-view")     return await settings.updateDetailView(req, res, url);
       }
 
       if (req.method === "POST") {
-        if (route === "/api/sync/garmin")              return await sync.garmin(req, res, url);
-        if (route === "/api/sync/withings")            return await sync.withings(req, res, url);
-        if (route === "/api/sync/strava")              return await sync.strava(req, res, url);
-        if (/^\/api\/activities\/\d+\/classify$/.test(route)) return await activities.classify(req, res, url);
-        if (/^\/api\/activities\/\d+\/feedback$/.test(route)) return await activities.feedback(req, res, url);
-        if (route === "/api/activities/confirm")       return await activities.confirm(req, res, url);
-        if (route === "/api/activities/restore" || route === "/api/activities/purge") return await activities.restorePurge(req, res, url);
-        if (route === "/api/body-measurements/restore" || route === "/api/body-measurements/purge") return await body.restorePurge(req, res, url);
-        if (route === "/api/settings/background/upload") return await settings.uploadBackground(req, res, url);
+        if (route === "/api/v1/sync/garmin")              return await sync.garmin(req, res, url);
+        if (route === "/api/v1/sync/withings")            return await sync.withings(req, res, url);
+        if (route === "/api/v1/sync/strava")              return await sync.strava(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/classify$/.test(route)) return await activities.classify(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/feedback$/.test(route)) return await activities.feedback(req, res, url);
+        if (route === "/api/v1/activities/confirm")       return await activities.confirm(req, res, url);
+        if (route === "/api/v1/activities/restore" || route === "/api/v1/activities/purge") return await activities.restorePurge(req, res, url);
+        if (route === "/api/v1/body-measurements/restore" || route === "/api/v1/body-measurements/purge") return await body.restorePurge(req, res, url);
+        if (route === "/api/v1/settings/background/upload") return await settings.uploadBackground(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);

@@ -94,70 +94,70 @@ function idsBody(ids: number[]) { return { ids }; }
 
 export const api = {
   garmin: {
-    range:       ()                          => request<DateRange>("/api/range"),
+    range:       ()                          => request<DateRange>("/api/v1/range"),
     // Full list (unwrapped) for consumers that need every row in range — trends,
     // classify, delete-preview. Paged UIs use activitiesPage() instead.
-    activities:  async (from: string, to: string) => (await request<Paginated<Activity>>("/api/activities", "GET", { ...rp(from, to), limit: ALL })).data,
+    activities:  async (from: string, to: string) => (await request<Paginated<Activity>>("/api/v1/activities", "GET", { ...rp(from, to), limit: ALL })).data,
     activitiesPage: (from: string, to: string, limit: number, offset: number) =>
-      request<Paginated<Activity>>("/api/activities", "GET", { ...rp(from, to), limit: String(limit), offset: String(offset) }),
-    activity:    (id: number)                => request<Activity>(`/api/activities/${id}`),
-    summary:     async (from: string, to: string) => (await request<Paginated<SportSummary>>("/api/summary", "GET", rp(from, to))).data,
-    track:       (id: number)                => request<TrackPoint[]>(`/api/activities/${id}/track`),
-    count:       (from: string, to: string)  => request<CountResult>("/api/activities/count", "GET", rp(from, to)),
-    deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/activities", "DELETE", rp(from, to)),
-    deleteOne:   (id: number)                => request<DeleteResult>(`/api/activities/${id}`, "DELETE"),
-    sync:        ()                          => request<SyncResult>("/api/sync/garmin", "POST"),
-    deviceStatus:()                          => request<DeviceStatus>("/api/garmin/status"),
+      request<Paginated<Activity>>("/api/v1/activities", "GET", { ...rp(from, to), limit: String(limit), offset: String(offset) }),
+    activity:    (id: number)                => request<Activity>(`/api/v1/activities/${id}`),
+    summary:     async (from: string, to: string) => (await request<Paginated<SportSummary>>("/api/v1/summary", "GET", rp(from, to))).data,
+    track:       (id: number)                => request<TrackPoint[]>(`/api/v1/activities/${id}/track`),
+    count:       (from: string, to: string)  => request<CountResult>("/api/v1/activities/count", "GET", rp(from, to)),
+    deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/v1/activities", "DELETE", rp(from, to)),
+    deleteOne:   (id: number)                => request<DeleteResult>(`/api/v1/activities/${id}`, "DELETE"),
+    sync:        ()                          => request<SyncResult>("/api/v1/sync/garmin", "POST"),
+    deviceStatus:()                          => request<DeviceStatus>("/api/v1/garmin/status"),
     // Trash — deletes above are soft (deleted_at set, restorable). These
     // list/restore/permanently-remove what's currently in the trash.
-    trash:       async ()                    => (await request<Paginated<TrashedActivity>>("/api/activities/trash", "GET", { limit: ALL })).data,
-    restore:     (ids: number[])             => request<RestoreResult>("/api/activities/restore", "POST", undefined, idsBody(ids)),
-    purge:       (ids: number[])             => request<PurgeResult>("/api/activities/purge", "POST", undefined, idsBody(ids)),
+    trash:       async ()                    => (await request<Paginated<TrashedActivity>>("/api/v1/activities/trash", "GET", { limit: ALL })).data,
+    restore:     (ids: number[])             => request<RestoreResult>("/api/v1/activities/restore", "POST", undefined, idsBody(ids)),
+    purge:       (ids: number[])             => request<PurgeResult>("/api/v1/activities/purge", "POST", undefined, idsBody(ids)),
     // AI workout classifier — always on-demand, never triggered by sync.
     // method defaults server-side to 'ai' when omitted. No bulk-classify
     // endpoint: ManageTab's ClassifySection loops this single-activity call
     // sequentially for real per-item progress — see server.ts's note on why
     // there's no bulk classify route.
     classify:     (id: number, splitMeters?: number, method?: ClassificationMethod) =>
-      request<Activity>(`/api/activities/${id}/classify`, "POST", undefined, { splitMeters, method }),
-    feedback:     (id: number, body: FeedbackBody) => request<Activity>(`/api/activities/${id}/feedback`, "POST", undefined, body),
+      request<Activity>(`/api/v1/activities/${id}/classify`, "POST", undefined, { splitMeters, method }),
+    feedback:     (id: number, body: FeedbackBody) => request<Activity>(`/api/v1/activities/${id}/feedback`, "POST", undefined, body),
     confirmBulk:  (ids: number[], method?: ClassificationMethod) =>
-      request<ConfirmResult>("/api/activities/confirm", "POST", undefined, { ids, method }),
+      request<ConfirmResult>("/api/v1/activities/confirm", "POST", undefined, { ids, method }),
   },
   body: {
-    range:       ()                          => request<DateRange>("/api/body-measurements/range"),
-    list:        async (from: string, to: string) => (await request<Paginated<BodyMeasurement>>("/api/body-measurements", "GET", { ...rp(from, to), limit: ALL })).data,
-    monthly:     async (from: string, to: string) => (await request<Paginated<MonthlyBody>>("/api/body-measurements/monthly", "GET", rp(from, to))).data,
-    correlation: async (from: string, to: string) => (await request<Paginated<CorrelationPoint>>("/api/body-measurements/correlation", "GET", rp(from, to))).data,
-    count:       (from: string, to: string)  => request<CountResult>("/api/body-measurements/count", "GET", rp(from, to)),
-    deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/body-measurements", "DELETE", rp(from, to)),
-    sync:        (from?: string, to?: string) => request<SyncResult>("/api/sync/withings", "POST", from && to ? rp(from, to) : undefined),
-    tokenStatus: ()                          => request<WithingsStatus>("/api/withings/status"),
-    loginUrl:    ()                          => request<{ url: string }>("/api/withings/login-url"),
-    trash:       async ()                    => (await request<Paginated<TrashedBodyMeasurement>>("/api/body-measurements/trash", "GET", { limit: ALL })).data,
-    restore:     (ids: number[])             => request<RestoreResult>("/api/body-measurements/restore", "POST", undefined, idsBody(ids)),
-    purge:       (ids: number[])             => request<PurgeResult>("/api/body-measurements/purge", "POST", undefined, idsBody(ids)),
+    range:       ()                          => request<DateRange>("/api/v1/body-measurements/range"),
+    list:        async (from: string, to: string) => (await request<Paginated<BodyMeasurement>>("/api/v1/body-measurements", "GET", { ...rp(from, to), limit: ALL })).data,
+    monthly:     async (from: string, to: string) => (await request<Paginated<MonthlyBody>>("/api/v1/body-measurements/monthly", "GET", rp(from, to))).data,
+    correlation: async (from: string, to: string) => (await request<Paginated<CorrelationPoint>>("/api/v1/body-measurements/correlation", "GET", rp(from, to))).data,
+    count:       (from: string, to: string)  => request<CountResult>("/api/v1/body-measurements/count", "GET", rp(from, to)),
+    deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/v1/body-measurements", "DELETE", rp(from, to)),
+    sync:        (from?: string, to?: string) => request<SyncResult>("/api/v1/sync/withings", "POST", from && to ? rp(from, to) : undefined),
+    tokenStatus: ()                          => request<WithingsStatus>("/api/v1/withings/status"),
+    loginUrl:    ()                          => request<{ url: string }>("/api/v1/withings/login-url"),
+    trash:       async ()                    => (await request<Paginated<TrashedBodyMeasurement>>("/api/v1/body-measurements/trash", "GET", { limit: ALL })).data,
+    restore:     (ids: number[])             => request<RestoreResult>("/api/v1/body-measurements/restore", "POST", undefined, idsBody(ids)),
+    purge:       (ids: number[])             => request<PurgeResult>("/api/v1/body-measurements/purge", "POST", undefined, idsBody(ids)),
   },
   strava: {
-    sync:        (from?: string, to?: string) => request<SyncResult>("/api/sync/strava", "POST", from && to ? rp(from, to) : undefined),
-    tokenStatus: ()                          => request<StravaStatus>("/api/strava/status"),
-    loginUrl:    ()                          => request<{ url: string }>("/api/strava/login-url"),
+    sync:        (from?: string, to?: string) => request<SyncResult>("/api/v1/sync/strava", "POST", from && to ? rp(from, to) : undefined),
+    tokenStatus: ()                          => request<StravaStatus>("/api/v1/strava/status"),
+    loginUrl:    ()                          => request<{ url: string }>("/api/v1/strava/login-url"),
   },
   settings: {
-    get:    ()               => request<Settings>("/api/settings"),
+    get:    ()               => request<Settings>("/api/v1/settings"),
     // PATCH (partial updates to the settings singleton) with JSON Merge Patch
     // content type — HRA-40.
-    update: (s: Settings)    => request<Settings>("/api/settings", "PATCH", undefined, s, MERGE_PATCH),
-    setTheme: (theme: StoredTheme) => request<Settings>("/api/settings/theme", "PATCH", undefined, { theme }, MERGE_PATCH),
+    update: (s: Settings)    => request<Settings>("/api/v1/settings", "PATCH", undefined, s, MERGE_PATCH),
+    setTheme: (theme: StoredTheme) => request<Settings>("/api/v1/settings/theme", "PATCH", undefined, { theme }, MERGE_PATCH),
     setBackground: (kind: BackgroundKind, value?: string) =>
-      request<Settings>("/api/settings/background", "PATCH", undefined, { background_kind: kind, background_value: value }, MERGE_PATCH),
-    setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/settings/units", "PATCH", undefined, { unit_system: unitSystem }, MERGE_PATCH),
-    setDetailView: (view: ActivityDetailView) => request<Settings>("/api/settings/detail-view", "PATCH", undefined, { activity_detail_view: view }, MERGE_PATCH),
+      request<Settings>("/api/v1/settings/background", "PATCH", undefined, { background_kind: kind, background_value: value }, MERGE_PATCH),
+    setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PATCH", undefined, { unit_system: unitSystem }, MERGE_PATCH),
+    setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PATCH", undefined, { activity_detail_view: view }, MERGE_PATCH),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {
       const ext = (file.name.split(".").pop() ?? "jpg").toLowerCase();
-      const res = await fetch(`${BASE}/api/settings/background/upload?ext=${encodeURIComponent(ext)}`, {
+      const res = await fetch(`${BASE}/api/v1/settings/background/upload?ext=${encodeURIComponent(ext)}`, {
         method: "POST",
         headers: { "Content-Type": file.type || "application/octet-stream" },
         body: file,
@@ -168,6 +168,6 @@ export const api = {
     // Cache-busted by background_value (which changes on every upload/
     // preset switch) so the browser can't serve a stale cached image after
     // the user picks a different one.
-    backgroundImageUrl: (backgroundValue: string) => `${BASE}/api/settings/background-image?v=${encodeURIComponent(backgroundValue)}`,
+    backgroundImageUrl: (backgroundValue: string) => `${BASE}/api/v1/settings/background-image?v=${encodeURIComponent(backgroundValue)}`,
   },
 };

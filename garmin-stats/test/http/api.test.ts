@@ -30,9 +30,9 @@ const json = (body: unknown): RequestInit => ({
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
-test("GET /api/activities returns the { data, page } envelope, newest first, both sources", async () => {
+test("GET /api/v1/activities returns the { data, page } envelope, newest first, both sources", async () => {
   await withServer(async (s) => {
-    const { status, json } = await s.api("/api/activities?from=2026-01-01&to=2027-01-01");
+    const { status, json } = await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01");
     assert.equal(status, 200);
     const body = json as { data: { source: string; date_only: string }[]; page: { total: number } };
     assert.ok(Array.isArray(body.data));
@@ -42,56 +42,56 @@ test("GET /api/activities returns the { data, page } envelope, newest first, bot
   });
 });
 
-test("GET /api/activities respects the from/to range filter", async () => {
+test("GET /api/v1/activities respects the from/to range filter", async () => {
   await withServer(async (s) => {
-    const body = (await s.api("/api/activities?from=2026-08-01&to=2026-08-31")).json as { data: { source: string }[]; page: { total: number } };
+    const body = (await s.api("/api/v1/activities?from=2026-08-01&to=2026-08-31")).json as { data: { source: string }[]; page: { total: number } };
     assert.equal(body.data.length, 1);
     assert.equal(body.page.total, 1);
     assert.equal(body.data[0].source, "garmin");
   });
 });
 
-test("GET /api/activities pages with limit/offset while page.total stays the full count", async () => {
+test("GET /api/v1/activities pages with limit/offset while page.total stays the full count", async () => {
   await withServer(async (s) => {
-    const p0 = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01&limit=1&offset=0")).json as { data: { source: string }[]; page: { limit: number; offset: number; total: number } };
+    const p0 = (await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01&limit=1&offset=0")).json as { data: { source: string }[]; page: { limit: number; offset: number; total: number } };
     assert.equal(p0.data.length, 1);
     assert.deepEqual(p0.page, { limit: 1, offset: 0, total: 2 });
     assert.equal(p0.data[0].source, "garmin"); // newest first
 
-    const p1 = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01&limit=1&offset=1")).json as { data: { source: string }[]; page: { offset: number; total: number } };
+    const p1 = (await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01&limit=1&offset=1")).json as { data: { source: string }[]; page: { offset: number; total: number } };
     assert.equal(p1.data.length, 1);
     assert.equal(p1.data[0].source, "strava");
     assert.equal(p1.page.total, 2);
   });
 });
 
-test("GET /api/range and /api/activities/count reflect the seed", async () => {
+test("GET /api/v1/range and /api/v1/activities/count reflect the seed", async () => {
   await withServer(async (s) => {
-    const range = (await s.api("/api/range")).json as { min_date: string; max_date: string };
+    const range = (await s.api("/api/v1/range")).json as { min_date: string; max_date: string };
     assert.equal(range.min_date, "2026-07-20");
     assert.equal(range.max_date, "2026-08-04");
 
-    const count = (await s.api("/api/activities/count?from=2026-01-01&to=2027-01-01")).json as { count: number };
+    const count = (await s.api("/api/v1/activities/count?from=2026-01-01&to=2027-01-01")).json as { count: number };
     assert.equal(count.count, 2);
   });
 });
 
-test("GET /api/summary groups by sport", async () => {
+test("GET /api/v1/summary groups by sport", async () => {
   await withServer(async (s) => {
-    const body = (await s.api("/api/summary?from=2026-01-01&to=2027-01-01")).json as { data: { sport: string }[] };
+    const body = (await s.api("/api/v1/summary?from=2026-01-01&to=2027-01-01")).json as { data: { sport: string }[] };
     assert.equal(body.data.length, 2);
     assert.deepEqual(body.data.map((r) => r.sport).sort(), ["cycling", "running"]);
   });
 });
 
-test("GET /api/activities/:id and /:id/track return the item and its points", async () => {
+test("GET /api/v1/activities/:id and /:id/track return the item and its points", async () => {
   await withServer(async (s) => {
     const id = s.db.prepare("SELECT id FROM activities WHERE source='garmin'").get() as { id: number };
-    const item = (await s.api(`/api/activities/${id.id}`)).json as { id: number; source: string };
+    const item = (await s.api(`/api/v1/activities/${id.id}`)).json as { id: number; source: string };
     assert.equal(item.id, id.id);
     assert.equal(item.source, "garmin");
 
-    const track = (await s.api(`/api/activities/${id.id}/track`)).json as unknown[];
+    const track = (await s.api(`/api/v1/activities/${id.id}/track`)).json as unknown[];
     assert.equal(track.length, 3);
   });
 });
@@ -104,26 +104,26 @@ test("full soft-delete lifecycle: hide → trash → restore → purge keeps ded
     const filename = (s.db.prepare("SELECT filename FROM activities WHERE id=?").get(id) as { filename: string }).filename;
 
     // 1. Soft delete → gone from reads, present in trash.
-    const del = await s.api(`/api/activities/${id}`, { method: "DELETE" });
+    const del = await s.api(`/api/v1/activities/${id}`, { method: "DELETE" });
     assert.equal(del.status, 200);
-    let list = ((await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
+    let list = ((await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
     assert.equal(list.length, 1, "soft-deleted activity should not appear in reads");
-    let trash = ((await s.api("/api/activities/trash")).json as { data: { id: number }[] }).data;
+    let trash = ((await s.api("/api/v1/activities/trash")).json as { data: { id: number }[] }).data;
     assert.deepEqual(trash.map((t) => t.id), [id]);
 
     // 2. Restore → back in reads, gone from trash.
-    const restored = await s.api("/api/activities/restore", json({ ids: [id] }));
+    const restored = await s.api("/api/v1/activities/restore", json({ ids: [id] }));
     assert.equal(restored.status, 200);
-    list = ((await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
+    list = ((await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
     assert.equal(list.length, 2);
-    trash = ((await s.api("/api/activities/trash")).json as { data: { id: number }[] }).data;
+    trash = ((await s.api("/api/v1/activities/trash")).json as { data: { id: number }[] }).data;
     assert.equal(trash.length, 0);
 
     // 3. Delete again, then purge → gone from trash; filename survives; track_points wiped.
-    await s.api(`/api/activities/${id}`, { method: "DELETE" });
-    const purged = await s.api("/api/activities/purge", json({ ids: [id] }));
+    await s.api(`/api/v1/activities/${id}`, { method: "DELETE" });
+    const purged = await s.api("/api/v1/activities/purge", json({ ids: [id] }));
     assert.equal(purged.status, 200);
-    trash = ((await s.api("/api/activities/trash")).json as { data: { id: number }[] }).data;
+    trash = ((await s.api("/api/v1/activities/trash")).json as { data: { id: number }[] }).data;
     assert.equal(trash.length, 0, "purged rows are not listed in trash");
 
     const row = s.db.prepare("SELECT filename, purged, distance_m FROM activities WHERE id=?").get(id) as
@@ -136,22 +136,22 @@ test("full soft-delete lifecycle: hide → trash → restore → purge keeps ded
   });
 });
 
-test("DELETE /api/activities?from&to soft-deletes a whole range", async () => {
+test("DELETE /api/v1/activities?from&to soft-deletes a whole range", async () => {
   await withServer(async (s) => {
-    const del = await s.api("/api/activities?from=2026-01-01&to=2027-01-01", { method: "DELETE" });
+    const del = await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01", { method: "DELETE" });
     assert.equal(del.status, 200);
-    const list = ((await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
+    const list = ((await s.api("/api/v1/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
     assert.equal(list.length, 0);
-    const trash = ((await s.api("/api/activities/trash")).json as { data: unknown[] }).data;
+    const trash = ((await s.api("/api/v1/activities/trash")).json as { data: unknown[] }).data;
     assert.equal(trash.length, 2);
   });
 });
 
 // ── Settings ─────────────────────────────────────────────────────────────────
 
-test("GET /api/settings returns the seeded singleton with defaults", async () => {
+test("GET /api/v1/settings returns the seeded singleton with defaults", async () => {
   await withServer(async (s) => {
-    const row = (await s.api("/api/settings")).json as {
+    const row = (await s.api("/api/v1/settings")).json as {
       theme: string; unit_system: string; outlier_speed_delta_per_sec: number; min_trend_group_size: number;
     };
     assert.equal(row.theme, "auto");
@@ -167,32 +167,32 @@ const mergePatch = (body: unknown): RequestInit => ({
   body: JSON.stringify(body),
 });
 
-test("PATCH /api/settings/theme persists a valid theme and rejects an invalid one", async () => {
+test("PATCH /api/v1/settings/theme persists a valid theme and rejects an invalid one", async () => {
   await withServer(async (s) => {
-    const ok = await s.api("/api/settings/theme", mergePatch({ theme: "dark" }));
+    const ok = await s.api("/api/v1/settings/theme", mergePatch({ theme: "dark" }));
     assert.equal(ok.status, 200);
     assert.equal((ok.json as { theme: string }).theme, "dark");
 
-    const bad = await s.api("/api/settings/theme", mergePatch({ theme: "neon" }));
+    const bad = await s.api("/api/v1/settings/theme", mergePatch({ theme: "neon" }));
     assert.equal(bad.status, 422); // validation failure (parsed OK, breaks the rule) — HRA-37
   });
 });
 
-test("PATCH /api/settings persists valid outlier thresholds and rejects bad ones", async () => {
+test("PATCH /api/v1/settings persists valid outlier thresholds and rejects bad ones", async () => {
   await withServer(async (s) => {
     const body = { outlier_speed_delta_per_sec: 3, outlier_cadence_delta_per_sec: 70, outlier_min_speed_kmh: 5, min_trend_group_size: 4 };
-    const ok = await s.api("/api/settings", mergePatch(body));
+    const ok = await s.api("/api/v1/settings", mergePatch(body));
     assert.equal(ok.status, 200);
     assert.equal((ok.json as { min_trend_group_size: number }).min_trend_group_size, 4);
 
-    const bad = await s.api("/api/settings", mergePatch({ ...body, outlier_speed_delta_per_sec: -1 }));
+    const bad = await s.api("/api/v1/settings", mergePatch({ ...body, outlier_speed_delta_per_sec: -1 }));
     assert.equal(bad.status, 422); // validation failure — HRA-37
   });
 });
 
 test("the old PUT method on a settings route is no longer accepted (404)", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "dark" }) });
+    const res = await s.api("/api/v1/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "dark" }) });
     assert.equal(res.status, 404); // clean break — no PUT alias (HRA-40)
   });
 });
@@ -201,17 +201,17 @@ test("the old PUT method on a settings route is no longer accepted (404)", async
 
 test("validation failures return 422 (parsed OK, breaks a rule) — HRA-37", async () => {
   await withServer(async (s) => {
-    const emptyIds = await s.api("/api/activities/restore", json({ ids: [] }));
+    const emptyIds = await s.api("/api/v1/activities/restore", json({ ids: [] }));
     assert.equal(emptyIds.status, 422);
 
-    const badFeedback = await s.api("/api/activities/1/feedback", json({ feedback: "maybe", source: "ai" }));
+    const badFeedback = await s.api("/api/v1/activities/1/feedback", json({ feedback: "maybe", source: "ai" }));
     assert.equal(badFeedback.status, 422);
   });
 });
 
 test("malformed JSON body returns 400, not 500 — HRA-33/HRA-37", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/activities/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{ not json" });
+    const res = await s.api("/api/v1/activities/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{ not json" });
     assert.equal(res.status, 400);
     assert.equal((res.json as { title: string }).title, "Bad Request");
   });
@@ -219,15 +219,15 @@ test("malformed JSON body returns 400, not 500 — HRA-33/HRA-37", async () => {
 
 test("feedback on a missing activity returns 404 problem+json with a clear detail", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/activities/999999/feedback", json({ feedback: "approved", source: "ai" }));
+    const res = await s.api("/api/v1/activities/999999/feedback", json({ feedback: "approved", source: "ai" }));
     assert.equal(res.status, 404);
     assert.match((res.json as { detail: string }).detail, /not found/i);
   });
 });
 
-test("GET /api/body-measurements/correlation returns 200 with [] when empty, not 204 — HRA-32", async () => {
+test("GET /api/v1/body-measurements/correlation returns 200 with [] when empty, not 204 — HRA-32", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/body-measurements/correlation?from=1999-01-01&to=1999-12-31");
+    const res = await s.api("/api/v1/body-measurements/correlation?from=1999-01-01&to=1999-12-31");
     assert.equal(res.status, 200);
     assert.deepEqual((res.json as { data: unknown[] }).data, []); // envelope-wrapped (HRA-38), empty data (HRA-32)
   });
@@ -235,7 +235,7 @@ test("GET /api/body-measurements/correlation returns 200 with [] when empty, not
 
 test("OPTIONS preflight advertises the mutating methods", async () => {
   await withServer(async (s) => {
-    const res = await fetch(`${s.baseUrl}/api/activities`, { method: "OPTIONS" });
+    const res = await fetch(`${s.baseUrl}/api/v1/activities`, { method: "OPTIONS" });
     assert.equal(res.status, 204);
     const allow = res.headers.get("access-control-allow-methods") ?? "";
     for (const m of ["GET", "POST", "PATCH", "DELETE"]) assert.ok(allow.includes(m), `Allow-Methods should include ${m}`);
@@ -246,7 +246,7 @@ test("OPTIONS preflight advertises the mutating methods", async () => {
 
 test("unknown route returns 404 problem+json", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/does-not-exist");
+    const res = await s.api("/api/v1/does-not-exist");
     assert.equal(res.status, 404);
     const p = res.json as { type: string; title: string; status: number; detail: string };
     assert.equal(p.type, "about:blank");
@@ -258,7 +258,7 @@ test("unknown route returns 404 problem+json", async () => {
 
 test("GET a missing activity returns 404 problem+json (was 200-empty) — HRA-34/HRA-37", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/activities/999999");
+    const res = await s.api("/api/v1/activities/999999");
     assert.equal(res.status, 404);
     assert.equal((res.json as { title: string }).title, "Not Found");
   });
@@ -266,7 +266,7 @@ test("GET a missing activity returns 404 problem+json (was 200-empty) — HRA-34
 
 test("error responses carry the application/problem+json content type", async () => {
   await withServer(async (s) => {
-    const res = await fetch(`${s.baseUrl}/api/does-not-exist`);
+    const res = await fetch(`${s.baseUrl}/api/v1/does-not-exist`);
     assert.equal(res.status, 404);
     assert.match(res.headers.get("content-type") ?? "", /application\/problem\+json/);
   });

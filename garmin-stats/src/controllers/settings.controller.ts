@@ -52,7 +52,7 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  // PUT /api/settings/background — selects a bundled preset, or clears back to
+  // PATCH /api/v1/settings/background — selects a bundled preset, or clears back to
   // "none". Uploading a custom image is a separate POST (below), binary body.
   const updateBackground: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);

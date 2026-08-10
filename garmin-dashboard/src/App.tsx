@@ -29,7 +29,7 @@ export default function App() {
   const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetch("/api/range")
+    fetch("/api/v1/range")
       .then(() => setOnline(true))
       .catch(() => setOnline(false));
   }, []);

@@ -3,7 +3,7 @@
   "info": {
     "title": "Garmin Stats — Local Health Dashboard API",
     "version": "2.0.0",
-    "description": "Local-only REST API (binds 127.0.0.1) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nContract-hardening epic HRA-36 in progress: RFC 7807 `application/problem+json` error bodies with correct status codes (HRA-37 ✓), plural resource nouns incl. `/api/body-measurements` (HRA-39 ✓), the `{ data, page }` list envelope with limit/offset paging (HRA-38 ✓), and PATCH (application/merge-patch+json) for partial settings updates (HRA-40 ✓) have landed. Still pending: the `/v1` URL prefix (HRA-41) — paths remain unversioned `/api/...` until then. Drift between this file and the running API is treated as a bug."
+    "description": "Local-only REST API (binds 127.0.0.1) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nContract-hardening epic HRA-36 in progress: RFC 7807 `application/problem+json` error bodies with correct status codes (HRA-37 ✓), plural resource nouns incl. `/api/body-measurements` (HRA-39 ✓), the `{ data, page }` list envelope with limit/offset paging (HRA-38 ✓), PATCH (application/merge-patch+json) for partial settings updates (HRA-40 ✓), and the version prefix — every path is now under `/api/v1/...` (HRA-41 ✓) — have landed. The HRA-36 contract-hardening epic is complete. Drift between this file and the running API is treated as a bug."
   },
   "servers": [
     { "url": "http://127.0.0.1:3001", "description": "Local API server" }
@@ -225,10 +225,10 @@
     }
   },
   "paths": {
-    "/api/range": {
+    "/api/v1/range": {
       "get": { "tags": ["activities"], "summary": "Min/max activity date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
     },
-    "/api/activities": {
+    "/api/v1/activities": {
       "get": {
         "tags": ["activities"], "summary": "List activities in a date range (any source)",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
@@ -240,13 +240,13 @@
         "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } }
       }
     },
-    "/api/activities/count": {
+    "/api/v1/activities/count": {
       "get": { "tags": ["activities"], "summary": "Count activities in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
     },
-    "/api/activities/trash": {
+    "/api/v1/activities/trash": {
       "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
-    "/api/activities/{id}": {
+    "/api/v1/activities/{id}": {
       "get": {
         "tags": ["activities"], "summary": "Get one activity",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -262,10 +262,10 @@
         "responses": { "200": { "description": "Deleted id.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
-    "/api/activities/{id}/track": {
+    "/api/v1/activities/{id}/track": {
       "get": { "tags": ["activities"], "summary": "Track points for one activity", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "Track points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TrackPoint" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
     },
-    "/api/activities/{id}/classify": {
+    "/api/v1/activities/{id}/classify": {
       "post": {
         "tags": ["activities"], "summary": "Classify a running activity (AI or statistical)",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -273,7 +273,7 @@
         "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "500": { "$ref": "#/components/responses/ServerError" } }
       }
     },
-    "/api/activities/{id}/feedback": {
+    "/api/v1/activities/{id}/feedback": {
       "post": {
         "tags": ["activities"], "summary": "Approve/reject a classification",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -281,38 +281,38 @@
         "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
-    "/api/activities/confirm": {
+    "/api/v1/activities/confirm": {
       "post": { "tags": ["activities"], "summary": "Bulk-confirm classifications", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } }, "responses": { "200": { "description": "Confirmed count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "confirmed": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/activities/restore": {
+    "/api/v1/activities/restore": {
       "post": { "tags": ["activities"], "summary": "Restore activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/activities/purge": {
+    "/api/v1/activities/purge": {
       "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/summary": {
+    "/api/v1/summary": {
       "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
-    "/api/weekly": {
+    "/api/v1/weekly": {
       "get": { "tags": ["trends"], "summary": "Weekly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Weekly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/WeeklyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
-    "/api/monthly": {
+    "/api/v1/monthly": {
       "get": { "tags": ["trends"], "summary": "Monthly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
-    "/api/body-measurements/range": {
+    "/api/v1/body-measurements/range": {
       "get": { "tags": ["body"], "summary": "Min/max body-measurement date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
     },
-    "/api/body-measurements": {
+    "/api/v1/body-measurements": {
       "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
     },
-    "/api/body-measurements/count": {
+    "/api/v1/body-measurements/count": {
       "get": { "tags": ["body"], "summary": "Count body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
     },
-    "/api/body-measurements/monthly": {
+    "/api/v1/body-measurements/monthly": {
       "get": { "tags": ["body"], "summary": "Monthly body averages", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly body points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMonthlyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
-    "/api/body-measurements/correlation": {
+    "/api/v1/body-measurements/correlation": {
       "get": {
         "tags": ["body"], "summary": "Weekly km vs avg weight correlation",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
@@ -321,16 +321,16 @@
         }
       }
     },
-    "/api/body-measurements/trash": {
+    "/api/v1/body-measurements/trash": {
       "get": { "tags": ["body"], "summary": "List soft-deleted (not purged) body measurements", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
-    "/api/body-measurements/restore": {
+    "/api/v1/body-measurements/restore": {
       "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/body-measurements/purge": {
+    "/api/v1/body-measurements/purge": {
       "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/settings": {
+    "/api/v1/settings": {
       "get": { "tags": ["settings"], "summary": "Get settings", "responses": { "200": { "description": "Settings row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } } },
       "patch": {
         "tags": ["settings"], "summary": "Update outlier + trend thresholds",
@@ -338,22 +338,22 @@
         "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
-    "/api/settings/theme": {
+    "/api/v1/settings/theme": {
       "patch": { "tags": ["settings"], "summary": "Set theme", "requestBody": { "required": true, "content": { "application/merge-patch+json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/settings/background": {
+    "/api/v1/settings/background": {
       "patch": { "tags": ["settings"], "summary": "Select a bundled background preset or clear it", "requestBody": { "required": true, "content": { "application/merge-patch+json": { "schema": { "type": "object", "required": ["background_kind"], "properties": { "background_kind": { "type": "string", "enum": ["none", "bundled"] }, "background_value": { "type": "string", "description": "Preset id, required when background_kind=bundled." } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/settings/units": {
+    "/api/v1/settings/units": {
       "patch": { "tags": ["settings"], "summary": "Set unit system", "requestBody": { "required": true, "content": { "application/merge-patch+json": { "schema": { "type": "object", "required": ["unit_system"], "properties": { "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/settings/detail-view": {
+    "/api/v1/settings/detail-view": {
       "patch": { "tags": ["settings"], "summary": "Set activity detail view", "requestBody": { "required": true, "content": { "application/merge-patch+json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/settings/background-image": {
+    "/api/v1/settings/background-image": {
       "get": { "tags": ["settings"], "summary": "Stream the current custom background image", "responses": { "200": { "description": "The image bytes.", "content": { "image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
-    "/api/settings/background/upload": {
+    "/api/v1/settings/background/upload": {
       "post": {
         "tags": ["settings"], "summary": "Upload a custom background image (raw bytes)",
         "parameters": [ { "name": "ext", "in": "query", "required": true, "schema": { "type": "string", "enum": ["jpg", "jpeg", "png", "webp", "gif"] } } ],
@@ -361,37 +361,37 @@
         "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
-    "/api/sync/garmin": {
+    "/api/v1/sync/garmin": {
       "post": { "tags": ["sync"], "summary": "Sync from the plugged-in Garmin device (streaming)", "description": "Streams NDJSON progress events: {type:'progress',phase,current,total,label}, ending with {type:'done',imported,skipped,errors} or {type:'error',message}.", "responses": { "200": { "description": "NDJSON progress stream.", "content": { "application/x-ndjson": {} } } } }
     },
-    "/api/sync/withings": {
+    "/api/v1/sync/withings": {
       "post": { "tags": ["sync"], "summary": "Sync from Withings (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } } } }
     },
-    "/api/sync/strava": {
+    "/api/v1/sync/strava": {
       "post": { "tags": ["sync"], "summary": "Sync from Strava (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary (skipped folds in cross-source duplicates).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } } } }
     },
-    "/api/garmin/status": {
+    "/api/v1/garmin/status": {
       "get": { "tags": ["integrations"], "summary": "Is the Garmin device plugged in?", "description": "Runs a ~15s PowerShell device probe.", "responses": { "200": { "description": "Device status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceStatus" } } } } } }
     },
-    "/api/withings/status": {
+    "/api/v1/withings/status": {
       "get": { "tags": ["integrations"], "summary": "Withings token status", "responses": { "200": { "description": "Token status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenStatus" } } } } } }
     },
-    "/api/withings/login-url": {
+    "/api/v1/withings/login-url": {
       "get": { "tags": ["integrations"], "summary": "Generate a Withings OAuth login URL", "responses": { "200": { "description": "Login URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginUrl" } } } } } }
     },
-    "/api/strava/status": {
+    "/api/v1/strava/status": {
       "get": { "tags": ["integrations"], "summary": "Strava token status", "responses": { "200": { "description": "Token status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenStatus" } } } } } }
     },
-    "/api/strava/login-url": {
+    "/api/v1/strava/login-url": {
       "get": { "tags": ["integrations"], "summary": "Generate a Strava OAuth login URL", "responses": { "200": { "description": "Login URL.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginUrl" } } } } } }
     },
-    "/api/strava/callback": {
+    "/api/v1/strava/callback": {
       "get": { "tags": ["integrations"], "summary": "Strava OAuth redirect target", "description": "Handled on the main port (3001). Returns an HTML page.", "parameters": [ { "name": "code", "in": "query", "schema": { "type": "string" } }, { "name": "state", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "HTML result page.", "content": { "text/html": {} } } } }
     },
-    "/api/docs": {
+    "/api/v1/docs": {
       "get": { "tags": ["docs"], "summary": "Rendered API documentation (self-contained HTML)", "responses": { "200": { "description": "Docs page.", "content": { "text/html": {} } } } }
     },
-    "/api/openapi.json": {
+    "/api/v1/openapi.json": {
       "get": { "tags": ["docs"], "summary": "This OpenAPI spec", "responses": { "200": { "description": "The OpenAPI document.", "content": { "application/json": {} } } } }
     }
   }

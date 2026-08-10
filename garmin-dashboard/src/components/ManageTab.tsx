@@ -32,7 +32,7 @@ type SyncEvent =
 // Shared by UploadSection's own button and SyncAllBar, so both use the exact
 // same streaming/parsing logic instead of two copies drifting apart.
 async function runGarminSync(onProgress?: (p: SyncProgress) => void): Promise<SyncResult> {
-  const res = await fetch(`/api/sync/garmin`, { method: "POST" });
+  const res = await fetch(`/api/v1/sync/garmin`, { method: "POST" });
   if (!res.ok || !res.body) throw new Error(`Server responded ${res.status}`);
 
   const reader = res.body.getReader();
