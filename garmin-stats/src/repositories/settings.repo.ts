@@ -19,7 +19,7 @@ export function createSettingsRepo(db: DatabaseSync) {
 
   return {
     get:              () => settingsGet.get(),
-    updateOutliers:   (p: NamedParams) => settingsUpdate.run(p),
+    updateThresholds: (p: NamedParams) => settingsUpdate.run(p),
     updateTheme:      (p: NamedParams) => themeUpdate.run(p),
     updateBackground: (p: NamedParams) => backgroundUpdate.run(p),
     updateUnits:      (p: NamedParams) => unitsUpdate.run(p),

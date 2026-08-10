@@ -161,39 +161,45 @@ test("GET /api/v1/settings returns the seeded singleton with defaults", async ()
   });
 });
 
-const mergePatch = (body: unknown): RequestInit => ({
-  method: "PATCH",
-  headers: { "Content-Type": "application/merge-patch+json" },
+// Settings writes replace their sub-resource in full → PUT + application/json
+// (HRA-40 corrected). No PATCH, no merge-patch.
+const putJson = (body: unknown): RequestInit => ({
+  method: "PUT",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
 
-test("PATCH /api/v1/settings/theme persists a valid theme and rejects an invalid one", async () => {
+test("PUT /api/v1/settings/theme persists a valid theme and rejects an invalid one", async () => {
   await withServer(async (s) => {
-    const ok = await s.api("/api/v1/settings/theme", mergePatch({ theme: "dark" }));
+    const ok = await s.api("/api/v1/settings/theme", putJson({ theme: "dark" }));
     assert.equal(ok.status, 200);
     assert.equal((ok.json as { theme: string }).theme, "dark");
 
-    const bad = await s.api("/api/v1/settings/theme", mergePatch({ theme: "neon" }));
+    const bad = await s.api("/api/v1/settings/theme", putJson({ theme: "neon" }));
     assert.equal(bad.status, 422); // validation failure (parsed OK, breaks the rule) — HRA-37
   });
 });
 
-test("PATCH /api/v1/settings persists valid outlier thresholds and rejects bad ones", async () => {
+test("PUT /api/v1/settings/thresholds persists valid outlier thresholds and rejects bad ones", async () => {
   await withServer(async (s) => {
     const body = { outlier_speed_delta_per_sec: 3, outlier_cadence_delta_per_sec: 70, outlier_min_speed_kmh: 5, min_trend_group_size: 4 };
-    const ok = await s.api("/api/v1/settings", mergePatch(body));
+    const ok = await s.api("/api/v1/settings/thresholds", putJson(body));
     assert.equal(ok.status, 200);
     assert.equal((ok.json as { min_trend_group_size: number }).min_trend_group_size, 4);
 
-    const bad = await s.api("/api/v1/settings", mergePatch({ ...body, outlier_speed_delta_per_sec: -1 }));
+    const bad = await s.api("/api/v1/settings/thresholds", putJson({ ...body, outlier_speed_delta_per_sec: -1 }));
     assert.equal(bad.status, 422); // validation failure — HRA-37
   });
 });
 
-test("the old PUT method on a settings route is no longer accepted (404)", async () => {
+test("the old PATCH method + generic parent write are gone (404) — HRA-40 corrected", async () => {
   await withServer(async (s) => {
-    const res = await s.api("/api/v1/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "dark" }) });
-    assert.equal(res.status, 404); // clean break — no PUT alias (HRA-40)
+    // PATCH on a singleton sub-resource: PUT is now the only accepted verb.
+    const patchSingleton = await s.api("/api/v1/settings/theme", { method: "PATCH", headers: { "Content-Type": "application/merge-patch+json" }, body: JSON.stringify({ theme: "dark" }) });
+    assert.equal(patchSingleton.status, 404);
+    // Generic write through the parent /settings is dropped entirely (dishonest scope).
+    const parentWrite = await s.api("/api/v1/settings", { method: "PATCH", headers: { "Content-Type": "application/merge-patch+json" }, body: JSON.stringify({ min_trend_group_size: 4 }) });
+    assert.equal(parentWrite.status, 404);
   });
 });
 
@@ -238,7 +244,7 @@ test("OPTIONS preflight advertises the mutating methods", async () => {
     const res = await fetch(`${s.baseUrl}/api/v1/activities`, { method: "OPTIONS" });
     assert.equal(res.status, 204);
     const allow = res.headers.get("access-control-allow-methods") ?? "";
-    for (const m of ["GET", "POST", "PATCH", "DELETE"]) assert.ok(allow.includes(m), `Allow-Methods should include ${m}`);
+    for (const m of ["GET", "POST", "PUT", "DELETE"]) assert.ok(allow.includes(m), `Allow-Methods should include ${m}`);
   });
 });
 

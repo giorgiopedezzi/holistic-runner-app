@@ -33,7 +33,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "GET,POST,PATCH,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
       });
       res.end(); return;
     }
@@ -76,12 +76,16 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
       }
 
-      // Settings edits are PARTIAL updates to the settings singleton (each route
-      // touches a subset of fields), so PATCH, not PUT (HRA-40 / rest-api §2).
-      if (req.method === "PATCH") {
-        if (route === "/api/v1/settings")                 return await settings.updateOutliers(req, res, url);
+      // Settings writes: each field-group is its own sub-resource, replaced in FULL
+      // → PUT (idempotent), not PATCH. The thresholds group (outlier + trend) is a
+      // named sub-resource written whole by the Settings Save; the four appearance
+      // singletons each replace one value. There is deliberately NO write through
+      // the parent /settings — a path claiming "all settings" that only touches a
+      // subset is dishonest about scope (rest-api §1/§2, HRA-40 corrected).
+      if (req.method === "PUT") {
+        if (route === "/api/v1/settings/thresholds")      return await settings.updateThresholds(req, res, url);
         if (route === "/api/v1/settings/theme")           return await settings.updateTheme(req, res, url);
-        if (route === "/api/v1/settings/background")       return await settings.updateBackground(req, res, url);
+        if (route === "/api/v1/settings/background")      return await settings.updateBackground(req, res, url);
         if (route === "/api/v1/settings/units")           return await settings.updateUnits(req, res, url);
         if (route === "/api/v1/settings/detail-view")     return await settings.updateDetailView(req, res, url);
       }

@@ -27,7 +27,10 @@ export function createSettingsController(ctx: AppContext) {
 
   const get: Handler = (_req, res) => send(res, repo.get());
 
-  const updateOutliers: Handler = async (req, res) => {
+  // PUT /api/v1/settings/thresholds — the outlier + trend thresholds as one named
+  // sub-resource. The Settings Save always sends the whole group, so this is a full
+  // replacement (all four fields required) → PUT, not PATCH (rest-api §2, HRA-40).
+  const updateThresholds: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);
     const speedDelta = Number(body.outlier_speed_delta_per_sec);
     const cadenceDelta = Number(body.outlier_cadence_delta_per_sec);
@@ -39,7 +42,7 @@ export function createSettingsController(ctx: AppContext) {
     if (!Number.isInteger(minTrendGroupSize) || minTrendGroupSize < 2) {
       throw unprocessable("min_trend_group_size must be an integer of at least 2.");
     }
-    repo.updateOutliers({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh, $min_trend_group_size: minTrendGroupSize });
+    repo.updateThresholds({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh, $min_trend_group_size: minTrendGroupSize });
     return send(res, repo.get());
   };
 
@@ -52,8 +55,10 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  // PATCH /api/v1/settings/background — selects a bundled preset, or clears back to
-  // "none". Uploading a custom image is a separate POST (below), binary body.
+  // PUT /api/v1/settings/background — the complete representation of the background
+  // sub-resource ({background_kind, background_value?}): selects a bundled preset, or
+  // clears back to "none" → full replacement → PUT. Uploading a custom image is a
+  // separate POST (below), binary body.
   const updateBackground: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);
     if (body.background_kind !== "none" && body.background_kind !== "bundled") {
@@ -121,5 +126,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateOutliers, updateTheme, updateBackground, updateUnits, updateDetailView, backgroundImage, uploadBackground };
+  return { get, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, backgroundImage, uploadBackground };
 }

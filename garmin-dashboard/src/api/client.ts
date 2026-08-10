@@ -17,9 +17,6 @@ import type {
 // caps limit at 100000, comfortably above this app's single-user data volumes.
 const ALL = "100000";
 
-// JSON Merge Patch content type for PATCH settings updates (HRA-40).
-const MERGE_PATCH = "application/merge-patch+json";
-
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
 // Error carrying the HTTP status (0 = the request never reached the server), so
@@ -49,15 +46,14 @@ async function buildApiError(res: Response, path: string): Promise<ApiError> {
   return new ApiError(res.status, message);
 }
 
-async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown, contentType = "application/json"): Promise<T> {
+async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
   const url = new URL(`${BASE}${path}`, window.location.origin);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   let res: Response;
   try {
     res = await fetch(url.toString(), {
       method,
-      // contentType lets PATCH calls send application/merge-patch+json (HRA-40).
-      ...(body !== undefined ? { headers: { "Content-Type": contentType }, body: JSON.stringify(body) } : {}),
+      ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
     });
   } catch {
     // fetch() rejects only on a network-level failure (server down, connection
@@ -145,14 +141,21 @@ export const api = {
   },
   settings: {
     get:    ()               => request<Settings>("/api/v1/settings"),
-    // PATCH (partial updates to the settings singleton) with JSON Merge Patch
-    // content type — HRA-40.
-    update: (s: Settings)    => request<Settings>("/api/v1/settings", "PATCH", undefined, s, MERGE_PATCH),
-    setTheme: (theme: StoredTheme) => request<Settings>("/api/v1/settings/theme", "PATCH", undefined, { theme }, MERGE_PATCH),
+    // Each settings write targets its own sub-resource and replaces it in full →
+    // PUT (idempotent), not PATCH; there is no write through the parent /settings
+    // (HRA-40, rest-api §1/§2). updateThresholds sends the whole 4-field group
+    // (outlier + trend), which is exactly what the Settings Save always submits.
+    updateThresholds: (s: Settings) => request<Settings>("/api/v1/settings/thresholds", "PUT", undefined, {
+      outlier_speed_delta_per_sec: s.outlier_speed_delta_per_sec,
+      outlier_cadence_delta_per_sec: s.outlier_cadence_delta_per_sec,
+      outlier_min_speed_kmh: s.outlier_min_speed_kmh,
+      min_trend_group_size: s.min_trend_group_size,
+    }),
+    setTheme: (theme: StoredTheme) => request<Settings>("/api/v1/settings/theme", "PUT", undefined, { theme }),
     setBackground: (kind: BackgroundKind, value?: string) =>
-      request<Settings>("/api/v1/settings/background", "PATCH", undefined, { background_kind: kind, background_value: value }, MERGE_PATCH),
-    setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PATCH", undefined, { unit_system: unitSystem }, MERGE_PATCH),
-    setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PATCH", undefined, { activity_detail_view: view }, MERGE_PATCH),
+      request<Settings>("/api/v1/settings/background", "PUT", undefined, { background_kind: kind, background_value: value }),
+    setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PUT", undefined, { unit_system: unitSystem }),
+    setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PUT", undefined, { activity_detail_view: view }),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {

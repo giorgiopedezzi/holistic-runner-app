@@ -264,7 +264,7 @@ export function SettingsTab({ appearance }: Props) {
     setJustSaved(false);
     setError(null);
     try {
-      const updated = await api.settings.update(draft);
+      const updated = await api.settings.updateThresholds(draft);
       setSaved(updated);
       setDraft(updated);
       setJustSaved(true);
@@ -287,7 +287,7 @@ export function SettingsTab({ appearance }: Props) {
 
   // Shared by both explicit-save cards below (Overview & Trends, Outlier
   // detection) — one dirty/save state covers both, so either card's button
-  // persists everything in one PUT /api/settings call.
+  // persists the whole threshold group in one PUT /api/v1/settings/thresholds call.
   function SaveBar() {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
