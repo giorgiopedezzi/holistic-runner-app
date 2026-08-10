@@ -33,9 +33,9 @@ diff -u  tests/baseline/_status.txt tests/after/_status.txt   # status codes mus
 - Verified identical across two consecutive runs (fully deterministic).
 
 ## Endpoints covered (23 snapshots)
-All deterministic read endpoints: `/api/range`, `/api/body/range`, `/api/settings`,
-`/api/activities(+/count,/trash)`, `/api/summary`, `/api/weekly`, `/api/monthly`,
-`/api/body/list(+/count,/trash,/monthly,/correlation)`, `/api/activity/:id`, `/api/track/:id`
+All deterministic read endpoints: `/api/v1/range`, `/api/v1/body-measurements/range`, `/api/v1/settings`,
+`/api/v1/activities(+/count,/trash)`, `/api/v1/summary`, `/api/v1/weekly`, `/api/v1/monthly`,
+`/api/v1/body-measurements(+/count,/trash,/monthly,/correlation)`, `/api/v1/activities/:id`, `/api/v1/activities/:id/track`
 — each at the fixed windows and fixed ids in `snapshot.sh`.
 
 ## Deliberately NOT snapshotted (and why)
