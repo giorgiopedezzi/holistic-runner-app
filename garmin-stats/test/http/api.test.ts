@@ -153,7 +153,7 @@ test("PUT /api/settings/theme persists a valid theme and rejects an invalid one"
     assert.equal((ok.json as { theme: string }).theme, "dark");
 
     const bad = await s.api("/api/settings/theme", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme: "neon" }) });
-    assert.equal(bad.status, 400);
+    assert.equal(bad.status, 422); // validation failure (parsed OK, breaks the rule) — HRA-37
   });
 });
 
@@ -165,27 +165,43 @@ test("PUT /api/settings persists valid outlier thresholds and rejects bad ones",
     assert.equal((ok.json as { min_trend_group_size: number }).min_trend_group_size, 4);
 
     const bad = await s.api("/api/settings", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, outlier_speed_delta_per_sec: -1 }) });
-    assert.equal(bad.status, 400);
+    assert.equal(bad.status, 422); // validation failure — HRA-37
   });
 });
 
 // ── Validation / stable error behavior ───────────────────────────────────────
 
-test("input validation returns 400 (stable, correct behavior)", async () => {
+test("validation failures return 422 (parsed OK, breaks a rule) — HRA-37", async () => {
   await withServer(async (s) => {
     const emptyIds = await s.api("/api/activities/restore", json({ ids: [] }));
-    assert.equal(emptyIds.status, 400);
+    assert.equal(emptyIds.status, 422);
 
     const badFeedback = await s.api("/api/activities/1/feedback", json({ feedback: "maybe", source: "ai" }));
-    assert.equal(badFeedback.status, 400);
+    assert.equal(badFeedback.status, 422);
   });
 });
 
-test("feedback on a missing activity returns 404 with a clear message", async () => {
+test("malformed JSON body returns 400, not 500 — HRA-33/HRA-37", async () => {
+  await withServer(async (s) => {
+    const res = await s.api("/api/activities/restore", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{ not json" });
+    assert.equal(res.status, 400);
+    assert.equal((res.json as { title: string }).title, "Bad Request");
+  });
+});
+
+test("feedback on a missing activity returns 404 problem+json with a clear detail", async () => {
   await withServer(async (s) => {
     const res = await s.api("/api/activities/999999/feedback", json({ feedback: "approved", source: "ai" }));
     assert.equal(res.status, 404);
-    assert.match((res.json as { error: string }).error, /not found/i);
+    assert.match((res.json as { detail: string }).detail, /not found/i);
+  });
+});
+
+test("GET /api/body/correlation returns 200 with [] when empty, not 204 — HRA-32", async () => {
+  await withServer(async (s) => {
+    const res = await s.api("/api/body/correlation?from=1999-01-01&to=1999-12-31");
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.json, []);
   });
 });
 
@@ -198,22 +214,32 @@ test("OPTIONS preflight advertises the mutating methods", async () => {
   });
 });
 
-// ── Contract seams (CURRENT behavior — HRA-36/HRA-37 will re-baseline these) ──
-// Kept isolated and labeled so the V1 error-contract story is a small diff, not
-// a hunt through the whole file. Each asserts what the API does TODAY.
+// ── Error contract (RFC 7807 problem+json — HRA-37) ──────────────────────────
 
-test("[seam→HRA-37] unknown route returns 404 with the ad-hoc {error} body", async () => {
+test("unknown route returns 404 problem+json", async () => {
   await withServer(async (s) => {
     const res = await s.api("/api/does-not-exist");
     assert.equal(res.status, 404);
-    assert.deepEqual(res.json, { error: "Not found" }); // → problem+json in HRA-37
+    const p = res.json as { type: string; title: string; status: number; detail: string };
+    assert.equal(p.type, "about:blank");
+    assert.equal(p.title, "Not Found");
+    assert.equal(p.status, 404);
+    assert.match(p.detail, /no route matches/i);
   });
 });
 
-test("[seam→HRA-34/HRA-37] GET a missing activity currently returns 200 with an empty body", async () => {
+test("GET a missing activity returns 404 problem+json (was 200-empty) — HRA-34/HRA-37", async () => {
   await withServer(async (s) => {
     const res = await s.api("/api/activities/999999");
-    assert.equal(res.status, 200);      // HRA-34/HRA-37 will change this to 404
-    assert.equal(res.json, undefined);  // no row → empty body today
+    assert.equal(res.status, 404);
+    assert.equal((res.json as { title: string }).title, "Not Found");
+  });
+});
+
+test("error responses carry the application/problem+json content type", async () => {
+  await withServer(async (s) => {
+    const res = await fetch(`${s.baseUrl}/api/does-not-exist`);
+    assert.equal(res.status, 404);
+    assert.match(res.headers.get("content-type") ?? "", /application\/problem\+json/);
   });
 });

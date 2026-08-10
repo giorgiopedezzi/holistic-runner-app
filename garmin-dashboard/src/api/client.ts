@@ -29,13 +29,15 @@ export class ApiError extends Error {
 //   local Ollama model runs with stream:false). The request may still have
 //   completed server-side; tell the user to wait/retry rather than showing a
 //   bare status code.
-// - our own 4xx/5xx: surface the API's own {error} message instead of the code.
+// - our own 4xx/5xx: surface the API's RFC 7807 problem+json message (HRA-37) —
+//   prefer `detail` (occurrence-specific), fall back to `title`, then the code.
 async function buildApiError(res: Response, path: string): Promise<ApiError> {
   if (res.status === 502 || res.status === 503 || res.status === 504) {
     return new ApiError(res.status, `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`);
   }
-  const detail = (await res.json().catch(() => null)) as { error?: string } | null;
-  return new ApiError(res.status, detail?.error ? detail.error : `API error ${res.status}: ${path}`);
+  const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
+  const message = problem?.detail ?? problem?.title ?? `API error ${res.status}: ${path}`;
+  return new ApiError(res.status, message);
 }
 
 async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
@@ -52,9 +54,9 @@ async function request<T>(path: string, method = "GET", params?: Record<string, 
     // reset) — never on an HTTP error status. Give the same human message.
     throw new ApiError(0, "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted — the operation may still have finished, so wait a moment and try again.");
   }
-  // 204 means "query succeeded, deliberately nothing to show" (e.g. no
-  // overlapping data for correlation) — distinct from a 200 empty array,
-  // which callers that can receive it should type as `T | null`.
+  // 204 means "query succeeded, no body". Retained as a general safeguard,
+  // though as of HRA-32 no read endpoint returns it (correlation now returns a
+  // 200 with []). A caller that can receive it should type as `T | null`.
   if (res.status === 204) return null as T;
   if (!res.ok) throw await buildApiError(res, path);
   return res.json() as Promise<T>;
@@ -112,7 +114,7 @@ export const api = {
     range:       ()                          => request<DateRange>("/api/body/range"),
     list:        (from: string, to: string)  => request<BodyMeasurement[]>("/api/body/list", "GET", rp(from, to)),
     monthly:     (from: string, to: string)  => request<MonthlyBody[]>("/api/body/monthly", "GET", rp(from, to)),
-    correlation: (from: string, to: string)  => request<CorrelationPoint[] | null>("/api/body/correlation", "GET", rp(from, to)),
+    correlation: (from: string, to: string)  => request<CorrelationPoint[]>("/api/body/correlation", "GET", rp(from, to)),
     count:       (from: string, to: string)  => request<CountResult>("/api/body/count", "GET", rp(from, to)),
     deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/body", "DELETE", rp(from, to)),
     sync:        (from?: string, to?: string) => request<SyncResult>("/api/sync/withings", "POST", from && to ? rp(from, to) : undefined),

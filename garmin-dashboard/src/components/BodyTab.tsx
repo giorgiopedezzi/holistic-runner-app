@@ -339,7 +339,7 @@ export function BodyTab({ from, to }: Props) {
       })}
 
       <SectionTitle>Running {distanceUnitLabel()} vs weight (weekly)</SectionTitle>
-      {correlation === null ? (
+      {!correlation || correlation.length === 0 ? (
         <Empty message="No overlapping activity/body data for correlation in this range." />
       ) : (
         <div style={chartWrap}>

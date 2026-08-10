@@ -4,6 +4,7 @@
  * out of server.ts (S1 refactor) — behavior is byte-identical.
  */
 import http from "http";
+import { badRequest } from "./problem.ts";
 
 export interface DateRange { from: string; to: string; }
 
@@ -20,6 +21,19 @@ export function readBody(req: http.IncomingMessage): Promise<string> {
     req.on("data", chunk => body += chunk);
     req.on("end", () => resolve(body));
   });
+}
+
+// Read + JSON-parse a request body. An empty body is treated as {} (matches the
+// old `JSON.parse(raw || "{}")` idiom); a non-empty body that isn't valid JSON
+// throws a 400 problem instead of surfacing as an uncaught 500 (HRA-33/HRA-37).
+export async function readJsonBody<T = unknown>(req: http.IncomingMessage): Promise<T> {
+  const raw = await readBody(req);
+  if (!raw) return {} as T;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    throw badRequest("Request body is not valid JSON.");
+  }
 }
 
 // For raw binary uploads (the background-image upload) — collecting Buffer

@@ -5,8 +5,9 @@
  * correlation threshold), shape the response + status. No SQL, no business rules.
  */
 import type { AppContext, Handler } from "../http/context.ts";
-import { send, sendNoContent } from "../http/respond.ts";
-import { dateRange, readBody } from "../http/request.ts";
+import { send } from "../http/respond.ts";
+import { dateRange, readJsonBody } from "../http/request.ts";
+import { unprocessable } from "../http/problem.ts";
 
 export function createBodyController(ctx: AppContext) {
   const repo = ctx.repos.body;
@@ -33,8 +34,10 @@ export function createBodyController(ctx: AppContext) {
 
   const correlation: Handler = (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    const { hasData, rows } = service.correlation(from, to);
-    if (!hasData) { sendNoContent(res); return; }
+    // HRA-32: an empty correlation is a normal 200 with [] — not a 204. "No
+    // overlapping data" is data (an empty set), and a collection endpoint should
+    // return the same list shape whether or not it's empty.
+    const { rows } = service.correlation(from, to);
     return send(res, rows);
   };
 
@@ -45,9 +48,9 @@ export function createBodyController(ctx: AppContext) {
 
   // POST /api/body/restore | /api/body/purge — body { ids: number[] }.
   const restorePurge: Handler = async (req, res, url) => {
-    const body = JSON.parse((await readBody(req)) || "{}") as { ids?: unknown };
+    const body = await readJsonBody<{ ids?: unknown }>(req);
     const ids = Array.isArray(body.ids) ? body.ids.filter((n): n is number => Number.isInteger(n)) : [];
-    if (ids.length === 0) return send(res, { error: "ids must be a non-empty array of integers" }, 400);
+    if (ids.length === 0) throw unprocessable("ids must be a non-empty array of integers.");
     const purge = url.pathname.endsWith("/purge");
     return send(res, purge ? service.purge(ids) : service.restore(ids));
   };

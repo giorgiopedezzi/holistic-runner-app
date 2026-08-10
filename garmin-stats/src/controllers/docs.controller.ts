@@ -10,6 +10,7 @@
 import fs from "fs";
 import path from "path";
 import type { AppContext, Handler } from "../http/context.ts";
+import { notFound } from "../http/problem.ts";
 
 // Self-contained docs page. No external resources; fetches /api/openapi.json
 // (same origin) and renders it with vanilla JS. Kept free of backticks / ${…}
@@ -87,9 +88,7 @@ export function createDocsController(ctx: AppContext) {
     try {
       body = fs.readFileSync(specPath, "utf8");
     } catch {
-      res.writeHead(404, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
-      res.end(JSON.stringify({ error: "openapi.json not found" }));
-      return;
+      throw notFound("openapi.json not found.");
     }
     res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*", "Cache-Control": "no-cache" });
     res.end(body);

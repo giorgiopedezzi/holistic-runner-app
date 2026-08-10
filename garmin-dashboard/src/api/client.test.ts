@@ -23,12 +23,25 @@ describe("api error handling", () => {
     expect((err as ApiError).message).toMatch(/busy|restarting|try again/i);
   });
 
-  it("surfaces the backend's { error } detail on a 4xx", async () => {
-    stubFetch(() => new Response(JSON.stringify({ error: "Activity not found" }), { status: 404 }));
+  it("surfaces the problem+json `detail` on a 4xx (HRA-37)", async () => {
+    stubFetch(() => new Response(
+      JSON.stringify({ type: "about:blank", title: "Not Found", status: 404, detail: "Activity 999 not found." }),
+      { status: 404, headers: { "Content-Type": "application/problem+json" } },
+    ));
     const err = await api.garmin.deviceStatus().then(() => null, (e) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect((err as ApiError).status).toBe(404);
-    expect((err as ApiError).message).toBe("Activity not found");
+    expect((err as ApiError).message).toBe("Activity 999 not found.");
+  });
+
+  it("falls back to problem+json `title` when there's no detail (HRA-37)", async () => {
+    stubFetch(() => new Response(
+      JSON.stringify({ type: "about:blank", title: "Unprocessable Entity", status: 422 }),
+      { status: 422, headers: { "Content-Type": "application/problem+json" } },
+    ));
+    const err = await api.garmin.deviceStatus().then(() => null, (e) => e);
+    expect((err as ApiError).status).toBe(422);
+    expect((err as ApiError).message).toBe("Unprocessable Entity");
   });
 
   it("turns a network failure (fetch rejects) into ApiError status 0", async () => {

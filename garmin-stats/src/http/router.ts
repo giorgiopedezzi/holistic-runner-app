@@ -8,7 +8,8 @@
 import http from "http";
 import { URL } from "url";
 import type { AppContext } from "./context.ts";
-import { send } from "./respond.ts";
+import { send, sendProblem } from "./respond.ts";
+import { ApiProblem, notFound, internal } from "./problem.ts";
 import { createActivitiesController } from "../controllers/activities.controller.ts";
 import { createTrendsController } from "../controllers/trends.controller.ts";
 import { createBodyController } from "../controllers/body.controller.ts";
@@ -95,9 +96,18 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/settings/background/upload") return await settings.uploadBackground(req, res, url);
       }
 
-      send(res, { error: "Not found" }, 404);
+      sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);
     } catch (e) {
-      send(res, { error: e instanceof Error ? e.message : String(e) }, 500);
+      if (e instanceof ApiProblem) {
+        // Attach the request path as `instance` unless the thrower set one.
+        const p = e.problem;
+        sendProblem(res, p.instance ? p : { ...p, instance: route });
+        return;
+      }
+      // An unexpected error — log the real thing server-side, return a generic
+      // 500 that never leaks the exception message/stack to the client.
+      console.error("Unhandled API error:", e);
+      sendProblem(res, internal().problem);
     }
   };
 }

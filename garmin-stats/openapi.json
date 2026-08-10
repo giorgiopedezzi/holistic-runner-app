@@ -24,16 +24,25 @@
       "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Activity id." }
     },
     "responses": {
-      "BadRequest": { "description": "Malformed/invalid input.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "NotFound": { "description": "Resource not found.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "ServerError": { "description": "Unexpected error. NOTE: the current API also returns 500 for a malformed JSON request body (should be 400) — see HRA-33/HRA-37.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+      "BadRequest": { "description": "Malformed request (e.g. body is not valid JSON).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "NotFound": { "description": "Resource not found.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Unprocessable": { "description": "Request parsed but failed a validation rule.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "PayloadTooLarge": { "description": "Request body exceeds the size limit.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "ServerError": { "description": "Unexpected server error (generic; never leaks internals).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
     },
     "schemas": {
-      "Error": {
+      "Problem": {
         "type": "object",
-        "description": "Ad-hoc error body used by every 4xx/5xx (to be replaced by problem+json in HRA-37).",
-        "properties": { "error": { "type": "string" } },
-        "required": ["error"]
+        "description": "RFC 7807 application/problem+json error body used by every 4xx/5xx (HRA-37).",
+        "properties": {
+          "type": { "type": "string", "description": "URI reference; 'about:blank' = no more info than the status.", "example": "about:blank" },
+          "title": { "type": "string", "description": "Short, human, stable per status.", "example": "Not Found" },
+          "status": { "type": "integer", "example": 404 },
+          "detail": { "type": "string", "description": "Human explanation specific to this occurrence." },
+          "instance": { "type": "string", "description": "The request path." },
+          "errors": { "type": "array", "items": { "type": "object", "properties": { "field": { "type": "string" }, "message": { "type": "string" } } } }
+        },
+        "required": ["type", "title", "status"]
       },
       "DateRangeInfo": {
         "type": "object",
@@ -230,8 +239,9 @@
         "tags": ["activities"], "summary": "Get one activity",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "responses": {
-          "200": { "description": "The activity. QUIRK: for a missing/deleted id the current API returns 200 with an EMPTY body (should be 404) — see HRA-34/HRA-37.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } },
-          "400": { "$ref": "#/components/responses/BadRequest" }
+          "200": { "description": "The activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
       "delete": {
@@ -248,7 +258,7 @@
         "tags": ["activities"], "summary": "Classify a running activity (AI or statistical)",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "splitMeters": { "type": "number", "default": 1000 }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } },
-        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "500": { "$ref": "#/components/responses/ServerError" } }
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "500": { "$ref": "#/components/responses/ServerError" } }
       }
     },
     "/api/activities/{id}/feedback": {
@@ -256,17 +266,17 @@
         "tags": ["activities"], "summary": "Approve/reject a classification",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["feedback", "source"], "properties": { "feedback": { "type": "string", "enum": ["approved", "rejected"] }, "source": { "type": "string", "enum": ["ai", "statistical"] }, "correctionReason": { "type": "string", "description": "Required when feedback=rejected." }, "finalClassification": { "type": "string", "description": "Required when feedback=rejected." } } } } } },
-        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/api/activities/confirm": {
-      "post": { "tags": ["activities"], "summary": "Bulk-confirm classifications", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } }, "responses": { "200": { "description": "Confirmed count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "confirmed": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "post": { "tags": ["activities"], "summary": "Bulk-confirm classifications", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } }, "responses": { "200": { "description": "Confirmed count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "confirmed": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/activities/restore": {
-      "post": { "tags": ["activities"], "summary": "Restore activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "post": { "tags": ["activities"], "summary": "Restore activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/activities/purge": {
-      "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/summary": {
       "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } } } } } } }
@@ -294,8 +304,7 @@
         "tags": ["body"], "summary": "Weekly km vs avg weight correlation",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
         "responses": {
-          "200": { "description": "Correlation points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CorrelationPoint" } } } } },
-          "204": { "description": "QUIRK: returns 204 No Content when there is not enough data (>1 week with at least one body match), instead of 200 []. Inconsistent with other list endpoints — see HRA-32/HRA-37." }
+          "200": { "description": "Weekly km + avg weight points; [] when there is no overlapping data (HRA-32).", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CorrelationPoint" } } } } }
         }
       }
     },
@@ -306,30 +315,30 @@
       "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
     },
     "/api/body/restore": {
-      "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/body/purge": {
-      "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/settings": {
       "get": { "tags": ["settings"], "summary": "Get settings", "responses": { "200": { "description": "Settings row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } } },
       "put": {
         "tags": ["settings"], "summary": "Update outlier + trend thresholds",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["outlier_speed_delta_per_sec", "outlier_cadence_delta_per_sec", "outlier_min_speed_kmh", "min_trend_group_size"], "properties": { "outlier_speed_delta_per_sec": { "type": "number" }, "outlier_cadence_delta_per_sec": { "type": "number" }, "outlier_min_speed_kmh": { "type": "number" }, "min_trend_group_size": { "type": "integer", "minimum": 2 } } } } } },
-        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
     "/api/settings/theme": {
-      "put": { "tags": ["settings"], "summary": "Set theme", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "put": { "tags": ["settings"], "summary": "Set theme", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/settings/background": {
-      "put": { "tags": ["settings"], "summary": "Select a bundled background preset or clear it", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["background_kind"], "properties": { "background_kind": { "type": "string", "enum": ["none", "bundled"] }, "background_value": { "type": "string", "description": "Preset id, required when background_kind=bundled." } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "put": { "tags": ["settings"], "summary": "Select a bundled background preset or clear it", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["background_kind"], "properties": { "background_kind": { "type": "string", "enum": ["none", "bundled"] }, "background_value": { "type": "string", "description": "Preset id, required when background_kind=bundled." } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/settings/units": {
-      "put": { "tags": ["settings"], "summary": "Set unit system", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["unit_system"], "properties": { "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "put": { "tags": ["settings"], "summary": "Set unit system", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["unit_system"], "properties": { "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/settings/detail-view": {
-      "put": { "tags": ["settings"], "summary": "Set activity detail view", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "put": { "tags": ["settings"], "summary": "Set activity detail view", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/settings/background-image": {
       "get": { "tags": ["settings"], "summary": "Stream the current custom background image", "responses": { "200": { "description": "The image bytes.", "content": { "image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }
@@ -339,7 +348,7 @@
         "tags": ["settings"], "summary": "Upload a custom background image (raw bytes)",
         "parameters": [ { "name": "ext", "in": "query", "required": true, "schema": { "type": "string", "enum": ["jpg", "jpeg", "png", "webp", "gif"] } } ],
         "requestBody": { "required": true, "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } }, "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/webp": { "schema": { "type": "string", "format": "binary" } }, "image/gif": { "schema": { "type": "string", "format": "binary" } } } },
-        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
     "/api/sync/garmin": {
