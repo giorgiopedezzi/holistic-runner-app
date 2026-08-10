@@ -9,7 +9,13 @@ import type {
   DeviceStatus, WithingsStatus, StravaStatus, Settings, StoredTheme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
+  Paginated,
 } from "@/types/api";
+
+// Sentinel "give me everything" limit for consumers that need the full set
+// (charts, previews, bulk actions) rather than a page — see HRA-38. The server
+// caps limit at 100000, comfortably above this app's single-user data volumes.
+const ALL = "100000";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -85,9 +91,13 @@ function idsBody(ids: number[]) { return { ids }; }
 export const api = {
   garmin: {
     range:       ()                          => request<DateRange>("/api/range"),
-    activities:  (from: string, to: string)  => request<Activity[]>("/api/activities", "GET", rp(from, to)),
+    // Full list (unwrapped) for consumers that need every row in range — trends,
+    // classify, delete-preview. Paged UIs use activitiesPage() instead.
+    activities:  async (from: string, to: string) => (await request<Paginated<Activity>>("/api/activities", "GET", { ...rp(from, to), limit: ALL })).data,
+    activitiesPage: (from: string, to: string, limit: number, offset: number) =>
+      request<Paginated<Activity>>("/api/activities", "GET", { ...rp(from, to), limit: String(limit), offset: String(offset) }),
     activity:    (id: number)                => request<Activity>(`/api/activities/${id}`),
-    summary:     (from: string, to: string)  => request<SportSummary[]>("/api/summary", "GET", rp(from, to)),
+    summary:     async (from: string, to: string) => (await request<Paginated<SportSummary>>("/api/summary", "GET", rp(from, to))).data,
     track:       (id: number)                => request<TrackPoint[]>(`/api/activities/${id}/track`),
     count:       (from: string, to: string)  => request<CountResult>("/api/activities/count", "GET", rp(from, to)),
     deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/activities", "DELETE", rp(from, to)),
@@ -96,7 +106,7 @@ export const api = {
     deviceStatus:()                          => request<DeviceStatus>("/api/garmin/status"),
     // Trash — deletes above are soft (deleted_at set, restorable). These
     // list/restore/permanently-remove what's currently in the trash.
-    trash:       ()                          => request<TrashedActivity[]>("/api/activities/trash"),
+    trash:       async ()                    => (await request<Paginated<TrashedActivity>>("/api/activities/trash", "GET", { limit: ALL })).data,
     restore:     (ids: number[])             => request<RestoreResult>("/api/activities/restore", "POST", undefined, idsBody(ids)),
     purge:       (ids: number[])             => request<PurgeResult>("/api/activities/purge", "POST", undefined, idsBody(ids)),
     // AI workout classifier — always on-demand, never triggered by sync.
@@ -112,15 +122,15 @@ export const api = {
   },
   body: {
     range:       ()                          => request<DateRange>("/api/body-measurements/range"),
-    list:        (from: string, to: string)  => request<BodyMeasurement[]>("/api/body-measurements", "GET", rp(from, to)),
-    monthly:     (from: string, to: string)  => request<MonthlyBody[]>("/api/body-measurements/monthly", "GET", rp(from, to)),
-    correlation: (from: string, to: string)  => request<CorrelationPoint[]>("/api/body-measurements/correlation", "GET", rp(from, to)),
+    list:        async (from: string, to: string) => (await request<Paginated<BodyMeasurement>>("/api/body-measurements", "GET", { ...rp(from, to), limit: ALL })).data,
+    monthly:     async (from: string, to: string) => (await request<Paginated<MonthlyBody>>("/api/body-measurements/monthly", "GET", rp(from, to))).data,
+    correlation: async (from: string, to: string) => (await request<Paginated<CorrelationPoint>>("/api/body-measurements/correlation", "GET", rp(from, to))).data,
     count:       (from: string, to: string)  => request<CountResult>("/api/body-measurements/count", "GET", rp(from, to)),
     deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/body-measurements", "DELETE", rp(from, to)),
     sync:        (from?: string, to?: string) => request<SyncResult>("/api/sync/withings", "POST", from && to ? rp(from, to) : undefined),
     tokenStatus: ()                          => request<WithingsStatus>("/api/withings/status"),
     loginUrl:    ()                          => request<{ url: string }>("/api/withings/login-url"),
-    trash:       ()                          => request<TrashedBodyMeasurement[]>("/api/body-measurements/trash"),
+    trash:       async ()                    => (await request<Paginated<TrashedBodyMeasurement>>("/api/body-measurements/trash", "GET", { limit: ALL })).data,
     restore:     (ids: number[])             => request<RestoreResult>("/api/body-measurements/restore", "POST", undefined, idsBody(ids)),
     purge:       (ids: number[])             => request<PurgeResult>("/api/body-measurements/purge", "POST", undefined, idsBody(ids)),
   },

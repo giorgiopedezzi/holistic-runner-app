@@ -15,6 +15,19 @@ export function dateRange(params: URLSearchParams): DateRange {
   return { from: params.get("from") ?? ago30, to: params.get("to") ?? today };
 }
 
+export interface PageParams { limit: number; offset: number; }
+
+// Parse ?limit & ?offset for the list envelope (HRA-38). limit defaults to 50
+// and is capped at maxLimit; a client that genuinely needs the whole set (e.g.
+// a chart) passes an explicit large limit. offset defaults to 0.
+export function parsePageParams(params: URLSearchParams, defaultLimit = 50, maxLimit = 100000): PageParams {
+  const rawLimit = Number(params.get("limit"));
+  const rawOffset = Number(params.get("offset"));
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), maxLimit) : defaultLimit;
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+  return { limit, offset };
+}
+
 export function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise(resolve => {
     let body = "";

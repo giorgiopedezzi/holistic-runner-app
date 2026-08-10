@@ -12,6 +12,7 @@ type NamedParams = Record<string, string | number | null>;
 export function createActivitiesRepo(db: DatabaseSync) {
   const range        = db.prepare("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE deleted_at IS NULL");
   const activities   = db.prepare("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC");
+  const activitiesPage = db.prepare("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC LIMIT ? OFFSET ?");
   const activityById = db.prepare("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method FROM activities WHERE id = ? AND deleted_at IS NULL");
   const summary      = db.prepare("SELECT sport,COUNT(*) AS total_activities,ROUND(SUM(distance_m)/1000,2) AS total_km,ROUND(SUM(duration_sec)/3600,2) AS total_hours,SUM(calories) AS total_calories,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace,ROUND(SUM(ascent_m)) AS total_ascent FROM activities WHERE date_only BETWEEN ? AND ? AND sport IS NOT NULL AND deleted_at IS NULL GROUP BY sport ORDER BY total_km DESC");
   const weekly       = db.prepare("SELECT strftime('%Y-W%W',date_only) AS week,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY week ORDER BY week");
@@ -23,6 +24,8 @@ export function createActivitiesRepo(db: DatabaseSync) {
   const deleteActivityById    = db.prepare("UPDATE activities SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL");
   const countInRange          = db.prepare("SELECT COUNT(*) AS count FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
   const activitiesTrash       = db.prepare("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC");
+  const activitiesTrashPage   = db.prepare("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
+  const activitiesTrashCount  = db.prepare("SELECT COUNT(*) AS count FROM activities WHERE deleted_at IS NOT NULL AND purged = 0");
   const restoreActivityById   = db.prepare("UPDATE activities SET deleted_at = NULL WHERE id = ? AND purged = 0");
   const deleteTrackPointsByActivity = db.prepare("DELETE FROM track_points WHERE activity_id = ?");
   // Purge (empty the trash): wipes track_points + every heavy/summary column to
@@ -74,6 +77,7 @@ export function createActivitiesRepo(db: DatabaseSync) {
   return {
     dateRange:    () => range.get(),
     list:         (from: string, to: string) => activities.all(from, to),
+    listPage:     (from: string, to: string, limit: number, offset: number) => activitiesPage.all(from, to, limit, offset),
     byId:         (id: number) => activityById.get(id),
     summary:      (from: string, to: string) => summary.all(from, to),
     weekly:       (from: string, to: string) => weekly.all(from, to),
@@ -81,6 +85,8 @@ export function createActivitiesRepo(db: DatabaseSync) {
     track:        (id: number) => track.all(id),
     countInRange: (from: string, to: string) => countInRange.get(from, to),
     trash:        () => activitiesTrash.all(),
+    trashPage:    (limit: number, offset: number) => activitiesTrashPage.all(limit, offset),
+    trashCount:   () => activitiesTrashCount.get(),
     softDeleteRange:  (from: string, to: string) => deleteActivitiesRange.run(from, to),
     softDeleteById:   (id: number) => deleteActivityById.run(id),
     restoreById:      (id: number) => restoreActivityById.run(id),

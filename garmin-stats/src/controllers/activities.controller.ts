@@ -6,7 +6,8 @@
  */
 import type { AppContext, Handler } from "../http/context.ts";
 import { send } from "../http/respond.ts";
-import { dateRange, readJsonBody } from "../http/request.ts";
+import { dateRange, parsePageParams, readJsonBody } from "../http/request.ts";
+import { paginated } from "../http/envelope.ts";
 import { badRequest, notFound, unprocessable } from "../http/problem.ts";
 import { WORKOUT_CLASSIFICATIONS } from "../integrations/ollama.ts";
 
@@ -32,7 +33,9 @@ export function createActivitiesController(ctx: AppContext) {
 
   const list: Handler = (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, repo.list(from, to));
+    const { limit, offset } = parsePageParams(url.searchParams);
+    const total = (repo.countInRange(from, to) as { count: number }).count;
+    return send(res, paginated(repo.listPage(from, to, limit, offset), total, limit, offset));
   };
 
   const count: Handler = (_req, res, url) => {
@@ -40,7 +43,11 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, repo.countInRange(from, to));
   };
 
-  const trash: Handler = (_req, res) => send(res, repo.trash());
+  const trash: Handler = (_req, res, url) => {
+    const { limit, offset } = parsePageParams(url.searchParams);
+    const total = (repo.trashCount() as { count: number }).count;
+    return send(res, paginated(repo.trashPage(limit, offset), total, limit, offset));
+  };
 
   const getById: Handler = (_req, res, url) => {
     const id = parseId(url.pathname);

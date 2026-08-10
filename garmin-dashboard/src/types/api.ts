@@ -2,6 +2,18 @@
 // These mirror the shapes returned by server.ts exactly.
 // Add new fields here when extending the backend.
 
+// The list envelope every collection endpoint returns (HRA-38). Offset-based:
+// page.total is the full count, page.limit/offset the window returned.
+export interface Page {
+  limit: number;
+  offset: number;
+  total: number;
+}
+export interface Paginated<T> {
+  data: T[];
+  page: Page;
+}
+
 export interface DateRange {
   min_date: string | null;
   max_date: string | null;

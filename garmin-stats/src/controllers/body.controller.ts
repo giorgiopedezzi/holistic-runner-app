@@ -6,7 +6,8 @@
  */
 import type { AppContext, Handler } from "../http/context.ts";
 import { send } from "../http/respond.ts";
-import { dateRange, readJsonBody } from "../http/request.ts";
+import { dateRange, parsePageParams, readJsonBody } from "../http/request.ts";
+import { paginated, wholePage } from "../http/envelope.ts";
 import { unprocessable } from "../http/problem.ts";
 
 export function createBodyController(ctx: AppContext) {
@@ -17,7 +18,9 @@ export function createBodyController(ctx: AppContext) {
 
   const list: Handler = (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, repo.list(from, to));
+    const { limit, offset } = parsePageParams(url.searchParams);
+    const total = (repo.countInRange(from, to) as { count: number }).count;
+    return send(res, paginated(repo.listPage(from, to, limit, offset), total, limit, offset));
   };
 
   const count: Handler = (_req, res, url) => {
@@ -27,10 +30,14 @@ export function createBodyController(ctx: AppContext) {
 
   const monthly: Handler = (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, repo.monthly(from, to));
+    return send(res, wholePage(repo.monthly(from, to) as unknown[]));
   };
 
-  const trash: Handler = (_req, res) => send(res, repo.trash());
+  const trash: Handler = (_req, res, url) => {
+    const { limit, offset } = parsePageParams(url.searchParams);
+    const total = (repo.trashCount() as { count: number }).count;
+    return send(res, paginated(repo.trashPage(limit, offset), total, limit, offset));
+  };
 
   const correlation: Handler = (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
@@ -38,7 +45,7 @@ export function createBodyController(ctx: AppContext) {
     // overlapping data" is data (an empty set), and a collection endpoint should
     // return the same list shape whether or not it's empty.
     const { rows } = service.correlation(from, to);
-    return send(res, rows);
+    return send(res, wholePage(rows as unknown[]));
   };
 
   const deleteRange: Handler = (_req, res, url) => {

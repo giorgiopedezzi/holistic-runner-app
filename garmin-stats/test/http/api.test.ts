@@ -30,23 +30,38 @@ const json = (body: unknown): RequestInit => ({
 
 // ── Reads ────────────────────────────────────────────────────────────────────
 
-test("GET /api/activities returns seeded rows, newest first, both sources", async () => {
+test("GET /api/activities returns the { data, page } envelope, newest first, both sources", async () => {
   await withServer(async (s) => {
-    const { status, json: rows } = await s.api("/api/activities?from=2026-01-01&to=2027-01-01");
+    const { status, json } = await s.api("/api/activities?from=2026-01-01&to=2027-01-01");
     assert.equal(status, 200);
-    assert.ok(Array.isArray(rows));
-    const list = rows as { source: string; date_only: string }[];
-    assert.equal(list.length, 2);
-    assert.deepEqual(list.map((r) => r.source), ["garmin", "strava"]); // ORDER BY activity_date DESC
+    const body = json as { data: { source: string; date_only: string }[]; page: { total: number } };
+    assert.ok(Array.isArray(body.data));
+    assert.equal(body.data.length, 2);
+    assert.equal(body.page.total, 2);
+    assert.deepEqual(body.data.map((r) => r.source), ["garmin", "strava"]); // ORDER BY activity_date DESC
   });
 });
 
 test("GET /api/activities respects the from/to range filter", async () => {
   await withServer(async (s) => {
-    const { json: rows } = await s.api("/api/activities?from=2026-08-01&to=2026-08-31");
-    const list = rows as { source: string }[];
-    assert.equal(list.length, 1);
-    assert.equal(list[0].source, "garmin");
+    const body = (await s.api("/api/activities?from=2026-08-01&to=2026-08-31")).json as { data: { source: string }[]; page: { total: number } };
+    assert.equal(body.data.length, 1);
+    assert.equal(body.page.total, 1);
+    assert.equal(body.data[0].source, "garmin");
+  });
+});
+
+test("GET /api/activities pages with limit/offset while page.total stays the full count", async () => {
+  await withServer(async (s) => {
+    const p0 = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01&limit=1&offset=0")).json as { data: { source: string }[]; page: { limit: number; offset: number; total: number } };
+    assert.equal(p0.data.length, 1);
+    assert.deepEqual(p0.page, { limit: 1, offset: 0, total: 2 });
+    assert.equal(p0.data[0].source, "garmin"); // newest first
+
+    const p1 = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01&limit=1&offset=1")).json as { data: { source: string }[]; page: { offset: number; total: number } };
+    assert.equal(p1.data.length, 1);
+    assert.equal(p1.data[0].source, "strava");
+    assert.equal(p1.page.total, 2);
   });
 });
 
@@ -63,9 +78,9 @@ test("GET /api/range and /api/activities/count reflect the seed", async () => {
 
 test("GET /api/summary groups by sport", async () => {
   await withServer(async (s) => {
-    const rows = (await s.api("/api/summary?from=2026-01-01&to=2027-01-01")).json as { sport: string }[];
-    assert.equal(rows.length, 2);
-    assert.deepEqual(rows.map((r) => r.sport).sort(), ["cycling", "running"]);
+    const body = (await s.api("/api/summary?from=2026-01-01&to=2027-01-01")).json as { data: { sport: string }[] };
+    assert.equal(body.data.length, 2);
+    assert.deepEqual(body.data.map((r) => r.sport).sort(), ["cycling", "running"]);
   });
 });
 
@@ -91,24 +106,24 @@ test("full soft-delete lifecycle: hide → trash → restore → purge keeps ded
     // 1. Soft delete → gone from reads, present in trash.
     const del = await s.api(`/api/activities/${id}`, { method: "DELETE" });
     assert.equal(del.status, 200);
-    let list = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as unknown[];
+    let list = ((await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
     assert.equal(list.length, 1, "soft-deleted activity should not appear in reads");
-    let trash = (await s.api("/api/activities/trash")).json as { id: number }[];
+    let trash = ((await s.api("/api/activities/trash")).json as { data: { id: number }[] }).data;
     assert.deepEqual(trash.map((t) => t.id), [id]);
 
     // 2. Restore → back in reads, gone from trash.
     const restored = await s.api("/api/activities/restore", json({ ids: [id] }));
     assert.equal(restored.status, 200);
-    list = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as unknown[];
+    list = ((await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
     assert.equal(list.length, 2);
-    trash = (await s.api("/api/activities/trash")).json as { id: number }[];
+    trash = ((await s.api("/api/activities/trash")).json as { data: { id: number }[] }).data;
     assert.equal(trash.length, 0);
 
     // 3. Delete again, then purge → gone from trash; filename survives; track_points wiped.
     await s.api(`/api/activities/${id}`, { method: "DELETE" });
     const purged = await s.api("/api/activities/purge", json({ ids: [id] }));
     assert.equal(purged.status, 200);
-    trash = (await s.api("/api/activities/trash")).json as { id: number }[];
+    trash = ((await s.api("/api/activities/trash")).json as { data: { id: number }[] }).data;
     assert.equal(trash.length, 0, "purged rows are not listed in trash");
 
     const row = s.db.prepare("SELECT filename, purged, distance_m FROM activities WHERE id=?").get(id) as
@@ -125,9 +140,9 @@ test("DELETE /api/activities?from&to soft-deletes a whole range", async () => {
   await withServer(async (s) => {
     const del = await s.api("/api/activities?from=2026-01-01&to=2027-01-01", { method: "DELETE" });
     assert.equal(del.status, 200);
-    const list = (await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as unknown[];
+    const list = ((await s.api("/api/activities?from=2026-01-01&to=2027-01-01")).json as { data: unknown[] }).data;
     assert.equal(list.length, 0);
-    const trash = (await s.api("/api/activities/trash")).json as unknown[];
+    const trash = ((await s.api("/api/activities/trash")).json as { data: unknown[] }).data;
     assert.equal(trash.length, 2);
   });
 });
@@ -201,7 +216,7 @@ test("GET /api/body-measurements/correlation returns 200 with [] when empty, not
   await withServer(async (s) => {
     const res = await s.api("/api/body-measurements/correlation?from=1999-01-01&to=1999-12-31");
     assert.equal(res.status, 200);
-    assert.deepEqual(res.json, []);
+    assert.deepEqual((res.json as { data: unknown[] }).data, []); // envelope-wrapped (HRA-38), empty data (HRA-32)
   });
 });
 

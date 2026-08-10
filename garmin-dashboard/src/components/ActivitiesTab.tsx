@@ -13,7 +13,6 @@ const PER_PAGE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_DETAIL_VIEW = "accordion";
 
 export function ActivitiesTab({ from, to }: Props) {
-  const { state, refetch } = useQuery(() => api.garmin.activities(from, to), [from, to]);
   const rangeQ = useQuery(() => api.garmin.range(), []);
   const settingsQ = useQuery(() => api.settings.get(), []);
   const detailView = settingsQ.state.status === "success" ? settingsQ.state.data.activity_detail_view : DEFAULT_DETAIL_VIEW;
@@ -22,34 +21,42 @@ export function ActivitiesTab({ from, to }: Props) {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
 
-  // A new range (or a perPage change) invalidates the current page number —
-  // back to page 1 rather than possibly landing past the new last page.
+  // Server-side paging (HRA-38): fetch only the current page's rows, and refetch
+  // whenever the range, page, or page size changes.
+  const { state, refetch } = useQuery(
+    () => api.garmin.activitiesPage(from, to, perPage, (page - 1) * perPage),
+    [from, to, page, perPage],
+  );
+
+  // A new range (or a perPage change) invalidates the current page number.
   useEffect(() => setPage(1), [from, to, perPage]);
   useEffect(() => setExpandedId(null), [from, to]);
+
+  const total = state.status === "success" ? state.data.page.total : 0;
+  const totalPages = Math.max(1, Math.ceil(total / perPage));
+  // If the total shrank (e.g. after a delete) clamp the page back into range.
+  useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
 
   if (state.status === "loading") return <LoadingSpinner />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;
   if (state.status !== "success") return null;
 
-  const activities = state.data;
-  if (activities.length === 0) {
+  if (total === 0) {
     const range = rangeQ.state.status === "success" ? rangeQ.state.data : null;
     return <RangeEmpty range={range} from={from} to={to} entityLabel="activities" />;
   }
 
-  const totalPages = Math.max(1, Math.ceil(activities.length / perPage));
-  const pageClamped = Math.min(page, totalPages);
-  const pageItems = activities.slice((pageClamped - 1) * perPage, pageClamped * perPage);
+  const pageItems = state.data.data; // already the server-sliced page
 
   const pagination = (
     <Pagination
-      page={pageClamped}
+      page={Math.min(page, totalPages)}
       totalPages={totalPages}
       onPageChange={setPage}
       perPage={perPage}
       perPageOptions={PER_PAGE_OPTIONS}
       onPerPageChange={setPerPage}
-      totalItems={activities.length}
+      totalItems={total}
     />
   );
 

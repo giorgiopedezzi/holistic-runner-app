@@ -3,7 +3,7 @@
   "info": {
     "title": "Garmin Stats — Local Health Dashboard API",
     "version": "2.0.0",
-    "description": "Local-only REST API (binds 127.0.0.1) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nThis spec documents the CURRENT contract as-is: unversioned `/api` paths, ad-hoc `{ \"error\": \"...\" }` error bodies, and bare-array list responses (no pagination envelope). Those are intentionally NOT yet conformant with rest-api-standards — the conformance changes live in the separate contract-hardening epic (HRA-36), and this spec is updated when they land. Drift between this file and the running API is treated as a bug."
+    "description": "Local-only REST API (binds 127.0.0.1) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nContract-hardening epic HRA-36 in progress: RFC 7807 `application/problem+json` error bodies with correct status codes (HRA-37 ✓), plural resource nouns incl. `/api/body-measurements` (HRA-39 ✓), and the `{ data, page }` list envelope with limit/offset paging (HRA-38 ✓) have landed. Still pending: PATCH for partial settings updates (HRA-40) and the `/v1` URL prefix (HRA-41) — paths remain unversioned `/api/...` until then. Drift between this file and the running API is treated as a bug."
   },
   "servers": [
     { "url": "http://127.0.0.1:3001", "description": "Local API server" }
@@ -21,7 +21,9 @@
     "parameters": {
       "from": { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive start date (YYYY-MM-DD). Defaults to 30 days ago." },
       "to": { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive end date (YYYY-MM-DD). Defaults to today." },
-      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Activity id." }
+      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Activity id." },
+      "limit": { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "default": 50, "maximum": 100000 }, "description": "Max rows to return (list envelope, HRA-38). Defaults to 50, capped at 100000." },
+      "offset": { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "default": 0 }, "description": "Rows to skip before returning (list envelope, HRA-38)." }
     },
     "responses": {
       "BadRequest": { "description": "Malformed request (e.g. body is not valid JSON).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
@@ -43,6 +45,16 @@
           "errors": { "type": "array", "items": { "type": "object", "properties": { "field": { "type": "string" }, "message": { "type": "string" } } } }
         },
         "required": ["type", "title", "status"]
+      },
+      "Page": {
+        "type": "object",
+        "description": "Pagination metadata for the list envelope (HRA-38). Offset-based.",
+        "properties": {
+          "limit": { "type": "integer", "description": "Window size returned." },
+          "offset": { "type": "integer", "description": "Rows skipped before this window." },
+          "total": { "type": "integer", "description": "Total rows matching the query (across all pages)." }
+        },
+        "required": ["limit", "offset", "total"]
       },
       "DateRangeInfo": {
         "type": "object",
@@ -220,7 +232,7 @@
       "get": {
         "tags": ["activities"], "summary": "List activities in a date range (any source)",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
-        "responses": { "200": { "description": "Bare array of activities (no pagination envelope — see HRA-38).", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Activity" } } } } } }
+        "responses": { "200": { "description": "Bare array of activities (no pagination envelope — see HRA-38).", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Activity" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } }
       },
       "delete": {
         "tags": ["activities"], "summary": "Soft-delete activities in a date range (moves to trash)",
@@ -232,7 +244,7 @@
       "get": { "tags": ["activities"], "summary": "Count activities in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
     },
     "/api/activities/trash": {
-      "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } } } } } } }
+      "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/activities/{id}": {
       "get": {
@@ -279,38 +291,38 @@
       "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/summary": {
-      "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } } } } } } }
+      "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/weekly": {
-      "get": { "tags": ["trends"], "summary": "Weekly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Weekly points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/WeeklyPoint" } } } } } } }
+      "get": { "tags": ["trends"], "summary": "Weekly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Weekly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/WeeklyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/monthly": {
-      "get": { "tags": ["trends"], "summary": "Monthly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } } } } } } }
+      "get": { "tags": ["trends"], "summary": "Monthly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/body-measurements/range": {
       "get": { "tags": ["body"], "summary": "Min/max body-measurement date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
     },
     "/api/body-measurements": {
-      "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } } } } } } },
+      "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
     },
     "/api/body-measurements/count": {
       "get": { "tags": ["body"], "summary": "Count body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
     },
     "/api/body-measurements/monthly": {
-      "get": { "tags": ["body"], "summary": "Monthly body averages", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly body points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMonthlyPoint" } } } } } } }
+      "get": { "tags": ["body"], "summary": "Monthly body averages", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly body points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMonthlyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/body-measurements/correlation": {
       "get": {
         "tags": ["body"], "summary": "Weekly km vs avg weight correlation",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
         "responses": {
-          "200": { "description": "Weekly km + avg weight points; [] when there is no overlapping data (HRA-32).", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/CorrelationPoint" } } } } }
+          "200": { "description": "Weekly km + avg weight points; [] when there is no overlapping data (HRA-32).", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/CorrelationPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } }
         }
       }
     },
     "/api/body-measurements/trash": {
-      "get": { "tags": ["body"], "summary": "List soft-deleted (not purged) body measurements", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/BodyTrashRow" } } } } } } }
+      "get": { "tags": ["body"], "summary": "List soft-deleted (not purged) body measurements", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/body-measurements/restore": {
       "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }

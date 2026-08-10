@@ -9,10 +9,13 @@ import type { DatabaseSync } from "node:sqlite";
 export function createBodyRepo(db: DatabaseSync) {
   const bodyRange   = db.prepare("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM body_measurements WHERE deleted_at IS NULL");
   const bodyList    = db.prepare("SELECT measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY measured_at ASC");
+  const bodyListPage = db.prepare("SELECT measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY measured_at ASC LIMIT ? OFFSET ?");
   const bodyMonthly = db.prepare("SELECT strftime('%Y-%m',date_only) AS month,ROUND(AVG(weight_kg),2) AS avg_weight,ROUND(MIN(weight_kg),2) AS min_weight,ROUND(MAX(weight_kg),2) AS max_weight,ROUND(AVG(fat_ratio),1) AS avg_fat_ratio,ROUND(AVG(muscle_mass_kg),2) AS avg_muscle_mass FROM body_measurements WHERE date_only BETWEEN ? AND ? AND weight_kg IS NOT NULL AND deleted_at IS NULL GROUP BY month ORDER BY month");
   const bodyDeleteRange  = db.prepare("UPDATE body_measurements SET deleted_at = datetime('now') WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
   const bodyCountInRange = db.prepare("SELECT COUNT(*) AS count FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
   const bodyTrash        = db.prepare("SELECT id,measured_at,date_only,weight_kg,deleted_at FROM body_measurements WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC");
+  const bodyTrashPage    = db.prepare("SELECT id,measured_at,date_only,weight_kg,deleted_at FROM body_measurements WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
+  const bodyTrashCount   = db.prepare("SELECT COUNT(*) AS count FROM body_measurements WHERE deleted_at IS NOT NULL AND purged = 0");
   const restoreBodyById  = db.prepare("UPDATE body_measurements SET deleted_at = NULL WHERE id = ? AND purged = 0");
   // Keeps measured_at (blocks sync-withings.ts's INSERT OR IGNORE from
   // resurrecting it) + date_only; wipes every actual measurement value.
@@ -28,9 +31,12 @@ export function createBodyRepo(db: DatabaseSync) {
   return {
     dateRange:    () => bodyRange.get(),
     list:         (from: string, to: string) => bodyList.all(from, to),
+    listPage:     (from: string, to: string, limit: number, offset: number) => bodyListPage.all(from, to, limit, offset),
     monthly:      (from: string, to: string) => bodyMonthly.all(from, to),
     countInRange: (from: string, to: string) => bodyCountInRange.get(from, to),
     trash:        () => bodyTrash.all(),
+    trashPage:    (limit: number, offset: number) => bodyTrashPage.all(limit, offset),
+    trashCount:   () => bodyTrashCount.get(),
     correlation:  (from: string, to: string) => correlation.all(from, to),
     softDeleteRange: (from: string, to: string) => bodyDeleteRange.run(from, to),
     restoreById:  (id: number) => restoreBodyById.run(id),
