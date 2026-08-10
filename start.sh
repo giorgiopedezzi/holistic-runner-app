@@ -64,9 +64,13 @@ if $SERVER_UP && $UI_UP; then
 fi
 
 if ! $SERVER_UP; then
-  warn "Starting API server…"
+  warn "Starting API server… (--watch: auto-restarts on source changes)"
   cd "$BACKEND" || exit 1
-  node src/server.ts &
+  # --watch so the backend picks up code changes automatically. Without it the
+  # server keeps serving whatever code it started with (Vite HMR does reload the
+  # frontend, so the two silently drift apart — e.g. FE on /api/v1 vs a stale BE
+  # on /api → everything 404s).
+  node --watch src/server.ts &
   SERVER_PID=$!
   echo "  PID: $SERVER_PID"
 fi
