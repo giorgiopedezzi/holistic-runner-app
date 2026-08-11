@@ -105,24 +105,29 @@ a stop at km 3.80.
 - [ ] The **Chart / Table** toggle on a card switches to a table showing the same series.
 - [ ] The correlation chart (weekly km vs avg weight, dual axis) renders both series.
 
-## 9. ⚠ Chart-completeness check — the one migration-specific risk
+## 9. Chart-completeness check — migration-specific *(risk now mitigated)*
 
-React 19 renames the element symbol to `react.transitional.element`; the installed `react-is@18` (a
-Recharts peer that npm does **not** auto-upgrade) still matches `react.element`. Verified empirically:
-`react-is@18.isFragment()` returns **false** for React 19 elements. Recharts uses `isFragment` in
-`toArray()` to flatten fragment children, so *if* any chart child were wrapped in a fragment, those series
-would silently vanish — **no error, just a missing line**. Static analysis found zero fragments inside
-chart elements, so this should be nil-impact; this check confirms it empirically.
+React 19 renames the element symbol to `react.transitional.element`, while `react-is@18` still matched
+`react.element` — so `isFragment()` returned **false** for every React 19 element. Recharts uses
+`isFragment` in `toArray()` to flatten fragment children, so a fragment wrapping chart children would have
+silently dropped those series (no error, just a missing line).
 
-- [ ] **Count the series in every chart** and confirm none is missing versus React 18 behaviour:
+**Resolved:** a *scoped* override pins `react-is` to 19 for Recharts only, leaving `pretty-format`'s
+test-only `react-is@17` untouched:
+
+```json
+"overrides": { "recharts": { "react-is": "^19.0.0" } }
+```
+
+Verified end-to-end after the override: `isFragment(<></>)` → `true`, and Recharts' own `toArray()`
+recovers **2** children from a 2-child fragment (previously 1, unflattened). These checks are therefore
+now a confirmation, not a hunt:
+
+- [ ] **Count the series in every chart** and confirm none is missing:
       - [ ] Activity detail: Speed/Pace line + each enabled optional metric line + pause-flag scatter.
       - [ ] Overview per-sport chart: distance bars + pace line + HR line + 6 reference lines + legend.
       - [ ] Body primary chart: 3 series + reference line. Correlation chart: 2 series.
 - [ ] No chart renders as an **empty axis frame with no data** while its table/stat equivalent shows data.
-
-> If any series is missing, the fix is one line in `garmin-dashboard/package.json` —
-> `"overrides": { "react-is": "^19.0.0" }` — then `npm install`. This was deliberately **not** applied
-> (it is a transitive major bump; see HRA-64).
 
 ## 10. Settings
 
