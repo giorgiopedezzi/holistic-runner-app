@@ -27,22 +27,31 @@ export function createSettingsController(ctx: AppContext) {
 
   const get: Handler = (_req, res) => send(res, repo.get());
 
-  // PUT /api/v1/settings/thresholds — the outlier + trend thresholds as one named
-  // sub-resource. The Settings Save always sends the whole group, so this is a full
-  // replacement (all four fields required) → PUT, not PATCH (rest-api §2, HRA-40).
-  const updateThresholds: Handler = async (req, res) => {
+  // PUT /api/v1/settings/outliers — the Outlier-detection card's three values,
+  // submitted together by its Save button → full replacement of that sub-resource
+  // → PUT (rest-api §2, HRA-40). Its own path (not /thresholds): one card = one
+  // sub-resource; the path names exactly what the body modifies.
+  const updateOutliers: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);
     const speedDelta = Number(body.outlier_speed_delta_per_sec);
     const cadenceDelta = Number(body.outlier_cadence_delta_per_sec);
     const minSpeedKmh = Number(body.outlier_min_speed_kmh);
-    const minTrendGroupSize = Number(body.min_trend_group_size);
     if (!Number.isFinite(speedDelta) || speedDelta <= 0 || !Number.isFinite(cadenceDelta) || cadenceDelta <= 0 || !Number.isFinite(minSpeedKmh) || minSpeedKmh < 0) {
       throw unprocessable("outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec and outlier_min_speed_kmh must be positive numbers (outlier_min_speed_kmh may be 0).");
     }
+    repo.updateOutliers({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh });
+    return send(res, repo.get());
+  };
+
+  // PUT /api/v1/settings/thresholds — the Overview & Trends card's single value
+  // (min trend group size), sent whole → PUT (rest-api §2, HRA-40).
+  const updateThresholds: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    const minTrendGroupSize = Number(body.min_trend_group_size);
     if (!Number.isInteger(minTrendGroupSize) || minTrendGroupSize < 2) {
       throw unprocessable("min_trend_group_size must be an integer of at least 2.");
     }
-    repo.updateThresholds({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh, $min_trend_group_size: minTrendGroupSize });
+    repo.updateThresholds({ $min_trend_group_size: minTrendGroupSize });
     return send(res, repo.get());
   };
 
@@ -126,5 +135,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, backgroundImage, uploadBackground };
 }

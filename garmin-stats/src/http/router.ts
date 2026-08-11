@@ -76,13 +76,15 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
       }
 
-      // Settings writes: each field-group is its own sub-resource, replaced in FULL
-      // → PUT (idempotent), not PATCH. The thresholds group (outlier + trend) is a
-      // named sub-resource written whole by the Settings Save; the four appearance
-      // singletons each replace one value. There is deliberately NO write through
-      // the parent /settings — a path claiming "all settings" that only touches a
-      // subset is dishonest about scope (rest-api §1/§2, HRA-40 corrected).
+      // Settings writes: one sub-resource per Settings card, each replaced in FULL
+      // → PUT (idempotent), not PATCH. The Outlier-detection card → /settings/outliers
+      // (three values) and the Overview & Trends card → /settings/thresholds (one
+      // value) are separate paths — one card = one sub-resource; the four appearance
+      // singletons each replace one value. There is deliberately NO write through the
+      // parent /settings — a path claiming "all settings" that only touches a subset
+      // is dishonest about scope (rest-api §1/§2, HRA-40).
       if (req.method === "PUT") {
+        if (route === "/api/v1/settings/outliers")        return await settings.updateOutliers(req, res, url);
         if (route === "/api/v1/settings/thresholds")      return await settings.updateThresholds(req, res, url);
         if (route === "/api/v1/settings/theme")           return await settings.updateTheme(req, res, url);
         if (route === "/api/v1/settings/background")      return await settings.updateBackground(req, res, url);

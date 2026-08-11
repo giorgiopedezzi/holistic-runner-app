@@ -180,15 +180,30 @@ test("PUT /api/v1/settings/theme persists a valid theme and rejects an invalid o
   });
 });
 
-test("PUT /api/v1/settings/thresholds persists valid outlier thresholds and rejects bad ones", async () => {
+test("PUT /api/v1/settings/outliers persists the three outlier values, leaves the trend threshold untouched, rejects bad ones", async () => {
   await withServer(async (s) => {
-    const body = { outlier_speed_delta_per_sec: 3, outlier_cadence_delta_per_sec: 70, outlier_min_speed_kmh: 5, min_trend_group_size: 4 };
-    const ok = await s.api("/api/v1/settings/thresholds", putJson(body));
+    const body = { outlier_speed_delta_per_sec: 3, outlier_cadence_delta_per_sec: 70, outlier_min_speed_kmh: 5 };
+    const ok = await s.api("/api/v1/settings/outliers", putJson(body));
     assert.equal(ok.status, 200);
-    assert.equal((ok.json as { min_trend_group_size: number }).min_trend_group_size, 4);
+    const row = ok.json as { outlier_cadence_delta_per_sec: number; min_trend_group_size: number };
+    assert.equal(row.outlier_cadence_delta_per_sec, 70);
+    assert.equal(row.min_trend_group_size, 5); // sub-resource isolation: /outliers must NOT touch the trend threshold (seeded default 5)
 
-    const bad = await s.api("/api/v1/settings/thresholds", putJson({ ...body, outlier_speed_delta_per_sec: -1 }));
+    const bad = await s.api("/api/v1/settings/outliers", putJson({ ...body, outlier_speed_delta_per_sec: -1 }));
     assert.equal(bad.status, 422); // validation failure — HRA-37
+  });
+});
+
+test("PUT /api/v1/settings/thresholds persists the trend-grouping value, leaves the outliers untouched, rejects bad ones", async () => {
+  await withServer(async (s) => {
+    const ok = await s.api("/api/v1/settings/thresholds", putJson({ min_trend_group_size: 4 }));
+    assert.equal(ok.status, 200);
+    const row = ok.json as { min_trend_group_size: number; outlier_speed_delta_per_sec: number };
+    assert.equal(row.min_trend_group_size, 4);
+    assert.equal(row.outlier_speed_delta_per_sec, 2.0); // sub-resource isolation: /thresholds must NOT touch the outliers (seeded default 2.0)
+
+    const bad = await s.api("/api/v1/settings/thresholds", putJson({ min_trend_group_size: 1 }));
+    assert.equal(bad.status, 422); // < 2 — validation failure
   });
 });
 

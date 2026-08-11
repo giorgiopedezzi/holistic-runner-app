@@ -333,11 +333,19 @@
     "/api/v1/settings": {
       "get": { "tags": ["settings"], "summary": "Get settings (read-all). Writes go to the sub-resources below — there is no write through the parent.", "responses": { "200": { "description": "Settings row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } } }
     },
+    "/api/v1/settings/outliers": {
+      "put": {
+        "tags": ["settings"], "summary": "Replace the outlier-detection settings (Outlier-detection card)",
+        "description": "The card's three values are submitted together by its Save → full replacement of this sub-resource → PUT (idempotent). All three fields required. (A field-level PATCH may be added later if a partial-write consumer appears — non-breaking; deliberately omitted now, YAGNI.)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["outlier_speed_delta_per_sec", "outlier_cadence_delta_per_sec", "outlier_min_speed_kmh"], "properties": { "outlier_speed_delta_per_sec": { "type": "number" }, "outlier_cadence_delta_per_sec": { "type": "number" }, "outlier_min_speed_kmh": { "type": "number" } } } } } },
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/settings/thresholds": {
       "put": {
-        "tags": ["settings"], "summary": "Replace the outlier + trend thresholds (full group)",
-        "description": "The four thresholds are written as one unit by the Settings Save → full replacement → PUT (idempotent). All four fields are required.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["outlier_speed_delta_per_sec", "outlier_cadence_delta_per_sec", "outlier_min_speed_kmh", "min_trend_group_size"], "properties": { "outlier_speed_delta_per_sec": { "type": "number" }, "outlier_cadence_delta_per_sec": { "type": "number" }, "outlier_min_speed_kmh": { "type": "number" }, "min_trend_group_size": { "type": "integer", "minimum": 2 } } } } } },
+        "tags": ["settings"], "summary": "Replace the trend-grouping threshold (Overview & Trends card)",
+        "description": "One value, sent whole → full replacement → PUT (idempotent).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["min_trend_group_size"], "properties": { "min_trend_group_size": { "type": "integer", "minimum": 2 } } } } } },
         "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },

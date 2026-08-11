@@ -141,14 +141,16 @@ export const api = {
   },
   settings: {
     get:    ()               => request<Settings>("/api/v1/settings"),
-    // Each settings write targets its own sub-resource and replaces it in full →
-    // PUT (idempotent), not PATCH; there is no write through the parent /settings
-    // (HRA-40, rest-api §1/§2). updateThresholds sends the whole 4-field group
-    // (outlier + trend), which is exactly what the Settings Save always submits.
-    updateThresholds: (s: Settings) => request<Settings>("/api/v1/settings/thresholds", "PUT", undefined, {
+    // One dedicated PUT per Settings card — each replaces only its own sub-resource
+    // (HRA-40, rest-api §1/§2). There is no write through the parent /settings and
+    // no combined call. updateOutliers = the Outlier-detection card's three values;
+    // updateThresholds = the Overview & Trends card's single trend-grouping value.
+    updateOutliers: (s: Settings) => request<Settings>("/api/v1/settings/outliers", "PUT", undefined, {
       outlier_speed_delta_per_sec: s.outlier_speed_delta_per_sec,
       outlier_cadence_delta_per_sec: s.outlier_cadence_delta_per_sec,
       outlier_min_speed_kmh: s.outlier_min_speed_kmh,
+    }),
+    updateThresholds: (s: Settings) => request<Settings>("/api/v1/settings/thresholds", "PUT", undefined, {
       min_trend_group_size: s.min_trend_group_size,
     }),
     setTheme: (theme: StoredTheme) => request<Settings>("/api/v1/settings/theme", "PUT", undefined, { theme }),

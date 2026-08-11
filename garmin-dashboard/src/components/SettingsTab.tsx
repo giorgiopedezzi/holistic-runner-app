@@ -241,8 +241,13 @@ export function SettingsTab({ appearance }: Props) {
   const [draft, setDraft] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [justSaved, setJustSaved] = useState(false);
+  // Which card is mid-save / just-saved — one card = one sub-resource, so the two
+  // explicit-save cards (Outlier detection, Overview & Trends) each save
+  // independently, hitting their own PUT endpoint (HRA-40). Keyed rather than two
+  // boolean pairs so only the clicked card shows its own "Saving…/Saved".
+  type SaveKey = "outliers" | "trend";
+  const [savingKey, setSavingKey] = useState<SaveKey | null>(null);
+  const [justSavedKey, setJustSavedKey] = useState<SaveKey | null>(null);
 
   useEffect(() => {
     api.settings.get()
@@ -251,29 +256,33 @@ export function SettingsTab({ appearance }: Props) {
       .finally(() => setLoading(false));
   }, []);
 
-  const dirty = !!draft && !!saved && (
+  const outliersDirty = !!draft && !!saved && (
     draft.outlier_speed_delta_per_sec !== saved.outlier_speed_delta_per_sec ||
     draft.outlier_cadence_delta_per_sec !== saved.outlier_cadence_delta_per_sec ||
-    draft.outlier_min_speed_kmh !== saved.outlier_min_speed_kmh ||
-    draft.min_trend_group_size !== saved.min_trend_group_size
+    draft.outlier_min_speed_kmh !== saved.outlier_min_speed_kmh
   );
+  const trendDirty = !!draft && !!saved && draft.min_trend_group_size !== saved.min_trend_group_size;
 
-  async function handleSave() {
-    if (!draft || !dirty) return;
-    setSaving(true);
-    setJustSaved(false);
+  // Each card persists ONLY its own sub-resource (no combined write). The backend
+  // returns the whole settings row, so saved+draft stay fully in sync either way.
+  async function saveCard(key: SaveKey, put: (s: Settings) => Promise<Settings>) {
+    if (!draft) return;
+    setSavingKey(key);
+    setJustSavedKey(null);
     setError(null);
     try {
-      const updated = await api.settings.updateThresholds(draft);
+      const updated = await put(draft);
       setSaved(updated);
       setDraft(updated);
-      setJustSaved(true);
+      setJustSavedKey(key);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save settings");
     } finally {
-      setSaving(false);
+      setSavingKey(null);
     }
   }
+  const saveOutliers = () => saveCard("outliers", api.settings.updateOutliers);
+  const saveThresholds = () => saveCard("trend", api.settings.updateThresholds);
 
   // Immediate-apply, like theme/units/background — a "how I browse
   // activities" preference reads as a click-and-done toggle, not a form
@@ -285,14 +294,15 @@ export function SettingsTab({ appearance }: Props) {
     setDraft(updated);
   }
 
-  // Shared by both explicit-save cards below (Overview & Trends, Outlier
-  // detection) — one dirty/save state covers both, so either card's button
-  // persists the whole threshold group in one PUT /api/v1/settings/thresholds call.
-  function SaveBar() {
+  // One SaveBar per explicit-save card (Outlier detection, Overview & Trends).
+  // Each has its own dirty state and its own save handler → persists only that
+  // card's sub-resource (one card = one sub-resource, HRA-40).
+  function SaveBar({ cardKey, dirty, onSave }: { cardKey: SaveKey; dirty: boolean; onSave: () => void }) {
+    const saving = savingKey === cardKey;
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
         <button
-          onClick={handleSave}
+          onClick={onSave}
           disabled={!dirty || saving}
           style={{
             fontSize: 13, padding: "6px 16px", borderRadius: 6, border: "none",
@@ -303,7 +313,7 @@ export function SettingsTab({ appearance }: Props) {
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {justSaved && !dirty && <span style={{ fontSize: 12, color: "var(--accent-green)" }}>Saved</span>}
+        {justSavedKey === cardKey && !dirty && <span style={{ fontSize: 12, color: "var(--accent-green)" }}>Saved</span>}
       </div>
     );
   }
@@ -373,7 +383,7 @@ export function SettingsTab({ appearance }: Props) {
               onChange={v => setDraft(d => d && { ...d, min_trend_group_size: Math.round(v) })}
               min={2} step={1}
             />
-            <SaveBar />
+            <SaveBar cardKey="trend" dirty={trendDirty} onSave={saveThresholds} />
           </>
         )}
       </Card>
@@ -426,7 +436,7 @@ export function SettingsTab({ appearance }: Props) {
               </div>
             </div>
 
-            <SaveBar />
+            <SaveBar cardKey="outliers" dirty={outliersDirty} onSave={saveOutliers} />
           </>
         )}
       </Card>
