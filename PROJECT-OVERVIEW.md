@@ -54,7 +54,7 @@ itself never leaves the machine either. Concretely:
 | AI classifier | `domain/workout-metrics.ts`, `integrations/ollama.ts`, `domain/stats-classifier.ts` | Reduces a run's raw track points into a compact summary, then classifies it via either a local LLM or deterministic rules — two independently-stored results per activity, so both can be run and compared before either is confirmed as ground truth. |
 | Storage & API | `db.ts`, `server.ts`, `config.ts` | SQLite schema (with soft-delete/trash/purge for both activities and body measurements) and a local REST API on port 3001 covering activities, body measurements, sync triggers, settings, and the classifier workflow. |
 
-### Frontend — `garmin-dashboard/` (Vite + React 18 + TypeScript, strict)
+### Frontend — `garmin-dashboard/` (Vite + React 19 + TypeScript, strict)
 
 Five tabs, all reading from the local API, no client-side data fetching outside an explicit
 "Load data" action:
@@ -85,10 +85,37 @@ it end to end — parsing binary file formats, designing the SQLite schema, wiri
 building the React components and charts. Every feature in this repo went through that
 human-directs / AI-implements / human-verifies loop rather than being hand-written.
 
+## How the AI's context is governed
+
+The assistant reads a context file (`CLAUDE.md`) at the start of every session, before anything is
+asked of it — so that file's size is a permanent tax on every piece of work in this repo. It
+carried a maintenance rule telling each session to record what had changed, and no rule about what
+to take out. It reached **15,390 words**, of which roughly 7% were rules the assistant must always
+follow; the rest was reference material that only mattered when working in one specific area.
+Nothing was written carelessly — every addition was correct when it was made. The file got worse
+one good decision at a time.
+
+It was split in August 2026. `CLAUDE.md` now holds only what **prevents a mistake** — the agent
+code of conduct, the skill manifest, the repository map, the stack constraints, and the FIT
+parser's do-not-regress invariants. Everything that merely **describes** the system moved into
+`docs/`, reachable from a routing table in `CLAUDE.md` itself. Always-on context went from 15,390
+to **3,437 words, a 78% reduction**, with the material preserved and relocated rather than
+summarised away.
+
+The maintenance rule now has both halves. A section stays resident only if it prevents a mistake
+rather than describes the system; anything moved must appear in the routing table, since a file
+nothing points at is invisible in practice; and settled history is deleted rather than filed,
+because that is what the git log is for. The one deliberate exception is the FIT parser section —
+expensive, and resident anyway, because every line in it is a binary-format field number that was
+already got wrong once. Function decides what stays, not size.
+
 ## Current limitations & gaps
 
-- **No automated test suite.** Correctness currently rests on `tsc --noEmit` (strict TypeScript
-  in both projects) plus manual verification — there are no unit or integration tests.
+- **Test coverage is thin, not absent.** Both projects have suites — `node --test` for the backend
+  (`npm test` in `garmin-stats/`), Vitest for the frontend — plus an HTTP golden-master snapshot
+  script (`tests/snapshot.sh`). What exists is unit coverage over the pure domain logic (FIT
+  parser, workout metrics, statistical classifier) and a handful of smoke/regression tests, not
+  broad component or end-to-end coverage. A deliberate frontend test baseline is planned work.
 - **Strava integration is implemented but not yet exercised with real credentials** — the OAuth
   routes and status checks are verified against a placeholder `client_id`/`client_secret` in
   `config.json`; the actual token exchange and a live sync run are still pending real API
