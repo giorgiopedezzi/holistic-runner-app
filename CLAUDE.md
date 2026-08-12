@@ -16,18 +16,25 @@ The user runs everything locally on **Windows 11**, uses **Git Bash** as the ter
 Applies to **every session in this repo**, whether or not a slash command was used, and to every
 subagent spawned from one. These are constraints, not suggestions.
 
-1. **Gate 1 precondition — do not start work on a Story unless both `Model`
-   (`customfield_10116`) and `Cost Tier` (`customfield_10117`) are filled.** If either is empty,
-   STOP and ask the human to set them. An unfilled field means the Ready-to-Develop gate was not
-   actually passed; starting anyway silently converts a human decision into an agent default.
-2. **Never write the governance fields.** `Contributor Type` (`10114`), `Agent` (`10115`), `Model`
-   (`10116`), `Cost Tier` (`10117`), `Review Outcome` (`10118`) are set by the **human** — at the
-   gate, and at review. Read them; obey them; never modify them. An agent does not size its own
-   compute or grade its own work.
-3. **Run at the `Model` and `Cost Tier` the Story specifies.** If, having done the work, you believe
-   the tier was wrong for this slice, say so in the In Review comment with specific evidence (where
-   you struggled, what it cost, what you would have needed). That is a **proposal for the human**,
-   not a change you make.
+1. **Do not start a Story unless both `Model` (`customfield_10116`) and `Planned thinking effort`
+   (`customfield_10117`) are filled.** If either is empty, STOP and ask the human to set it. An
+   unfilled field means the Ready-to-Develop gate was not actually passed; starting anyway silently
+   converts a human decision into an agent default.
+2. **Never write the decision fields.** `Contributor Type` (`10114`), `Agent` (`10115`), `Model`
+   (`10116`), `Planned thinking effort` (`10117`), `Review Outcome` (`10118`) are set by the
+   **human** — at the gate, and at review. Read them; obey them; never modify them. An agent does
+   not size its own compute or grade its own work.
+   **The one exception is `Actual thinking effort` (`10152`): you DO fill it, at In Review, by the
+   rule below.** It is a *measurement*, not a decision — and leaving it to be filled by hand means
+   it gets filled only for the memorable Stories, which biases the record worse than any noise. Jira
+   history shows who set it, so a human override stays visible. Fill it **by the stated criteria,
+   never by impression.**
+3. **Run at the `Model` and `Planned thinking effort` the Story specifies** — see the next section
+   for what each value means. **State both in your first line of output**, with what they commit you
+   to. An unstated effort is an unfollowed effort, and it leaves the human nothing to check but your
+   word. If the level turns out to be wrong, report **observable evidence** in the In Review comment
+   — which files you had to re-read, how many passes a fix took, where you stopped — so the human
+   can set `Actual thinking effort` from facts rather than from your opinion of your own work.
 4. **Stop at In Review.** Transition the Story to In Review, post a PR-style comment, then STOP.
    Nothing moves to Done. The green light is a manual human act — deliberately not automated, and
    deliberately not hooked.
@@ -40,6 +47,90 @@ subagent spawned from one. These are constraints, not suggestions.
 
 *Verification is the human's job:* at review, check Jira issue history for edits to the fields in
 rule 2. A rule nobody checks is theatre.
+
+**Policy epoch — do NOT backfill.** These fields are mandatory for Stories entering Ready to Develop
+from **2026-08-12**. Nulls on earlier issues (e.g. HRA-64) are **pre-policy, not violations**, and
+must never be filled in retrospectively. A backfilled value records a reconstruction made with
+hindsight, is indistinguishable from a real one once written, and silently corrupts the only thing
+these fields are for — measuring how well a human's *up-front* call matched what the work needed.
+
+---
+
+## `Model`, `Planned` and `Actual thinking effort` — what the values commit you to
+
+Three fields, three different owners and mechanics. Confusing them is how rule 3 becomes decorative:
+
+- **`Model` (`10116`) is not agent-actionable.** It is bound when the session launches. You cannot
+  change the model you are running on. **Read it, compare it to the model you are actually running
+  as, and STOP if they differ** — report the mismatch and let the human relaunch. Never proceed on
+  the wrong model and never write the field to match reality.
+- **`Planned thinking effort` (`10117`) IS agent-actionable.** Set by the human at Gate 1. It is the
+  one *you* execute: it governs deliberation, exploration breadth, and verification depth.
+- **`Actual thinking effort` (`10152`) is a measurement you record at In Review.** What the work
+  turned out to need. Set it **by the criteria below**, and state in the comment which criterion
+  fired. The human overrides if they disagree — Jira history keeps the two visibly distinct.
+
+  **Decide it by rule, not by impression.** Left to impression you will under-report over-tiering:
+  under-tiering announces itself (you get stuck), while over-tiering feels like competence, and
+  "the level was right" is always the comfortable answer after spending it. Over-tiering is the one
+  error nothing else in this workflow catches, so it is the one the rule has to protect.
+
+  | Set `Actual` … | when ANY of these is true |
+  |---|---|
+  | **above** `Planned` | you read files the Story did not name · a fix took more than two attempts · you had to stop and ask · you discovered a constraint the Story did not mention |
+  | **below** `Planned` | no exploration beyond the named files was needed · no alternative was seriously weighed · the first attempt passed its acceptance criteria unchanged |
+  | **equal** to `Planned` | neither list fired |
+
+  Report the facts in the comment either way — passes taken, unnamed files opened, where you
+  stopped — so the human can check the value against the evidence rather than take your word.
+
+  Both effort fields carry the **same option set** — if the lists ever diverge, planned and actual
+  stop being comparable and the metric dies silently.
+
+### `Model` (`customfield_10116`)
+
+| Value | Use for |
+|---|---|
+| `claude-opus-5` | Planning, design, ambiguous specs, high blast radius — anything where the *approach* is the hard part. |
+| `claude-sonnet-5` | Implementing an approved slice whose acceptance criteria are the oracle. |
+
+### `Planned thinking effort` (`customfield_10117`)
+
+Read the level from the Story. Then obey the row. Levels are ordered least → most; if the Story
+carries a level above `high`, treat it as `high` plus: exhaust the alternatives before choosing, and
+state explicitly what you are still uncertain about.
+
+| Level | Deliberate | Explore | Verify |
+|---|---|---|---|
+| **low** | Act directly. No extended thinking. | Only the files the Story names. No subagents. | Run the existing suite. |
+| **medium** | Plan before editing. State the plan in one paragraph. | The slice plus its immediate callers. No subagents. | Suite + typecheck. Walk the acceptance criteria one by one. |
+| **high** | Ultrathink. Consider at least one alternative and say why you rejected it. | Broad exploration allowed. Subagents permitted. | Suite + typecheck + a live or manual check wherever behaviour is observable. State what could still be wrong. |
+
+**Default: `claude-sonnet-5` + `medium`.** A well-specified Epic and Story have already spent the
+expensive thinking — the oracle has moved from the model's judgment to the acceptance criteria.
+Raise the level only when the slice **defines** the oracle (a test baseline, the first slice of an
+epic) or when failure would be **silent** (a load-bearing constraint no test guards).
+
+**Never change your own effort mid-slice.** Not upward (self-raising is self-granting) and not
+downward — *"this is simpler than planned"* is the **least reliable judgment you can make**: the
+moments a task feels trivial are disproportionately the moments something has been missed, and the
+resulting under-verification is silent. Whether to stop is decided by **how early you are**, not by
+which direction is wrong:
+
+- **Gross and early → STOP and ask.** `high` on what turns out to be a one-line change, spotted
+  *before* the broad exploration and subagents run. A tier's cost is mostly front-loaded (planning,
+  exploration, subagents; only deeper verification is back-loaded), so this is the one moment where
+  stopping actually saves money.
+- **Anything later → finish, then report.** Once the front-loaded work is spent, a round-trip
+  through the human costs more than the tail it recovers — and their attention is not free either.
+
+**Per-Story haggling is the wrong lever anyway.** Over-tiering is corrected by the human setting
+`Planned` lower next time, once the planned-vs-actual delta shows a systematic pattern. One Story's
+overspend is noise; ten Stories of it is a number — and acting on that number costs nothing and
+risks nothing, unlike an agent trimming its own work.
+
+**Effort is a deliberation dial, not a spend cap.** It changes how much thinking and searching
+happen. It does not guarantee a cost.
 
 ---
 
@@ -235,7 +326,8 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
   | `Contributor Type` | `customfield_10114` | Human · AI · Hybrid *(casing unverified)* |
   | `Agent` | `customfield_10115` | e.g. "Claude Code" *(casing unverified)* |
   | `Model` | `customfield_10116` | e.g. `claude-sonnet-5` *(casing unverified)* |
-  | `Cost Tier` | `customfield_10117` | Low · Medium · High *(casing unverified)* |
+  | `Planned thinking effort` | `customfield_10117` | ⚠️ renamed from "Cost Tier" 2026-08-12, options re-cut to match Claude's own effort levels — **exact option strings and ids NOT yet verified against Jira.** Read a live issue's value before setting. The field id survives the rename. |
+  | `Actual thinking effort` | `customfield_10152` | New 2026-08-12. **Same option set as `10117`** (they must stay identical or planned-vs-actual is not comparable). **The one field the agent writes** — at In Review, by the criteria in the effort section, never by impression. Human overrides; history keeps them distinct. |
   | `Review Outcome` | `customfield_10118` | Accepted · Edited · Rejected *(casing unverified)* |
   | `Category` | `customfield_10119` | ✅ `Technical Improvement` (id **10049**) · ✅ `Enabler/Infrastructure` (id **10051**) · Business Functionality · Research/Spike · Bug *(last three: casing unverified)* |
 

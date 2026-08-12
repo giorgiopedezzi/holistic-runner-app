@@ -13,19 +13,23 @@ Fetch `$ARGUMENTS` from Jira (cloudId `2e4f6af1-c76d-45be-9a00-ca9f30589199`, pr
 Read its description, acceptance criteria, parent Epic, and these fields:
 
 - `Model` = `customfield_10116`
-- `Cost Tier` = `customfield_10117` (Low | Medium | High)
+- `Planned thinking effort` = `customfield_10117`
 - `Category` = `customfield_10119`
+- `Actual thinking effort` = `customfield_10152` — **not an instruction; you SET it at In Review**
+  by the criteria in `CLAUDE.md`, never by impression.
 
-**Hard precondition — if `Model` or `Cost Tier` is empty, STOP.** Report which is missing and ask
-the human to set it. Do not fill them in yourself. Do not proceed "just this once".
+**Hard precondition — if `Model` or `Planned thinking effort` is empty, STOP.** Report which is
+missing and ask the human to set it. Do not fill them in yourself. Do not proceed "just this once".
 
 Also confirm the Story is in **Ready to Develop**. If it is in Backlog or Refinement, it has not
 passed Gate 1 — stop and say so.
 
 ## 2. State your run parameters before starting
-Print one line: the Story key, its `Model`, its `Cost Tier`, and the model you are **actually**
-running on. If the session's model does not match the Story's `Model` field, say so explicitly and
-stop — the human relaunches at the right model. Do not silently proceed on the wrong one.
+Print one line: the Story key, its `Model`, its `Thinking effort`, the model you are **actually**
+running on, and what that effort level commits you to (see `CLAUDE.md` → "`Model` and `Thinking
+effort` — what the values commit you to"). If the session's model does not match the Story's `Model`
+field, say so explicitly and stop — the human relaunches at the right model. Do not silently proceed
+on the wrong one. An unstated effort is an unfollowed effort.
 
 ## 3. Implement
 - Only the slice this Story describes. The plan and acceptance criteria are already approved —
@@ -49,7 +53,13 @@ Transition `$ARGUMENTS` to **In Review** and post a PR-style comment containing:
 - verification results (real numbers)
 - **deviations from the spec**, flagged explicitly — never silently absorbed
 - candidates spotted outside the slice
-- if you believe the `Cost Tier` was wrong for this slice: the evidence, as a proposal
+- **effort evidence + the value you set** — state the facts (passes taken, files you opened that the
+  Story did not name, whether you stopped), then say which criterion fired and what you therefore
+  set `Actual thinking effort` to. Facts first, value second, so the human can check one against
+  the other.
+
+**Set `Actual thinking effort` (`customfield_10152`)** by the criteria in `CLAUDE.md` — by rule, not
+by impression. It is the only field you write.
 
 Then **STOP**. Do not transition to Done. Do not set `Review Outcome`, `Contributor Type`, `Agent`,
-`Model`, or `Cost Tier` — the human sets those at review.
+`Model`, or `Planned thinking effort` — the human sets those.
