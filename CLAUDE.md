@@ -278,12 +278,14 @@ garmin_and_withings/
     ├── tsconfig.node.json            # types: ["node"] — covers vite.config.ts only
     └── src/
         ├── main.tsx
-        ├── App.tsx                   # tab routing, Load button, loadKey pattern
+        ├── App.tsx                   # tab routing; tabs render as {tab === "x" && <XTab/>} — a real
+        │                              #   unmount/remount, not a hide (load-bearing, see below)
         ├── index.css                 # CSS variables, 4 themes via [data-theme="…"] blocks — see "Appearance" below
         ├── api/client.ts             # all fetch calls — GET + POST/PUT + DELETE methods
         ├── types/api.ts              # shared types mirroring DB schema
         ├── hooks/
-        │   ├── useQuery.ts           # auto=false by default — fetches only on loadKey change
+        │   ├── useQuery.ts           # fires fn on every deps change (plain useEffect) — no `auto`
+        │   │                         #   param, no manual "Load" step
         │   ├── useDateRange.ts       # date range state + presets
         │   └── useAppearance.ts      # fetches + immediately applies theme/background/unit system; see "Appearance" below
         ├── utils/
@@ -331,7 +333,15 @@ garmin_and_withings/
 - **No CSS framework** — CSS variables only (defined in `index.css`)
 - **Path alias**: `@/` → `src/` (configured in both `vite.config.ts` and `tsconfig.json`)
 - **`import.meta.env`**: typed via `"types": ["vite/client"]` in `tsconfig.json`
-- **No auto-fetching**: `useQuery` has `auto=false` by default — data loads only when user clicks "↓ Load data" (increments `loadKey` in `App.tsx`, passed as dep to all tabs)
+- **`useQuery` fetches on every deps change** (a plain `useEffect`, no `auto`/manual-load step) — see
+  `docs/frontend.md` for the hook. Data loads whenever its deps (e.g. the date range) change.
+- **⚠️ LOAD-BEARING: tabs are conditionally rendered, not hidden — do not "optimise" this.**
+  `App.tsx` renders each tab as `{tab === "x" && <XTab/>}`. That is a real unmount/remount on every
+  tab switch, and `utils/units.ts` holds the resolved unit system in **module scope** — a tab only
+  picks up a unit-system change *because* switching tabs is a genuine remount, not a hide. Keeping
+  tabs mounted and toggling visibility with CSS, or memoising a tab subtree so it survives a switch,
+  would silently break unit propagation with no test or type error to catch it. See Epic **HRA-65**,
+  which forbids exactly this "optimisation" for the same reason.
 - **No `localStorage`** or browser storage APIs
 
 ---
