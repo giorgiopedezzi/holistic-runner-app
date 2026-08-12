@@ -49,8 +49,13 @@ subagent spawned from one. These are constraints, not suggestions.
 rule 2. A rule nobody checks is theatre.
 
 **Policy epoch — do NOT backfill.** These fields are mandatory for Stories entering Ready to Develop
-from **2026-08-12**. Nulls on earlier issues (e.g. HRA-64) are **pre-policy, not violations**, and
-must never be filled in retrospectively. A backfilled value records a reconstruction made with
+from **2026-08-12, ~17:30 CEST** (anchored to a verified Jira server timestamp, not a guessed clock
+read) — the point the field design itself stabilized, after several same-day revisions (Cost Tier →
+Planned/Actual thinking effort; the option set changed from three to six to the final five; option
+ids were only fully captured at this point). A bare date would be misleading: a Story groomed earlier
+the same day was groomed against a design that did not yet exist. Nulls on issues from before this
+point (e.g. HRA-64, and any Story groomed earlier on 2026-08-12) are **pre-policy, not violations**,
+and must never be filled in retrospectively. A backfilled value records a reconstruction made with
 hindsight, is indistinguishable from a real one once written, and silently corrupts the only thing
 these fields are for — measuring how well a human's *up-front* call matched what the work needed.
 
@@ -398,8 +403,10 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
   | `Contributor Type` | `customfield_10114` | Human · AI · Hybrid *(casing unverified)* |
   | `Agent` | `customfield_10115` | e.g. "Claude Code" *(casing unverified)* |
   | `Model` | `customfield_10116` | e.g. `claude-sonnet-5` *(casing unverified)* |
-  | `Planned thinking effort` | `customfield_10117` | Renamed from "Cost Tier" 2026-08-12. Options = the API's five effort values verbatim, **ordered**: `low` · `medium` · `high` · `xhigh` · `max`. ⚠️ Option ids re-cut 2026-08-12 — **none verified yet** (the old `Medium`=10044 predates the change). Read a live issue before setting. Vendor coupling is deliberate debt: Epic **HRA-82**. |
-  | `Actual thinking effort` | `customfield_10152` | New 2026-08-12. **Same option set as `10117`** (they must stay identical or planned-vs-actual is not comparable). **The one field the agent writes** — at In Review, by the criteria in the effort section, never by impression. Human overrides; history keeps them distinct. |
+  | `Planned thinking effort` | `customfield_10117` | Renamed from "Cost Tier" 2026-08-12. Options = the API's five effort values verbatim, **ordered**: `low` · `medium` · `high` · `xhigh` · `max`. ✅ Full set, human-confirmed 2026-08-12: `low`=**10043** · `medium`=**10044** (unchanged from before the re-cut) · `high`=**10045** · `xhigh`=**10160** · `max`=**10087**. Ids do **NOT** mirror `10152` — confirm by field, never assume parity. |
+  | `Actual thinking effort` | `customfield_10152` | New 2026-08-12. **Must carry the same option set as `10117`** (or planned-vs-actual is not comparable) — ids differ, values must not. ✅ Full set, human-confirmed 2026-08-12: `low`=**10121** · `medium`=**10122** · `high`=**10123** · `xhigh`=**10159** · `max`=**10125**. **The one field the agent writes** — at In Review, by the criteria in the effort section, never by impression. Human overrides; history keeps them distinct. |
+  ℹ️ Both `xhigh` ids (10159 / 10160) are consecutive — `xhigh` was added to both fields in the same
+  admin action, right after one another. Cross-checks the two sets against each other.
   | `Review Outcome` | `customfield_10118` | Accepted · Edited · Rejected *(casing unverified)* |
   | `Category` | `customfield_10119` | ✅ `Technical Improvement` (id **10049**) · ✅ `Enabler/Infrastructure` (id **10051**) · Business Functionality · Research/Spike · Bug *(last three: casing unverified)* |
 
