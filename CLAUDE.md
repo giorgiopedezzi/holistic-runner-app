@@ -96,20 +96,92 @@ Three fields, three different owners and mechanics. Confusing them is how rule 3
 
 ### `Planned thinking effort` (`customfield_10117`)
 
-Read the level from the Story. Then obey the row. Levels are ordered least → most; if the Story
-carries a level above `high`, treat it as `high` plus: exhaust the alternatives before choosing, and
-state explicitly what you are still uncertain about.
+Five levels, using the API's own values verbatim — **`low` · `medium` · `high` · `xhigh` · `max`** —
+so the field value *is* the effort setting, with no translation step. (Vendor coupling is deliberate
+debt: Epic **HRA-82**.) Each level is defined by **what you do**, not by how much you think. Read the
+level, then obey its row.
 
-| Level | Deliberate | Explore | Verify |
-|---|---|---|---|
-| **low** | Act directly. No extended thinking. | Only the files the Story names. No subagents. | Run the existing suite. |
-| **medium** | Plan before editing. State the plan in one paragraph. | The slice plus its immediate callers. No subagents. | Suite + typecheck. Walk the acceptance criteria one by one. |
-| **high** | Ultrathink. Consider at least one alternative and say why you rejected it. | Broad exploration allowed. Subagents permitted. | Suite + typecheck + a live or manual check wherever behaviour is observable. State what could still be wrong. |
+The ladder is **ordered**: `low < medium < high < xhigh < max`. That ordering is what makes the
+planned-vs-actual delta computable as higher / matched / lower.
 
-**Default: `claude-sonnet-5` + `medium`.** A well-specified Epic and Story have already spent the
-expensive thinking — the oracle has moved from the model's judgment to the acceptance criteria.
-Raise the level only when the slice **defines** the oracle (a test baseline, the first slice of an
-epic) or when failure would be **silent** (a load-bearing constraint no test guards).
+> **One axis per select.** These fields hold **one ordered dimension** and nothing else. Anything
+> orthogonal — a technique, a mode, a flag — goes in a **Jira label**, never in this option list.
+> `ultrathink` is the worked example: it is a prompt-level trigger, not an API effort value (it does
+> not change the effort parameter), it can be used *at any level*, and it has no place on the ladder.
+> Putting it in the select would make the delta ambiguous exactly at the top of the range, where the
+> spend is highest. If it ever needs recording, use `labels: [ultrathink]`.
+
+The levels differ in *kind*, not only degree: **`high` buys depth of judgment · `xhigh` buys coverage
+over a large surface · `max` buys independent verification.** Effort is *"a behavioral signal, not a
+strict token budget"* (official docs) — so these rows describe commitments, not budgets.
+
+**low** — *the answer is obvious before you start.*
+- Act directly. No extended thinking, no plan.
+- Touch only the files the Story names. No exploration, no subagents.
+- Run the existing suite.
+- Do **not** improve anything you pass on the way.
+
+**medium** — *an approved slice with verifiable criteria: routine refactor, everyday implementation.*
+- State a one-paragraph plan before editing.
+- Read the slice plus its immediate callers. No subagents.
+- Suite + typecheck, then walk each acceptance criterion and say how it was met.
+
+**high** — *the approach is not settled: complex code, a real design choice inside the slice.*
+- Ultrathink. **Name at least one alternative and say why you rejected it** — in the comment, not
+  only in your head.
+- Broad exploration allowed. Subagents permitted for read-only investigation.
+- Suite + typecheck + a live or manual check wherever behaviour is observable.
+- State what could still be wrong.
+
+**xhigh** — *large, long-running, multi-file: migrations and sweeping changes where the risk is
+missing something, not choosing wrongly.*
+- Everything at `high`, plus the distinguishing commitment: **prove coverage, don't assert it.**
+- **Enumerate the full change set BEFORE editing and state the count.** Work in verifiable batches.
+- Re-run the enumeration at the end and show the count reached zero — grep/AST evidence, not
+  "I believe I got them all".
+- Any site you deliberately skipped is listed explicitly, with the reason.
+
+**max** — *brutal debugging, or a critical design flaw. You do not yet know what is wrong, or being
+wrong is expensive.*
+- Everything at `high`, plus: **form a hypothesis and try to falsify it before fixing anything.**
+- Cross-check with a genuinely independent method — a subagent investigating in parallel, or
+  `llm-council` — not a second pass of your own reasoning.
+- **No fix lands without a reproduction that fails before and passes after.**
+- Report what you ruled out and why, not only what you found.
+- **Stop rule:** if you cannot reproduce it, STOP and report. Never fix blind at this level — a
+  speculative fix on a critical flaw is worse than no fix, because it ends the investigation.
+
+**Every level above assumes the Story is right and asks how to do it well.** Questioning whether it
+is the right problem at all is a different *kind* of work, not a higher effort — it belongs to
+`Category = Research/Spike`, at whatever effort. See the Category rule below.
+
+**Default: `claude-sonnet-5` + `medium`.** Raise the level only when the slice **defines** the oracle
+(a test baseline, the first slice of an epic) or when failure would be **silent** (a load-bearing
+constraint no test guards).
+
+⚠️ **Our default is deliberately one notch below the vendor's.** Per the official effort docs,
+`high` **is** the API and Claude Code default for Sonnet 5 — omitting the parameter and setting
+`high` are identical. Stepping down to `medium` is therefore a conscious deviation, and the
+justification is specific: here the Epic and Story have already absorbed the expensive thinking. The
+approach is decided, the criteria are written, and the oracle has moved from the model's judgment to
+the acceptance criteria. **That displacement is the whole point of the operating model** — the
+human's up-front work is what buys the right to spend less per slice. The docs' own calibration
+supports it: on Sonnet 5, `medium` is described as *"comparable to Claude Sonnet 4.6 at high
+effort"* — a step down from today's default, not a weak setting.
+
+**If `medium` is genuinely not enough for an approved slice, the Story is under-specified — fix the
+Story, not the level.**
+
+⚠️ **More effort is not monotonically better.** The docs warn that `max` *"adds significant cost for
+relatively small quality gains, and on some structured-output or less intelligence-sensitive tasks
+it can lead to overthinking."* So a high `Actual` reading is **not** automatically an argument to
+raise `Planned` next time — check whether the extra spend actually bought a better outcome before
+concluding it was under-tiered.
+
+⚠️ **Hold the level constant for the whole run.** Effort is a request-level setting, and changing it
+mid-conversation **invalidates the prompt cache** — every later turn pays to re-read the context.
+This is a second, independent reason for rule 7 (*one Story per invocation*): the structural gate is
+also the cache-efficient shape.
 
 **Never change your own effort mid-slice.** Not upward (self-raising is self-granting) and not
 downward — *"this is simpler than planned"* is the **least reliable judgment you can make**: the
@@ -326,7 +398,7 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
   | `Contributor Type` | `customfield_10114` | Human · AI · Hybrid *(casing unverified)* |
   | `Agent` | `customfield_10115` | e.g. "Claude Code" *(casing unverified)* |
   | `Model` | `customfield_10116` | e.g. `claude-sonnet-5` *(casing unverified)* |
-  | `Planned thinking effort` | `customfield_10117` | ⚠️ renamed from "Cost Tier" 2026-08-12, options re-cut to match Claude's own effort levels — **exact option strings and ids NOT yet verified against Jira.** Read a live issue's value before setting. The field id survives the rename. |
+  | `Planned thinking effort` | `customfield_10117` | Renamed from "Cost Tier" 2026-08-12. Options = the API's five effort values verbatim, **ordered**: `low` · `medium` · `high` · `xhigh` · `max`. ⚠️ Option ids re-cut 2026-08-12 — **none verified yet** (the old `Medium`=10044 predates the change). Read a live issue before setting. Vendor coupling is deliberate debt: Epic **HRA-82**. |
   | `Actual thinking effort` | `customfield_10152` | New 2026-08-12. **Same option set as `10117`** (they must stay identical or planned-vs-actual is not comparable). **The one field the agent writes** — at In Review, by the criteria in the effort section, never by impression. Human overrides; history keeps them distinct. |
   | `Review Outcome` | `customfield_10118` | Accepted · Edited · Rejected *(casing unverified)* |
   | `Category` | `customfield_10119` | ✅ `Technical Improvement` (id **10049**) · ✅ `Enabler/Infrastructure` (id **10051**) · Business Functionality · Research/Spike · Bug *(last three: casing unverified)* |
@@ -353,6 +425,19 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
     (HRA-52 src reorg; HRA-81 this file's slim-down.)
   - **`Technical Improvement`** — changes product code with no end-user impact: refactors,
     plumbing, perf. (HRA-64 React 19 bump; HRA-65 FE architecture.)
+- **`Research/Spike` — when the uncertainty is in the QUESTION, not the answer.** Every other
+  Category assumes the Story is right and asks how to do it well. This one asks whether it should be
+  done at all, and in this shape. It is a *kind of work*, not a higher effort level — a spike can run
+  at any effort. When working a Spike:
+  - Before proposing anything, state **what would make this the wrong problem to solve**, and what
+    you would expect to observe if the framing were mistaken.
+  - Bring independent perspectives (subagents, `llm-council`) to the **framing**, not only the
+    solution.
+  - Output a recommendation *with* its strongest counter-argument, and name the evidence that would
+    change your mind. If the answer is "re-scope this", say so and stop.
+  - **Precedent: HRA-40** — every test green, every action individually reasonable, and the *spec*
+    was what was wrong. That failure is invisible to any amount of effort spent inside the wrong
+    frame.
 - **Attribution convention:** Epics = `Contributor Type: Human` (the epic is the human's intent —
   leave Agent/Model blank); Stories = `Hybrid`. Per the code of conduct, **the human sets these at
   review — an agent never writes them.**
