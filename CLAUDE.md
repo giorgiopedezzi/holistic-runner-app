@@ -35,6 +35,13 @@ subagent spawned from one. These are constraints, not suggestions.
    word. If the level turns out to be wrong, report **observable evidence** in the In Review comment
    — which files you had to re-read, how many passes a fix took, where you stopped — so the human
    can set `Actual thinking effort` from facts rather than from your opinion of your own work.
+   **Effort, like model, is launch-bound.** The runtime `/effort` dial is set by the human when the
+   session starts; you run at it and never change it mid-slice. A session launched at an effort that
+   does not match `Planned` is a **STOP**, exactly as a model mismatch is. The one asymmetry: you
+   always know your model, but a running session **cannot reliably read its own `/effort`** (HRA-85),
+   so the effort guard is a **declared launch precondition** — state the effort you were launched at,
+   and STOP if you know it differs from `Planned` — not an automatic self-read. See `/implement-story`
+   step 2.
 4. **Stop at In Review.** Transition the Story to In Review, post a PR-style comment, then STOP.
    Nothing moves to Done. The green light is a manual human act — deliberately not automated, and
    deliberately not hooked.
@@ -70,7 +77,11 @@ Three fields, three different owners and mechanics. Confusing them is how rule 3
   as, and STOP if they differ** — report the mismatch and let the human relaunch. Never proceed on
   the wrong model and never write the field to match reality.
 - **`Planned thinking effort` (`10117`) IS agent-actionable.** Set by the human at Gate 1. It is the
-  one *you* execute: it governs deliberation, exploration breadth, and verification depth.
+  one *you* execute: it governs deliberation, exploration breadth, and verification depth. **But the
+  runtime effort *dial* is launch-bound like the model** — you run at what the human launched and
+  never change it mid-slice; a session launched at an effort that doesn't match this field is a
+  **STOP** (rule 3). What is agent-actionable is *carrying out* the level's commitments, not *setting*
+  the dial.
 - **`Actual thinking effort` (`10152`) is a measurement you record at In Review.** What the work
   turned out to need. Set it **by the criteria below**, and state in the comment which criterion
   fired. The human overrides if they disagree — Jira history keeps the two visibly distinct.

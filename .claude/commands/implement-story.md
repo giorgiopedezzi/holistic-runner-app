@@ -25,11 +25,23 @@ Also confirm the Story is in **Ready to Develop**. If it is in Backlog or Refine
 passed Gate 1 — stop and say so.
 
 ## 2. State your run parameters before starting
-Print one line: the Story key, its `Model`, its `Thinking effort`, the model you are **actually**
-running on, and what that effort level commits you to (see `CLAUDE.md` → "`Model` and `Thinking
-effort` — what the values commit you to"). If the session's model does not match the Story's `Model`
-field, say so explicitly and stop — the human relaunches at the right model. Do not silently proceed
-on the wrong one. An unstated effort is an unfollowed effort.
+Print one line: the Story key, its `Model`, its `Planned thinking effort` **stated explicitly**, the
+model you are **actually** running on, and what that effort level commits you to (see `CLAUDE.md` →
+"`Model` and `Thinking effort` — what the values commit you to").
+
+**Two launch preconditions — both are STOP conditions, symmetric with each other:**
+
+- **Model.** If the session's model does not match the Story's `Model` field, say so and stop — the
+  human relaunches at the right model. Never silently proceed on the wrong one.
+- **Effort.** This run **assumes the session was launched at the Story's `Planned` effort.** Unlike
+  the model, a running session **cannot reliably read its own runtime `/effort`** — no field or tool
+  exposes it (established on HRA-85), so this is a *declared* precondition, not an automatic
+  self-check. State the assumed launch effort on line one so the human can catch a mismatch you
+  can't see; and if you *know* the session was launched at a different `/effort` than `Planned`
+  (e.g. you set it this session), **STOP and relaunch** rather than run a mis-tiered slice. Never
+  change your own effort mid-slice to compensate.
+
+An unstated effort is an unfollowed effort.
 
 ## 3. Implement
 - **Read the area's `docs/` file first.** Before writing code in an area, read the file CLAUDE.md's
