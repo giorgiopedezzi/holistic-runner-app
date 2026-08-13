@@ -417,6 +417,10 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
   | `Actual thinking effort` | `customfield_10152` | New 2026-08-12. **Must carry the same option set as `10117`** (or planned-vs-actual is not comparable) — ids differ, values must not. ✅ Full set, human-confirmed 2026-08-12: `low`=**10121** · `medium`=**10122** · `high`=**10123** · `xhigh`=**10159** · `max`=**10125**. **The one field the agent writes** — at In Review, by the criteria in the effort section, never by impression. Human overrides; history keeps them distinct. |
   ℹ️ Both `xhigh` ids (10159 / 10160) are consecutive — `xhigh` was added to both fields in the same
   admin action, right after one another. Cross-checks the two sets against each other.
+
+  ⚠️ **Both effort fields are MULTI-select, not single-select** (unlike `Category`, which is
+  single-select and takes a bare object). Set them as `[{"id": "…"}]`, an array — `{"id": "…"}`
+  alone fails with *"Specify the value ... in an array"*. Confirmed live on HRA-80.
   | `Review Outcome` | `customfield_10118` | Accepted · Edited · Rejected *(casing unverified)* |
   | `Category` | `customfield_10119` | ✅ `Technical Improvement` (id **10049**) · ✅ `Enabler/Infrastructure` (id **10051**) · Business Functionality · Research/Spike · Bug *(last three: casing unverified)* |
 
