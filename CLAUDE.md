@@ -376,7 +376,8 @@ garmin_and_withings/
 ## Routing table — where the detail lives
 
 `CLAUDE.md` holds only what PREVENTS a mistake. Everything that DESCRIBES the system lives in
-`docs/` and is read on demand. **Read the relevant file before working in that area** — do not
+`docs/` — meaning **repo-root `garmin_and_withings/docs/`**, NOT `garmin-stats/docs/` (there is no
+such dir) — and is read on demand. **Read the relevant file before working in that area** — do not
 re-derive it from the source, and do not assume the summary above is complete.
 
 | Working on… | Read |

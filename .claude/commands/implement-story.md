@@ -32,6 +32,11 @@ field, say so explicitly and stop — the human relaunches at the right model. D
 on the wrong one. An unstated effort is an unfollowed effort.
 
 ## 3. Implement
+- **Read the area's `docs/` file first.** Before writing code in an area, read the file CLAUDE.md's
+  routing table lists for it. If a file the table names appears missing, that is a **lookup error
+  (wrong path, stale cwd) — not proof of absence**: find and read it before proceeding, never treat
+  a listed area as undocumented. (This rule exists because HRA-67 skipped `docs/frontend.md` on a
+  bad path and a trusted empty search result.)
 - Only the slice this Story describes. The plan and acceptance criteria are already approved —
   do not re-plan, re-scope, or improve adjacent code.
 - Apply the skill stack per `CLAUDE.md`'s manifest, in its stated precedence.
