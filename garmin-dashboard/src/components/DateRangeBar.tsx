@@ -1,6 +1,6 @@
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
 
-interface Props extends DateRangeState {}
+type Props = DateRangeState;
 
 export function DateRangeBar({ from, to, setFrom, setTo, setPreset }: Props) {
   function isActive(days: number) {

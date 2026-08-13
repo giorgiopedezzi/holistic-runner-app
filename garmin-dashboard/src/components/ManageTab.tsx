@@ -751,7 +751,7 @@ function TrashList<T extends { id: number; deleted_at: string }>({
   useEffect(() => { setSelected(new Set()); setConfirmPurge(false); }, [items]);
 
   function toggle(id: number) {
-    setSelected(s => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    setSelected(s => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
   function toggleAll() {
     setSelected(s => (items && s.size === items.length ? new Set() : new Set(items?.map(i => i.id) ?? [])));
@@ -885,7 +885,7 @@ function ClassifySection() {
   useEffect(() => () => { if (justConfirmedTimer.current) clearTimeout(justConfirmedTimer.current); }, []);
 
   function toggle(id: number) {
-    setSelected(s => { const next = new Set(s); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    setSelected(s => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }
   function toggleAll() {
     setSelected(s => (activities && s.size === activities.length ? new Set() : new Set(activities?.map(a => a.id) ?? [])));
