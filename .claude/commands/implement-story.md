@@ -10,7 +10,7 @@ Implement exactly one Story from the HRA Jira project. The **Agent code of condu
 
 ## 1. Read the Story first
 Fetch `$ARGUMENTS` from Jira (cloudId `2e4f6af1-c76d-45be-9a00-ca9f30589199`, project `HRA`).
-Read its description, acceptance criteria, parent Epic, and these fields:
+Read its description, acceptance criteria, parent Epic, issue links (`issuelinks`), and these fields:
 
 - `Model` = `customfield_10116`
 - `Planned thinking effort` = `customfield_10117`
@@ -23,6 +23,13 @@ missing and ask the human to set it. Do not fill them in yourself. Do not procee
 
 Also confirm the Story is in **Ready to Develop**. If it is in Backlog or Refinement, it has not
 passed Gate 1 — stop and say so.
+
+**Hard precondition — no open blockers.** Read the issue's links (`issuelinks`): if it is
+*blocked by* any issue that is **not in `Done`**, STOP and name the open blocker. A Story is not
+startable while a dependency it is blocked by is still in flight — starting anyway builds on ground
+that may still shift. An issue with no blockers, or whose every blocker is already `Done`, passes.
+(Only the *is blocked by* direction gates; issues this one *blocks*, or plain *relates to* links, do
+not.)
 
 ## 2. State your run parameters before starting
 Print one line: the Story key, its `Model`, its `Planned thinking effort` **stated explicitly**, the
