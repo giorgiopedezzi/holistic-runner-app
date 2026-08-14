@@ -103,13 +103,17 @@ export function ActivityChartSection({
               key={key}
               mKey={key}
               label={METRIC_DEFS[key].label}
-              active={activeMetrics.includes(key)}
-              available={availableMetrics[key]}
-              axisOn={axisVisible[key]}
-              cardOn={showCard[key]}
-              onToggleActive={() => toggleMetric(key)}
-              onToggleAxis={() => toggleAxis(key)}
-              onToggleCard={() => toggleCard(key)}
+              state={{
+                active:    activeMetrics.includes(key),
+                available: availableMetrics[key],
+                axisOn:    axisVisible[key],
+                cardOn:    showCard[key],
+              }}
+              onToggle={field => {
+                if (field === "active") toggleMetric(key);
+                else if (field === "axis") toggleAxis(key);
+                else toggleCard(key);
+              }}
             />
           ))}
         </div>
