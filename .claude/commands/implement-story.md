@@ -68,6 +68,13 @@ suites, and a live smoke where behaviour is observable. Report real numbers (`46
 "tests pass". If something fails, say so with the output — a failing check reported honestly is
 worth more than a green summary that isn't true.
 
+**Frontend verification: `npm run verify`** (`garmin-dashboard/scripts/verify.sh`) runs
+typecheck/test/lint/build in one call. Use it, don't retype the sequence inline — a repeated
+compound command that captures `PIPESTATUS`/pipes/greps contains shell expansion, which the
+permission harness can never allowlist (by design — expansion can't be statically proven safe). The
+same rule applies to any future recurring verification command: put it in a named script invoked by
+one clean call, not typed inline each run (HRA-88).
+
 ## 5. Stop at In Review
 Transition `$ARGUMENTS` to **In Review** and post a PR-style comment containing:
 
