@@ -68,6 +68,24 @@ these fields are for — measuring how well a human's *up-front* call matched wh
 
 ---
 
+## Editing discipline — no blind, line-number-based file mutation
+
+**Never edit a tracked source file via raw shell line-number operations** —
+`awk 'NR>=X&&NR<=Y{next}{print}' file > tmp && mv tmp file`, `sed -i 'X,Yd'`, and equivalents. These
+have no anchor to actual content: if the file drifted even one line since it was last read — another
+edit, a formatter, a rebase — the wrong block is deleted silently, with **no error**. A manual
+"boundary check" (`sed -n 'X,Yp'` after the fact) is a symptom of this risk, not a mitigation for
+it — by the time you're eyeballing a range to confirm it, the tool you should have used would have
+made that check structural instead of optional.
+
+**Use the Edit tool instead.** It matches an exact `old_string` against the live file and **fails
+loudly** if that content is no longer there — content-anchored, not line-number-anchored, so drift
+is caught rather than silently acted on. Reserve raw Bash file mutation for cases with no
+content-aware tool available (verified 2026-08-14 not to have caused harm on `OverviewTab.tsx` /
+HRA-70's extraction — this time — see HRA-90).
+
+---
+
 ## `Model`, `Planned` and `Actual thinking effort` — what the values commit you to
 
 Three fields, three different owners and mechanics. Confusing them is how rule 3 becomes decorative:
