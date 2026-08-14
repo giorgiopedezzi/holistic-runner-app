@@ -210,7 +210,6 @@ function UploadSection() {
         state={checkingDevice ? "checking" : device?.connected ? "ok" : "warn"}
         message={checkingDevice ? "Checking device…" : device?.connected ? `${device.name ?? "Device"} connected` : deviceStatusMessage(device)}
         onRecheck={checkDevice}
-        checking={checkingDevice}
       />
 
       <button
@@ -352,7 +351,6 @@ function WithingsSyncSection({ from, to, onFromChange, onToChange }: WithingsSyn
           : "Not connected to Withings"
         }
         onRecheck={checkToken}
-        checking={checkingToken}
       />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
@@ -502,7 +500,6 @@ function StravaSyncSection({ from, to, onFromChange, onToChange }: StravaSyncSec
           : "Not connected to Strava"
         }
         onRecheck={checkToken}
-        checking={checkingToken}
       />
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
