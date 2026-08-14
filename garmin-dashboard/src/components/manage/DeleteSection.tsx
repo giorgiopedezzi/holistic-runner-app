@@ -1,0 +1,179 @@
+import { useEffect, useState } from "react";
+import { api } from "@/api/client";
+import { Card, ErrorBanner } from "@/components/ui";
+import type { Activity, BodyMeasurement } from "@/types/api";
+import { fmtKm, fmtWeight } from "@/utils/fmt";
+import { isoToday, isoAgo } from "@/utils/date";
+
+// ── Delete section ─────────────────────────────────────────────────────────
+export function DeleteSection() {
+  const [from, setFrom] = useState(isoAgo(30));
+  const [to,   setTo]   = useState(isoToday());
+  const [delActivities, setDelActivities] = useState(false);
+  const [delBody,       setDelBody]       = useState(false);
+  const [showData,      setShowData]      = useState(false);
+
+  const [activityCount, setActivityCount] = useState<number | null>(null);
+  const [bodyCount,     setBodyCount]     = useState<number | null>(null);
+  const [activityPreview, setActivityPreview] = useState<Activity[] | null>(null);
+  const [bodyPreview,     setBodyPreview]     = useState<BodyMeasurement[] | null>(null);
+
+  const [confirm, setConfirm] = useState(false);
+  const [result,  setResult]  = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!delActivities) { setActivityCount(null); return; }
+    api.garmin.count(from, to).then(r => setActivityCount(r.count)).catch(() => setActivityCount(null));
+  }, [delActivities, from, to]);
+
+  useEffect(() => {
+    if (!delBody) { setBodyCount(null); return; }
+    api.body.count(from, to).then(r => setBodyCount(r.count)).catch(() => setBodyCount(null));
+  }, [delBody, from, to]);
+
+  useEffect(() => {
+    if (!showData || !delActivities) { setActivityPreview(null); return; }
+    api.garmin.activities(from, to).then(setActivityPreview).catch(() => setActivityPreview(null));
+  }, [showData, delActivities, from, to]);
+
+  useEffect(() => {
+    if (!showData || !delBody) { setBodyPreview(null); return; }
+    api.body.list(from, to).then(setBodyPreview).catch(() => setBodyPreview(null));
+  }, [showData, delBody, from, to]);
+
+  const canDelete = delActivities || delBody;
+
+  async function doDelete() {
+    setLoading(true); setResult(null); setError(null);
+    try {
+      const parts: string[] = [];
+      if (delActivities) {
+        const res = await api.garmin.deleteRange(from, to);
+        parts.push(`${res.deleted} activities`);
+      }
+      if (delBody) {
+        const res = await api.body.deleteRange(from, to);
+        parts.push(`${res.deleted} measurements`);
+      }
+      setResult(`Moved ${parts.join(" and ")} to the trash, ${from} to ${to}.`);
+      setConfirm(false);
+      setActivityCount(delActivities ? 0 : null);
+      setBodyCount(delBody ? 0 : null);
+      setActivityPreview(delActivities ? [] : null);
+      setBodyPreview(delBody ? [] : null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    }
+    setLoading(false);
+  }
+
+  return (
+    <Card style={{ borderColor: "#e24b4a33" }}>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>
+        Delete data range <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>· local database only</span>
+      </div>
+      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
+        Moves records to the local database's trash (below) rather than removing them outright — restore them any time, or
+        empty the trash to permanently reclaim the space. Nothing is touched on your Garmin watch, Strava, or Withings
+        account either way, and a resync won't bring a trashed (or permanently deleted) item back on its own.
+      </div>
+
+      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+          <input type="checkbox" checked={delActivities} onChange={e => setDelActivities(e.target.checked)} />
+          Activities (Garmin + Strava)
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+          <input type="checkbox" checked={delBody} onChange={e => setDelBody(e.target.checked)} />
+          Withings measurements
+        </label>
+        <button
+          onClick={() => { setDelActivities(true); setDelBody(true); }}
+          style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, border: "1px solid var(--border-strong)", background: "transparent", color: "var(--text-muted)", cursor: "pointer" }}
+        >
+          Select all
+        </button>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+        <input type="date" value={from} onChange={e => setFrom(e.target.value)} max={to} />
+        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
+        <input type="date" value={to} onChange={e => setTo(e.target.value)} min={from} />
+      </div>
+
+      {canDelete && (
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
+          This will delete{" "}
+          {delActivities && <strong style={{ color: "var(--accent-red)" }}>{activityCount ?? "…"} activities</strong>}
+          {delActivities && delBody && " and "}
+          {delBody && <strong style={{ color: "var(--accent-red)" }}>{bodyCount ?? "…"} measurements</strong>}
+          {" "}in this range.
+        </div>
+      )}
+
+      {canDelete && (
+        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", marginBottom: 10, cursor: "pointer" }}>
+          <input type="checkbox" checked={showData} onChange={e => setShowData(e.target.checked)} />
+          Show data
+        </label>
+      )}
+
+      {showData && delActivities && (
+        <div style={{ maxHeight: 160, overflow: "auto", marginBottom: 10, border: "1px solid var(--border)", borderRadius: 6, padding: 8 }}>
+          {activityPreview === null ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>
+          ) : activityPreview.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No activities in this range.</div>
+          ) : activityPreview.map(a => (
+            <div key={a.id} style={{ fontSize: 12, padding: "3px 0", color: "var(--text-secondary)" }}>
+              {a.date_only} — {a.sport ?? "other"} — {fmtKm(a.distance_m)} — {a.source ?? "garmin"}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showData && delBody && (
+        <div style={{ maxHeight: 160, overflow: "auto", marginBottom: 10, border: "1px solid var(--border)", borderRadius: 6, padding: 8 }}>
+          {bodyPreview === null ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>
+          ) : bodyPreview.length === 0 ? (
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No measurements in this range.</div>
+          ) : bodyPreview.map((m, i) => (
+            <div key={i} style={{ fontSize: 12, padding: "3px 0", color: "var(--text-secondary)" }}>
+              {m.date_only} — {fmtWeight(m.weight_kg)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!confirm ? (
+        <button onClick={() => setConfirm(true)} disabled={!canDelete}
+          style={{
+            background: "none", color: "var(--accent-red)", border: "1px solid var(--accent-red)", borderRadius: 8,
+            padding: "6px 16px", fontSize: 13, cursor: canDelete ? "pointer" : "not-allowed", opacity: canDelete ? 1 : 0.5,
+          }}>
+          Move to trash…
+        </button>
+      ) : (
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, color: "var(--accent-red)" }}>
+            Move to trash, {from} to {to}?
+          </span>
+          <button onClick={doDelete} disabled={loading}
+            style={{ background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }}>
+            {loading ? "…" : "Confirm"}
+          </button>
+          <button onClick={() => setConfirm(false)}
+            style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: 6, padding: "5px 14px", fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {result && <div style={{ marginTop: 10, fontSize: 12, color: "var(--accent-green)" }}>{result}</div>}
+      {error  && <ErrorBanner message={error} />}
+    </Card>
+  );
+}
