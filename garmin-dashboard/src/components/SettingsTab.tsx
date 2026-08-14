@@ -12,6 +12,7 @@ import type { Settings, Theme, StoredUnitSystem } from "@/types/api";
 import { THEME_NAMES } from "@/types/api";
 import { BUNDLED_BACKGROUNDS, BUNDLED_BACKGROUND_ORDER } from "@/utils/backgrounds";
 import type { useAppearance } from "@/hooks/useAppearance";
+import { useSettings } from "@/hooks/useSettings";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
 // self-converting fmtPace — because outlier_min_speed_kmh is a technical tuning
 // parameter always stored/labeled in km/h regardless of the app's unit system,
@@ -225,14 +226,20 @@ interface Props {
 }
 
 export function SettingsTab({ appearance }: Props) {
-  // `saved` is the last-known-persisted value (what "current: X" shows);
-  // `draft` is the editable form state. Save is only enabled once draft
-  // actually differs from saved — no-op clicks on an unchanged form are
-  // disabled rather than silently re-sending the same values.
+  // Reads the shared settings singleton (useSettings, HRA-76) instead of
+  // fetching its own copy. `saved` is the last-known-persisted value (what
+  // "current: X" shows); `draft` is the editable form state — both still
+  // local to this component (not lifted into the shared store) since they
+  // track in-progress, per-card edits the rest of the app has no business
+  // seeing until Save is clicked. Primed from the shared settings once, the
+  // first time it becomes available — not re-synced on every later change,
+  // so a click elsewhere (e.g. a theme swatch, which also flows through the
+  // shared store) can't clobber an unsaved draft mid-edit.
+  const { settings: sharedSettings, loading, error: sharedError, update: updateShared } = useSettings();
   const [saved, setSaved] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const primed = useRef(false);
   // Which card is mid-save / just-saved — one card = one sub-resource, so the two
   // explicit-save cards (Outlier detection, Overview & Trends) each save
   // independently, hitting their own PUT endpoint (HRA-40). Keyed rather than two
@@ -242,11 +249,16 @@ export function SettingsTab({ appearance }: Props) {
   const [justSavedKey, setJustSavedKey] = useState<SaveKey | null>(null);
 
   useEffect(() => {
-    api.settings.get()
-      .then(s => { setSaved(s); setDraft(s); })
-      .catch(e => setError(e instanceof Error ? e.message : "Failed to load settings"))
-      .finally(() => setLoading(false));
-  }, []);
+    if (sharedSettings && !primed.current) {
+      primed.current = true;
+      setSaved(sharedSettings);
+      setDraft(sharedSettings);
+    }
+  }, [sharedSettings]);
+
+  useEffect(() => {
+    if (sharedError) setError(sharedError);
+  }, [sharedError]);
 
   const outliersDirty = !!draft && !!saved && (
     draft.outlier_speed_delta_per_sec !== saved.outlier_speed_delta_per_sec ||
@@ -266,6 +278,7 @@ export function SettingsTab({ appearance }: Props) {
       const updated = await put(draft);
       setSaved(updated);
       setDraft(updated);
+      updateShared(updated); // propagate to every other tab sharing the settings singleton
       setJustSavedKey(key);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save settings");
@@ -284,6 +297,7 @@ export function SettingsTab({ appearance }: Props) {
     const updated = await api.settings.setDetailView(view);
     setSaved(updated);
     setDraft(updated);
+    updateShared(updated); // propagate to ActivitiesTab, which reads this from the shared store
   }
 
   // One SaveBar per explicit-save card (Outlier detection, Overview & Trends).

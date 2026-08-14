@@ -3,6 +3,7 @@ import {
   ComposedChart, Bar, Line, ReferenceLine, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
+import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
 import { Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
@@ -196,8 +197,8 @@ const DEFAULT_MIN_TREND_GROUP_SIZE = 5;
 
 function TrendsBySport({ from, to }: Props) {
   const { state } = useQuery(() => api.garmin.activities(from, to), [from, to]);
-  const settingsQ = useQuery(() => api.settings.get(), []);
-  const minGroupSize = settingsQ.state.status === "success" ? settingsQ.state.data.min_trend_group_size : DEFAULT_MIN_TREND_GROUP_SIZE;
+  const { settings } = useSettings();
+  const minGroupSize = settings?.min_trend_group_size ?? DEFAULT_MIN_TREND_GROUP_SIZE;
   const [groupMode, setGroupMode] = useState<GroupMode>(() => defaultGroupMode(from, to));
   useEffect(() => setGroupMode(defaultGroupMode(from, to)), [from, to]);
 

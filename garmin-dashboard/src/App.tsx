@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useAppearance } from "@/hooks/useAppearance";
+import { SettingsProvider } from "@/hooks/useSettings";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { OverviewTab }  from "@/components/OverviewTab";
 import { ActivitiesTab } from "@/components/ActivitiesTab";
@@ -22,7 +23,18 @@ type TabId = typeof TABS[number]["id"];
 // Manage tab doesn't need the global date bar to be the primary control
 const TABS_WITH_DATERANGE: TabId[] = ["overview", "activities", "body"];
 
+// SettingsProvider wraps AppShell (not the other way in-line) so every hook
+// below it — including useAppearance(), called inside AppShell's own body —
+// is a descendant of the provider and shares its one settings fetch.
 export default function App() {
+  return (
+    <SettingsProvider>
+      <AppShell />
+    </SettingsProvider>
+  );
+}
+
+function AppShell() {
   const range = useDateRange(30);
   const appearance = useAppearance();
   const [tab, setTab] = useState<TabId>("overview");

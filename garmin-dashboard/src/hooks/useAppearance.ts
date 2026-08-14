@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import { api } from "@/api/client";
 import type { Settings, Theme, StoredTheme, BackgroundKind, StoredUnitSystem } from "@/types/api";
 import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
+import { useSettings } from "@/hooks/useSettings";
 
 // 'auto' resolves via the OS's prefers-color-scheme — the one appearance
 // signal a web page genuinely can read directly (unlike measurement system,
@@ -40,19 +41,20 @@ function applyToDocument(settings: Settings) {
 }
 
 /**
- * useAppearance — fetches the persisted theme/background/units once,
- * applies them, and exposes setters that update the backend and the
- * document together (immediate-apply, unlike SettingsTab's explicit-save
- * pattern for the outlier thresholds — appearance changes are meant to feel
- * instant when clicked). While theme is 'auto', also listens live for OS
- * theme changes and re-applies without needing a page reload.
+ * useAppearance — reads the shared settings singleton (useSettings, HRA-76),
+ * applies theme/background/units whenever it changes, and exposes setters
+ * that update the backend and the shared store together (immediate-apply,
+ * unlike SettingsTab's explicit-save pattern for the outlier thresholds —
+ * appearance changes are meant to feel instant when clicked). While theme is
+ * 'auto', also listens live for OS theme changes and re-applies without
+ * needing a page reload.
  */
 export function useAppearance() {
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const { settings, update } = useSettings();
 
   useEffect(() => {
-    api.settings.get().then(s => { setSettings(s); applyToDocument(s); }).catch(() => {});
-  }, []);
+    if (settings) applyToDocument(settings);
+  }, [settings]);
 
   useEffect(() => {
     if (!settings || settings.theme !== "auto" || typeof matchMedia !== "function") return;
@@ -64,27 +66,23 @@ export function useAppearance() {
 
   const setTheme = useCallback(async (theme: StoredTheme) => {
     const updated = await api.settings.setTheme(theme);
-    setSettings(updated);
-    applyToDocument(updated);
-  }, []);
+    update(updated);
+  }, [update]);
 
   const setBackground = useCallback(async (kind: BackgroundKind, value?: string) => {
     const updated = await api.settings.setBackground(kind, value);
-    setSettings(updated);
-    applyToDocument(updated);
-  }, []);
+    update(updated);
+  }, [update]);
 
   const uploadBackground = useCallback(async (file: File) => {
     const updated = await api.settings.uploadBackground(file);
-    setSettings(updated);
-    applyToDocument(updated);
-  }, []);
+    update(updated);
+  }, [update]);
 
   const setUnits = useCallback(async (unitSystem: StoredUnitSystem) => {
     const updated = await api.settings.setUnits(unitSystem);
-    setSettings(updated);
-    applyToDocument(updated);
-  }, []);
+    update(updated);
+  }, [update]);
 
   return {
     settings,

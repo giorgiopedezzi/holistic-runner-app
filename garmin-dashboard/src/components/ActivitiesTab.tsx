@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@/hooks/useQuery";
+import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
 import { Badge, ErrorBanner, LoadingSpinner, Pagination, RangeEmpty } from "@/components/ui";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
@@ -14,8 +15,8 @@ const DEFAULT_DETAIL_VIEW = "accordion";
 
 export function ActivitiesTab({ from, to }: Props) {
   const rangeQ = useQuery(() => api.garmin.range(), []);
-  const settingsQ = useQuery(() => api.settings.get(), []);
-  const detailView = settingsQ.state.status === "success" ? settingsQ.state.data.activity_detail_view : DEFAULT_DETAIL_VIEW;
+  const { settings } = useSettings();
+  const detailView = settings?.activity_detail_view ?? DEFAULT_DETAIL_VIEW;
   const [modalId, setModalId] = useState<number | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [page, setPage] = useState(1);

@@ -1,0 +1,73 @@
+/**
+ * useSettings.test.tsx  (HRA-76)
+ * The single-settings-source acceptance criterion: rendering the real App
+ * and switching across every tab must trigger exactly one GET
+ * /api/v1/settings, even though five independent places now read from the
+ * shared SettingsProvider/useSettings (useAppearance, ActivitiesTab,
+ * ActivityDetailBody, OverviewTab, SettingsTab). Deliberately its own route
+ * stub, not imported from App.test.tsx — that file's Phase 0 assertions
+ * (including the load-bearing unit-propagation regression) stay unmodified.
+ */
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import App from "@/App";
+import { installFetch, paginated, type Routes } from "@/test/api-stub";
+import {
+  activity, sportSummary, bodyMeasurement, settings, dateRange,
+  deviceStatus, withingsStatus, stravaStatus,
+} from "@/test/fixtures";
+import { setUnitSystem } from "@/utils/units";
+
+function appRoutes(): Routes {
+  return {
+    "GET /api/v1/settings": settings(),
+    "GET /api/v1/range": dateRange(),
+    "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
+    "GET /api/v1/activities": paginated([activity()], 1),
+    "GET /api/v1/body-measurements": paginated([bodyMeasurement()]),
+    "GET /api/v1/body-measurements/correlation": paginated([]),
+    "GET /api/v1/body-measurements/range": dateRange(),
+    "GET /api/v1/garmin/status": deviceStatus(),
+    "GET /api/v1/withings/status": withingsStatus(),
+    "GET /api/v1/strava/status": stravaStatus(),
+    "GET /api/v1/activities/count": { count: 1 },
+    "GET /api/v1/body-measurements/count": { count: 1 },
+    "GET /api/v1/activities/trash": paginated([]),
+    "GET /api/v1/body-measurements/trash": paginated([]),
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setUnitSystem("metric");
+});
+
+describe("settings — single fetch across the app (HRA-76)", () => {
+  it("fetches /api/v1/settings exactly once, even after switching across every tab", async () => {
+    const fetchMock = installFetch(appRoutes());
+    render(<App />);
+
+    expect(await screen.findByText("Total")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Activities" }));
+    expect(await screen.findByText("2026-08-01")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Body" }));
+    expect(await screen.findByText(/Latest measurement/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
+    expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    expect(await screen.findByText("Appearance")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Overview & Trends" }));
+    expect(await screen.findByText("Total")).toBeInTheDocument();
+
+    const settingsGets = fetchMock.mock.calls.filter(([input, init]) => {
+      const url = new URL(typeof input === "string" ? input : input.toString(), "http://localhost");
+      return url.pathname === "/api/v1/settings" && (init?.method ?? "GET").toUpperCase() === "GET";
+    });
+    expect(settingsGets).toHaveLength(1);
+  });
+});

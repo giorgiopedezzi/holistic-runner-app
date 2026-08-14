@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/api/client";
+import { useSettings } from "@/hooks/useSettings";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components/ui";
 import { ClassificationCard } from "../ClassificationCard";
-import { SPORT_COLOR, type Activity, type TrackPoint, type Settings } from "@/types/api";
+import { SPORT_COLOR, type Activity, type TrackPoint } from "@/types/api";
 import { fmtDuration, fmtKm, fmtElevation } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
 import { detectPauses, computeHrRecovery } from "@/domain/pauses";
@@ -42,7 +43,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
   const [speedMode, setSpeedMode] = useState<SpeedMode>("speed");
   const [pauseThreshold, setPauseThreshold] = useState(30);
   const [removeOutliers, setRemoveOutliers] = useState(true);
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const { settings } = useSettings(); // outlier thresholds; no-ops until it loads
   // Speed/Pace's axis is mandatory — always visible, no toggle (see
   // ActivityChartSection) — so this only ever tracks the four optional
   // metrics.
@@ -72,10 +73,6 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
     }).catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [activityId]);
-
-  useEffect(() => {
-    api.settings.get().then(setSettings).catch(() => {}); // outlier removal just no-ops without settings
-  }, []);
 
   async function handleDelete() {
     setDeleting(true);
