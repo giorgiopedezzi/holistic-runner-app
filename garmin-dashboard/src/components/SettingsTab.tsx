@@ -11,7 +11,7 @@ import { Card, SectionTitle, ErrorBanner, LoadingSpinner } from "@/components/ui
 import type { Settings, Theme, StoredUnitSystem } from "@/types/api";
 import { THEME_NAMES } from "@/types/api";
 import { BUNDLED_BACKGROUNDS, BUNDLED_BACKGROUND_ORDER } from "@/utils/backgrounds";
-import type { useAppearance } from "@/hooks/useAppearance";
+import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
 // self-converting fmtPace — because outlier_min_speed_kmh is a technical tuning
@@ -29,7 +29,7 @@ const THEME_PREVIEW: Record<Theme, { label: string; bg: string; card: string; te
   "light-warm": { label: "Light Warm", bg: "#faf6f0", card: "#fffaf3", text: "#2b2118", accent: "#b8650a" },
 };
 
-function ThemePicker({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
+export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.theme;
   const isAuto = current === "auto";
   // "Auto" shows the theme it currently resolves to (via prefers-color-scheme)
@@ -93,7 +93,7 @@ const UNIT_SYSTEM_OPTIONS: { value: StoredUnitSystem; label: string }[] = [
   { value: "imperial", label: "Imperial (mi, lb)" },
 ];
 
-function UnitsPicker({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
+export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.unit_system;
   return (
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -123,7 +123,7 @@ function UnitsPicker({ appearance }: { appearance: ReturnType<typeof useAppearan
   );
 }
 
-function BackgroundPicker({ appearance }: { appearance: ReturnType<typeof useAppearance> }) {
+export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) {
   const settings = appearance.settings;
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -222,7 +222,7 @@ function SettingField({ label, current, value, onChange, min, step }: {
 }
 
 interface Props {
-  appearance: ReturnType<typeof useAppearance>;
+  appearance: AppearanceApi;
 }
 
 export function SettingsTab({ appearance }: Props) {

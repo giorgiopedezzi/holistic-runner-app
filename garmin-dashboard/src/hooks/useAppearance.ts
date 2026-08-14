@@ -40,6 +40,28 @@ function applyToDocument(settings: Settings) {
   setUnitSystem(resolveUnitSystem(settings.unit_system));
 }
 
+// Explicit contract (HRA-77) — state / actions / meta, composed by
+// intersection rather than nested under .state/.actions/.meta keys, so the
+// runtime shape stays flat: every existing consumer (and every existing
+// hand-written test stub) reads appearance.settings / appearance.setTheme /
+// appearance.resolvedTheme directly, unchanged. Components should depend on
+// this interface, not on `ReturnType<typeof useAppearance>` — the shape is
+// then nameable and can be hand-stubbed without a hook or a network call.
+export interface AppearanceState {
+  settings: Settings | null;
+}
+export interface AppearanceActions {
+  setTheme:         (theme: StoredTheme) => Promise<void>;
+  setBackground:    (kind: BackgroundKind, value?: string) => Promise<void>;
+  uploadBackground: (file: File) => Promise<void>;
+  setUnits:         (unitSystem: StoredUnitSystem) => Promise<void>;
+}
+export interface AppearanceMeta {
+  resolvedTheme:       Theme | null;
+  resolvedUnitSystem:  ResolvedUnitSystem | null;
+}
+export type AppearanceApi = AppearanceState & AppearanceActions & AppearanceMeta;
+
 /**
  * useAppearance — reads the shared settings singleton (useSettings, HRA-76),
  * applies theme/background/units whenever it changes, and exposes setters
@@ -49,7 +71,7 @@ function applyToDocument(settings: Settings) {
  * 'auto', also listens live for OS theme changes and re-applies without
  * needing a page reload.
  */
-export function useAppearance() {
+export function useAppearance(): AppearanceApi {
   const { settings, update } = useSettings();
 
   useEffect(() => {
