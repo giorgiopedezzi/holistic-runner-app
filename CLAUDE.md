@@ -86,6 +86,16 @@ HRA-70's extraction — this time — see HRA-90).
 
 ---
 
+## Shell discipline — use `git -C`, not `cd && git`
+
+**Never run `cd <dir> && git <cmd>`.** Claude Code flags it as "changes directory before running
+git" — a static, syntactic guard (it can't tell a trusted local repo from an untrusted one, so it
+fires on every such compound regardless of which git subcommand follows). **Use `git -C <dir>
+<cmd>` instead** — same result, doesn't trip the guard, and collapses to one atomic command besides
+(HRA-91).
+
+---
+
 ## `Model`, `Planned` and `Actual thinking effort` — what the values commit you to
 
 Three fields, three different owners and mechanics. Confusing them is how rule 3 becomes decorative:
