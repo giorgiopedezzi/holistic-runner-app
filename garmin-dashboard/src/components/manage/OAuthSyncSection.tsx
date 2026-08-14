@@ -1,43 +1,66 @@
 import { useEffect, useState } from "react";
-import { api } from "@/api/client";
 import { Card, StatusLine } from "@/components/ui";
-import type { WithingsStatus } from "@/types/api";
+import type { SyncResult } from "@/api/client";
 import { fmtExpiry } from "./shared";
 
-// ── Withings sync section ────────────────────────────────────────────────
-interface WithingsSyncSectionProps {
+// ── OAuth sync section ───────────────────────────────────────────────────
+// Unifies WithingsSyncSection/StravaSyncSection (HRA-73) via an explicit
+// provider descriptor, not an isWithings/isStrava boolean.
+interface OAuthTokenStatus { present: boolean; valid: boolean; expiresAt?: number; scope?: string; error?: string; }
+
+// id: used as the login popup's window name. label: display name (e.g.
+// "Withings"). noun: "measurements" / "activities". description: the
+// paragraph shown under the section title.
+export interface OAuthProvider {
+  id:          string;
+  label:       string;
+  noun:        string;
+  description: string;
+  api: {
+    tokenStatus: () => Promise<OAuthTokenStatus>;
+    loginUrl:    () => Promise<{ url: string }>;
+    sync:        (from?: string, to?: string) => Promise<SyncResult>;
+  };
+}
+
+interface OAuthSyncSectionProps {
+  provider: OAuthProvider;
   from: string;
   to: string;
   onFromChange: (v: string) => void;
   onToChange: (v: string) => void;
 }
 
-export function WithingsSyncSection({ from, to, onFromChange, onToChange }: WithingsSyncSectionProps) {
+export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange }: OAuthSyncSectionProps) {
+  const { id, label, noun, description, api } = provider;
+
   const [status, setStatus] = useState<"idle"|"running"|"done"|"error">("idle");
   const [msg,    setMsg]    = useState("");
 
-  const [token, setToken] = useState<WithingsStatus | null>(null);
+  const [token, setToken] = useState<OAuthTokenStatus | null>(null);
   const [checkingToken, setCheckingToken] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
 
   async function checkToken() {
     setCheckingToken(true);
     try {
-      setToken(await api.body.tokenStatus());
+      setToken(await api.tokenStatus());
     } catch {
       setToken({ present: false, valid: false });
     }
     setCheckingToken(false);
   }
 
+  // Run once on mount — checkToken closes over provider.api, a stable const.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { checkToken(); }, []);
 
   async function login() {
     setLoggingIn(true);
     setMsg("");
     try {
-      const { url } = await api.body.loginUrl();
-      const popup = window.open(url, "withings-login", "width=480,height=720");
+      const { url } = await api.loginUrl();
+      const popup = window.open(url, `${id}-login`, "width=480,height=720");
       if (!popup) {
         setMsg("Your browser blocked the popup — allow popups for this site and try again.");
         setLoggingIn(false);
@@ -52,7 +75,7 @@ export function WithingsSyncSection({ from, to, onFromChange, onToChange }: With
             await checkToken();
             return;
           }
-          const s = await api.body.tokenStatus();
+          const s = await api.tokenStatus();
           if (s.valid) {
             window.clearInterval(poll);
             popup.close();
@@ -69,9 +92,9 @@ export function WithingsSyncSection({ from, to, onFromChange, onToChange }: With
 
   async function triggerSync() {
     setStatus("running");
-    setMsg("Fetching measurements from Withings…");
+    setMsg(`Fetching ${noun} from ${label}…`);
     try {
-      const data = await api.body.sync(from, to);
+      const data = await api.sync(from, to);
       setMsg(`Done — ${data.imported} imported, ${data.skipped} skipped, ${data.errors} errors.`);
       setStatus("done");
     } catch (e) {
@@ -85,9 +108,9 @@ export function WithingsSyncSection({ from, to, onFromChange, onToChange }: With
 
   return (
     <Card>
-      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Sync Withings measurements</div>
+      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Sync {label} {noun}</div>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
-        Pulls weight and body composition measurements from the Withings API for the range below (defaults to since your last sync if you leave it alone).
+        {description}
       </div>
 
       <StatusLine
@@ -95,8 +118,8 @@ export function WithingsSyncSection({ from, to, onFromChange, onToChange }: With
         message={
           checkingToken ? "Checking token…"
           : connected   ? `Connected${token?.expiresAt ? ` · expires ${fmtExpiry(token.expiresAt)}` : ""}`
-          : token?.present ? "Withings session expired — please log in again"
-          : "Not connected to Withings"
+          : token?.present ? `${label} session expired — please log in again`
+          : `Not connected to ${label}`
         }
         onRecheck={checkToken}
       />
@@ -118,20 +141,20 @@ export function WithingsSyncSection({ from, to, onFromChange, onToChange }: With
             cursor: loggingIn ? "not-allowed" : "pointer", opacity: loggingIn ? 0.6 : 1,
           }}
         >
-          {loggingIn ? "Waiting for login…" : connected ? "Re-login" : "Login to Withings"}
+          {loggingIn ? "Waiting for login…" : connected ? "Re-login" : `Login to ${label}`}
         </button>
 
         <button
           onClick={triggerSync}
           disabled={!canSync}
-          title={!canSync && status !== "running" ? "Log in to Withings first" : undefined}
+          title={!canSync && status !== "running" ? `Log in to ${label} first` : undefined}
           style={{
             background: "var(--accent-green)", color: "var(--bg)", border: "none",
             borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 500,
             cursor: canSync ? "pointer" : "not-allowed", opacity: canSync ? 1 : 0.5,
           }}
         >
-          {status === "running" ? "Syncing…" : "↓ Sync from Withings"}
+          {status === "running" ? "Syncing…" : `↓ Sync from ${label}`}
         </button>
       </div>
 
