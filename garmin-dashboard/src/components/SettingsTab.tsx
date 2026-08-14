@@ -12,19 +12,11 @@ import type { Settings, Theme, StoredUnitSystem } from "@/types/api";
 import { THEME_NAMES } from "@/types/api";
 import { BUNDLED_BACKGROUNDS, BUNDLED_BACKGROUND_ORDER } from "@/utils/backgrounds";
 import type { useAppearance } from "@/hooks/useAppearance";
-
-// Raw m:ss formatter that does NOT convert units — outlier_min_speed_kmh is
-// a technical tuning parameter always stored/labeled in km/h regardless of
-// the app's metric/imperial setting (a deliberate scoping choice — this is
-// an internal threshold, not a measurement display), so its live pace
-// preview must not run through fmt.ts's self-converting fmtPace, which
-// would silently show min/mi under a hardcoded "min/km" label once a user
-// switches to imperial.
-function fmtMinSecRaw(value: number): string {
-  const m = Math.floor(value);
-  const s = Math.round((value - m) * 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
+// The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
+// self-converting fmtPace — because outlier_min_speed_kmh is a technical tuning
+// parameter always stored/labeled in km/h regardless of the app's unit system,
+// so its live pace preview must stay metric-only.
+import { fmtMinSecRaw } from "@/utils/fmt";
 
 // Small hardcoded preview swatches per theme, matching index.css's
 // [data-theme="..."] blocks — duplicated here (not read from CSS) because a

@@ -6,7 +6,7 @@ import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
 import { Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
-import { fmtPace, fmtKm, fmtElevation } from "@/utils/fmt";
+import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
 
 interface Props { from: string; to: string; }
@@ -99,15 +99,6 @@ const gridStyle = { stroke: "var(--border)", strokeDasharray: "3 3" };
 const PACE_LINE_COLOR = "#15965f";
 const BAR_COLOR = "var(--text-secondary)";
 
-// Formats an already-unit-scaled minutes value as m:ss — unlike fmt.ts's
-// fmtPace, this never converts units itself, since SportTrendChart's pace
-// values are pre-scaled to their final display unit before this is called
-// (see scalePace() below).
-function fmtMinSecRaw(value: number): string {
-  const m = Math.floor(value);
-  const s = Math.round((value - m) * 60);
-  return `${m}:${String(s).padStart(2, "0")}`;
-}
 
 function SportTrendChart({ sport, activities, mode }: { sport: string; activities: Activity[]; mode: GroupMode }) {
   const points = buildTrendPoints(activities, mode);

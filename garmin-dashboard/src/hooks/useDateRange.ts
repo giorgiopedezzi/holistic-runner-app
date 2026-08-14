@@ -1,11 +1,5 @@
 import { useState, useCallback } from "react";
-
-function isoToday(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-function isoAgo(days: number): string {
-  return new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-}
+import { isoToday, isoAgo } from "@/utils/date";
 
 export interface DateRangeState {
   from:      string;

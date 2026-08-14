@@ -65,3 +65,15 @@ export function fmtPercent(v: number | null | undefined): string {
 export function fmtBpm(v: number | null | undefined): string {
   return v != null ? `${Math.round(v)} bpm` : "—";
 }
+
+// Formats an already-unit-scaled minutes value as m:ss. Unlike fmtPace, this
+// does NOT convert units — callers pass a value already in its final display
+// unit (OverviewTab pre-scales pace to min/mi before calling this; SettingsTab's
+// min/km preview stays metric-only regardless of the app's unit system). See
+// docs/frontend.md's double-conversion note. Single home for what were two
+// identical local copies (HRA-68 dedup).
+export function fmtMinSecRaw(value: number): string {
+  const m = Math.floor(value);
+  const s = Math.round((value - m) * 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}

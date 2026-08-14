@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { setUnitSystem } from "./units";
-import { fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed } from "./fmt";
+import { fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed, fmtMinSecRaw } from "./fmt";
 
 afterEach(() => setUnitSystem("metric"));
 
@@ -67,5 +67,21 @@ describe("fmtWeight / fmtElevation / fmtSpeed", () => {
     expect(fmtWeight(null)).toBe("—");
     expect(fmtElevation(null)).toBe("—");
     expect(fmtSpeed(null)).toBe("—");
+  });
+});
+
+describe("fmtMinSecRaw (non-converting m:ss — HRA-68 dedup)", () => {
+  it("formats an already-scaled minutes value as m:ss, unit-independent", () => {
+    setUnitSystem("imperial"); // must NOT convert — proves it ignores the unit system
+    expect(fmtMinSecRaw(5)).toBe("5:00");
+    expect(fmtMinSecRaw(4.5)).toBe("4:30");
+    expect(fmtMinSecRaw(6.99)).toBe("6:59"); // round(0.99*60)=59
+    expect(fmtMinSecRaw(0)).toBe("0:00");
+  });
+  it("preserves the pre-existing seconds-rounding quirk (behaviour-preserving move, NOT a fix)", () => {
+    // round((0.999)*60)=60 → "4:60" rather than rolling into "5:00". Both former
+    // local copies had this identical latent quirk; the dedup must not change it.
+    // A real fix is a candidate for a separate ticket, not this one.
+    expect(fmtMinSecRaw(4.999)).toBe("4:60");
   });
 });

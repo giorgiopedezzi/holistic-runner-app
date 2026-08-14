@@ -11,9 +11,7 @@ import { Card, SectionTitle, ErrorBanner, LoadingSpinner, ProgressBar, StatusLin
 import type { Activity, BodyMeasurement, DeviceStatus, WithingsStatus, StravaStatus, TrashedActivity, TrashedBodyMeasurement, ClassificationMethod } from "@/types/api";
 import { classificationStatus } from "@/types/api";
 import { fmtKm, fmtWeight } from "@/utils/fmt";
-
-function isoToday() { return new Date().toISOString().slice(0, 10); }
-function isoAgo(d: number) { return new Date(Date.now() - d * 86400000).toISOString().slice(0, 10); }
+import { isoToday, isoAgo } from "@/utils/date";
 
 // ── Shared sync logic ────────────────────────────────────────────────────
 type SyncPhase = "download" | "import";
