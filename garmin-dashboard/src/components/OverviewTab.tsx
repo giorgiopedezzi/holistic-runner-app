@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ComposedChart, Bar, Line, ReferenceLine, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
 } from "recharts";
@@ -11,6 +11,7 @@ import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
 import {
   type GroupMode, defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m,
+  groupActivitiesBySport,
 } from "@/domain/trends";
 
 interface Props { from: string; to: string; }
@@ -202,9 +203,21 @@ function TrendsBySport({ from, to }: Props) {
   const [groupMode, setGroupMode] = useState<GroupMode>(() => defaultGroupMode(from, to));
   useEffect(() => setGroupMode(defaultGroupMode(from, to)), [from, to]);
 
-  const activities = state.status === "success" ? state.data : [];
+  // Memoized so its own reference is stable across renders that don't touch
+  // `state` (e.g. a groupMode click) — otherwise the `? state.data : []`
+  // ternary below builds a fresh [] every such render, which would make
+  // sportsSorted's dependency on `activities` (below) look satisfied by
+  // eslint-plugin-react-hooks while actually changing on every render.
+  const activities = useMemo(() => (state.status === "success" ? state.data : []), [state]);
   const weekEnabled = new Set(activities.map(a => isoWeekStart(a.date_only))).size >= minGroupSize;
   const monthEnabled = new Set(activities.map(a => a.date_only.slice(0, 7))).size >= minGroupSize;
+  // Real O(n) work (a Map build plus a sort with a reduce per comparison),
+  // previously recomputed on every render including ones triggered by
+  // unrelated state (e.g. clicking Week/Month) — memoized on `activities`
+  // itself, which is now referentially stable across such renders (see
+  // above). Called before the loading/error early returns below since hooks
+  // must run unconditionally.
+  const sportsSorted = useMemo(() => groupActivitiesBySport(activities), [activities]);
 
   // Downgrade out of a now-disabled mode (range shrank, or the auto-default
   // picked something the real data doesn't support) — only once data has
@@ -219,14 +232,6 @@ function TrendsBySport({ from, to }: Props) {
   if (state.status === "loading") return <LoadingSpinner />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;
   if (state.status !== "success" || state.data.length === 0) return null;
-
-  const bySport = new Map<string, Activity[]>();
-  for (const a of state.data) {
-    const sport = a.sport ?? "other";
-    (bySport.get(sport) ?? bySport.set(sport, []).get(sport)!).push(a);
-  }
-  const sportsSorted = [...bySport.entries()].sort((a, b) =>
-    b[1].reduce((s, x) => s + (x.distance_m ?? 0), 0) - a[1].reduce((s, x) => s + (x.distance_m ?? 0), 0));
 
   const modeEnabled: Record<GroupMode, boolean> = { single: true, week: weekEnabled, month: monthEnabled };
 

@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import type { Activity } from "@/types/api";
 import { activity } from "@/test/fixtures";
-import { defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m } from "./trends";
+import { defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m, groupActivitiesBySport } from "./trends";
 
 function addDays(dateOnly: string, days: number): string {
   return new Date(new Date(`${dateOnly}T00:00:00Z`).getTime() + days * 86_400_000).toISOString().slice(0, 10);
@@ -71,5 +71,20 @@ describe("meanCenteredDomain", () => {
 describe("swimPacePer100m — pinned conversion (AC)", () => {
   it("23.21 min/km -> 2.32 min/100m", () => {
     expect(Math.round(swimPacePer100m(23.21) * 100) / 100).toBe(2.32);
+  });
+});
+
+describe("groupActivitiesBySport (HRA-78)", () => {
+  it("groups by sport and orders sports by total distance, descending", () => {
+    const acts = [
+      activity({ id: 1, sport: "cycling", distance_m: 5000 }),
+      activity({ id: 2, sport: "running", distance_m: 3000 }),
+      activity({ id: 3, sport: "running", distance_m: 4000 }),
+      activity({ id: 4, sport: null, distance_m: 1000 }),
+    ];
+    const grouped = groupActivitiesBySport(acts);
+
+    expect(grouped.map(([sport]) => sport)).toEqual(["running", "cycling", "other"]);
+    expect(grouped.find(([sport]) => sport === "running")?.[1]).toHaveLength(2);
   });
 });

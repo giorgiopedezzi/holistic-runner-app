@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
 import type { Settings, Theme, StoredTheme, BackgroundKind, StoredUnitSystem } from "@/types/api";
 import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
@@ -78,13 +78,28 @@ export function useAppearance(): AppearanceApi {
     if (settings) applyToDocument(settings);
   }, [settings]);
 
+  // The handler must always apply the LATEST settings (theme is read live
+  // from the OS, but background/units still need to be whatever's current
+  // when the OS scheme flips) — so it reads a ref instead of closing over
+  // `settings` directly. That's what lets the effect depend on the single
+  // primitive settings?.theme below instead of the whole settings object:
+  // depending on the object would tear down and re-subscribe this listener
+  // on every unrelated settings change (a background swap, a units change),
+  // not just when theme itself starts/stops being 'auto' (HRA-78).
+  const settingsRef = useRef(settings);
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+
   useEffect(() => {
     if (!settings || settings.theme !== "auto" || typeof matchMedia !== "function") return;
     const mq = matchMedia("(prefers-color-scheme: dark)");
-    const handler = () => applyToDocument(settings);
+    const handler = () => { if (settingsRef.current) applyToDocument(settingsRef.current); };
     mq.addEventListener("change", handler);
     return () => mq.removeEventListener("change", handler);
-  }, [settings]);
+    // Intentional: only theme (not the whole settings object) should
+    // re-subscribe this listener; the handler reads settingsRef.current for
+    // everything else, see the comment above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings?.theme]);
 
   const setTheme = useCallback(async (theme: StoredTheme) => {
     const updated = await api.settings.setTheme(theme);

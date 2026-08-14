@@ -71,6 +71,23 @@ export function meanCenteredDomain(vals: number[]): [number, number] {
   return [mean - maxDev, mean + maxDev];
 }
 
+// Groups activities by sport and orders sports by total distance, descending
+// (busiest sport's chart first). Extracted out of OverviewTab.tsx's
+// TrendsBySport (HRA-78) specifically so it can be wrapped in useMemo there
+// — it's real O(n) work (a Map build plus a sort with a reduce per
+// comparison) that was previously recomputed on every render, including
+// re-renders triggered by unrelated state (e.g. clicking the Week/Month
+// toggle), not just when `activities` itself changed.
+export function groupActivitiesBySport(activities: Activity[]): [string, Activity[]][] {
+  const bySport = new Map<string, Activity[]>();
+  for (const a of activities) {
+    const sport = a.sport ?? "other";
+    (bySport.get(sport) ?? bySport.set(sport, []).get(sport)!).push(a);
+  }
+  return [...bySport.entries()].sort((a, b) =>
+    b[1].reduce((s, x) => s + (x.distance_m ?? 0), 0) - a[1].reduce((s, x) => s + (x.distance_m ?? 0), 0));
+}
+
 // Swimming pace is conventionally per 100m, not per km — a plain unit
 // conversion (min/km x 0.1 = min/100m), not a different data source.
 // Scoped to OverviewTab's SportTrendChart only (HRA-70 AC) — ActivityModal

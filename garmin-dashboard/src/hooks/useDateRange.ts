@@ -18,7 +18,11 @@ export const PRESETS = [
 ] as const;
 
 export function useDateRange(defaultDays = 30): DateRangeState {
-  const [from, setFrom] = useState(isoAgo(defaultDays));
+  // Lazy init (HRA-78) — `() => isoAgo(defaultDays)` runs isoAgo() only on
+  // the first render; the un-lazy form here previously ran on every render
+  // just to build and discard a Date, the same bug the `to` state below
+  // already avoided by passing isoToday itself (not isoToday()).
+  const [from, setFrom] = useState(() => isoAgo(defaultDays));
   const [to,   setTo]   = useState(isoToday);
 
   const setPreset = useCallback((days: number) => {

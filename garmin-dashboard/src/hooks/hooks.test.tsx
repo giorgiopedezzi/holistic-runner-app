@@ -11,7 +11,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useQuery } from "./useQuery";
 import { useDateRange } from "./useDateRange";
 import { useAppearance } from "./useAppearance";
-import { installFetch } from "@/test/api-stub";
+import { installFetch, json } from "@/test/api-stub";
 import { settings } from "@/test/fixtures";
 import { getUnitSystem, setUnitSystem } from "@/utils/units";
 
@@ -79,5 +79,33 @@ describe("useAppearance", () => {
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(getUnitSystem()).toBe("imperial");
     expect(result.current.resolvedUnitSystem).toBe("imperial");
+  });
+
+  // HRA-78: the matchMedia subscription used to depend on the whole
+  // `settings` object, so any unrelated settings change (units, background)
+  // tore down and re-subscribed the OS-theme listener. It should only
+  // re-subscribe when theme itself starts/stops being 'auto'.
+  it("does not re-subscribe the OS-theme listener when an unrelated setting changes", async () => {
+    const addEventListener = vi.fn();
+    const removeEventListener = vi.fn();
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener,
+      removeEventListener,
+    }));
+
+    installFetch({
+      "GET /api/v1/settings": settings({ theme: "auto", unit_system: "metric" }),
+      "PUT /api/v1/settings/units": json(settings({ theme: "auto", unit_system: "imperial" })),
+    });
+    const { result } = renderHook(() => useAppearance());
+
+    await waitFor(() => expect(result.current.settings).not.toBeNull());
+    expect(addEventListener).toHaveBeenCalledTimes(1);
+
+    await act(async () => { await result.current.setUnits("imperial"); });
+
+    expect(addEventListener).toHaveBeenCalledTimes(1);
+    expect(removeEventListener).not.toHaveBeenCalled();
   });
 });
