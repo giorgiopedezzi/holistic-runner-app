@@ -50,6 +50,11 @@ model you are **actually** running on, and what that effort level commits you to
 
 An unstated effort is an unfollowed effort.
 
+**Transition to In Progress.** Once both preconditions above are clear, transition `$ARGUMENTS`
+from Ready to Develop to **In Progress** before touching any file. The board should say work has
+started at the moment it actually starts — not stay on Ready to Develop through the whole
+implementation and jump straight to In Review, which is what happened before this rule existed.
+
 ## 3. Implement
 - **Read the area's `docs/` file first.** Before writing code in an area, read the file CLAUDE.md's
   routing table lists for it. If a file the table names appears missing, that is a **lookup error
