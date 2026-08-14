@@ -8,6 +8,9 @@ import { Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
+import {
+  type GroupMode, defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m,
+} from "@/domain/trends";
 
 interface Props { from: string; to: string; }
 
@@ -18,69 +21,9 @@ interface Props { from: string; to: string; }
 // categorical-axis behavior already centers Bar and Line data at the same x
 // tick, so no manual positioning is needed for "starts from the horizontal
 // center of the bar."
-type GroupMode = "single" | "week" | "month";
 const GROUP_MODES: GroupMode[] = ["single", "week", "month"];
 const GROUP_LABEL: Record<GroupMode, string> = { single: "Single", week: "Week", month: "Month" };
 
-function defaultGroupMode(from: string, to: string): GroupMode {
-  const days = (new Date(to).getTime() - new Date(from).getTime()) / 86400000;
-  if (days <= 21) return "single";
-  if (days <= 120) return "week";
-  return "month";
-}
-
-// Monday of the ISO week containing this date, as YYYY-MM-DD.
-function isoWeekStart(dateOnly: string): string {
-  const d = new Date(`${dateOnly}T00:00:00Z`);
-  const day = (d.getUTCDay() + 6) % 7; // Mon=0 .. Sun=6
-  d.setUTCDate(d.getUTCDate() - day);
-  return d.toISOString().slice(0, 10);
-}
-
-interface TrendPoint {
-  key: string;
-  label: string;
-  sortDate: string;
-  totalKm: number;
-  avgPace: number | null;
-  avgHr: number | null;
-  count: number;
-}
-
-function buildTrendPoints(activities: Activity[], mode: GroupMode): TrendPoint[] {
-  const groups = new Map<string, Activity[]>();
-  for (const a of activities) {
-    const key = mode === "single" ? String(a.id)
-      : mode === "week" ? isoWeekStart(a.date_only)
-      : a.date_only.slice(0, 7);
-    (groups.get(key) ?? groups.set(key, []).get(key)!).push(a);
-  }
-
-  const points: TrendPoint[] = [];
-  for (const [key, acts] of groups) {
-    const totalKm = acts.reduce((s, a) => s + (a.distance_m ?? 0), 0) / 1000;
-    const paces = acts.map(a => a.avg_pace_minkm).filter((v): v is number => v != null);
-    const hrs = acts.map(a => a.avg_hr).filter((v): v is number => v != null);
-    const avgPace = paces.length ? paces.reduce((s, v) => s + v, 0) / paces.length : null;
-    const avgHr = hrs.length ? hrs.reduce((s, v) => s + v, 0) / hrs.length : null;
-    const sortDate = acts.reduce((m, a) => (a.date_only < m ? a.date_only : m), acts[0].date_only);
-    const label = mode === "month" ? key : mode === "week" ? sortDate.slice(5) : sortDate.slice(5);
-    points.push({ key, label, sortDate, totalKm, avgPace, avgHr, count: acts.length });
-  }
-  points.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
-  return points;
-}
-
-// Mean-centered domain, same "own real scale, aligned at the mean" pattern
-// used for multi-metric overlays in ActivityModal.tsx — avoids a dual-axis
-// "arbitrary scale alignment" lie while still letting pace and HR (wildly
-// different units) share one chart.
-function meanCenteredDomain(vals: number[]): [number, number] {
-  if (vals.length === 0) return [0, 1];
-  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-  const maxDev = Math.max(...vals.map(v => Math.abs(v - mean)), 0.001);
-  return [mean - maxDev, mean + maxDev];
-}
 
 const axisStyle = { fill: "var(--text-muted)", fontSize: 10 };
 const gridStyle = { stroke: "var(--border)", strokeDasharray: "3 3" };
@@ -120,7 +63,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
   // text — if only the text conversion happened, the line would still plot
   // at the min/km value while the label claimed min/mi, silently
   // mismatched. fmtMinSecRaw (below) only formats, it never re-converts.
-  const scalePace = (minPerKm: number) => (isSwimming ? minPerKm * 0.1 : imperial ? paceKmToMi(minPerKm) : minPerKm);
+  const scalePace = (minPerKm: number) => (isSwimming ? swimPacePer100m(minPerKm) : imperial ? paceKmToMi(minPerKm) : minPerKm);
   const displayPoints = points.map(p => ({
     ...p,
     avgPace: p.avgPace != null ? scalePace(p.avgPace) : null,
