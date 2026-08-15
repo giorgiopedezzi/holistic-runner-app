@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ErrorBanner } from "@/components/ui";
+import { ErrorBanner, Checkbox } from "@/components/ui";
 
 // ── Trash ────────────────────────────────────────────────────────────────
 // Both entity types (activities, body measurements) share one card/UI shape
@@ -51,12 +51,12 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
         <>
           <div style={{ maxHeight: 200, overflow: "auto", border: "1px solid var(--border)", borderRadius: 6, padding: 8, marginBottom: 10 }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", cursor: "pointer", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
-              <input type="checkbox" checked={selected.size === items.length} onChange={toggleAll} />
+              <Checkbox checked={selected.size === items.length} onCheckedChange={toggleAll} />
               Select all ({items.length})
             </label>
             {items.map(item => (
               <label key={item.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", padding: "3px 0" }}>
-                <input type="checkbox" checked={selected.has(item.id)} onChange={() => toggle(item.id)} />
+                <Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggle(item.id)} />
                 {renderRow(item)}
               </label>
             ))}

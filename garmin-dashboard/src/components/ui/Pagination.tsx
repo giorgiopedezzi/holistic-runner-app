@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
+import { Select } from "./Select";
 
 // Classical pagination: per-page selector, first/prev/next/last arrows, and
 // a "jump to page" number input — all client-side (the caller slices its
@@ -36,13 +37,12 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 14, fontSize: 12, color: "var(--text-secondary)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <span>Per page</span>
-        <select
-          value={perPage}
-          onChange={e => onPerPageChange(Number(e.target.value))}
-          style={{ fontSize: 12, padding: "3px 6px" }}
-        >
-          {perPageOptions.map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
+        <Select
+          value={String(perPage)}
+          onValueChange={v => onPerPageChange(Number(v))}
+          options={perPageOptions.map(n => ({ value: String(n), label: String(n) }))}
+          triggerStyle={{ fontSize: 12, padding: "3px 8px" }}
+        />
         <span style={{ color: "var(--text-muted)" }}>· {totalItems} total</span>
       </div>
 

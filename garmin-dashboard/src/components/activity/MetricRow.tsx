@@ -1,4 +1,5 @@
 import type { MetricKey } from "@/domain/activity-chart";
+import { Checkbox } from "@/components/ui";
 import { METRIC_DEFS } from "./shared";
 
 export interface MetricRowState {
@@ -42,10 +43,10 @@ export function MetricRow({ mKey, label, state, onToggle }: {
       {active && (
         <>
           <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", cursor: "pointer" }}>
-            <input type="checkbox" checked={axisOn} onChange={() => onToggle("axis")} /> Axis
+            <Checkbox size={11} checked={axisOn} onCheckedChange={() => onToggle("axis")} /> Axis
           </label>
           <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", cursor: "pointer" }}>
-            <input type="checkbox" checked={cardOn} onChange={() => onToggle("card")} /> Card
+            <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> Card
           </label>
         </>
       )}

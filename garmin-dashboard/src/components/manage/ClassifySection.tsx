@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, LoadingSpinner, ProgressBar } from "@/components/ui";
+import { Card, ErrorBanner, LoadingSpinner, ProgressBar, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, ClassificationMethod } from "@/types/api";
 import { classificationStatus } from "@/types/api";
 import { fmtKm } from "@/utils/fmt";
@@ -127,9 +127,9 @@ export function ClassifySection() {
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} max={to} />
+        <DatePicker value={from} onChange={setFrom} max={to} />
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} min={from} />
+        <DatePicker value={to} onChange={setTo} min={from} />
       </div>
 
       {loading && <LoadingSpinner />}
@@ -142,7 +142,7 @@ export function ClassifySection() {
           ) : (
             <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid var(--border)", borderRadius: 6, padding: 8, marginBottom: 10 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", cursor: "pointer", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
-                <input type="checkbox" checked={selected.size === activities.length} onChange={toggleAll} />
+                <Checkbox checked={selected.size === activities.length} onCheckedChange={toggleAll} />
                 Select all ({activities.length})
               </label>
               {activities.map(a => {
@@ -184,7 +184,7 @@ export function ClassifySection() {
                     background: justConfirmed.has(a.id) ? "color-mix(in srgb, var(--accent-green) 18%, transparent)" : "transparent",
                     transition: "background-color 2.5s ease-out",
                   }}>
-                    <input type="checkbox" checked={selected.has(a.id)} onChange={() => toggle(a.id)} />
+                    <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggle(a.id)} />
                     <span style={{ minWidth: 86 }}>{a.date_only}</span>
                     <span style={{ minWidth: 60 }}>{fmtKm(a.distance_m)}</span>
                     {resultPills.length > 0 ? resultPills : (

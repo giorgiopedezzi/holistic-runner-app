@@ -229,6 +229,75 @@ input:focus, select:focus { border-color: var(--accent); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+/* Firefox has no ::-webkit-scrollbar-* — this is its own equivalent, same
+   dark styling via the same tokens (HRA-98). */
+* { scrollbar-width: thin; scrollbar-color: var(--border-strong) var(--bg); }
+
+/* ── Form primitives (HRA-98) — shadcn-style Popover/Select/Calendar on
+   Radix + react-day-picker, replacing native date/select controls. Pseudo/
+   data-state selectors need real classes, same reason .card:hover does. ── */
+.hra-date-trigger {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: inherit; font-size: 13px;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 6px 10px; cursor: pointer; transition: border-color 0.15s;
+}
+.hra-date-trigger:hover { border-color: var(--accent); }
+.hra-date-trigger[data-state="open"] { border-color: var(--accent); }
+
+.hra-popover-content {
+  background: var(--bg-card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 8px; z-index: 50;
+}
+
+.hra-select-trigger {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
+  font-family: inherit; font-size: 13px;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  padding: 6px 10px; cursor: pointer; transition: border-color 0.15s;
+}
+.hra-select-trigger:hover { border-color: var(--accent); }
+.hra-select-trigger[data-state="open"] { border-color: var(--accent); }
+.hra-select-content {
+  background: var(--bg-card); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  overflow: hidden; z-index: 50;
+}
+.hra-select-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 13px; color: var(--text-primary);
+  padding: 6px 10px; cursor: pointer; outline: none;
+}
+.hra-select-item[data-highlighted] { background: var(--bg-surface); }
+.hra-select-item[data-disabled] { opacity: 0.4; pointer-events: none; }
+.hra-select-item-indicator { color: var(--accent); display: flex; }
+
+.hra-calendar { font-size: 13px; color: var(--text-primary); }
+.hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
+.hra-calendar .rdp-nav { display: flex; justify-content: space-between; }
+.hra-calendar .rdp-button_previous,
+.hra-calendar .rdp-button_next {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: var(--radius-sm);
+  color: var(--text-secondary); background: none; border: none; cursor: pointer;
+}
+.hra-calendar .rdp-button_previous:hover,
+.hra-calendar .rdp-button_next:hover { background: var(--bg-surface); color: var(--text-primary); }
+.hra-calendar .rdp-button_previous[disabled],
+.hra-calendar .rdp-button_next[disabled] { opacity: 0.3; cursor: not-allowed; }
+.hra-calendar .rdp-weekday { color: var(--text-muted); font-size: 11px; font-weight: 400; padding: 4px 0; }
+.hra-calendar .rdp-day_button {
+  width: 30px; height: 30px; border-radius: var(--radius-sm);
+  color: var(--text-primary); background: none; border: none; cursor: pointer;
+}
+.hra-calendar .rdp-day_button:hover { background: var(--bg-surface); }
+.hra-calendar .rdp-today .rdp-day_button { color: var(--accent); font-weight: 600; }
+.hra-calendar .rdp-selected .rdp-day_button { background: var(--accent); color: var(--on-accent); }
+.hra-calendar .rdp-outside .rdp-day_button { color: var(--text-muted); opacity: 0.5; }
+.hra-calendar .rdp-disabled .rdp-day_button { color: var(--text-muted); opacity: 0.3; cursor: not-allowed; }
 
 @keyframes progress-indeterminate {
   0%   { transform: translateX(-40%); }

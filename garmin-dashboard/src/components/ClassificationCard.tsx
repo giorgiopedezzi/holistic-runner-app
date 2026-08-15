@@ -189,6 +189,11 @@ function MethodResultCard({
 
       {showCorrection && (
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+          {/* Deliberately still a native <select> (HRA-98 deviation) — a
+              Radix Select can't be driven by the characterization test's
+              fireEvent.change, and this Story's own AC requires the
+              existing FE test suite to pass unmodified; see the In Review
+              comment for the tradeoff. */}
           <select value={reason} onChange={e => setReason(e.target.value as CorrectionReason)} style={{ fontSize: 12 }}>
             <option value="">Why was this wrong?</option>
             {CORRECTION_REASONS.map(r => <option key={r} value={r}>{r}</option>)}

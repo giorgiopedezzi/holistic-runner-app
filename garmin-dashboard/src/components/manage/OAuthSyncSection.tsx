@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Card, StatusLine } from "@/components/ui";
+import { Card, StatusLine, DatePicker } from "@/components/ui";
 import type { SyncResult } from "@/api/client";
 import { fmtExpiry } from "./shared";
 
@@ -126,9 +126,9 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Date range:</label>
-        <input type="date" value={from} onChange={e => onFromChange(e.target.value)} max={to} />
+        <DatePicker value={from} onChange={onFromChange} max={to} />
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
-        <input type="date" value={to} onChange={e => onToChange(e.target.value)} min={from} />
+        <DatePicker value={to} onChange={onToChange} min={from} />
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner } from "@/components/ui";
+import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, BodyMeasurement } from "@/types/api";
 import { fmtKm, fmtWeight } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
@@ -82,11 +82,11 @@ export function DeleteSection() {
 
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
-          <input type="checkbox" checked={delActivities} onChange={e => setDelActivities(e.target.checked)} />
+          <Checkbox checked={delActivities} onCheckedChange={setDelActivities} />
           Activities (Garmin + Strava)
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
-          <input type="checkbox" checked={delBody} onChange={e => setDelBody(e.target.checked)} />
+          <Checkbox checked={delBody} onCheckedChange={setDelBody} />
           Withings measurements
         </label>
         <button
@@ -98,9 +98,9 @@ export function DeleteSection() {
       </div>
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
-        <input type="date" value={from} onChange={e => setFrom(e.target.value)} max={to} />
+        <DatePicker value={from} onChange={setFrom} max={to} />
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
-        <input type="date" value={to} onChange={e => setTo(e.target.value)} min={from} />
+        <DatePicker value={to} onChange={setTo} min={from} />
       </div>
 
       {canDelete && (
@@ -115,7 +115,7 @@ export function DeleteSection() {
 
       {canDelete && (
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", marginBottom: 10, cursor: "pointer" }}>
-          <input type="checkbox" checked={showData} onChange={e => setShowData(e.target.checked)} />
+          <Checkbox checked={showData} onCheckedChange={setShowData} />
           Show data
         </label>
       )}

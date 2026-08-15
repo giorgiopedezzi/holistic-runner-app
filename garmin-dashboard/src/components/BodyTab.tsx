@@ -9,7 +9,7 @@ import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
 import {
   ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef,
-  Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty,
+  Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty, Checkbox,
 } from "@/components/ui";
 import { fmtWeight, fmtPercent } from "@/utils/fmt";
 import { getUnitSystem, kgToLb, kmToMi, weightUnitLabel, distanceUnitLabel } from "@/utils/units";
@@ -171,7 +171,7 @@ export function BodyTab({ from, to }: Props) {
 
   const checkbox = (label: string, checked: boolean, onChange: () => void, color: string) => (
     <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: checked ? color : "var(--text-secondary)", cursor: "pointer" }}>
-      <input type="checkbox" checked={checked} onChange={onChange} style={{ accentColor: color, cursor: "pointer" }} />
+      <Checkbox checked={checked} onCheckedChange={onChange} color={color} />
       {label}
     </label>
   );

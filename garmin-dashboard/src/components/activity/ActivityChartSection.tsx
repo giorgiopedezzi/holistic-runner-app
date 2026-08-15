@@ -6,7 +6,7 @@ import {
 import type { TrackPoint } from "@/types/api";
 import { speedUnitLabel } from "@/utils/units";
 import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR } from "./shared";
-import { Label, ChartCard } from "@/components/ui";
+import { Label, ChartCard, Checkbox } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { TrackTooltip } from "./TrackTooltip";
 import { PauseFlagShape } from "./PauseFlagShape";
@@ -67,7 +67,7 @@ export function ActivityChartSection({
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
           title="Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings">
-          <input type="checkbox" checked={removeOutliers} onChange={e => setRemoveOutliers(e.target.checked)} />
+          <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
           Remove outliers
         </label>
       </div>

@@ -1,4 +1,5 @@
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
+import { DatePicker } from "@/components/ui";
 
 type Props = DateRangeState;
 
@@ -33,19 +34,9 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset }: Props) {
 
       <span style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 4px" }}>or</span>
 
-      <input
-        type="date"
-        value={from}
-        max={to}
-        onChange={e => setFrom(e.target.value)}
-      />
+      <DatePicker value={from} max={to} onChange={setFrom} />
       <span style={{ color: "var(--text-muted)", fontSize: 12 }}>→</span>
-      <input
-        type="date"
-        value={to}
-        min={from}
-        onChange={e => setTo(e.target.value)}
-      />
+      <DatePicker value={to} min={from} onChange={setTo} />
     </div>
   );
 }
