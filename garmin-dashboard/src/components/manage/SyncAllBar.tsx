@@ -73,7 +73,7 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
           onClick={syncAll}
           disabled={status === "running"}
           style={{
-            background: "var(--accent-blue)", color: "#fff", border: "none",
+            background: "var(--accent)", color: "#fff", border: "none",
             borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 500,
             cursor: status === "running" ? "not-allowed" : "pointer", opacity: status === "running" ? 0.6 : 1,
             whiteSpace: "nowrap",

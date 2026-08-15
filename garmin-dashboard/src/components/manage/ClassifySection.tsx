@@ -225,8 +225,8 @@ export function ClassifySection() {
             </div>
             <button onClick={classifySelected} disabled={selected.size === 0 || busy}
               style={{
-                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent-blue)",
-                background: "none", color: "var(--accent-blue)",
+                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)",
+                background: "none", color: "var(--accent)",
                 cursor: (selected.size === 0 || busy) ? "not-allowed" : "pointer", opacity: selected.size === 0 ? 0.5 : 1,
               }}>
               Classify / Reclassify selected
@@ -244,7 +244,7 @@ export function ClassifySection() {
 
           {progress && (
             <div style={{ marginTop: 10 }}>
-              <ProgressBar label={`Classifying ${progress.current}/${progress.total}…`} current={progress.current} total={progress.total} accent="var(--accent-blue)" />
+              <ProgressBar label={`Classifying ${progress.current}/${progress.total}…`} current={progress.current} total={progress.total} accent="var(--accent)" />
             </div>
           )}
           {actionError && <div style={{ marginTop: 10 }}><ErrorBanner message={actionError} /></div>}

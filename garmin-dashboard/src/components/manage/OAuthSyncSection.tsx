@@ -136,7 +136,7 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
           onClick={login}
           disabled={loggingIn}
           style={{
-            background: "none", color: "var(--accent-blue)", border: "1px solid var(--accent-blue)",
+            background: "none", color: "var(--accent)", border: "1px solid var(--accent)",
             borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500,
             cursor: loggingIn ? "not-allowed" : "pointer", opacity: loggingIn ? 0.6 : 1,
           }}

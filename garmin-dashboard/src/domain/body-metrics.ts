@@ -29,7 +29,7 @@ export type MetricRow = { date_only: string } & Partial<Record<MetricKey, number
 // runtime. Kept as "kg" here anyway so METRIC_DEFS stays a plain, readable
 // static table; nothing reads .unit directly for a WEIGHT_KEYS member.
 export const METRIC_DEFS: Record<MetricKey, { label: string; color: string; unit: string }> = {
-  weight_kg:      { label: "Weight",      color: "var(--accent-blue)", unit: "kg" },
+  weight_kg:      { label: "Weight",      color: "var(--data-weight)", unit: "kg" },
   fat_mass_kg:    { label: "Fat mass",    color: "#db2777",            unit: "kg" },
   muscle_mass_kg: { label: "Muscle mass", color: "#15965f",            unit: "kg" },
   fat_ratio:      { label: "Fat %",       color: "#d97706",            unit: "%" },

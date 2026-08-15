@@ -187,7 +187,7 @@ export function BodyTab({ from, to }: Props) {
     <>
       <SectionTitle>Latest measurement — {latest.date_only}</SectionTitle>
       <StatGrid>
-        <Stat label="Weight"       value={fmtWeight(latest.weight_kg)} accent="var(--accent-blue)" />
+        <Stat label="Weight"       value={fmtWeight(latest.weight_kg)} accent="var(--data-weight)" />
         {latest.fat_ratio      && <Stat label="Body fat"    value={fmtPercent(latest.fat_ratio)} />}
         {latest.muscle_mass_kg && <Stat label="Muscle mass" value={fmtWeight(latest.muscle_mass_kg)} accent="var(--accent-green)" />}
         {latest.bmi            && <Stat label="BMI"         value={latest.bmi.toFixed(1)} />}
@@ -277,7 +277,7 @@ export function BodyTab({ from, to }: Props) {
               <Tooltip {...tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-secondary)" }} />
               <Bar    yAxisId="km" dataKey="km"         fill="var(--accent-green)"  radius={[3,3,0,0]} name={`${distanceUnitLabel()} run`} barSize={14} />
-              <Line   yAxisId="kg" dataKey="avg_weight" stroke="var(--accent-blue)" strokeWidth={2} dot={false} name={`avg weight ${weightUnitLabel()}`} />
+              <Line   yAxisId="kg" dataKey="avg_weight" stroke="var(--data-weight)" strokeWidth={2} dot={false} name={`avg weight ${weightUnitLabel()}`} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

@@ -129,8 +129,8 @@ function MethodResultCard({
             ? "Runs a local Ollama model against this activity's pace/HR pattern (takes ~15-25s on CPU). Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending."
             : "Applies deterministic rules to this activity's pace variance, splits, and pauses — instant, no Ollama needed. Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending."}
           style={{
-            fontSize: 12, border: "1px solid var(--accent-blue)", borderRadius: 6, padding: "4px 12px",
-            background: "none", color: "var(--accent-blue)",
+            fontSize: 12, border: "1px solid var(--accent)", borderRadius: 6, padding: "4px 12px",
+            background: "none", color: "var(--accent)",
             cursor: classifying ? "not-allowed" : "pointer", opacity: classifying ? 0.6 : 1,
           }}
         >

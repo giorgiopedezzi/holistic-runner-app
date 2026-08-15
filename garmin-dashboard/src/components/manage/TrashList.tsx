@@ -65,8 +65,8 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <button onClick={doRestore} disabled={selected.size === 0 || busy}
               style={{
-                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent-blue)",
-                background: "none", color: "var(--accent-blue)",
+                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)",
+                background: "none", color: "var(--accent)",
                 cursor: selected.size === 0 || busy ? "not-allowed" : "pointer", opacity: selected.size === 0 ? 0.5 : 1,
               }}>
               Restore selected

@@ -45,7 +45,7 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
         title={`Follows your OS's light/dark setting — currently: ${autoPreview.label}`}
         style={{
           width: 96, padding: 0, borderRadius: 8, overflow: "hidden", cursor: "pointer",
-          border: `2px solid ${isAuto ? "var(--accent-blue)" : "var(--border)"}`,
+          border: `2px solid ${isAuto ? "var(--accent)" : "var(--border)"}`,
           background: "none",
         }}
       >
@@ -55,7 +55,7 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
             <div style={{ width: 36, height: 3, borderRadius: 2, background: autoPreview.text, opacity: 0.6 }} />
           </div>
         </div>
-        <div style={{ fontSize: 11, padding: "5px 0", background: "var(--bg-card)", color: isAuto ? "var(--accent-blue)" : "var(--text-secondary)" }}>
+        <div style={{ fontSize: 11, padding: "5px 0", background: "var(--bg-card)", color: isAuto ? "var(--accent)" : "var(--text-secondary)" }}>
           Auto ({autoPreview.label})
         </div>
       </button>
@@ -68,7 +68,7 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
             onClick={() => appearance.setTheme(t)}
             style={{
               width: 96, padding: 0, borderRadius: 8, overflow: "hidden", cursor: "pointer",
-              border: `2px solid ${selected ? "var(--accent-blue)" : "var(--border)"}`,
+              border: `2px solid ${selected ? "var(--accent)" : "var(--border)"}`,
               background: "none",
             }}
           >
@@ -78,7 +78,7 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
                 <div style={{ width: 36, height: 3, borderRadius: 2, background: preview.text, opacity: 0.6 }} />
               </div>
             </div>
-            <div style={{ fontSize: 11, padding: "5px 0", background: "var(--bg-card)", color: selected ? "var(--accent-blue)" : "var(--text-secondary)" }}>
+            <div style={{ fontSize: 11, padding: "5px 0", background: "var(--bg-card)", color: selected ? "var(--accent)" : "var(--text-secondary)" }}>
               {preview.label}
             </div>
           </button>
@@ -141,9 +141,9 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
             onClick={() => appearance.setUnits(opt.value)}
             style={{
               fontSize: 12, padding: "6px 14px", borderRadius: 999, cursor: "pointer",
-              border: `1px solid ${selected ? "var(--accent-blue)" : "var(--border-strong)"}`,
-              background: selected ? "var(--accent-blue)22" : "var(--bg-card)",
-              color: selected ? "var(--accent-blue)" : "var(--text-secondary)",
+              border: `1px solid ${selected ? "var(--accent)" : "var(--border-strong)"}`,
+              background: selected ? "var(--accent)22" : "var(--bg-card)",
+              color: selected ? "var(--accent)" : "var(--text-secondary)",
             }}
           >
             {opt.label}
@@ -191,7 +191,7 @@ export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) 
           onClick={() => appearance.setBackground("none")}
           style={{
             width: 72, height: 48, borderRadius: 8, cursor: "pointer",
-            border: `2px solid ${isNone ? "var(--accent-blue)" : "var(--border)"}`,
+            border: `2px solid ${isNone ? "var(--accent)" : "var(--border)"}`,
             background: "var(--bg-card)", color: "var(--text-muted)", fontSize: 10,
           }}
         >
@@ -207,7 +207,7 @@ export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) 
               title={preset.label}
               style={{
                 width: 72, height: 48, borderRadius: 8, cursor: "pointer",
-                border: `2px solid ${selected ? "var(--accent-blue)" : "var(--border)"}`,
+                border: `2px solid ${selected ? "var(--accent)" : "var(--border)"}`,
                 backgroundImage: preset.css, backgroundColor: "var(--bg)",
               }}
             />
@@ -216,7 +216,7 @@ export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) 
         <label
           style={{
             width: 72, height: 48, borderRadius: 8, cursor: uploading ? "not-allowed" : "pointer",
-            border: `2px solid ${isCustom ? "var(--accent-blue)" : "var(--border)"}`,
+            border: `2px solid ${isCustom ? "var(--accent)" : "var(--border)"}`,
             background: isCustom && settings.background_value
               ? `center/cover url("${api.settings.backgroundImageUrl(settings.background_value)}")`
               : "var(--bg-card)",
@@ -401,9 +401,9 @@ export function SettingsTab({ appearance }: Props) {
                 onClick={() => setDetailView(v)}
                 style={{
                   fontSize: 12, padding: "6px 14px", borderRadius: 999, cursor: "pointer",
-                  border: `1px solid ${selected ? "var(--accent-blue)" : "var(--border-strong)"}`,
-                  background: selected ? "var(--accent-blue)22" : "var(--bg-card)",
-                  color: selected ? "var(--accent-blue)" : "var(--text-secondary)",
+                  border: `1px solid ${selected ? "var(--accent)" : "var(--border-strong)"}`,
+                  background: selected ? "var(--accent)22" : "var(--bg-card)",
+                  color: selected ? "var(--accent)" : "var(--text-secondary)",
                 }}
               >
                 {v === "accordion" ? "Accordion (inline)" : "Popup"}
