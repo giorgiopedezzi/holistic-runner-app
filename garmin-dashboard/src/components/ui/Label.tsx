@@ -16,7 +16,7 @@ export function Label({ children, style }: LabelProps) {
         fontSize: 11,
         color: "var(--text-muted)",
         textTransform: "uppercase",
-        letterSpacing: "0.06em",
+        letterSpacing: "0.1em",
         ...style,
       }}
     >

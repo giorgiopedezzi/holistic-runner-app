@@ -1,5 +1,5 @@
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
-import { DatePicker } from "@/components/ui";
+import { DatePicker, glowPillStyle } from "@/components/ui";
 
 type Props = DateRangeState;
 
@@ -15,17 +15,17 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset }: Props) {
       {PRESETS.map(p => (
         <button
           key={p.label}
+          className="hra-pill hra-nav-hover"
           onClick={() => setPreset(p.days)}
           style={{
-            background:   isActive(p.days) ? "var(--bg-card)" : "none",
-            border:       "1px solid",
-            borderColor:  isActive(p.days) ? "var(--border-strong)" : "var(--border)",
-            borderRadius: "var(--radius-sm)",
+            background:   "none",
+            border:       "1px solid var(--border)",
+            borderRadius: 999,
             padding:      "4px 12px",
             fontSize:     13,
             color:        isActive(p.days) ? "var(--text-primary)" : "var(--text-secondary)",
             fontWeight:   isActive(p.days) ? 600 : 400,
-            transition:   "all 0.15s",
+            ...glowPillStyle(isActive(p.days)),
           }}
         >
           {p.label}

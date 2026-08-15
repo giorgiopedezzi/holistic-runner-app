@@ -59,6 +59,7 @@ implementation and jump straight to In Review, which is what happened before thi
 `git checkout -b feature/hra-XX_brief-description` (lowercase, matching the existing convention).
 Never implement directly on whatever branch happened to be checked out at session start — that
 silently mixes this Story's commit into an unrelated branch's history (HRA-100).
+Both comes before next step (3. Implement)
 
 ## 3. Implement
 - **Read the area's `docs/` file first.** Before writing code in an area, read the file CLAUDE.md's

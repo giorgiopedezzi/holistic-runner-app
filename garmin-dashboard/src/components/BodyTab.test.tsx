@@ -26,7 +26,10 @@ describe("BodyTab", () => {
     render(<BodyTab from="2026-07-15" to="2026-08-14" />);
 
     expect(await screen.findByText(/Latest measurement — 2026-08-01/)).toBeInTheDocument();
-    expect(screen.getByText("72.4 kg")).toBeInTheDocument();
+    // Stat now splits "72.4 kg" into a value div + a smaller inline unit
+    // span (polish pass, ui/Stat.tsx's splitUnit) — match on the div's full
+    // textContent rather than a single text node.
+    expect(screen.getByText((_, node) => node?.tagName.toLowerCase() === "div" && node.textContent === "72.4 kg")).toBeInTheDocument();
   });
 
   it("shows the range-empty message when there are no measurements", async () => {

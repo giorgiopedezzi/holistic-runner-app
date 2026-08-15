@@ -8,7 +8,7 @@ import { ActivitiesTab } from "@/components/ActivitiesTab";
 import { BodyTab }      from "@/components/BodyTab";
 import { ManageTab }    from "@/components/ManageTab";
 import { SettingsTab }  from "@/components/SettingsTab";
-import { ErrorBanner }  from "@/components/ui";
+import { ErrorBanner, glowPillStyle } from "@/components/ui";
 
 const TABS = [
   { id: "overview",    label: "Overview & Trends" },
@@ -48,12 +48,13 @@ function AppShell() {
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      <div className="hra-ambient-glow" />
 
       {/* ── header ───────────────────────────────────────────────────── */}
       <header style={{
-        borderBottom: "1px solid var(--border)", padding: "0 24px",
+        borderBottom: "1px solid color-mix(in srgb, var(--accent) 12%, var(--border))", padding: "0 24px",
         display: "flex", alignItems: "center", gap: 24, height: 52,
-        background: "var(--bg-surface)", position: "sticky", top: 0, zIndex: 10,
+        background: "color-mix(in srgb, var(--accent) 3%, var(--bg-surface))", position: "sticky", top: 0, zIndex: 10,
       }}>
         <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.01em" }}>
           Garmin Stats
@@ -69,19 +70,18 @@ function AppShell() {
 
         <nav style={{ display: "flex", gap: 2, marginLeft: "auto" }}>
           {TABS.map(t => (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{
-              background:  tab === t.id ? "var(--bg-card)" : "none",
-              border:      "1px solid",
-              borderColor: tab === t.id ? "var(--border-strong)" : "transparent",
-              borderRadius:"var(--radius-sm)",
+            <button key={t.id} className="hra-pill hra-nav-hover" onClick={() => setTab(t.id)} style={{
+              background:  "none",
+              border:      "1px solid transparent",
+              borderRadius:999,
               padding:     "5px 14px",
               fontSize:    13,
               fontWeight:  tab === t.id ? 600 : 400,
               color:       tab === t.id ? "var(--text-primary)" : "var(--text-secondary)",
-              transition:  "all 0.15s",
               cursor:      "pointer",
               // subtle red tint for manage tab
               ...(t.id === "manage" && tab !== "manage" ? { color: "var(--accent-red)", opacity: 0.7 } : {}),
+              ...glowPillStyle(tab === t.id),
             }}>
               {t.label}
             </button>

@@ -1,7 +1,7 @@
 export { Card } from "./Card";
 export { Label } from "./Label";
 export { ChartCard, ChartPillLegend, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef } from "./ChartCard";
-export { Stat } from "./Stat";
+export { Stat, splitUnit } from "./Stat";
 export { StatGrid } from "./StatGrid";
 export { Badge } from "./Badge";
 export { SectionTitle } from "./SectionTitle";
@@ -17,3 +17,4 @@ export { Select } from "./Select";
 export { Popover, PopoverTrigger, PopoverContent } from "./Popover";
 export { Calendar } from "./Calendar";
 export { DatePicker } from "./DatePicker";
+export { glowPillStyle } from "./pill";

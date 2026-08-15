@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  ComposedChart, Bar, Line, ReferenceLine, XAxis, YAxis, Tooltip, Legend, CartesianGrid, ResponsiveContainer,
+  ComposedChart, Bar, Line, ReferenceLine, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
 import {
-  Card, ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius,
+  Card, ChartCard, ChartPillLegend, chartGrid, chartTick, chartTooltipStyle,
   Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
+  Label, glowPillStyle, splitUnit,
 } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
@@ -48,10 +49,26 @@ const gridStyle = chartGrid;
 // shows via the Badge above the chart, which keeps SPORT_COLOR.
 const PACE_LINE_COLOR = "var(--data-pace)";
 const BAR_COLOR = "var(--text-secondary)";
+// Polish pass: distance bars now render as a --data-pace vertical gradient
+// (55%→12% opacity) with a tighter top radius than the app-wide
+// chartBarRadius default, per the explicit spec for this chart — BAR_COLOR
+// above stays the axis-tick/tooltip-adjacent neutral, only the bar FILL
+// itself picks up the gradient.
+const BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
 
 function SportTrendChart({ sport, activities, mode }: { sport: string; activities: Activity[]; mode: GroupMode }) {
   const points = buildTrendPoints(activities, mode);
+  // Legend as clickable pill chips (polish pass) — each series can be hidden
+  // independently, same toggle-a-Set pattern BodyTab's metric pills already
+  // use. Reference lines for a hidden pace/HR line hide with it, so a
+  // toggled-off series never leaves orphaned dashed lines on screen.
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const toggleSeries = (key: string) => setHidden(h => {
+    const next = new Set(h);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
 
   // Swimming pace is conventionally per 100m, not per km — avg_pace_minkm
   // (minutes per km) × 0.1 = minutes per 100m, a plain unit conversion, no
@@ -133,9 +150,26 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
           {overallAvgHr != null && <> · avg {Math.round(overallAvgHr)} bpm ({Math.round(refMinHr!)}–{Math.round(refMaxHr!)})</>}
         </span>
       </div>
-      <ChartCard>
+      <ChartCard legend={
+        <div style={{ marginLeft: "auto" }}>
+          <ChartPillLegend
+            items={[
+              { key: "totalKm", label: "Distance", color: "color-mix(in srgb, var(--data-pace) 55%, transparent)", active: !hidden.has("totalKm") },
+              { key: "avgPace", label: "Avg pace", color: PACE_LINE_COLOR, active: !hidden.has("avgPace") },
+              { key: "avgHr", label: "Avg HR", color: hrColor, active: !hidden.has("avgHr") },
+            ]}
+            onToggle={toggleSeries}
+          />
+        </div>
+      }>
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={displayPoints}>
+          <defs>
+            <linearGradient id={`barGrad-${sport}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.55} />
+              <stop offset="100%" stopColor="var(--data-pace)" stopOpacity={0.12} />
+            </linearGradient>
+          </defs>
           <CartesianGrid {...gridStyle} />
           <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false} />
           {/* Three separate tick-label columns — km and pace stacked on the
@@ -159,6 +193,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
             tickFormatter={(v: number) => Math.round(v).toString()} />
           <Tooltip
             contentStyle={chartTooltipStyle}
+            cursor={{ stroke: "var(--border-strong)", strokeDasharray: "3 3" }}
             formatter={(value, name) => {
               if (typeof value !== "number") return [String(value ?? ""), name];
               if (name === "Distance") return [`${value.toFixed(1)} ${distanceUnit}`, name];
@@ -167,28 +202,31 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
               return [value, name];
             }}
           />
-          {/* Legend instead of per-line text labels — the earlier version
-              put "avg"/"min"/"max" tags directly on the reference lines,
-              which cluttered a 220px-tall chart. Legend covers what each
-              color is (Distance/Avg pace/Avg HR); the dashed-vs-solid
-              avg-vs-min/max convention is explained once in the section
-              caption above every sport's chart instead of repeated per-line. */}
-          <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={BAR_COLOR} radius={chartBarRadius} isAnimationActive={false} />
-          <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2}
-            dot={false} connectNulls isAnimationActive={false} />
-          <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2}
-            dot={false} connectNulls isAnimationActive={false} />
+          {!hidden.has("totalKm") && (
+            <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={`url(#barGrad-${sport})`} radius={BAR_RADIUS}
+              activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.85 }} isAnimationActive={false} />
+          )}
+          {!hidden.has("avgPace") && (
+            <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2}
+              dot={false} activeDot={{ r: 4, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
+              connectNulls isAnimationActive={false} />
+          )}
+          {!hidden.has("avgHr") && (
+            <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2}
+              dot={false} activeDot={{ r: 4, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
+              connectNulls isAnimationActive={false} />
+          )}
           {/* Avg line reads strongest (higher opacity); min/max are fainter
               dashed lines on the same axis so the three together read as
               "the band this sport's pace/HR moved within," not three equally
-              loud lines competing with the bars/lines above. */}
-          {overallAvgPace != null && <ReferenceLine yAxisId="pace" y={overallAvgPace} stroke={PACE_LINE_COLOR} strokeDasharray="4 4" strokeOpacity={0.7} />}
-          {refMinPace != null && <ReferenceLine yAxisId="pace" y={refMinPace} stroke={PACE_LINE_COLOR} strokeDasharray="2 3" strokeOpacity={0.45} />}
-          {refMaxPace != null && <ReferenceLine yAxisId="pace" y={refMaxPace} stroke={PACE_LINE_COLOR} strokeDasharray="2 3" strokeOpacity={0.45} />}
-          {overallAvgHr != null && <ReferenceLine yAxisId="hr" y={overallAvgHr} stroke={hrColor} strokeDasharray="4 4" strokeOpacity={0.7} />}
-          {refMinHr != null && <ReferenceLine yAxisId="hr" y={refMinHr} stroke={hrColor} strokeDasharray="2 3" strokeOpacity={0.45} />}
-          {refMaxHr != null && <ReferenceLine yAxisId="hr" y={refMaxHr} stroke={hrColor} strokeDasharray="2 3" strokeOpacity={0.45} />}
+              loud lines competing with the bars/lines above. Hidden along
+              with their series when its legend chip is toggled off. */}
+          {!hidden.has("avgPace") && overallAvgPace != null && <ReferenceLine yAxisId="pace" y={overallAvgPace} stroke={PACE_LINE_COLOR} strokeDasharray="4 4" strokeOpacity={0.7} />}
+          {!hidden.has("avgPace") && refMinPace != null && <ReferenceLine yAxisId="pace" y={refMinPace} stroke={PACE_LINE_COLOR} strokeDasharray="2 3" strokeOpacity={0.45} />}
+          {!hidden.has("avgPace") && refMaxPace != null && <ReferenceLine yAxisId="pace" y={refMaxPace} stroke={PACE_LINE_COLOR} strokeDasharray="2 3" strokeOpacity={0.45} />}
+          {!hidden.has("avgHr") && overallAvgHr != null && <ReferenceLine yAxisId="hr" y={overallAvgHr} stroke={hrColor} strokeDasharray="4 4" strokeOpacity={0.7} />}
+          {!hidden.has("avgHr") && refMinHr != null && <ReferenceLine yAxisId="hr" y={refMinHr} stroke={hrColor} strokeDasharray="2 3" strokeOpacity={0.45} />}
+          {!hidden.has("avgHr") && refMaxHr != null && <ReferenceLine yAxisId="hr" y={refMaxHr} stroke={hrColor} strokeDasharray="2 3" strokeOpacity={0.45} />}
         </ComposedChart>
       </ResponsiveContainer>
       </ChartCard>
@@ -246,18 +284,24 @@ function TrendsBySport({ from, to }: Props) {
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 4 }}>
         <SectionTitle>Distance & pace/HR trend</SectionTitle>
-        <div style={{ display: "flex", gap: 4 }}>
+        {/* One segmented container (polish pass) — a single bordered pill
+            housing all three modes, rather than three independently-bordered
+            buttons, so the group reads as one control. Inactive items are
+            identical (no per-item border/background), only the active one
+            gets the gradient pill; hover is the shared quiet bg-tint. */}
+        <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 999, border: "1px solid var(--border)" }}>
           {GROUP_MODES.map(m => (
-            <button key={m} onClick={() => setGroupMode(m)}
+            <button key={m} className="hra-pill hra-nav-hover" onClick={() => setGroupMode(m)}
               disabled={!modeEnabled[m]}
               title={modeEnabled[m] ? undefined : `Needs at least ${minGroupSize} ${m}s in the selected range`}
               style={{
                 fontSize: 11, padding: "3px 10px", borderRadius: 999,
                 cursor: modeEnabled[m] ? "pointer" : "not-allowed",
                 opacity: modeEnabled[m] ? 1 : 0.4,
-                border: `1px solid ${groupMode === m ? "var(--border-strong)" : "transparent"}`,
-                background: groupMode === m ? "var(--bg-card)" : "transparent",
+                border: "1px solid transparent",
+                background: "transparent",
                 color: groupMode === m ? "var(--text-primary)" : "var(--text-muted)",
+                ...glowPillStyle(groupMode === m),
               }}>
               {GROUP_LABEL[m]}
             </button>
@@ -289,9 +333,114 @@ function TrendsBySport({ from, to }: Props) {
   );
 }
 
+// ── Hero ring — the page's one signature visual (feature/temp-ui) ──────────
+// A static (non-percentage) glowing ring framing the period's headline
+// number. Deliberately not a progress/percentage gauge — this app has no
+// "readiness" or goal concept to measure a fill against, so the ring reads
+// as an instrument bezel around real totals rather than implying a target
+// that doesn't exist. Distance/Time sit beside it as the same numbers
+// already shown in the Total StatGrid below, just given one large, unmissable
+// read before the grid breaks them out individually.
+// Builds a compact recent-activity distance sparkline from the same
+// Activity[] shape TrendsBySport already fetches elsewhere in this file (no
+// new endpoint) — one bar per distinct active day, most recent last, capped
+// to the last 14 that have any distance at all. Filling the hero card's
+// dead space (polish pass), not a calendar grid — days with no activity
+// simply don't produce a bar, rather than rendering as a misleading zero.
+function recentDistanceByDay(activities: Activity[]): { date: string; km: number }[] {
+  const byDate = new Map<string, number>();
+  for (const a of activities) {
+    if (a.distance_m == null) continue;
+    byDate.set(a.date_only, (byDate.get(a.date_only) ?? 0) + a.distance_m / 1000);
+  }
+  return [...byDate.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-14)
+    .map(([date, km]) => ({ date, km }));
+}
+
+function DistanceSparkline({ days }: { days: { date: string; km: number }[] }) {
+  if (days.length < 2) return null;
+  const max = Math.max(...days.map(d => d.km), 0.001);
+  const h = 40;
+  return (
+    <div>
+      <Label style={{ marginBottom: 6 }}>Recent</Label>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: h }} title="Distance on each of the most recent active days in range">
+        {days.map(d => (
+          <div key={d.date} title={`${d.date} · ${d.km.toFixed(1)} ${distanceUnitLabel()}`}
+            style={{
+              width: 5, height: Math.max(3, (d.km / max) * h),
+              background: "linear-gradient(180deg, color-mix(in srgb, var(--data-pace) 85%, transparent), color-mix(in srgb, var(--data-pace) 25%, transparent))",
+              borderRadius: "2px 2px 0 0",
+            }} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PeriodHeroRing({ activities, km, hours, sparklineDays }: { activities: number; km: number; hours: number; sparklineDays: { date: string; km: number }[] }) {
+  const size = 132;
+  const stroke = 6;
+  const r = (size - stroke) / 2;
+  const c = size / 2;
+  const distance = splitUnit(fmtKm(km * 1000));
+  return (
+    <Card style={{
+      display: "flex", alignItems: "center", gap: 24, padding: "20px 24px", marginBottom: 20,
+      background: "color-mix(in srgb, var(--accent) 6%, var(--card-bg))",
+    }}>
+      <svg width={size} height={size} style={{ flexShrink: 0, filter: "drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 45%, transparent))" }}>
+        <defs>
+          {/* Chrome-only gradient — accent → accent-strong, never a data
+              color, since this ring frames the app's own totals, not a
+              specific metric (see the component note above). */}
+          <linearGradient id="heroRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="var(--accent)" />
+            <stop offset="100%" stopColor="var(--accent-strong)" />
+          </linearGradient>
+        </defs>
+        <circle cx={c} cy={c} r={r} fill="none" stroke="var(--border)" strokeWidth={stroke} />
+        <circle cx={c} cy={c} r={r} fill="none" stroke="url(#heroRingGrad)" strokeWidth={stroke}
+          strokeLinecap="round" strokeDasharray={`${2 * Math.PI * r * 0.78} ${2 * Math.PI * r}`}
+          transform={`rotate(-90 ${c} ${c})`} />
+        <text x={c} y={c - 4} textAnchor="middle" fontSize={30} fontWeight={700} fill="var(--text-primary)" style={{ fontVariantNumeric: "tabular-nums" }}>
+          {activities}
+        </text>
+        <text x={c} y={c + 16} textAnchor="middle" fontSize={10} letterSpacing="0.1em" fill="var(--text-muted)">
+          ACTIVITIES
+        </text>
+      </svg>
+      <div style={{ display: "flex", gap: 28 }}>
+        <div>
+          <Label style={{ marginBottom: 6 }}>Distance</Label>
+          <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--accent-green)", lineHeight: 1, whiteSpace: "nowrap" }}>
+            {distance.main}
+            {distance.unit && <span style={{ fontSize: 16, fontWeight: 500, color: "var(--text-muted)" }}> {distance.unit}</span>}
+          </div>
+        </div>
+        <div>
+          <Label style={{ marginBottom: 6 }}>Time</Label>
+          <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)", lineHeight: 1, whiteSpace: "nowrap" }}>
+            {hours.toFixed(1)}<span style={{ fontSize: 16, fontWeight: 500, color: "var(--text-muted)" }}> h</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ marginLeft: "auto" }}>
+        <DistanceSparkline days={sparklineDays} />
+      </div>
+    </Card>
+  );
+}
+
 export function OverviewTab({ from, to }: Props) {
   const { state } = useQuery(() => api.garmin.summary(from, to), [from, to]);
   const rangeQ = useQuery(() => api.garmin.range(), []);
+  // Same client method/endpoint TrendsBySport below already calls — reused
+  // here only to build the hero card's sparkline (polish pass), not new
+  // backend surface.
+  const activitiesQ = useQuery(() => api.garmin.activities(from, to), [from, to]);
 
   if (state.status === "loading") return <LoadingSpinner />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;
@@ -315,9 +464,12 @@ export function OverviewTab({ from, to }: Props) {
   );
 
   const run = sports.find(s => s.sport === "running");
+  const sparklineDays = activitiesQ.state.status === "success" ? recentDistanceByDay(activitiesQ.state.data) : [];
 
   return (
     <>
+      <PeriodHeroRing activities={totals.acts} km={totals.km} hours={totals.hours} sparklineDays={sparklineDays} />
+
       <SectionTitle>Total</SectionTitle>
       <StatGrid>
         <Stat label="Activities"    value={totals.acts} />

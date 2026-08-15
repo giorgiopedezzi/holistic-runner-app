@@ -10,6 +10,7 @@ import { api } from "@/api/client";
 import {
   ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef,
   Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty, Checkbox,
+  glowPillStyle,
 } from "@/components/ui";
 import { fmtWeight, fmtPercent } from "@/utils/fmt";
 import { getUnitSystem, kgToLb, kmToMi, weightUnitLabel, distanceUnitLabel } from "@/utils/units";
@@ -43,9 +44,10 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
 
   const tabBtn = (isActive: boolean): CSSProperties => ({
     fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
-    border: `1px solid ${isActive ? "var(--border-strong)" : "transparent"}`,
-    background: isActive ? "var(--surface-1, var(--bg-surface))" : "transparent",
+    border: "1px solid transparent",
+    background: "transparent",
     color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+    ...glowPillStyle(isActive),
   });
 
   return (
@@ -53,8 +55,8 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>{title}</div>
         <div style={{ display: "flex", gap: 4 }}>
-          <button onClick={() => setView("chart")} style={tabBtn(view === "chart")}>Chart</button>
-          <button onClick={() => setView("table")} style={tabBtn(view === "table")}>Table</button>
+          <button className="hra-pill hra-nav-hover" onClick={() => setView("chart")} style={tabBtn(view === "chart")}>Chart</button>
+          <button className="hra-pill hra-nav-hover" onClick={() => setView("table")} style={tabBtn(view === "table")}>Table</button>
         </div>
       </div>
 

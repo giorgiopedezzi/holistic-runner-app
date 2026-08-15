@@ -26,8 +26,13 @@ describe("ActivityDetailBody", () => {
     });
     render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
 
-    expect(await screen.findByText("10.00 km")).toBeInTheDocument();
-    expect(screen.getByText("152 bpm")).toBeInTheDocument(); // Avg HR
+    // Stat now splits "10.00 km" into a value div + a smaller inline unit
+    // span (polish pass, ui/Stat.tsx's splitUnit) — match on the div's full
+    // textContent rather than a single text node.
+    const byExactDivText = (text: string) => (_: string, node: Element | null) =>
+      node?.tagName.toLowerCase() === "div" && node.textContent === text;
+    expect(await screen.findByText(byExactDivText("10.00 km"))).toBeInTheDocument();
+    expect(screen.getByText(byExactDivText("152 bpm"))).toBeInTheDocument(); // Avg HR
   });
 
   it("soft-deletes on confirm and calls onDelete with the id", async () => {
