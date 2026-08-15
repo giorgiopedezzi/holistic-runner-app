@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ── Themes ──────────────────────────────────────────────────────────────
@@ -31,6 +33,28 @@
   --accent-red:     #e24b4a;
   --accent-orange:  #f59e0b;
 
+  /* Selectable accent (HRA-94) — governs interactive chrome only (buttons,
+     active pills, links, rings, focus), never chart/data series. Seeded to
+     each theme's existing --accent-blue so introducing the token is a pure
+     rename with zero visual change; the picker that lets a user actually
+     choose a different value ships in HRA-95. */
+  --accent: var(--accent-blue);
+
+  /* Fixed semantic data colors (HRA-94) — same metric = same color
+     everywhere, independent of --accent/theme. Values mirror the
+     already-validated per-metric hexes these mirror (ActivityModal's
+     METRIC_DEFS, OverviewTab's PACE_LINE_COLOR, domain/body-metrics.ts) —
+     not redefinitions, just giving those existing choices a shared name so
+     future chart work can reference one token instead of repeating literals.
+     Theme-agnostic like the sources they mirror (see CLAUDE.md: "Only
+     general UI chrome is themed"). */
+  --data-pace:   #15965f;
+  --data-hr:     #e24b4a;
+  --data-elev:   #3a8ef5;
+  --data-weight: #3a8ef5;
+  --data-fat:    #d97706;
+  --data-muscle: #15965f;
+
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
@@ -40,6 +64,16 @@
   --bg-image: none;
 
   color-scheme: dark;
+}
+
+@theme inline {
+  --color-accent:      var(--accent);
+  --color-data-pace:   var(--data-pace);
+  --color-data-hr:     var(--data-hr);
+  --color-data-elev:   var(--data-elev);
+  --color-data-weight: var(--data-weight);
+  --color-data-fat:    var(--data-fat);
+  --color-data-muscle: var(--data-muscle);
 }
 
 :root[data-theme="dark"] {
@@ -56,6 +90,7 @@
   --accent-blue:    #3a8ef5;
   --accent-red:     #e24b4a;
   --accent-orange:  #f59e0b;
+  --accent:         var(--accent-blue);
   color-scheme: dark;
 }
 
@@ -74,6 +109,7 @@
   --accent-blue:    #4d9dff;
   --accent-red:     #ef5a5a;
   --accent-orange:  #ffab2e;
+  --accent:         var(--accent-blue);
   color-scheme: dark;
 }
 
@@ -91,6 +127,7 @@
   --accent-blue:    #2f6fe0;
   --accent-red:     #d23f3e;
   --accent-orange:  #d97706;
+  --accent:         var(--accent-blue);
   color-scheme: light;
 }
 
@@ -109,6 +146,7 @@
   --accent-blue:    #3568c9;
   --accent-red:     #c1443e;
   --accent-orange:  #b8650a;
+  --accent:         var(--accent-blue);
   color-scheme: light;
 }
 
