@@ -55,6 +55,11 @@ from Ready to Develop to **In Progress** before touching any file. The board sho
 started at the moment it actually starts — not stay on Ready to Develop through the whole
 implementation and jump straight to In Review, which is what happened before this rule existed.
 
+**Create a dedicated Story branch.** Before touching any file, branch off the current HEAD:
+`git checkout -b feature/hra-XX_brief-description` (lowercase, matching the existing convention).
+Never implement directly on whatever branch happened to be checked out at session start — that
+silently mixes this Story's commit into an unrelated branch's history (HRA-100).
+
 ## 3. Implement
 - **Read the area's `docs/` file first.** Before writing code in an area, read the file CLAUDE.md's
   routing table lists for it. If a file the table names appears missing, that is a **lookup error
