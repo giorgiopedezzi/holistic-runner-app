@@ -1,13 +1,16 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 import {
-  LineChart, Line, Bar,
+  AreaChart, Area, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
-  ComposedChart, Legend, ReferenceLine,
+  ComposedChart, Line, Legend, ReferenceLine,
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
-import { Card, Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty } from "@/components/ui";
+import {
+  ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef,
+  Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty,
+} from "@/components/ui";
 import { fmtWeight, fmtPercent } from "@/utils/fmt";
 import { getUnitSystem, kgToLb, kmToMi, weightUnitLabel, distanceUnitLabel } from "@/utils/units";
 import {
@@ -17,17 +20,9 @@ import {
 
 interface Props { from: string; to: string; }
 
-const axisStyle = { fill: "var(--text-muted)", fontSize: 11 };
-const gridStyle = { stroke: "var(--border)", strokeDasharray: "3 3" };
-const chartWrapStyle = { padding: "16px 8px 8px" };
-const tooltipStyle = {
-  contentStyle: {
-    background: "var(--bg-card)",
-    border: "1px solid var(--border)",
-    borderRadius: 8,
-    fontSize: 12,
-  },
-};
+const axisStyle = chartTick;
+const gridStyle = chartGrid;
+const tooltipStyle = { contentStyle: chartTooltipStyle };
 
 const OTHER_METRICS: OtherKey[] = ["fat_ratio", "bone_mass_kg", "hydration_kg", "bmi", "heart_rate"];
 
@@ -63,13 +58,16 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
         </div>
       </div>
 
-      <Card style={chartWrapStyle}>
+      <ChartCard>
         {series.length === 0 ? (
           <Empty message={emptyMessage ?? "Select at least one metric above to plot."} />
         ) : view === "chart" ? (
           <ResponsiveContainer width="100%" height={200}>
-            <LineChart data={chartData}>
-              <CartesianGrid vertical={false} {...gridStyle} />
+            <AreaChart data={chartData}>
+              <defs>
+                {series.map(s => chartGradientDef(`bodyGrad-${s.key}`, s.color))}
+              </defs>
+              <CartesianGrid {...gridStyle} />
               <XAxis dataKey="date_only" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={44} domain={["auto", "auto"]} />
               {deltaMode && <ReferenceLine y={0} stroke="var(--border-strong)" />}
@@ -85,9 +83,9 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
               />
               {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-secondary)" }} />}
               {series.map(s => (
-                <Line key={s.key} dataKey={s.key} stroke={s.color} strokeWidth={2} dot={false} name={s.label} connectNulls />
+                <Area key={s.key} dataKey={s.key} stroke={s.color} fill={`url(#bodyGrad-${s.key})`} strokeWidth={2} dot={false} name={s.label} connectNulls />
               ))}
-            </LineChart>
+            </AreaChart>
           </ResponsiveContainer>
         ) : (
           <div style={{ maxHeight: 260, overflow: "auto" }}>
@@ -120,7 +118,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
             </table>
           </div>
         )}
-      </Card>
+      </ChartCard>
     </div>
   );
 }
@@ -231,7 +229,7 @@ export function BodyTab({ from, to }: Props) {
                 cursor: available ? "pointer" : "not-allowed",
                 opacity: available ? 1 : 0.4,
                 border: `1px solid ${isActive ? def.color : "var(--border-strong)"}`,
-                background: isActive ? `${def.color}22` : "transparent",
+                background: isActive ? `color-mix(in srgb, ${def.color} 13%, transparent)` : "transparent",
                 color: isActive ? def.color : "var(--text-secondary)",
               }}
             >
@@ -258,24 +256,24 @@ export function BodyTab({ from, to }: Props) {
       {!correlation || correlation.length === 0 ? (
         <Empty message="No overlapping activity/body data for correlation in this range." />
       ) : (
-        <Card style={chartWrapStyle}>
+        <ChartCard>
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart data={correlation.map(c => ({
               ...c,
               km: getUnitSystem() === "imperial" ? kmToMi(c.km) : c.km,
               avg_weight: c.avg_weight != null ? (getUnitSystem() === "imperial" ? kgToLb(c.avg_weight) : c.avg_weight) : null,
             }))}>
-              <CartesianGrid vertical={false} {...gridStyle} />
+              <CartesianGrid {...gridStyle} />
               <XAxis dataKey="week" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis yAxisId="km"  tick={axisStyle} tickLine={false} axisLine={false} width={32} />
               <YAxis yAxisId="kg"  tick={axisStyle} tickLine={false} axisLine={false} width={40} orientation="right" domain={["auto","auto"]} />
               <Tooltip {...tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-secondary)" }} />
-              <Bar    yAxisId="km" dataKey="km"         fill="var(--accent-green)"  radius={[3,3,0,0]} name={`${distanceUnitLabel()} run`} barSize={14} />
+              <Bar    yAxisId="km" dataKey="km"         fill="var(--accent-green)"  radius={chartBarRadius} name={`${distanceUnitLabel()} run`} barSize={14} />
               <Line   yAxisId="kg" dataKey="avg_weight" stroke="var(--data-weight)" strokeWidth={2} dot={false} name={`avg weight ${weightUnitLabel()}`} />
             </ComposedChart>
           </ResponsiveContainer>
-        </Card>
+        </ChartCard>
       )}
     </>
   );

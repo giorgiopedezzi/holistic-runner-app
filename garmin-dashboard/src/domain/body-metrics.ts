@@ -31,12 +31,12 @@ export type MetricRow = { date_only: string } & Partial<Record<MetricKey, number
 export const METRIC_DEFS: Record<MetricKey, { label: string; color: string; unit: string }> = {
   weight_kg:      { label: "Weight",      color: "var(--data-weight)", unit: "kg" },
   fat_mass_kg:    { label: "Fat mass",    color: "#db2777",            unit: "kg" },
-  muscle_mass_kg: { label: "Muscle mass", color: "#15965f",            unit: "kg" },
-  fat_ratio:      { label: "Fat %",       color: "#d97706",            unit: "%" },
+  muscle_mass_kg: { label: "Muscle mass", color: "var(--data-muscle)", unit: "kg" },
+  fat_ratio:      { label: "Fat %",       color: "var(--data-fat)",    unit: "%" },
   bone_mass_kg:   { label: "Bone mass",   color: "#a855f7",            unit: "kg" },
   hydration_kg:   { label: "Hydration",   color: "#0891b2",            unit: "kg" },
   bmi:            { label: "BMI",         color: "#65a30d",            unit: "" },
-  heart_rate:     { label: "Heart rate",  color: "var(--accent-red)",  unit: "bpm" },
+  heart_rate:     { label: "Heart rate",  color: "var(--data-hr)",     unit: "bpm" },
 };
 
 export const WEIGHT_KEYS = new Set<MetricKey>(["weight_kg", "fat_mass_kg", "muscle_mass_kg", "bone_mass_kg", "hydration_kg"]);

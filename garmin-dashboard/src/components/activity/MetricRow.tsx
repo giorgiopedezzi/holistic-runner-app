@@ -33,7 +33,7 @@ export function MetricRow({ mKey, label, state, onToggle }: {
           cursor: available ? "pointer" : "not-allowed",
           opacity: available ? 1 : 0.4,
           border: `1px solid ${active ? color : "var(--border-strong)"}`,
-          background: active ? `${color}22` : "transparent",
+          background: active ? `color-mix(in srgb, ${color} 13%, transparent)` : "transparent",
           color: active ? color : "var(--text-secondary)",
         }}
       >

@@ -1,5 +1,6 @@
 export { Card } from "./Card";
 export { Label } from "./Label";
+export { ChartCard, ChartPillLegend, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef } from "./ChartCard";
 export { Stat } from "./Stat";
 export { StatGrid } from "./StatGrid";
 export { Badge } from "./Badge";

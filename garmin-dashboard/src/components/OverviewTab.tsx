@@ -5,7 +5,10 @@ import {
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
-import { Card, Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty } from "@/components/ui";
+import {
+  Card, ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius,
+  Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
+} from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
@@ -27,21 +30,23 @@ const GROUP_MODES: GroupMode[] = ["single", "week", "month"];
 const GROUP_LABEL: Record<GroupMode, string> = { single: "Single", week: "Week", month: "Month" };
 
 
-const axisStyle = { fill: "var(--text-muted)", fontSize: 10 };
-const gridStyle = { stroke: "var(--border)", strokeDasharray: "3 3" };
+const axisStyle = chartTick;
+const gridStyle = chartGrid;
 
-// Pace's color intentionally matches ActivityModal.tsx's METRIC_DEFS.speed.color
-// exactly — the activity detail view is this app's color "reference" for
-// speed/pace, so this chart reuses it instead of a generic accent, for one
-// consistent color across the whole app. HR already matched (--accent-red
-// there and here), so it's untouched. Bars are a neutral gray, not a
+// Pace's color is the app's fixed semantic data color for pace (HRA-94/97:
+// --data-pace), matching ActivityModal.tsx's METRIC_DEFS.speed.color exactly
+// — the activity detail view is this app's color "reference" for speed/pace,
+// so this chart reuses the same token instead of a generic accent, for one
+// consistent color across the whole app. HR uses --data-hr (was --accent-red;
+// same hex today, but the semantic token is the one that's never allowed to
+// vary with the user's accent, per HRA-94/97). Bars are a neutral gray, not a
 // per-sport color — SPORT_COLOR can collide with the pace/HR line colors
 // (cycling's SPORT_COLOR was literally identical to this chart's old pace
 // blue, and running's green measured ~1.3:1 mutual contrast against it,
 // effectively invisible where a line crossed a bar) — a neutral fill has no
 // such collision regardless of sport or line color. Sport identity still
 // shows via the Badge above the chart, which keeps SPORT_COLOR.
-const PACE_LINE_COLOR = "#15965f";
+const PACE_LINE_COLOR = "var(--data-pace)";
 const BAR_COLOR = "var(--text-secondary)";
 
 
@@ -116,7 +121,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
   ];
 
   const badgeColor = SPORT_COLOR[sport] ?? "#888";
-  const hrColor = "var(--accent-red)"; // already matches ActivityModal's heart_rate color — no change needed
+  const hrColor = "var(--data-hr)"; // fixed semantic data color (HRA-94/97) — was --accent-red, same hex today
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -128,9 +133,10 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
           {overallAvgHr != null && <> · avg {Math.round(overallAvgHr)} bpm ({Math.round(refMinHr!)}–{Math.round(refMaxHr!)})</>}
         </span>
       </div>
+      <ChartCard>
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={displayPoints}>
-          <CartesianGrid vertical={false} {...gridStyle} />
+          <CartesianGrid {...gridStyle} />
           <XAxis dataKey="label" tick={axisStyle} tickLine={false} axisLine={false} />
           {/* Three separate tick-label columns — km and pace stacked on the
               left (Recharts stacks multiple visible same-side axes
@@ -152,7 +158,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
             tick={{ fill: hrColor, fontSize: 9 }} tickLine={false} axisLine={false} width={30}
             tickFormatter={(v: number) => Math.round(v).toString()} />
           <Tooltip
-            contentStyle={{ background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 }}
+            contentStyle={chartTooltipStyle}
             formatter={(value, name) => {
               if (typeof value !== "number") return [String(value ?? ""), name];
               if (name === "Distance") return [`${value.toFixed(1)} ${distanceUnit}`, name];
@@ -168,7 +174,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
               avg-vs-min/max convention is explained once in the section
               caption above every sport's chart instead of repeated per-line. */}
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={BAR_COLOR} radius={[3, 3, 0, 0]} isAnimationActive={false} />
+          <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={BAR_COLOR} radius={chartBarRadius} isAnimationActive={false} />
           <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2}
             dot={false} connectNulls isAnimationActive={false} />
           <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2}
@@ -185,6 +191,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
           {refMaxHr != null && <ReferenceLine yAxisId="hr" y={refMaxHr} stroke={hrColor} strokeDasharray="2 3" strokeOpacity={0.45} />}
         </ComposedChart>
       </ResponsiveContainer>
+      </ChartCard>
     </div>
   );
 }

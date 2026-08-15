@@ -1,9 +1,16 @@
 import type { MetricKey, OptionalMetricKey } from "@/domain/activity-chart";
+import { chartGrid, chartTick, chartTooltipStyle } from "@/components/ui";
 
 // ── Shared constants for the activity detail view (HRA-74) ──────────────
-export const axisStyle = { fill: "var(--text-muted)", fontSize: 10 };
-export const gridStyle = { stroke: "var(--border)", strokeDasharray: "3 3" };
-export const ttStyle   = { contentStyle: { background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 11 } };
+// axisStyle/gridStyle/ttStyle now delegate to <ChartCard>'s standard config
+// (HRA-97) so this view's grid/tick/tooltip styling matches every other
+// chart in the app; the smaller 9-10px per-axis tick sizes used on this
+// view's own YAxis elements (speed/optional-metric ticks, set inline in
+// ActivityChartSection.tsx) are unaffected — those are deliberately
+// smaller/color-coded per metric, not this shared X-axis default.
+export const axisStyle = chartTick;
+export const gridStyle = chartGrid;
+export const ttStyle   = { contentStyle: chartTooltipStyle };
 
 // ── Metric definitions ───────────────────────────────────────────────────
 // Colors are the same validated-for-this-dark-surface set used in BodyTab.tsx
@@ -20,10 +27,15 @@ export const ttStyle   = { contentStyle: { background: "var(--bg-card)", border:
 // touching the established reference color itself.
 export const SPEED_AXIS_TEXT_COLOR = "#20c17b"; // ~6.7:1 vs --bg-card
 
+// speed/heart_rate/altitude_m use the app's fixed semantic data colors
+// (HRA-94/97: --data-pace, --data-hr, --data-elev — same hex as before, now
+// the token that's never allowed to vary with the user's accent). cadence
+// and power have no fixed semantic token in that set (only pace/HR/
+// elevation/weight/fat/muscle do) and keep their own literal colors.
 export const METRIC_DEFS: Record<MetricKey, { label: string; color: string }> = {
-  speed:      { label: "Speed",      color: "#15965f" },
-  heart_rate: { label: "Heart rate", color: "#e24b4a" },
-  altitude_m: { label: "Altitude",   color: "#3a8ef5" },
+  speed:      { label: "Speed",      color: "var(--data-pace)" },
+  heart_rate: { label: "Heart rate", color: "var(--data-hr)" },
+  altitude_m: { label: "Altitude",   color: "var(--data-elev)" },
   cadence:    { label: "Cadence",    color: "#d97706" },
   power:      { label: "Power",      color: "#a855f7" },
 };

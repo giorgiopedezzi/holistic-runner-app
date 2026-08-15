@@ -6,7 +6,7 @@ import {
 import type { TrackPoint } from "@/types/api";
 import { speedUnitLabel } from "@/utils/units";
 import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR } from "./shared";
-import { Label } from "@/components/ui";
+import { Label, ChartCard } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { TrackTooltip } from "./TrackTooltip";
 import { PauseFlagShape } from "./PauseFlagShape";
@@ -87,7 +87,7 @@ export function ActivityChartSection({
               <button key={m} onClick={() => setSpeedMode(m)}
                 style={{
                   fontSize: 11, padding: "4px 12px", border: "none", cursor: "pointer",
-                  background: speedMode === m ? `${METRIC_DEFS.speed.color}33` : "transparent",
+                  background: speedMode === m ? `color-mix(in srgb, ${METRIC_DEFS.speed.color} 20%, transparent)` : "transparent",
                   color: speedMode === m ? METRIC_DEFS.speed.color : "var(--text-secondary)",
                   fontWeight: speedMode === m ? 600 : 400,
                 }}>
@@ -120,6 +120,7 @@ export function ActivityChartSection({
         </div>
       </div>
 
+      <ChartCard>
       <ResponsiveContainer width="100%" height={220}>
         {/* top:16 gives the pause-flag pill (a 14px-tall shape
             centered exactly on the y=1 point at the very top of
@@ -127,7 +128,7 @@ export function ActivityChartSection({
             default ~5px top margin put half the pill above the
             SVG's own top edge, silently clipping it. */}
         <ComposedChart data={chartData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}>
-          <CartesianGrid vertical={false} {...gridStyle} />
+          <CartesianGrid {...gridStyle} />
           <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
             tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
           {/* Speed/Pace's axis is never conditionally
@@ -195,6 +196,7 @@ export function ActivityChartSection({
           />
         </ComposedChart>
       </ResponsiveContainer>
+      </ChartCard>
 
       {effectiveActive.filter(key => showCard[key]).map(key => {
         const domain = axisDomainMinMax(displayTrack, key, speedMode);
@@ -210,13 +212,14 @@ export function ActivityChartSection({
               {key === "speed" ? (speedMode === "speed" ? "Speed" : "Pace") : METRIC_DEFS[key].label}
               {key === "heart_rate" && <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>flags show HR recovery across each pause</span>}
             </Label>
+            <ChartCard>
             <ResponsiveContainer width="100%" height={110}>
               {/* Same top-margin fix as the main overlay chart —
                   the HR recovery flag plots at the axis's own max
                   value, which sits at the very top pixel row
                   regardless of the domain's data-space padding. */}
               <ComposedChart data={cardData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}>
-                <CartesianGrid vertical={false} {...gridStyle} />
+                <CartesianGrid {...gridStyle} />
                 <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
                   tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="main" domain={domain} tick={axisStyle} tickLine={false} axisLine={false} width={42}
@@ -233,6 +236,7 @@ export function ActivityChartSection({
                 )}
               </ComposedChart>
             </ResponsiveContainer>
+            </ChartCard>
           </div>
         );
       })}
