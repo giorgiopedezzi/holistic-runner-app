@@ -102,10 +102,11 @@ Transition `$ARGUMENTS` to **In Review** and post a PR-style comment containing:
 **Set `Actual thinking effort` (`customfield_10152`)** by the criteria in `CLAUDE.md` — by rule, not
 by impression. It is the only field you write.
 
-**Update the description's Acceptance Criteria to match reality.** Mark each item met as
-checked/DONE; leave anything genuinely not met open. Never check an item that isn't actually true.
-The description is the source of truth for what's done — the comment is the *why*, not a second
-copy of the *what* (HRA-101).
+**Check off the Acceptance Criteria items in the description that are met — nothing else in the
+description changes.** Mark each genuinely-met item checked/DONE; leave anything not met open; never
+check an item that isn't actually true. This is a checklist-state update, not license to rewrite the
+Problem/Change/Rules sections — those are the approved spec (rule 5), untouched. The comment
+explains *why*; the checklist reflects *what*, and only the checklist does (HRA-101).
 
 Then **STOP**. Do not transition to Done. Do not set `Review Outcome`, `Contributor Type`, `Agent`,
 `Model`, or `Planned thinking effort` — the human sets those.
