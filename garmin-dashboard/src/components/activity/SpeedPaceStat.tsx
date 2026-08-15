@@ -1,4 +1,4 @@
-import { Card } from "@/components/ui";
+import { Card, Label } from "@/components/ui";
 import { fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
 
@@ -11,9 +11,7 @@ import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
 export function SpeedPaceStat({ avgSpeedMs, avgPaceMinKm }: { avgSpeedMs: number | null; avgPaceMinKm: number | null }) {
   return (
     <Card>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        Avg speed / pace
-      </div>
+      <Label style={{ marginBottom: 6 }}>Avg speed / pace</Label>
       <div style={{ display: "flex", gap: 14 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>{avgPaceMinKm != null ? fmtPace(avgPaceMinKm) : "—"}</div>

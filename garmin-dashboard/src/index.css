@@ -65,6 +65,16 @@
 
   --radius-sm: 6px;
   --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Card surface tokens (HRA-96) — alias the existing per-theme --bg-card/
+     --border rather than hardcoding a value here, so --card-bg/--card-border
+     stay correct under every [data-theme] block automatically (CSS custom
+     property indirection resolves --bg-card/--border from whichever theme
+     scope is actually in effect) without needing to be restated in each of
+     the four theme blocks below. */
+  --card-bg: var(--bg-card);
+  --card-border: var(--border);
 
   --bg-image: none;
 
@@ -161,6 +171,25 @@ body {
   background: var(--bg);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
+  /* AC: "numerals always tabular-nums" — applied once here rather than
+     per-component, since it only affects digit glyph width (non-digit text
+     is unaffected) and inheriting from body covers every numeric display
+     app-wide without a per-site opt-in that's easy to miss on a new one. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Card primitive (HRA-96) — bg/border/radius live in a real class (not
+   inline style) specifically so :hover can brighten the border; inline
+   style has no pseudo-class equivalent. No drop shadow per spec. */
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+  transition: border-color 0.15s;
+}
+.card:hover {
+  border-color: var(--border-strong);
 }
 
 /* Background picture (bundled preset or custom upload) sits behind

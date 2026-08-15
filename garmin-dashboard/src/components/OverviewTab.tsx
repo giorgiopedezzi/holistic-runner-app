@@ -5,7 +5,7 @@ import {
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
-import { Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty } from "@/components/ui";
+import { Card, Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
@@ -338,18 +338,9 @@ export function OverviewTab({ from, to }: Props) {
           <SectionTitle>By sport</SectionTitle>
           <div style={{ display: "grid", gap: 8 }}>
             {sports.map(s => (
-              <div
+              <Card
                 key={s.sport}
-                style={{
-                  display:      "flex",
-                  alignItems:   "center",
-                  gap:          14,
-                  background:   "var(--bg-card)",
-                  border:       "1px solid var(--border)",
-                  borderRadius: "var(--radius-md)",
-                  padding:      "12px 16px",
-                  fontSize:     14,
-                }}
+                style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", fontSize: 14 }}
               >
                 <Badge label={s.sport ?? "other"} color={SPORT_COLOR[s.sport ?? "other"] ?? "#888"} />
                 <span style={{ flex: 1, color: "var(--text-primary)", fontWeight: 500 }}>
@@ -362,7 +353,7 @@ export function OverviewTab({ from, to }: Props) {
                 {s.avg_pace && (
                   <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
         </>

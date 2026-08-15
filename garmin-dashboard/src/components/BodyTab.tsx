@@ -7,7 +7,7 @@ import {
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
-import { Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty } from "@/components/ui";
+import { Card, Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty } from "@/components/ui";
 import { fmtWeight, fmtPercent } from "@/utils/fmt";
 import { getUnitSystem, kgToLb, kmToMi, weightUnitLabel, distanceUnitLabel } from "@/utils/units";
 import {
@@ -19,12 +19,7 @@ interface Props { from: string; to: string; }
 
 const axisStyle = { fill: "var(--text-muted)", fontSize: 11 };
 const gridStyle = { stroke: "var(--border)", strokeDasharray: "3 3" };
-const chartWrap = {
-  background:   "var(--bg-card)",
-  border:       "1px solid var(--border)",
-  borderRadius: "var(--radius-md)",
-  padding:      "16px 8px 8px",
-};
+const chartWrapStyle = { padding: "16px 8px 8px" };
 const tooltipStyle = {
   contentStyle: {
     background: "var(--bg-card)",
@@ -68,7 +63,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
         </div>
       </div>
 
-      <div style={chartWrap}>
+      <Card style={chartWrapStyle}>
         {series.length === 0 ? (
           <Empty message={emptyMessage ?? "Select at least one metric above to plot."} />
         ) : view === "chart" ? (
@@ -125,7 +120,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
             </table>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
@@ -263,7 +258,7 @@ export function BodyTab({ from, to }: Props) {
       {!correlation || correlation.length === 0 ? (
         <Empty message="No overlapping activity/body data for correlation in this range." />
       ) : (
-        <div style={chartWrap}>
+        <Card style={chartWrapStyle}>
           <ResponsiveContainer width="100%" height={180}>
             <ComposedChart data={correlation.map(c => ({
               ...c,
@@ -280,7 +275,7 @@ export function BodyTab({ from, to }: Props) {
               <Line   yAxisId="kg" dataKey="avg_weight" stroke="var(--data-weight)" strokeWidth={2} dot={false} name={`avg weight ${weightUnitLabel()}`} />
             </ComposedChart>
           </ResponsiveContainer>
-        </div>
+        </Card>
       )}
     </>
   );

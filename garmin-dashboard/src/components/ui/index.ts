@@ -1,4 +1,5 @@
 export { Card } from "./Card";
+export { Label } from "./Label";
 export { Stat } from "./Stat";
 export { StatGrid } from "./StatGrid";
 export { Badge } from "./Badge";

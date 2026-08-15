@@ -6,6 +6,7 @@ import {
 import type { TrackPoint } from "@/types/api";
 import { speedUnitLabel } from "@/utils/units";
 import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR } from "./shared";
+import { Label } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { TrackTooltip } from "./TrackTooltip";
 import { PauseFlagShape } from "./PauseFlagShape";
@@ -205,10 +206,10 @@ export function ActivityChartSection({
         const cardData = key === "heart_rate" ? hrRecoveryChartData : chartData;
         return (
           <div key={key} style={{ marginTop: 16 }}>
-            <div style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 4 }}>
+            <Label style={{ marginBottom: 4 }}>
               {key === "speed" ? (speedMode === "speed" ? "Speed" : "Pace") : METRIC_DEFS[key].label}
               {key === "heart_rate" && <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>flags show HR recovery across each pause</span>}
-            </div>
+            </Label>
             <ResponsiveContainer width="100%" height={110}>
               {/* Same top-margin fix as the main overlay chart —
                   the HR recovery flag plots at the axis's own max

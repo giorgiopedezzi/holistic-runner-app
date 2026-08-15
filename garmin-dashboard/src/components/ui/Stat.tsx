@@ -1,4 +1,5 @@
 import { Card } from "./Card";
+import { Label } from "./Label";
 
 interface StatProps {
   label:  string;
@@ -10,9 +11,7 @@ interface StatProps {
 export function Stat({ label, value, sub, accent }: StatProps) {
   return (
     <Card>
-      <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-        {label}
-      </div>
+      <Label style={{ marginBottom: 6 }}>{label}</Label>
       <div style={{ fontSize: 18, fontWeight: 600, color: accent ?? "var(--text-primary)", lineHeight: 1 }}>
         {value}
       </div>

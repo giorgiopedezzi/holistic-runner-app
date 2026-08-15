@@ -9,14 +9,8 @@ interface CardProps {
 export function Card({ children, style, className }: CardProps) {
   return (
     <div
-      className={className}
-      style={{
-        background:   "var(--bg-card)",
-        border:       "1px solid var(--border)",
-        borderRadius: "var(--radius-md)",
-        padding:      "16px",
-        ...style,
-      }}
+      className={className ? `card ${className}` : "card"}
+      style={style}
     >
       {children}
     </div>

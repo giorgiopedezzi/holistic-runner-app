@@ -72,19 +72,16 @@ export function ActivitiesTab({ from, to }: Props) {
           return (
             <div key={a.id}>
               <button
+                className="card"
                 onClick={() => detailView === "accordion"
                   ? setExpandedId(id => id === a.id ? null : a.id)
                   : setModalId(a.id)}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "12px 14px",
-                  background: "var(--bg-card)", border: "1px solid var(--border)",
-                  borderRadius: isExpanded ? "10px 10px 0 0" : 10, textAlign: "left", fontSize: 14,
+                  borderRadius: isExpanded ? "16px 16px 0 0" : "16px", textAlign: "left", fontSize: 14,
                   color: "var(--text-primary)", cursor: "pointer", width: "100%",
-                  transition: "border-color 0.15s",
                 }}
-                onMouseOver={e => (e.currentTarget.style.borderColor = "var(--border-strong)")}
-                onMouseOut={e  => (e.currentTarget.style.borderColor = "var(--border)")}
               >
                 <span style={{ color: "var(--text-muted)", fontSize: 12, minWidth: 86 }}>
                   {a.date_only}
@@ -97,9 +94,9 @@ export function ActivitiesTab({ from, to }: Props) {
                 <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{detailView === "accordion" ? (isExpanded ? "▲" : "▼") : "→"}</span>
               </button>
               {isExpanded && (
-                <div style={{
-                  background: "var(--bg-card)", border: "1px solid var(--border)", borderTop: "none",
-                  borderRadius: "0 0 10px 10px", padding: "16px 14px",
+                <div className="card" style={{
+                  borderTop: "none",
+                  borderRadius: "0 0 16px 16px", padding: "16px 14px",
                 }}>
                   <ActivityDetailBody
                     activityId={a.id}
