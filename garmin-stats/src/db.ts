@@ -179,6 +179,12 @@ export function initSchema(db: DatabaseSync): void {
       -- 'accordion' (default) expands an activity's detail inline in
       -- ActivitiesTab; 'modal' opens it as a popup (the original behavior).
       activity_detail_view          TEXT NOT NULL DEFAULT 'accordion',
+      -- Selectable --accent (HRA-95): one of a curated 6-name set (teal,
+      -- violet, magenta, amber, sky, lime) — see utils/accent.ts for the
+      -- fixed hex + WCAG-verified --on-accent per name. 'sky' is the closest
+      -- match to the --accent-blue every theme was seeded to in HRA-94, so
+      -- existing installs see the smallest possible jump on upgrade.
+      accent_color                  TEXT NOT NULL DEFAULT 'sky',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
@@ -299,6 +305,9 @@ export function initSchema(db: DatabaseSync): void {
   if (!settingsCols.some(c => c.name === "activity_detail_view")) {
     db.exec("ALTER TABLE settings ADD COLUMN activity_detail_view TEXT NOT NULL DEFAULT 'accordion'");
   }
+  if (!settingsCols.some(c => c.name === "accent_color")) {
+    db.exec("ALTER TABLE settings ADD COLUMN accent_color TEXT NOT NULL DEFAULT 'sky'");
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -383,6 +392,7 @@ export interface SettingsRow {
   unit_system: string;
   min_trend_group_size: number;
   activity_detail_view: string;
+  accent_color: string;
 }
 
 // ── Typed param builders ──────────────────────────────────────────────────

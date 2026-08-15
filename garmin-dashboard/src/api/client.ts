@@ -7,7 +7,7 @@ import type {
   DateRange, Activity, SportSummary,
   TrackPoint, BodyMeasurement, MonthlyBody, CorrelationPoint,
   DeviceStatus, WithingsStatus, StravaStatus, Settings, StoredTheme, BackgroundKind, StoredUnitSystem,
-  ActivityDetailView, TrashedActivity, TrashedBodyMeasurement,
+  ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   Paginated,
 } from "@/types/api";
@@ -158,6 +158,7 @@ export const api = {
       request<Settings>("/api/v1/settings/background", "PUT", undefined, { background_kind: kind, background_value: value }),
     setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PUT", undefined, { unit_system: unitSystem }),
     setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PUT", undefined, { activity_detail_view: view }),
+    setAccentColor: (accent: AccentColor) => request<Settings>("/api/v1/settings/accent", "PUT", undefined, { accent_color: accent }),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {

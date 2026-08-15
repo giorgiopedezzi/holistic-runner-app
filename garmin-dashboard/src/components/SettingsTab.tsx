@@ -8,9 +8,10 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import { Card, SectionTitle, ErrorBanner, LoadingSpinner } from "@/components/ui";
-import type { Settings, Theme, StoredUnitSystem } from "@/types/api";
-import { THEME_NAMES } from "@/types/api";
+import type { Settings, Theme, StoredUnitSystem, AccentColor } from "@/types/api";
+import { THEME_NAMES, ACCENT_COLOR_NAMES } from "@/types/api";
 import { BUNDLED_BACKGROUNDS, BUNDLED_BACKGROUND_ORDER } from "@/utils/backgrounds";
+import { ACCENT_PALETTE } from "@/utils/accent";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
@@ -80,6 +81,41 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
             <div style={{ fontSize: 11, padding: "5px 0", background: "var(--bg-card)", color: selected ? "var(--accent-blue)" : "var(--text-secondary)" }}>
               {preview.label}
             </div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Accent picker (HRA-95): a swatch per curated accent, offering all 6.
+// Keyboard-navigable for free — these are plain <button>s (Tab, Enter/Space),
+// same as ThemePicker above; aria-pressed reflects selection for screen readers.
+export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
+  const current = appearance.settings?.accent_color;
+  return (
+    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {ACCENT_COLOR_NAMES.map((name: AccentColor) => {
+        const def = ACCENT_PALETTE[name];
+        const selected = current === name;
+        return (
+          <button
+            key={name}
+            onClick={() => appearance.setAccentColor?.(name)}
+            aria-pressed={selected}
+            aria-label={def.label}
+            title={def.label}
+            style={{
+              width: 44, height: 44, borderRadius: "50%", cursor: "pointer",
+              border: `2px solid ${selected ? def.hex : "var(--border)"}`,
+              outline: selected ? `2px solid ${def.hex}` : "none",
+              outlineOffset: 2,
+              background: def.hex,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 14, color: def.onAccent, fontWeight: 700,
+            }}
+          >
+            {selected ? "✓" : ""}
           </button>
         );
       })}
@@ -330,6 +366,10 @@ export function SettingsTab({ appearance }: Props) {
       <Card style={{ maxWidth: 480, marginBottom: 24 }}>
         <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Theme</div>
         <ThemePicker appearance={appearance} />
+        <div style={{ fontSize: 12, color: "var(--text-secondary)", margin: "18px 0 10px" }}>
+          Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors
+        </div>
+        <AccentPicker appearance={appearance} />
         <div style={{ fontSize: 12, color: "var(--text-secondary)", margin: "18px 0 10px" }}>
           Background picture — a subtle preset, or upload your own
         </div>

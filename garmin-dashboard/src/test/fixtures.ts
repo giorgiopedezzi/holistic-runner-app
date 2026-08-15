@@ -21,6 +21,7 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   unit_system: "metric",
   min_trend_group_size: 5,
   activity_detail_view: "accordion",
+  accent_color: "sky",
   ...overrides,
 });
 

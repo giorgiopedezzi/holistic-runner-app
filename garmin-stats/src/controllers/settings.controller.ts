@@ -17,6 +17,9 @@ import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 const THEME_NAMES = ["dark", "light", "dark-blue", "light-warm", "auto"];
 const UNIT_SYSTEMS = ["metric", "imperial", "auto"];
 const DETAIL_VIEWS = ["accordion", "modal"];
+// Curated selectable-accent set (HRA-95) — see garmin-dashboard's
+// utils/accent.ts for the fixed hex + WCAG-verified --on-accent per name.
+const ACCENT_COLORS = ["teal", "violet", "magenta", "amber", "sky", "lime"];
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };
@@ -101,6 +104,15 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
+  const updateAccent: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    if (!body.accent_color || !ACCENT_COLORS.includes(body.accent_color)) {
+      throw unprocessable(`accent_color must be one of: ${ACCENT_COLORS.join(", ")}`);
+    }
+    repo.updateAccent({ $accent_color: body.accent_color });
+    return send(res, repo.get());
+  };
+
   const backgroundImage: Handler = (_req, res) => {
     const row = repo.get() as unknown as SettingsRow;
     if (row.background_kind !== "custom" || !row.background_value) throw notFound("No custom background set.");
@@ -135,5 +147,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, backgroundImage, uploadBackground };
 }

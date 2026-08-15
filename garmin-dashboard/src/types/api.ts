@@ -173,6 +173,12 @@ export type StoredUnitSystem = "metric" | "imperial" | "auto";
 // ActivitiesTab; 'modal' opens it as a popup (the original behavior).
 export type ActivityDetailView = "accordion" | "modal";
 
+// Curated selectable-accent set (HRA-95) — governs interactive chrome only
+// (buttons, active pills, links, rings, focus), never --data-* colors. See
+// utils/accent.ts for the fixed hex + WCAG-verified --on-accent per name.
+export type AccentColor = "teal" | "violet" | "magenta" | "amber" | "sky" | "lime";
+export const ACCENT_COLOR_NAMES: AccentColor[] = ["teal", "violet", "magenta", "amber", "sky", "lime"];
+
 export interface Settings {
   outlier_speed_delta_per_sec:   number;
   outlier_cadence_delta_per_sec: number;
@@ -185,6 +191,7 @@ export interface Settings {
   // month mode) before a sport's trend chart is shown — see OverviewTab.tsx.
   min_trend_group_size: number;
   activity_detail_view: ActivityDetailView;
+  accent_color: AccentColor;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

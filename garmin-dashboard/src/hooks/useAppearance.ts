@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, BackgroundKind, StoredUnitSystem } from "@/types/api";
+import type { Settings, Theme, StoredTheme, BackgroundKind, StoredUnitSystem, AccentColor } from "@/types/api";
 import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
+import { ACCENT_PALETTE } from "@/utils/accent";
 import { useSettings } from "@/hooks/useSettings";
 
 // 'auto' resolves via the OS's prefers-color-scheme — the one appearance
@@ -37,6 +38,10 @@ function applyToDocument(settings: Settings) {
   }
   document.documentElement.style.setProperty("--bg-image", bgImage);
 
+  const accent = ACCENT_PALETTE[settings.accent_color];
+  document.documentElement.style.setProperty("--accent", accent.hex);
+  document.documentElement.style.setProperty("--on-accent", accent.onAccent);
+
   setUnitSystem(resolveUnitSystem(settings.unit_system));
 }
 
@@ -55,6 +60,11 @@ export interface AppearanceActions {
   setBackground:    (kind: BackgroundKind, value?: string) => Promise<void>;
   uploadBackground: (file: File) => Promise<void>;
   setUnits:         (unitSystem: StoredUnitSystem) => Promise<void>;
+  // Optional (HRA-95), unlike the actions above — so the pre-existing,
+  // hand-written AppearanceApi stub in SettingsTab.pickers.test.tsx keeps
+  // structurally satisfying this interface unmodified. The real hook below
+  // always provides it.
+  setAccentColor?:  (accent: AccentColor) => Promise<void>;
 }
 export interface AppearanceMeta {
   resolvedTheme:       Theme | null;
@@ -121,12 +131,18 @@ export function useAppearance(): AppearanceApi {
     update(updated);
   }, [update]);
 
+  const setAccentColor = useCallback(async (accent: AccentColor) => {
+    const updated = await api.settings.setAccentColor(accent);
+    update(updated);
+  }, [update]);
+
   return {
     settings,
     setTheme,
     setBackground,
     uploadBackground,
     setUnits,
+    setAccentColor,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
   };
