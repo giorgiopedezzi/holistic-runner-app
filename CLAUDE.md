@@ -369,7 +369,12 @@ garmin_and_withings/
 - **React 19** strict mode (upgraded from 18 on 2026-08-12 — a bump, not a modernization)
 - **TypeScript 6** strict
 - **Recharts 3** for all charts
-- **No CSS framework** — CSS variables only (defined in `index.css`)
+- **Tailwind + shadcn/ui** (adopted 2026-08-15 for Initiative C — supersedes the earlier "no CSS
+  framework, CSS variables only" constraint, which held through Initiative B). Tokens still govern:
+  colors/spacing/type come from CSS variables + the Tailwind scale, no ad-hoc hex, no arbitrary
+  sizes (`text-[13px]` forbidden — extend the scale instead). Full design-system rules live in
+  `docs/frontend.md` once Initiative C's plan lands there; until then see the Initiative C
+  Confluence plan.
 - **Path alias**: `@/` → `src/` (configured in both `vite.config.ts` and `tsconfig.json`)
 - **`import.meta.env`**: typed via `"types": ["vite/client"]` in `tsconfig.json`
 - **`useQuery` fetches on every deps change** (a plain `useEffect`, no `auto`/manual-load step) — see
