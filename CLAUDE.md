@@ -439,6 +439,14 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
 
 - **IDs:** cloudId `2e4f6af1-c76d-45be-9a00-ca9f30589199` · project id `10067` · issue types Epic
   `10114`, Story `10117` · transition to Done = id `41`.
+- **`createIssueLink` direction — counter-intuitive, verified wrong once (2026-08-15).** For the
+  `Blocks` type, `inwardIssue` = the issue that **blocks**, `outwardIssue` = the issue that **is
+  blocked** (e.g. "A is blocked by B" → `inwardIssue: B, outwardIssue: A`). This is the *opposite*
+  of what a naive reading of `getIssueLinkTypes`' own `{inward: "is blocked by", outward: "blocks"}`
+  suggests — that field describes the *phrase*, not which parameter produces which role, and
+  reasoning from it directly produced backwards links (HRA-94↔HRA-95/96/97/98) that looked
+  self-consistent in the API response and were still wrong. **Verify link direction visually in the
+  Jira UI after creating — not via another API read, which is exactly what failed here.**
 - **Custom fields** (project-scoped, single-select) — **not on the create/edit screen**, so
   `getJiraIssueTypeMetaWithFields`/`editmeta` omit them, but they CAN be set by passing
   `{ "customfield_101xx": { "value": "<option>" } }` in `createJiraIssue`'s `additional_fields` or
@@ -462,7 +470,7 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
   single-select and takes a bare object). Set them as `[{"id": "…"}]`, an array — `{"id": "…"}`
   alone fails with *"Specify the value ... in an array"*. Confirmed live on HRA-80.
   | `Review Outcome` | `customfield_10118` | Accepted · Edited · Rejected *(casing unverified)* |
-  | `Category` | `customfield_10119` | ✅ `Technical Improvement` (id **10049**) · ✅ `Enabler/Infrastructure` (id **10051**) · Business Functionality · Research/Spike · Bug *(last three: casing unverified)* |
+  | `Category` | `customfield_10119` | ✅ `Technical Improvement` (id **10049**) · ✅ `Business Functionality` (id **10050**) · ✅ `Enabler/Infrastructure` (id **10051**) · Research/Spike · Bug *(last two: casing unverified)* |
 
   ✅ = exact string and option id verified against live issues (HRA-64, HRA-52, HRA-81) on
   2026-08-12. Anything marked *casing unverified* is a claim inherited from an older revision of
