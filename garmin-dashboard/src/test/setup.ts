@@ -21,6 +21,24 @@ class ResizeObserverStub {
 }
 globalThis.ResizeObserver ??= ResizeObserverStub as unknown as typeof ResizeObserver;
 
+// jsdom does not implement window.matchMedia either — App.tsx's header
+// (useWideHeader, polish pass) and useAppearance's 'auto' theme/unit
+// resolution both call it. Stub reports "no match" (narrow viewport) by
+// default, with addEventListener/removeEventListener as no-ops since no
+// test in this suite exercises a live breakpoint change.
+if (typeof window.matchMedia !== "function") {
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+}
+
 afterEach(() => {
   cleanup();
 });

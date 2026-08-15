@@ -95,7 +95,10 @@ export function ChartPillLegend({ items, onToggle }: ChartPillLegendProps) {
             background: item.active ? `color-mix(in srgb, ${item.color} 16%, transparent)` : "transparent",
             color: item.active ? item.color : "var(--text-secondary)",
             boxShadow: item.active ? `0 0 10px color-mix(in srgb, ${item.color} 35%, transparent)` : "none",
-            transition: "background 0.15s, box-shadow 0.15s, color 0.15s",
+            // Off-state (polish pass): dimmed, no glow — a toggled-off chip
+            // should read as "off", not just "differently colored".
+            opacity: item.active ? 1 : 0.4,
+            transition: "background 0.15s, box-shadow 0.15s, color 0.15s, opacity 0.15s",
           }}
         >
           {item.label}

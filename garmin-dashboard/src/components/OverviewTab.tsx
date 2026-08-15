@@ -192,14 +192,31 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
             tick={{ fill: hrColor, fontSize: 9 }} tickLine={false} axisLine={false} width={30}
             tickFormatter={(v: number) => Math.round(v).toString()} />
           <Tooltip
-            contentStyle={chartTooltipStyle}
             cursor={{ stroke: "var(--border-strong)", strokeDasharray: "3 3" }}
-            formatter={(value, name) => {
-              if (typeof value !== "number") return [String(value ?? ""), name];
-              if (name === "Distance") return [`${value.toFixed(1)} ${distanceUnit}`, name];
-              if (name === "Avg pace") return [`${fmtMinSecRaw(value)} ${paceUnit}`, name];
-              if (name === "Avg HR") return [`${Math.round(value)} bpm`, name];
-              return [value, name];
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null;
+              const get = (name: string) => payload.find(p => p.name === name)?.value;
+              const kmVal = get("Distance");
+              const paceVal = get("Avg pace");
+              const hrVal = get("Avg HR");
+              // One combined line ("07-24 · 6.5 km · pace 5:12 · HR 158"),
+              // each value colored to match its series, instead of the
+              // three separately-swatched rows Recharts' default Tooltip
+              // renders — a single glance covers the whole hovered point.
+              return (
+                <div style={{ ...chartTooltipStyle, display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
+                  <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{label}</span>
+                  {typeof kmVal === "number" && (
+                    <><span style={{ color: "var(--text-muted)" }}>·</span><span style={{ color: "var(--data-pace)" }}>{kmVal.toFixed(1)} {distanceUnit}</span></>
+                  )}
+                  {typeof paceVal === "number" && (
+                    <><span style={{ color: "var(--text-muted)" }}>·</span><span style={{ color: PACE_LINE_COLOR }}>pace {fmtMinSecRaw(paceVal)}{paceUnit}</span></>
+                  )}
+                  {typeof hrVal === "number" && (
+                    <><span style={{ color: "var(--text-muted)" }}>·</span><span style={{ color: hrColor }}>HR {Math.round(hrVal)}</span></>
+                  )}
+                </div>
+              );
             }}
           />
           {!hidden.has("totalKm") && (
@@ -359,28 +376,58 @@ function recentDistanceByDay(activities: Activity[]): { date: string; km: number
     .map(([date, km]) => ({ date, km }));
 }
 
-function DistanceSparkline({ days }: { days: { date: string; km: number }[] }) {
+// Gradient area sparkline ending in a glowing dot (polish pass, replaces the
+// earlier mini-bar version) — same --data-pace family as the trend charts'
+// distance bars, 35%→0 fill matching the standard chartGradientDef ratio.
+// deltaPct (± vs the previous window of equal length) renders as a small
+// chip beside the "Recent" label — green/red by sign, distance-only (more
+// distance in-period reads as "good" here; unlike an HR delta, there's no
+// inverted-good-direction case for this metric).
+function DistanceSparkline({ days, deltaPct }: { days: { date: string; km: number }[]; deltaPct: number | null }) {
   if (days.length < 2) return null;
+  const w = 128, h = 40, pad = 4;
   const max = Math.max(...days.map(d => d.km), 0.001);
-  const h = 40;
+  const stepX = (w - pad * 2) / (days.length - 1);
+  const points = days.map((d, i) => [pad + i * stepX, pad + (1 - d.km / max) * (h - pad * 2)] as const);
+  const linePath = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
+  const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(1)},${h} L${points[0][0].toFixed(1)},${h} Z`;
+  const [lastX, lastY] = points[points.length - 1];
+  const good = deltaPct != null && deltaPct >= 0;
   return (
     <div>
-      <Label style={{ marginBottom: 6 }}>Recent</Label>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: h }} title="Distance on each of the most recent active days in range">
-        {days.map(d => (
-          <div key={d.date} title={`${d.date} · ${d.km.toFixed(1)} ${distanceUnitLabel()}`}
-            style={{
-              width: 5, height: Math.max(3, (d.km / max) * h),
-              background: "linear-gradient(180deg, color-mix(in srgb, var(--data-pace) 85%, transparent), color-mix(in srgb, var(--data-pace) 25%, transparent))",
-              borderRadius: "2px 2px 0 0",
-            }} />
-        ))}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <Label style={{ marginBottom: 0 }}>Recent</Label>
+        {deltaPct != null && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999,
+            fontVariantNumeric: "tabular-nums",
+            color: good ? "var(--accent-green)" : "var(--accent-red)",
+            background: `color-mix(in srgb, ${good ? "var(--accent-green)" : "var(--accent-red)"} 15%, transparent)`,
+          }} title="vs the previous period of equal length">
+            {deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(0)}% vs previous
+          </span>
+        )}
       </div>
+      <svg width={w} height={h}>
+        <title>Distance on each of the most recent active days in range</title>
+        <defs>
+          <linearGradient id="heroSparkGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="var(--data-pace)" stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill="url(#heroSparkGrad)" stroke="none" />
+        <path d={linePath} fill="none" stroke="var(--data-pace)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={lastX} cy={lastY} r={3} fill="var(--data-pace)" style={{ filter: "drop-shadow(0 0 6px var(--data-pace))" }} />
+      </svg>
     </div>
   );
 }
 
-function PeriodHeroRing({ activities, km, hours, sparklineDays }: { activities: number; km: number; hours: number; sparklineDays: { date: string; km: number }[] }) {
+function PeriodHeroRing({ activities, km, hours, sparklineDays, deltaPct }: {
+  activities: number; km: number; hours: number;
+  sparklineDays: { date: string; km: number }[]; deltaPct: number | null;
+}) {
   const size = 132;
   const stroke = 6;
   const r = (size - stroke) / 2;
@@ -391,7 +438,7 @@ function PeriodHeroRing({ activities, km, hours, sparklineDays }: { activities: 
       display: "flex", alignItems: "center", gap: 24, padding: "20px 24px", marginBottom: 20,
       background: "color-mix(in srgb, var(--accent) 6%, var(--card-bg))",
     }}>
-      <svg width={size} height={size} style={{ flexShrink: 0, filter: "drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 45%, transparent))" }}>
+      <svg width={size} height={size} style={{ flexShrink: 0, filter: "drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 55%, transparent))" }}>
         <defs>
           {/* Chrome-only gradient — accent → accent-strong, never a data
               color, since this ring frames the app's own totals, not a
@@ -428,10 +475,23 @@ function PeriodHeroRing({ activities, km, hours, sparklineDays }: { activities: 
         </div>
       </div>
       <div style={{ marginLeft: "auto" }}>
-        <DistanceSparkline days={sparklineDays} />
+        <DistanceSparkline days={sparklineDays} deltaPct={deltaPct} />
       </div>
     </Card>
   );
+}
+
+// Plain UTC-midnight date math on the app's own "YYYY-MM-DD" date strings —
+// used only to derive the hero card's "previous window of equal length" for
+// its delta chip (polish pass). UTC avoids any local-timezone day-boundary
+// drift when shifting a date string that carries no time component.
+function shiftIsoDate(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+function daysBetween(fromIso: string, toIso: string): number {
+  return Math.round((new Date(`${toIso}T00:00:00Z`).getTime() - new Date(`${fromIso}T00:00:00Z`).getTime()) / 86_400_000);
 }
 
 export function OverviewTab({ from, to }: Props) {
@@ -441,6 +501,13 @@ export function OverviewTab({ from, to }: Props) {
   // here only to build the hero card's sparkline (polish pass), not new
   // backend surface.
   const activitiesQ = useQuery(() => api.garmin.activities(from, to), [from, to]);
+  // Previous window of equal length, immediately preceding `from` — powers
+  // the hero card's "+8% vs previous" delta chip. A second, independent
+  // fetch of the same endpoint/shape, not a new one.
+  const windowDays = daysBetween(from, to) + 1;
+  const prevTo = shiftIsoDate(from, -1);
+  const prevFrom = shiftIsoDate(prevTo, -(windowDays - 1));
+  const prevActivitiesQ = useQuery(() => api.garmin.activities(prevFrom, prevTo), [prevFrom, prevTo]);
 
   if (state.status === "loading") return <LoadingSpinner />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;
@@ -465,10 +532,14 @@ export function OverviewTab({ from, to }: Props) {
 
   const run = sports.find(s => s.sport === "running");
   const sparklineDays = activitiesQ.state.status === "success" ? recentDistanceByDay(activitiesQ.state.data) : [];
+  const prevKm = prevActivitiesQ.state.status === "success"
+    ? prevActivitiesQ.state.data.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0)
+    : null;
+  const deltaPct = prevKm != null && prevKm > 0 ? ((totals.km - prevKm) / prevKm) * 100 : null;
 
   return (
     <>
-      <PeriodHeroRing activities={totals.acts} km={totals.km} hours={totals.hours} sparklineDays={sparklineDays} />
+      <PeriodHeroRing activities={totals.acts} km={totals.km} hours={totals.hours} sparklineDays={sparklineDays} deltaPct={deltaPct} />
 
       <SectionTitle>Total</SectionTitle>
       <StatGrid>

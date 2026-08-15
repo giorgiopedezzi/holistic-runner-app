@@ -214,13 +214,17 @@ body {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
-/* Ambient radial glow layer (feature/temp-ui) — two large, very low-opacity
-   radial washes (accent + the fixed --accent-glow cyan) fixed behind the
-   whole page, same stacking approach as body::before's background picture
-   (position:fixed, z-index:-1) so it sits behind every opaque card surface
-   and only ever shows through the page's own margins/gaps. Rendered from a
-   real element (App.tsx) rather than another ::before, so it can layer
-   above the background picture without a specificity fight over the same
+/* Ambient radial glow layer (feature/temp-ui; intensity bumped in the polish
+   pass — was 5%, now 11%, "one step stronger than the faint tint") — two
+   large radial washes (accent + the fixed --accent-glow cyan) fixed behind
+   the whole page, same stacking approach as body::before's background
+   picture (position:fixed, z-index:-1) so it sits behind every opaque card
+   surface and only ever shows through the page's own margins/gaps. This is
+   the sole background now — the old per-user background-picture picker was
+   removed from Settings/Appearance in favor of this always-on, automatic
+   wash. Rendered from a real element (App.tsx) rather than another
+   ::before, so it can layer above body::before's (now-unused-by-default)
+   background-image slot without a specificity fight over the same
    pseudo-element. */
 .hra-ambient-glow {
   position: fixed;
@@ -228,8 +232,8 @@ body {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(900px circle at 15% -10%, color-mix(in srgb, var(--accent) 5%, transparent), transparent 55%),
-    radial-gradient(700px circle at 100% 15%, color-mix(in srgb, var(--accent-glow) 5%, transparent), transparent 55%);
+    radial-gradient(900px circle at 15% -10%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 55%),
+    radial-gradient(700px circle at 100% 15%, color-mix(in srgb, var(--accent-glow) 11%, transparent), transparent 55%);
 }
 
 /* Gradient accent pill for "active" chrome (nav tabs, range/mode toggles) —

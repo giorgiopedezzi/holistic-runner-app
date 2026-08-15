@@ -19,6 +19,9 @@ export function glowPillStyle(active: boolean): CSSProperties {
     // behind when the two forms alternate across re-renders.
     border: "1px solid transparent",
     color: "var(--on-accent)",
-    boxShadow: `0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 14px color-mix(in srgb, var(--accent) 40%, transparent)`,
+    // One step stronger than the first pass (polish pass, GLOW section) —
+    // wider spread + higher accent concentration, still capped well short
+    // of a full-opacity ring so it stays tasteful on dense rows of pills.
+    boxShadow: `0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 0 20px color-mix(in srgb, var(--accent) 50%, transparent)`,
   };
 }
