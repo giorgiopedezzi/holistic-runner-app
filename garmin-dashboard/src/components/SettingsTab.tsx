@@ -2,15 +2,17 @@
  * SettingsTab.tsx
  * Global app settings, persisted server-side (this app deliberately avoids
  * localStorage — see CLAUDE.md): outlier-detection thresholds used by
- * ActivityModal.tsx's chart, and appearance (theme + background picture).
+ * ActivityModal.tsx's chart, and appearance (theme + automatic ambient
+ * glow — the earlier per-user background picture picker was removed in the
+ * 2026-08-16 correction pass, see frontend.md's Appearance section).
  */
 
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
-import { Card, SectionTitle, ErrorBanner, LoadingSpinner, glowPillStyle } from "@/components/ui";
+import { Card, SectionTitle, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import type { Settings, Theme, StoredUnitSystem, AccentColor } from "@/types/api";
 import { THEME_NAMES, ACCENT_COLOR_NAMES } from "@/types/api";
-import { BUNDLED_BACKGROUNDS, BUNDLED_BACKGROUND_ORDER } from "@/utils/backgrounds";
 import { ACCENT_PALETTE } from "@/utils/accent";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
@@ -20,54 +22,43 @@ import { useSettings } from "@/hooks/useSettings";
 // so its live pace preview must stay metric-only.
 import { fmtMinSecRaw } from "@/utils/fmt";
 
-// Small hardcoded preview swatches per theme, matching index.css's
-// [data-theme="..."] blocks — duplicated here (not read from CSS) because a
-// swatch needs to show a theme's colors while a DIFFERENT theme is active.
-const THEME_PREVIEW: Record<Theme, { label: string; bg: string; card: string; text: string; accent: string }> = {
-  "dark":       { label: "Dark",       bg: "#0f1117", card: "#1e2330", text: "#e8eaf0", accent: "#1db87a" },
-  "light":      { label: "Light",      bg: "#f5f6f8", card: "#ffffff", text: "#1a1d27", accent: "#0e9f6a" },
-  "dark-blue":  { label: "Dark Blue",  bg: "#0a0e1a", card: "#161d35", text: "#e6eaf5", accent: "#4d9dff" },
-  "light-warm": { label: "Light Warm", bg: "#faf6f0", card: "#fffaf3", text: "#2b2118", accent: "#b8650a" },
+// Theme swatch labels only — the actual colors are CSS (index.css's
+// [data-theme-preview="…"] blocks), not duplicated here as hex literals
+// (correction pass, CLAUDE.md's "styles live in index.css"). A swatch still
+// needs to show a theme's colors while a DIFFERENT theme is active, which
+// data-theme-preview (rather than the real data-theme, which only ever
+// reflects the theme actually in effect) makes possible.
+const THEME_LABEL: Record<Theme, string> = {
+  "dark":       "Dark",
+  "light":      "Light",
+  "dark-blue":  "Dark Blue",
+  "light-warm": "Light Warm",
 };
 
 // A single theme swatch: the "real system" preview is a small gradient pill
 // (light→dark accent, same visual language as the app's own active-nav
-// pill/hero ring — see index.css's --accent-strong) over a hairline border
-// in that theme's own accent, rather than the earlier abstract two-bar
-// mockup. Selected gets a corner check badge instead of relying on border
-// color alone to read as "selected" at a glance (polish pass).
-function ThemeSwatch({ label, preview, selected, onClick, title }: {
-  label: string; preview: { bg: string; card: string; text: string; accent: string };
-  selected: boolean; onClick: () => void; title?: string;
+// pill/hero ring), over a hairline border in that theme's own accent.
+// Selected gets a corner check badge instead of relying on border color
+// alone to read as "selected" at a glance. All visuals are
+// `.hra-theme-swatch*` classes keyed off `data-theme-preview` (index.css);
+// this component only chooses which theme to preview and whether it's
+// selected.
+function ThemeSwatch({ theme, label, selected, onClick, title }: {
+  theme: Theme; label: string; selected: boolean; onClick: () => void; title?: string;
 }) {
   return (
     <button
-      className="hra-lift"
+      className="hra-lift hra-theme-swatch"
+      data-theme-preview={theme}
+      data-selected={selected}
       onClick={onClick}
       title={title}
-      style={{
-        position: "relative", width: 96, padding: 0, borderRadius: 10, overflow: "hidden", cursor: "pointer",
-        border: `1px solid ${selected ? preview.accent : "var(--border)"}`,
-        background: "none",
-      }}
     >
-      <div style={{ background: preview.bg, padding: "16px 10px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{
-          width: 42, height: 10, borderRadius: 999,
-          background: `linear-gradient(135deg, ${preview.accent}, color-mix(in srgb, ${preview.accent} 70%, black))`,
-          boxShadow: `0 0 10px color-mix(in srgb, ${preview.accent} 55%, transparent)`,
-        }} />
+      <div className="hra-theme-swatch-preview">
+        <div className="hra-theme-swatch-pill" />
       </div>
-      <div style={{ fontSize: 11, padding: "5px 0", background: preview.card, color: selected ? preview.accent : "var(--text-secondary)" }}>
-        {label}
-      </div>
-      {selected && (
-        <div style={{
-          position: "absolute", top: 4, right: 4, width: 15, height: 15, borderRadius: "50%",
-          background: preview.accent, color: "#000",
-          display: "flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 700, lineHeight: 1,
-        }}>✓</div>
-      )}
+      <div className="hra-theme-swatch-label">{label}</div>
+      {selected && <div className="hra-theme-swatch-badge">✓</div>}
     </button>
   );
 }
@@ -75,25 +66,24 @@ function ThemeSwatch({ label, preview, selected, onClick, title }: {
 export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.theme;
   const isAuto = current === "auto";
-  // "Auto" shows the theme it currently resolves to (via prefers-color-scheme)
-  // as its own live preview, rather than a fixed swatch — there's no single
-  // "auto" color scheme, it's whichever concrete theme the OS picks.
-  const autoPreview = THEME_PREVIEW[appearance.resolvedTheme ?? "dark"];
+  // "Auto" previews whichever concrete theme it currently resolves to (via
+  // prefers-color-scheme) — there's no single "auto" color scheme.
+  const autoResolved = appearance.resolvedTheme ?? "dark";
 
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
       <ThemeSwatch
-        label={`Auto (${autoPreview.label})`}
-        preview={autoPreview}
+        theme={autoResolved}
+        label={`Auto (${THEME_LABEL[autoResolved]})`}
         selected={isAuto}
         onClick={() => appearance.setTheme("auto")}
-        title={`Follows your OS's light/dark setting — currently: ${autoPreview.label}`}
+        title={`Follows your OS's light/dark setting — currently: ${THEME_LABEL[autoResolved]}`}
       />
       {THEME_NAMES.map(t => (
         <ThemeSwatch
           key={t}
-          label={THEME_PREVIEW[t].label}
-          preview={THEME_PREVIEW[t]}
+          theme={t}
+          label={THEME_LABEL[t]}
           selected={current === t}
           onClick={() => appearance.setTheme(t)}
         />
@@ -113,30 +103,19 @@ export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
         const def = ACCENT_PALETTE[name];
         const selected = current === name;
         return (
+          // --swatch-color is the one per-instance hook, feeding both
+          // .hra-swatch's hover glow and .hra-accent-swatch's gradient
+          // orb/selected border (index.css) — no gradient/border/hex
+          // literal computed here (correction pass).
           <button
             key={name}
-            className="hra-swatch"
+            className="hra-swatch hra-accent-swatch"
+            data-selected={selected}
+            style={{ "--swatch-color": def.hex, color: def.onAccent } as CSSProperties}
             onClick={() => appearance.setAccentColor?.(name)}
             aria-pressed={selected}
             aria-label={def.label}
             title={def.label}
-            style={{
-              // Feeds .hra-swatch's hover glow (index.css) with this
-              // specific swatch's own color, not the app's currently-active
-              // --accent — a swatch previews a color you may not have
-              // picked yet.
-              ["--swatch-color" as string]: def.hex,
-              width: 44, height: 44, borderRadius: "50%", cursor: "pointer",
-              border: `2px solid ${selected ? def.hex : "var(--border)"}`,
-              outline: selected ? `2px solid ${def.hex}` : "none",
-              outlineOffset: 2,
-              // Gradient orb — light→base→dark radial, rather than a flat
-              // fill, so the swatch itself reads as the same "chrome" look
-              // the picked accent will actually produce elsewhere in the app.
-              background: `radial-gradient(circle at 35% 30%, color-mix(in srgb, ${def.hex} 55%, white), ${def.hex} 55%, color-mix(in srgb, ${def.hex} 70%, black))`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 14, color: def.onAccent, fontWeight: 700,
-            }}
           >
             {selected ? "✓" : ""}
           </button>
@@ -150,30 +129,18 @@ export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
 // applied to the same real chrome elements used elsewhere in the app (a
 // filled button, an active nav-style pill, a link, a focus ring), directly
 // under the accent row, so picking a swatch shows its effect immediately
-// without having to go find a button on another tab.
+// without having to go find a button on another tab. All visuals are
+// `.hra-chrome-preview*` classes (index.css); the active pill reuses
+// `.hra-pill-active`, the same class the header/date-range/trend pills do.
 function ChromePreviewStrip() {
   return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 20, marginTop: 16, padding: "12px 14px",
-      borderRadius: "var(--radius-md)", border: "1px solid var(--border)",
-      background: "color-mix(in srgb, var(--accent) 3%, var(--bg-surface))",
-    }}>
-      <button className="hra-lift" style={{
-        fontSize: 12, padding: "6px 14px", borderRadius: 6, border: "none",
-        background: "var(--accent)", color: "var(--on-accent)", fontWeight: 600,
-      }}>
-        Button
-      </button>
-      <span className="hra-pill" style={{ fontSize: 12, padding: "5px 14px", borderRadius: 999, fontWeight: 600, ...glowPillStyle(true) }}>
+    <div className="hra-chrome-preview">
+      <button className="hra-lift hra-chrome-preview-button">Button</button>
+      <span className="hra-pill hra-pill-active" style={{ padding: "5px 14px", fontWeight: 600 }}>
         Active pill
       </span>
       <a href="#" onClick={e => e.preventDefault()} style={{ fontSize: 12 }}>Link</a>
-      <div style={{
-        fontSize: 11, padding: "4px 10px", borderRadius: 6, color: "var(--text-secondary)",
-        outline: "2px solid var(--accent)", outlineOffset: 2,
-      }}>
-        Focus ring
-      </div>
+      <div className="hra-chrome-preview-focus">Focus ring</div>
     </div>
   );
 }
@@ -193,13 +160,9 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
         return (
           <button
             key={opt.value}
+            className="hra-toggle-pill"
+            data-active={selected}
             onClick={() => appearance.setUnits(opt.value)}
-            style={{
-              fontSize: 12, padding: "6px 14px", borderRadius: 999, cursor: "pointer",
-              border: `1px solid ${selected ? "var(--accent)" : "var(--border-strong)"}`,
-              background: selected ? "var(--accent)22" : "var(--bg-card)",
-              color: selected ? "var(--accent)" : "var(--text-secondary)",
-            }}
           >
             {opt.label}
           </button>
@@ -210,80 +173,6 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
           currently: {appearance.resolvedUnitSystem} (from your browser's locale — there's no direct way to read the OS's actual measurement-system setting)
         </span>
       )}
-    </div>
-  );
-}
-
-export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) {
-  const settings = appearance.settings;
-  const [uploading, setUploading] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = ""; // allow re-picking the same file later
-    if (!file) return;
-    setUploading(true);
-    setUploadError(null);
-    try {
-      await appearance.uploadBackground(file);
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed");
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  if (!settings) return null;
-  const isNone = settings.background_kind === "none";
-  const isCustom = settings.background_kind === "custom";
-
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <button
-          onClick={() => appearance.setBackground("none")}
-          style={{
-            width: 72, height: 48, borderRadius: 8, cursor: "pointer",
-            border: `2px solid ${isNone ? "var(--accent)" : "var(--border)"}`,
-            background: "var(--bg-card)", color: "var(--text-muted)", fontSize: 10,
-          }}
-        >
-          None
-        </button>
-        {BUNDLED_BACKGROUND_ORDER.map(id => {
-          const preset = BUNDLED_BACKGROUNDS[id];
-          const selected = settings.background_kind === "bundled" && settings.background_value === id;
-          return (
-            <button
-              key={id}
-              onClick={() => appearance.setBackground("bundled", id)}
-              title={preset.label}
-              style={{
-                width: 72, height: 48, borderRadius: 8, cursor: "pointer",
-                border: `2px solid ${selected ? "var(--accent)" : "var(--border)"}`,
-                backgroundImage: preset.css, backgroundColor: "var(--bg)",
-              }}
-            />
-          );
-        })}
-        <label
-          style={{
-            width: 72, height: 48, borderRadius: 8, cursor: uploading ? "not-allowed" : "pointer",
-            border: `2px solid ${isCustom ? "var(--accent)" : "var(--border)"}`,
-            background: isCustom && settings.background_value
-              ? `center/cover url("${api.settings.backgroundImageUrl(settings.background_value)}")`
-              : "var(--bg-card)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 10, color: "var(--text-muted)", textAlign: "center",
-          }}
-        >
-          {!(isCustom && settings.background_value) && (uploading ? "…" : "Upload")}
-          <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleUpload} disabled={uploading} style={{ display: "none" }} />
-        </label>
-      </div>
-      {uploadError && <ErrorBanner message={uploadError} />}
     </div>
   );
 }
@@ -420,10 +309,11 @@ export function SettingsTab({ appearance }: Props) {
     <div>
       <SectionTitle>Appearance</SectionTitle>
       <Card style={{ maxWidth: 640, marginBottom: 24 }}>
-        {/* Background picture picker removed (polish pass) — replaced by the
-            app-wide automatic ambient glow layer (index.css's
-            .hra-ambient-glow: two radial accent/accent-glow washes over the
-            theme base), which needs no per-user picking. */}
+        {/* Background picture picker removed (2026-08-16 correction pass) —
+            replaced by the app-wide automatic ambient glow layer
+            (index.css's body::before: two radial accent/accent-glow washes
+            over the theme base), which needs no per-user picking. See
+            frontend.md's Appearance section. */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
           <div>
             <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Theme</div>
@@ -461,13 +351,9 @@ export function SettingsTab({ appearance }: Props) {
             return (
               <button
                 key={v}
+                className="hra-toggle-pill"
+                data-active={selected}
                 onClick={() => setDetailView(v)}
-                style={{
-                  fontSize: 12, padding: "6px 14px", borderRadius: 999, cursor: "pointer",
-                  border: `1px solid ${selected ? "var(--accent)" : "var(--border-strong)"}`,
-                  background: selected ? "var(--accent)22" : "var(--bg-card)",
-                  color: selected ? "var(--accent)" : "var(--text-secondary)",
-                }}
               >
                 {v === "accordion" ? "Accordion (inline)" : "Popup"}
               </button>

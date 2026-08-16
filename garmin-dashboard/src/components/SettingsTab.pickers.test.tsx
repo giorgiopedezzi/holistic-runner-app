@@ -1,16 +1,19 @@
 /**
  * SettingsTab.pickers.test.tsx  (HRA-77)
- * Proves the AppearanceApi interface is genuinely stubbable: ThemePicker,
- * UnitsPicker, and BackgroundPicker are rendered against a hand-written
- * object literal that satisfies AppearanceApi by structure alone — no
- * useAppearance() hook, no useSettings()/context, no network call. This is
- * the whole point of declaring the interface instead of typing props as
+ * Proves the AppearanceApi interface is genuinely stubbable: ThemePicker and
+ * UnitsPicker are rendered against a hand-written object literal that
+ * satisfies AppearanceApi by structure alone — no useAppearance() hook, no
+ * useSettings()/context, no network call. This is the whole point of
+ * declaring the interface instead of typing props as
  * `ReturnType<typeof useAppearance>` (which only a real hook invocation can
  * produce), so it's the test that proves the Story, not incidental coverage.
+ * BackgroundPicker's own describe block was removed with the component
+ * (2026-08-16 correction pass — background picture replaced by the
+ * automatic ambient glow, see frontend.md).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { ThemePicker, UnitsPicker, BackgroundPicker } from "./SettingsTab";
+import { ThemePicker, UnitsPicker } from "./SettingsTab";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { settings } from "@/test/fixtures";
 
@@ -20,8 +23,6 @@ function stubAppearance(overrides: Partial<AppearanceApi> = {}): AppearanceApi {
   return {
     settings: settings(),
     setTheme: vi.fn(),
-    setBackground: vi.fn(),
-    uploadBackground: vi.fn(),
     setUnits: vi.fn(),
     resolvedTheme: "dark",
     resolvedUnitSystem: "metric",
@@ -65,21 +66,5 @@ describe("UnitsPicker (hand-written AppearanceApi stub)", () => {
 
     rerender(<UnitsPicker appearance={stubAppearance({ settings: settings({ unit_system: "auto" }), resolvedUnitSystem: "imperial" })} />);
     expect(screen.getByText(/currently: imperial/)).toBeInTheDocument();
-  });
-});
-
-describe("BackgroundPicker (hand-written AppearanceApi stub)", () => {
-  it("calls setBackground('none') from the None swatch", () => {
-    const appearance = stubAppearance({ settings: settings() });
-    render(<BackgroundPicker appearance={appearance} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "None" }));
-
-    expect(appearance.setBackground).toHaveBeenCalledWith("none");
-  });
-
-  it("renders nothing while settings hasn't loaded yet", () => {
-    const { container } = render(<BackgroundPicker appearance={stubAppearance({ settings: null })} />);
-    expect(container).toBeEmptyDOMElement();
   });
 });

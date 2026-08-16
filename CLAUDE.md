@@ -375,6 +375,19 @@ garmin_and_withings/
   sizes (`text-[13px]` forbidden — extend the scale instead). Full design-system rules live in
   `docs/frontend.md` once Initiative C's plan lands there; until then see the Initiative C
   Confluence plan.
+- **Theme-related styling lives in `index.css`, never inside a component.** No inline
+  `style={{ color/background/border/boxShadow/filter: ... }}` with a color, gradient, or shadow
+  value in TSX; no hex literals; no one-off Tailwind color-arbitrary utilities. A component may only
+  (1) apply a class name that `index.css` defines the visuals for, (2) set a CSS **custom-property
+  hook** (`style={{ "--x-color": value }}`) so a shared class can parameterize itself per instance —
+  this is how `Stat`'s `accent` prop and `ChartPillLegend`'s per-series color stay dynamic without a
+  computed style in the component, and (3) pass a `var(--x)` token as a plain component/SVG prop
+  (`stroke="var(--data-pace)"`, `fill="var(--accent)"` — not a `style=` object). Plain structural
+  layout (`fontSize`, `padding`, `gap`, `display`, `width/height`, `letterSpacing`) is not "theme"
+  and can stay inline. **Why:** a color/gradient/shadow value recomputed ad hoc inside a component is
+  invisible to anyone auditing the theme system from `index.css` alone, and drifts silently from the
+  rest of the palette the next time someone tweaks a token. Corrected into this file 2026-08-16 after
+  the polish passes on Overview/Settings reintroduced exactly that drift.
 - **Path alias**: `@/` → `src/` (configured in both `vite.config.ts` and `tsconfig.json`)
 - **`import.meta.env`**: typed via `"types": ["vite/client"]` in `tsconfig.json`
 - **`useQuery` fetches on every deps change** (a plain `useEffect`, no `auto`/manual-load step) — see

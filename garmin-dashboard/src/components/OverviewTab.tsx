@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   ComposedChart, Bar, Line, ReferenceLine, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
@@ -6,9 +6,9 @@ import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
 import {
-  Card, ChartCard, ChartPillLegend, chartGrid, chartTick, chartTooltipStyle,
+  Card, ChartCard, ChartPillLegend, chartGrid, chartTick,
   Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
-  Label, glowPillStyle, splitUnit,
+  Label, splitUnit,
 } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
@@ -49,11 +49,14 @@ const gridStyle = chartGrid;
 // shows via the Badge above the chart, which keeps SPORT_COLOR.
 const PACE_LINE_COLOR = "var(--data-pace)";
 const BAR_COLOR = "var(--text-secondary)";
-// Polish pass: distance bars now render as a --data-pace vertical gradient
-// (55%→12% opacity) with a tighter top radius than the app-wide
-// chartBarRadius default, per the explicit spec for this chart — BAR_COLOR
-// above stays the axis-tick/tooltip-adjacent neutral, only the bar FILL
-// itself picks up the gradient.
+// Correction pass: distance bars are a MUTED --data-pace volume wash (28%→8%
+// opacity gradient, tightened from an earlier 55%→12% pass) with a tighter
+// top radius than the app-wide chartBarRadius default. Deliberately faint —
+// they must read as background volume, never as the pace series itself,
+// which is what the full-strength Avg-pace LINE is for (see frontend.md).
+// BAR_COLOR above stays the axis-tick/tooltip-adjacent neutral, only the bar
+// FILL itself picks up the gradient (defined inline as an SVG <linearGradient>
+// in SportTrendChart — no CSS-class equivalent for SVG gradient stops).
 const BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
 
@@ -154,7 +157,7 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
         <div style={{ marginLeft: "auto" }}>
           <ChartPillLegend
             items={[
-              { key: "totalKm", label: "Distance", color: "color-mix(in srgb, var(--data-pace) 55%, transparent)", active: !hidden.has("totalKm") },
+              { key: "totalKm", label: "Distance", color: "color-mix(in srgb, var(--data-pace) 28%, transparent)", active: !hidden.has("totalKm") },
               { key: "avgPace", label: "Avg pace", color: PACE_LINE_COLOR, active: !hidden.has("avgPace") },
               { key: "avgHr", label: "Avg HR", color: hrColor, active: !hidden.has("avgHr") },
             ]}
@@ -166,8 +169,8 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
         <ComposedChart data={displayPoints}>
           <defs>
             <linearGradient id={`barGrad-${sport}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.55} />
-              <stop offset="100%" stopColor="var(--data-pace)" stopOpacity={0.12} />
+              <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="var(--data-pace)" stopOpacity={0.08} />
             </linearGradient>
           </defs>
           <CartesianGrid {...gridStyle} />
@@ -203,17 +206,20 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
               // each value colored to match its series, instead of the
               // three separately-swatched rows Recharts' default Tooltip
               // renders — a single glance covers the whole hovered point.
+              // Colors are CSS classes (.hra-chart-tooltip-*, index.css),
+              // not inline style — km reads neutral now that bars are a
+              // muted volume wash rather than a foreground series.
               return (
-                <div style={{ ...chartTooltipStyle, display: "flex", gap: 6, alignItems: "center", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>
-                  <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{label}</span>
+                <div className="hra-chart-tooltip">
+                  <span className="hra-chart-tooltip-label">{label}</span>
                   {typeof kmVal === "number" && (
-                    <><span style={{ color: "var(--text-muted)" }}>·</span><span style={{ color: "var(--data-pace)" }}>{kmVal.toFixed(1)} {distanceUnit}</span></>
+                    <><span className="hra-chart-tooltip-sep">·</span><span className="hra-chart-tooltip-km">{kmVal.toFixed(1)} {distanceUnit}</span></>
                   )}
                   {typeof paceVal === "number" && (
-                    <><span style={{ color: "var(--text-muted)" }}>·</span><span style={{ color: PACE_LINE_COLOR }}>pace {fmtMinSecRaw(paceVal)}{paceUnit}</span></>
+                    <><span className="hra-chart-tooltip-sep">·</span><span className="hra-chart-tooltip-pace">pace {fmtMinSecRaw(paceVal)}{paceUnit}</span></>
                   )}
                   {typeof hrVal === "number" && (
-                    <><span style={{ color: "var(--text-muted)" }}>·</span><span style={{ color: hrColor }}>HR {Math.round(hrVal)}</span></>
+                    <><span className="hra-chart-tooltip-sep">·</span><span className="hra-chart-tooltip-hr">HR {Math.round(hrVal)}</span></>
                   )}
                 </div>
               );
@@ -221,16 +227,20 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
           />
           {!hidden.has("totalKm") && (
             <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={`url(#barGrad-${sport})`} radius={BAR_RADIUS}
-              activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.85 }} isAnimationActive={false} />
+              activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.4 }} isAnimationActive={false} />
           )}
           {!hidden.has("avgPace") && (
-            <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2}
-              dot={false} activeDot={{ r: 4, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
+            <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2.5}
+              className="hra-trend-line-pace"
+              dot={{ r: 2.5, fill: PACE_LINE_COLOR, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
               connectNulls isAnimationActive={false} />
           )}
           {!hidden.has("avgHr") && (
-            <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2}
-              dot={false} activeDot={{ r: 4, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
+            <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2.5}
+              className="hra-trend-line-hr"
+              dot={{ r: 2.5, fill: hrColor, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
               connectNulls isAnimationActive={false} />
           )}
           {/* Avg line reads strongest (higher opacity); min/max are fainter
@@ -308,17 +318,15 @@ function TrendsBySport({ from, to }: Props) {
             gets the gradient pill; hover is the shared quiet bg-tint. */}
         <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 999, border: "1px solid var(--border)" }}>
           {GROUP_MODES.map(m => (
-            <button key={m} className="hra-pill hra-nav-hover" onClick={() => setGroupMode(m)}
+            <button key={m}
+              className={`hra-pill hra-nav-pill hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
+              onClick={() => setGroupMode(m)}
               disabled={!modeEnabled[m]}
               title={modeEnabled[m] ? undefined : `Needs at least ${minGroupSize} ${m}s in the selected range`}
               style={{
-                fontSize: 11, padding: "3px 10px", borderRadius: 999,
+                fontSize: 11, padding: "3px 10px",
                 cursor: modeEnabled[m] ? "pointer" : "not-allowed",
                 opacity: modeEnabled[m] ? 1 : 0.4,
-                border: "1px solid transparent",
-                background: "transparent",
-                color: groupMode === m ? "var(--text-primary)" : "var(--text-muted)",
-                ...glowPillStyle(groupMode === m),
               }}>
               {GROUP_LABEL[m]}
             </button>
@@ -398,12 +406,11 @@ function DistanceSparkline({ days, deltaPct }: { days: { date: string; km: numbe
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <Label style={{ marginBottom: 0 }}>Recent</Label>
         {deltaPct != null && (
-          <span style={{
-            fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 999,
-            fontVariantNumeric: "tabular-nums",
-            color: good ? "var(--accent-green)" : "var(--accent-red)",
-            background: `color-mix(in srgb, ${good ? "var(--accent-green)" : "var(--accent-red)"} 15%, transparent)`,
-          }} title="vs the previous period of equal length">
+          <span
+            className="hra-delta-chip"
+            data-trend={good ? "up" : "down"}
+            title="vs the previous period of equal length"
+          >
             {deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(0)}% vs previous
           </span>
         )}
@@ -418,7 +425,7 @@ function DistanceSparkline({ days, deltaPct }: { days: { date: string; km: numbe
         </defs>
         <path d={areaPath} fill="url(#heroSparkGrad)" stroke="none" />
         <path d={linePath} fill="none" stroke="var(--data-pace)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={lastX} cy={lastY} r={3} fill="var(--data-pace)" style={{ filter: "drop-shadow(0 0 6px var(--data-pace))" }} />
+        <circle className="hra-spark-dot-glow" cx={lastX} cy={lastY} r={3} fill="var(--data-pace)" />
       </svg>
     </div>
   );
@@ -434,11 +441,8 @@ function PeriodHeroRing({ activities, km, hours, sparklineDays, deltaPct }: {
   const c = size / 2;
   const distance = splitUnit(fmtKm(km * 1000));
   return (
-    <Card style={{
-      display: "flex", alignItems: "center", gap: 24, padding: "20px 24px", marginBottom: 20,
-      background: "color-mix(in srgb, var(--accent) 6%, var(--card-bg))",
-    }}>
-      <svg width={size} height={size} style={{ flexShrink: 0, filter: "drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 55%, transparent))" }}>
+    <Card className="hra-hero-tint" style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 24px", marginBottom: 20 }}>
+      <svg className="hra-hero-ring-glow" width={size} height={size} style={{ flexShrink: 0 }}>
         <defs>
           {/* Chrome-only gradient — accent → accent-strong, never a data
               color, since this ring frames the app's own totals, not a
@@ -462,15 +466,15 @@ function PeriodHeroRing({ activities, km, hours, sparklineDays, deltaPct }: {
       <div style={{ display: "flex", gap: 28 }}>
         <div>
           <Label style={{ marginBottom: 6 }}>Distance</Label>
-          <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--accent-green)", lineHeight: 1, whiteSpace: "nowrap" }}>
+          <div className="hra-kpi-value" style={{ "--kpi-color": "var(--accent-green)" } as CSSProperties}>
             {distance.main}
-            {distance.unit && <span style={{ fontSize: 16, fontWeight: 500, color: "var(--text-muted)" }}> {distance.unit}</span>}
+            {distance.unit && <span className="hra-kpi-unit"> {distance.unit}</span>}
           </div>
         </div>
         <div>
           <Label style={{ marginBottom: 6 }}>Time</Label>
-          <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text-primary)", lineHeight: 1, whiteSpace: "nowrap" }}>
-            {hours.toFixed(1)}<span style={{ fontSize: 16, fontWeight: 500, color: "var(--text-muted)" }}> h</span>
+          <div className="hra-kpi-value">
+            {hours.toFixed(1)}<span className="hra-kpi-unit"> h</span>
           </div>
         </div>
       </div>

@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { Card } from "./Card";
 import { Label } from "./Label";
 
@@ -26,15 +27,15 @@ export function Stat({ label, value, sub, accent }: StatProps) {
   return (
     <Card className="hra-lift">
       <Label style={{ marginBottom: 8 }}>{label}</Label>
-      <div style={{ fontSize: 30, fontWeight: 700, letterSpacing: "-0.02em", color: accent ?? "var(--text-primary)", lineHeight: 1, whiteSpace: "nowrap" }}>
+      {/* `accent` is a caller-supplied var() token (e.g. "var(--accent-green)"),
+          threaded through as a --kpi-color custom-property hook rather than a
+          style={{color}} — the actual color rule lives in .hra-kpi-value
+          (index.css), see CLAUDE.md's "styles live in index.css". */}
+      <div className="hra-kpi-value" style={accent ? ({ "--kpi-color": accent } as CSSProperties) : undefined}>
         {main}
-        {unit && <span style={{ fontSize: 16, fontWeight: 500, color: "var(--text-muted)" }}> {unit}</span>}
+        {unit && <span className="hra-kpi-unit"> {unit}</span>}
       </div>
-      {sub && (
-        <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
-          {sub}
-        </div>
-      )}
+      {sub && <div className="hra-kpi-sub">{sub}</div>}
     </Card>
   );
 }

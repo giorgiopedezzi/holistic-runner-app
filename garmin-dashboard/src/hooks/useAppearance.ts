@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, BackgroundKind, StoredUnitSystem, AccentColor } from "@/types/api";
-import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { ACCENT_PALETTE } from "@/utils/accent";
 import { useSettings } from "@/hooks/useSettings";
@@ -20,23 +19,20 @@ function resolveUnitSystem(stored: StoredUnitSystem): ResolvedUnitSystem {
   return stored === "auto" ? detectUnitSystemFromLocale() : stored;
 }
 
-// Applies theme + background + unit system straight to the document/module
-// state — a data-theme attribute (matched by index.css's [data-theme="..."]
-// blocks), the --bg-image custom property the page background reads, and
-// utils/units.ts's module-level unit system. Called both on initial load and
-// after every change, so everything always mirrors the persisted setting
-// (this app has no localStorage, so there's no earlier client-side value to
-// reconcile with — the backend is the only source of truth, 'auto' aside).
+// Applies theme + unit system straight to the document/module state — a
+// data-theme attribute (matched by index.css's [data-theme="..."] blocks)
+// and utils/units.ts's module-level unit system. Called both on initial
+// load and after every change, so everything always mirrors the persisted
+// setting (this app has no localStorage, so there's no earlier client-side
+// value to reconcile with — the backend is the only source of truth, 'auto'
+// aside). No longer touches a background image — the page background is
+// index.css's automatic ambient glow (body::before), not a per-user
+// picture (2026-08-16 correction pass, see frontend.md's Appearance
+// section); `Settings.background_kind`/`background_value` still exist on
+// the type/backend (an API-contract change is Epic HRA-36's job, not this
+// correction's) but nothing here reads them anymore.
 function applyToDocument(settings: Settings) {
   document.documentElement.setAttribute("data-theme", resolveTheme(settings.theme));
-
-  let bgImage = "none";
-  if (settings.background_kind === "bundled" && settings.background_value) {
-    bgImage = BUNDLED_BACKGROUNDS[settings.background_value]?.css ?? "none";
-  } else if (settings.background_kind === "custom" && settings.background_value) {
-    bgImage = `url("${api.settings.backgroundImageUrl(settings.background_value)}")`;
-  }
-  document.documentElement.style.setProperty("--bg-image", bgImage);
 
   const accent = ACCENT_PALETTE[settings.accent_color];
   document.documentElement.style.setProperty("--accent", accent.hex);
@@ -57,8 +53,6 @@ export interface AppearanceState {
 }
 export interface AppearanceActions {
   setTheme:         (theme: StoredTheme) => Promise<void>;
-  setBackground:    (kind: BackgroundKind, value?: string) => Promise<void>;
-  uploadBackground: (file: File) => Promise<void>;
   setUnits:         (unitSystem: StoredUnitSystem) => Promise<void>;
   // Optional (HRA-95), unlike the actions above — so the pre-existing,
   // hand-written AppearanceApi stub in SettingsTab.pickers.test.tsx keeps
@@ -74,7 +68,7 @@ export type AppearanceApi = AppearanceState & AppearanceActions & AppearanceMeta
 
 /**
  * useAppearance — reads the shared settings singleton (useSettings, HRA-76),
- * applies theme/background/units whenever it changes, and exposes setters
+ * applies theme/units whenever it changes, and exposes setters
  * that update the backend and the shared store together (immediate-apply,
  * unlike SettingsTab's explicit-save pattern for the outlier thresholds —
  * appearance changes are meant to feel instant when clicked). While theme is
@@ -89,13 +83,13 @@ export function useAppearance(): AppearanceApi {
   }, [settings]);
 
   // The handler must always apply the LATEST settings (theme is read live
-  // from the OS, but background/units still need to be whatever's current
-  // when the OS scheme flips) — so it reads a ref instead of closing over
-  // `settings` directly. That's what lets the effect depend on the single
-  // primitive settings?.theme below instead of the whole settings object:
-  // depending on the object would tear down and re-subscribe this listener
-  // on every unrelated settings change (a background swap, a units change),
-  // not just when theme itself starts/stops being 'auto' (HRA-78).
+  // from the OS, but units still need to be whatever's current when the OS
+  // scheme flips) — so it reads a ref instead of closing over `settings`
+  // directly. That's what lets the effect depend on the single primitive
+  // settings?.theme below instead of the whole settings object: depending
+  // on the object would tear down and re-subscribe this listener on every
+  // unrelated settings change (a units change, an accent change), not just
+  // when theme itself starts/stops being 'auto' (HRA-78).
   const settingsRef = useRef(settings);
   useEffect(() => { settingsRef.current = settings; }, [settings]);
 
@@ -116,16 +110,6 @@ export function useAppearance(): AppearanceApi {
     update(updated);
   }, [update]);
 
-  const setBackground = useCallback(async (kind: BackgroundKind, value?: string) => {
-    const updated = await api.settings.setBackground(kind, value);
-    update(updated);
-  }, [update]);
-
-  const uploadBackground = useCallback(async (file: File) => {
-    const updated = await api.settings.uploadBackground(file);
-    update(updated);
-  }, [update]);
-
   const setUnits = useCallback(async (unitSystem: StoredUnitSystem) => {
     const updated = await api.settings.setUnits(unitSystem);
     update(updated);
@@ -139,8 +123,6 @@ export function useAppearance(): AppearanceApi {
   return {
     settings,
     setTheme,
-    setBackground,
-    uploadBackground,
     setUnits,
     setAccentColor,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,

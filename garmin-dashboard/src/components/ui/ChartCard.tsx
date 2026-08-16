@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Card } from "./Card";
 
 // ── <ChartCard> — HRA-97 standard chart chrome ───────────────────────────
@@ -82,24 +82,16 @@ export function ChartPillLegend({ items, onToggle }: ChartPillLegendProps) {
   return (
     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
       {items.map(item => (
+        // --legend-color is the one per-series hook; every actual visual
+        // (border/background/glow/dim-when-off) is owned by .hra-legend-chip
+        // in index.css (correction pass, CLAUDE.md's "styles live in
+        // index.css" — was a fully computed style={} object before).
         <button
           key={item.key}
+          className="hra-legend-chip"
+          data-active={item.active}
+          style={{ "--legend-color": item.color } as CSSProperties}
           onClick={() => onToggle(item.key)}
-          style={{
-            fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
-            border: `1px solid ${item.active ? item.color : "var(--border-strong)"}`,
-            // color-mix, not the `${color}NN` hex-alpha-suffix trick — this
-            // component's colors may be `var(--x)` CSS custom properties
-            // (e.g. the fixed --data-* tokens), and appending a hex suffix
-            // to a var() call produces invalid CSS (see ClassificationCard.tsx).
-            background: item.active ? `color-mix(in srgb, ${item.color} 16%, transparent)` : "transparent",
-            color: item.active ? item.color : "var(--text-secondary)",
-            boxShadow: item.active ? `0 0 10px color-mix(in srgb, ${item.color} 35%, transparent)` : "none",
-            // Off-state (polish pass): dimmed, no glow — a toggled-off chip
-            // should read as "off", not just "differently colored".
-            opacity: item.active ? 1 : 0.4,
-            transition: "background 0.15s, box-shadow 0.15s, color 0.15s, opacity 0.15s",
-          }}
         >
           {item.label}
         </button>

@@ -14,8 +14,6 @@ function stubAppearance(overrides: Partial<AppearanceApi> = {}): AppearanceApi {
   return {
     settings: settings(),
     setTheme: vi.fn(),
-    setBackground: vi.fn(),
-    uploadBackground: vi.fn(),
     setUnits: vi.fn(),
     setAccentColor: vi.fn(),
     resolvedTheme: "dark",
