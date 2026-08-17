@@ -54,16 +54,14 @@ function AppShell() {
           layer here (correction pass). */}
 
       {/* ── header ───────────────────────────────────────────────────── */}
-      {/* Two compact rows (correction pass — undoes an earlier single-row
-          merge): row 1 is brand + nav; row 2, only for date-range tabs, is
-          the range controls, right-aligned. DateRangeBar's own controls are
-          smaller here (see DateRangeBar.tsx) — both rows are shorter than
-          the old single merged row, so the hero starts higher.
-          `.hra-header-inner` shares <main>'s own maxWidth/padding (860px,
-          24px) so the nav tabs and date-range filters land in the exact
-          same left/right columns as the graphs/cards below them — the
-          header bar itself stays full-bleed (background/blur/border), only
-          its content is column-aligned. */}
+      {/* Single compact row now — the date-range controls moved into
+          <main> (below), left-aligned above the tab content, instead of
+          living in the header. Header keeps a little breathing room
+          (.hra-header's padding) rather than shrinking to the bare minimum.
+          `.hra-header-inner` still shares <main>'s own maxWidth/padding
+          (860px, 24px) so the nav tabs land in the same columns as the
+          content below — the header bar itself stays full-bleed
+          (background/blur/border), only its content is column-aligned. */}
       <header className="hra-header">
         <div className="hra-header-inner">
           <div className="hra-header-row">
@@ -99,12 +97,6 @@ function AppShell() {
               ))}
             </nav>
           </div>
-
-          {showDateRange && (
-            <div className="hra-header-row hra-header-row--controls">
-              <DateRangeBar {...range} />
-            </div>
-          )}
         </div>
       </header>
 
@@ -114,6 +106,14 @@ function AppShell() {
         {online === false && (
           <div style={{ marginBottom: 20 }}>
             <ErrorBanner message="API server unreachable — run: cd garmin-stats && node src/server.ts" />
+          </div>
+        )}
+
+        {/* Date-range controls — left-aligned, above the tab content (moved
+            out of the header). */}
+        {showDateRange && (
+          <div style={{ marginBottom: 20 }}>
+            <DateRangeBar {...range} />
           </div>
         )}
 

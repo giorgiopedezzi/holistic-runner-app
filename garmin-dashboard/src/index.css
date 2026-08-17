@@ -17,9 +17,9 @@
    NOT re-validated per theme here — on light themes they still render, just
    without a fresh contrast pass. */
 :root {
-  --bg:             #0f1117;
-  --bg-surface:     #181c25;
-  --bg-card:        #1e2330;
+  --bg:             #0b0d12;
+  --bg-surface:     #14171f;
+  --bg-card:        #191d28;
   --bg-danger:      #e24b4a18;
   --border:         #2a2f3d;
   --border-strong:  #3a404f;
@@ -40,8 +40,7 @@
      accent is now a user choice, not a theme-derived value. The hex/onAccent
      pair below is only the pre-JS fallback ('sky', the default and closest
      match to the old seeded --accent-blue); useAppearance.ts overrides both
-     as inline custom-property styles on <html> once /api/settings resolves. */
-  --accent: #0284c7;
+     as inline custom-property styles on <html> once /api/settings resolves. */;
   --on-accent: #000000;
 
   /* Fixed semantic data colors (HRA-94) — same metric = same color
@@ -75,20 +74,30 @@
   --card-bg: var(--bg-card);
   --card-border: var(--border);
 
-  /* Fixed ambient pairing color (feature/temp-ui de-flatten pass) — always
-     cyan, independent of the user's --accent choice, same rationale as the
-     --data-* tokens above: a second, constant hue the ambient glow layer and
-     signature elements can pair against --accent without ever colliding
-     with it (a user on a cyan --accent would otherwise get a flat wash). */
-  --accent-glow: #22d3ee;
-
-  /* Derived "chrome-only" accent shade (polish pass) — a deeper stop for
+  /* Derived "chrome-only" accent shades (polish pass) — a deeper stop for
      two-tone gradients that must stay within the accent family (e.g. the
-     hero ring), never mixing in a data color or the fixed --accent-glow
-     cyan. Pure color-mix off --accent, so it re-derives automatically for
-     whichever accent the user has picked — no per-accent literal to keep
-     in sync. */
+     hero ring), never mixing in a data color or a second hue. Pure
+     color-mix off --accent, so it re-derives automatically for whichever
+     accent the user has picked — no per-accent literal to keep in sync.
+     (--accent-glow, a fixed cyan pairing, existed here until 2026-08-17 and
+     was removed when .hra-pill-active went monochromatic and the ambient
+     became a single-hue ramp — nothing references it anymore.) */
   --accent-strong: color-mix(in srgb, var(--accent) 75%, black);
+  /* Light sibling of --accent-strong (Overview hero rings) — a bright tint
+     of --accent, never a plain neutral/white or a different hue, so the
+     ring gradient (--accent-strong -> --accent-light) stays fully
+     monochromatic ("dark lime to light lime", never dark-to-gray). Since
+     2026-08-17 also the light stop of .hra-pill-active's gradient. */
+  --accent-light: color-mix(in srgb, var(--accent) 55%, white);
+
+  /* Per-instance custom-property hooks — components set these inline where
+     a value is genuinely per-instance (a specific swatch hex, a series
+     color, a Stat accent). Declared here with defaults so every var()
+     reference is valid CSS even without the inline hook, and IDE
+     inspection resolves the names. */
+  --swatch-color: var(--accent);
+  --kpi-color:    var(--text-primary);
+  --legend-color: var(--text-secondary);
 
   color-scheme: dark;
 }
@@ -105,9 +114,9 @@
 }
 
 :root[data-theme="dark"] {
-  --bg:             #0f1117;
-  --bg-surface:     #181c25;
-  --bg-card:        #1e2330;
+  --bg:             #0b0d12;
+  --bg-surface:     #14171f;
+  --bg-card:        #191d28;
   --bg-danger:      #e24b4a18;
   --border:         #2a2f3d;
   --border-strong:  #3a404f;
@@ -123,9 +132,9 @@
 
 /* Cooler, navy-tinted dark variant. */
 :root[data-theme="dark-blue"] {
-  --bg:             #0a0e1a;
-  --bg-surface:     #10162a;
-  --bg-card:        #161d35;
+  --bg:             #070a13;
+  --bg-surface:     #0c1120;
+  --bg-card:        #11172a;
   --bg-danger:      #ef5a5a18;
   --border:         #232b47;
   --border-strong:  #313b5c;
@@ -140,9 +149,9 @@
 }
 
 :root[data-theme="light"] {
-  --bg:             #f5f6f8;
-  --bg-surface:     #ffffff;
-  --bg-card:        #ffffff;
+  --bg:             #eceef1;
+  --bg-surface:     #f7f8fa;
+  --bg-card:        #f7f8fa;
   --bg-danger:      #d23f3e14;
   --border:         #e2e4ea;
   --border-strong:  #c8cbd6;
@@ -158,9 +167,9 @@
 
 /* Warm, cream/paper-toned light variant. */
 :root[data-theme="light-warm"] {
-  --bg:             #faf6f0;
-  --bg-surface:     #fffdfa;
-  --bg-card:        #fffaf3;
+  --bg:             #f0ebe1;
+  --bg-surface:     #f7f4ee;
+  --bg-card:        #f5efe5;
   --bg-danger:      #c1443e14;
   --border:         #ece3d6;
   --border-strong:  #d8ccb8;
@@ -193,32 +202,37 @@ body {
 /* Card primitive (HRA-96) — bg/border/radius live in a real class (not
    inline style) specifically so :hover can brighten the border; inline
    style has no pseudo-class equivalent.
-   Gradient tint, slightly 3D: background is a diagonal gradient from a
-   sliver of --accent (top-left) down through the card's own surface token
-   to a hair darker (bottom-right) — not a flat tint — with a faint inset
-   top highlight standing in for a light source and a soft outer shadow for
-   lift, so cards read as gently raised rather than flat. The border itself
-   never changes on hover — only the glow does ("a light, not a border"):
-   :hover adds an accent-colored glow shadow on top of the resting
-   shadow/highlight stack, border-color stays exactly as-is. */
+   Gradient tint, slightly 3D, corrected: a soft RADIAL wash centered at the
+   top-left corner, fading toward the bottom-right — two stops, same base
+   hue throughout (a sliver of --accent kissed into --card-bg at the light
+   end, the same --card-bg simply darkened at the far end), not the earlier
+   three-stop light->neutral->black recipe, which read as an odd green cast
+   whenever the accent itself was green/lime (the accent tint and the
+   unrelated black-mix end fought each other). Both stops are also blended
+   80% into transparent, so the card sits at ~80% opacity over the page's
+   own ambient glow — a hairline of it shows through, glass rather than a
+   solid panel — with a faint inset top highlight standing in for a light
+   source and a soft outer shadow for lift, so cards read as gently raised.
+   The border itself never changes on hover — only the glow does ("a light,
+   not a border"): :hover adds an accent-colored glow shadow on top of the
+   resting shadow/highlight stack, border-color stays exactly as-is. */
 .card {
-  background: linear-gradient(155deg,
-    color-mix(in srgb, var(--accent) 8%, var(--card-bg)) 0%,
-    var(--card-bg) 55%,
-    color-mix(in srgb, black 5%, var(--card-bg)) 100%);
+  background: radial-gradient(140% 140% at 0% 0%,
+  color-mix(in srgb, color-mix(in srgb, var(--accent) 9%, var(--card-bg)) 80%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 80%, transparent) 100%);
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--card-border));
   border-radius: var(--radius-lg);
   padding: 16px;
   box-shadow:
-    inset 0 1px 0 0 color-mix(in srgb, white 7%, transparent),
-    0 6px 16px -10px rgba(0, 0, 0, 0.45);
+          inset 0 1px 0 0 color-mix(in srgb, white 7%, transparent),
+          0 6px 16px -10px rgba(0, 0, 0, 0.45);
   transition: box-shadow 0.2s ease-out;
 }
 .card:hover {
   box-shadow:
-    inset 0 1px 0 0 color-mix(in srgb, white 7%, transparent),
-    0 6px 16px -10px rgba(0, 0, 0, 0.45),
-    0 0 28px color-mix(in srgb, var(--accent) 30%, transparent);
+          inset 0 1px 0 0 color-mix(in srgb, white 7%, transparent),
+          0 6px 16px -10px rgba(0, 0, 0, 0.45),
+          0 0 28px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 /* Gradient accent pill for "active" chrome (nav tabs, range/mode toggles,
@@ -244,7 +258,11 @@ body {
   cursor: pointer;
 }
 .hra-pill-active {
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, var(--accent-glow)));
+  /* Monochromatic two-stop ramp (corrected 2026-08-17) — the second stop
+     used to be a 55% mix toward the fixed --accent-glow cyan, which pulled
+     every pill toward teal regardless of the chosen accent; --accent-light
+     keeps the ramp inside the accent family, same recipe as the hero ring. */
+  background: linear-gradient(135deg, var(--accent), var(--accent-light));
   border: 1px solid transparent;
   color: var(--on-accent);
   /* GLOW STRENGTH correction (2026-08-16): ~38% accent concentration —
@@ -283,7 +301,13 @@ body {
 .hra-nav-hover {
   transition: background 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out;
 }
-.hra-nav-hover:hover {
+/* :not(.hra-pill-active) — an active pill already has its own gradient
+   background + on-accent text color; this quiet hover tint used to apply
+   on top of (and partially replace) that background regardless of active
+   state, which could leave on-accent text sitting on the header's own dark
+   backdrop instead of the gradient — unreadable. Hovering an already-active
+   pill now changes nothing (it's already the loudest state on the row). */
+.hra-nav-hover:not(.hra-pill-active):hover {
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent) !important;
 }
@@ -291,9 +315,39 @@ body {
   transform: scale(0.98);
 }
 
+/* ── Action-button primitive (2026-08-17) — filled/outline action buttons
+   get a hover glow tinted to their OWN semantic color via the --btn-glow
+   hook (same philosophy as .hra-swatch's per-swatch glow): accent buttons
+   glow accent, sync/Save glow green, destructive glow red. Defaults to
+   --accent so a bare .hra-btn still glows correctly. Call sites:
+   ManageTab's three sync buttons (green), SettingsTab Save (green),
+   Delete/Restore/Purge (danger), .hra-chrome-preview-button (accent). */
+.hra-btn {
+  font-family: inherit; font-size: 12px; font-weight: 600;
+  padding: 6px 14px; border-radius: var(--radius-sm);
+  border: 1px solid transparent; cursor: pointer;
+  transition: box-shadow 0.18s ease-out, transform 0.18s ease-out,
+  background 0.15s, border-color 0.15s, color 0.15s;
+}
+.hra-btn:hover {
+  box-shadow: 0 0 16px color-mix(in srgb, var(--btn-glow, var(--accent)) 45%, transparent);
+}
+.hra-btn:active { transform: scale(0.98); }
+.hra-btn[data-variant="accent"]  { background: var(--accent); color: var(--on-accent); }
+.hra-btn[data-variant="green"]   { background: var(--accent-green); color: var(--bg); --btn-glow: var(--accent-green); }
+.hra-btn[data-variant="danger"]  { background: var(--bg-danger); color: var(--accent-red);
+  border-color: color-mix(in srgb, var(--accent-red) 40%, transparent); --btn-glow: var(--accent-red); }
+.hra-btn[data-variant="outline"] { background: var(--bg-card); color: var(--text-primary);
+  border-color: var(--border-strong); }
+.hra-btn[data-variant="outline"]:hover { border-color: var(--accent); }
+
+/* Solid outline stays the primary, always-legible focus signal (readability
+   first) — the box-shadow only ADDS a soft glow around it, never replaces
+   it or touches contrast/text color. */
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 /* Accent swatch hover (Settings/Appearance) — scale-pop + a glow tinted to
@@ -313,12 +367,15 @@ body {
   transform: scale(0.98);
 }
 
-/* Accent swatch orb — a light→base→dark radial gradient built entirely from
-   the --swatch-color custom-property hook each AccentPicker button sets
-   inline (per-instance data, not a style-owned visual); the gradient itself
-   is CSS-owned. */
+/* Accent swatch — a rounded rectangle now (was a circular orb), same shape
+   language as .card's own border-radius, with a light→base→dark radial
+   gradient built entirely from the --swatch-color custom-property hook
+   each AccentPicker button sets inline (per-instance data, not a
+   style-owned visual); the gradient itself is CSS-owned. Fixed
+   flex-shrink:0 so the accent row (nowrap, see AccentPicker) doesn't
+   squash individual swatches before it starts scrolling. */
 .hra-accent-swatch {
-  width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+  width: 52px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   font-size: 14px; font-weight: 700;
   border: 2px solid var(--border);
@@ -334,12 +391,18 @@ body {
    Activity-detail-view) — replaces each call site's own
    `background: selected ? "var(--accent)22" : ...` (an invalid
    hex-suffix-on-a-var() string that never actually worked) with a real
-   color-mix, owned here instead of recomputed per component. */
+   color-mix, owned here instead of recomputed per component.
+   (2026-08-17) hover adds a quiet accent glow, same language as the
+   date/select triggers below. */
 .hra-toggle-pill {
   font-size: 12px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--border-strong);
   background: var(--bg-card);
   color: var(--text-secondary);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.hra-toggle-pill:hover {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 .hra-toggle-pill[data-active="true"] {
   border-color: var(--accent);
@@ -383,31 +446,35 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hra-lift, .hra-nav-hover, .hra-swatch, .card {
+  .hra-lift, .hra-nav-hover, .hra-swatch, .card, .hra-btn {
     transition: none !important;
   }
-  .hra-lift:hover, .hra-lift:active, .hra-nav-hover:active, .hra-swatch:hover, .hra-swatch:active {
+  .hra-lift:hover, .hra-lift:active, .hra-nav-hover:active, .hra-swatch:hover, .hra-swatch:active, .hra-btn:active {
     transform: none !important;
   }
 }
 
-/* Automatic ambient glow (corrected 2026-08-16 — replaces the earlier
-   per-user background-picture picker entirely: no setting, no localStorage,
-   nothing to persist). CSS-only, fixed behind everything so it doesn't
-   scroll with the page — two radial washes (accent + the fixed
-   --accent-glow cyan) over var(--bg), following whichever theme/accent is
-   currently active automatically since both are var() tokens. Cards/
-   surfaces stay fully opaque on top (see --bg-card etc. above), so the glow
-   only ever shows through the page's own margins/gaps, never behind text. */
+/* Automatic ambient (corrected 2026-08-16, then again 2026-08-17 — replaces
+   the earlier per-user background-picture picker entirely: no setting, no
+   localStorage, nothing to persist). Single-hue radial ramp per the approved
+   soft-ambient render: lighter at the top-left corner, darker toward the
+   bottom-right, ONE accent hue throughout — no second independent color
+   (the brief 2026-08-16 two-glow accent+cyan version was replaced the next
+   day). Light end = a sliver of --accent kissed into --bg; dark end = --bg
+   mixed toward black; same two-stop recipe as .card's own radial, just
+   page-sized. Follows accent + theme automatically via var(). Cards stay
+   ~80% opaque on top, so the ramp shows through the page's margins and,
+   faintly, through the cards themselves (glass, not solid). */
 body::before {
   content: "";
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(900px circle at 15% -10%, color-mix(in srgb, var(--accent) 11%, transparent), transparent 55%),
-    radial-gradient(700px circle at 100% 15%, color-mix(in srgb, var(--accent-glow) 11%, transparent), transparent 55%);
+  background: radial-gradient(135% 135% at 0% 0%,
+  color-mix(in srgb, var(--accent) 8%, var(--bg)) 0%,
+  var(--bg) 46%,
+  color-mix(in srgb, black 30%, var(--bg)) 100%);
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -436,7 +503,8 @@ input:focus, select:focus { border-color: var(--accent); }
 
 /* ── Form primitives (HRA-98) — shadcn-style Popover/Select/Calendar on
    Radix + react-day-picker, replacing native date/select controls. Pseudo/
-   data-state selectors need real classes, same reason .card:hover does. ── */
+   data-state selectors need real classes, same reason .card:hover does.
+   (2026-08-17) triggers also get a quiet accent glow on hover/open. ── */
 .hra-date-trigger {
   display: inline-flex; align-items: center; gap: 6px;
   font-family: inherit; font-size: 12px;
@@ -444,10 +512,10 @@ input:focus, select:focus { border-color: var(--accent); }
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   /* Reduced control height (header row 2, correction pass) — was 6px 10px;
      DateRangeBar's only call site is the header now. */
-  padding: 4px 10px; cursor: pointer; transition: border-color 0.15s;
+  padding: 4px 10px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.hra-date-trigger:hover { border-color: var(--accent); }
-.hra-date-trigger[data-state="open"] { border-color: var(--accent); }
+.hra-date-trigger:hover { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+.hra-date-trigger[data-state="open"] { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 
 .hra-popover-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
@@ -460,10 +528,10 @@ input:focus, select:focus { border-color: var(--accent); }
   font-family: inherit; font-size: 13px;
   background: var(--bg-card); color: var(--text-primary);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
-  padding: 6px 10px; cursor: pointer; transition: border-color 0.15s;
+  padding: 6px 10px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.hra-select-trigger:hover { border-color: var(--accent); }
-.hra-select-trigger[data-state="open"] { border-color: var(--accent); }
+.hra-select-trigger:hover { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+.hra-select-trigger[data-state="open"] { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 .hra-select-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
@@ -507,20 +575,23 @@ input:focus, select:focus { border-color: var(--accent); }
   100% { transform: translateX(220%); }
 }
 
-/* ══════════════════════════════════════════════════════════════════════
+/* ════════════════════════════════════════════════════════════════════════
    Overview + Settings correction pass (2026-08-16) — every theme-related
    visual (background/border/box-shadow/filter/gradient) these two tabs and
    the header use, moved out of component style={} objects per CLAUDE.md's
    "styles live in index.css" rule. Components set a className, and — only
    where a value is genuinely per-instance (a specific accent hex, a
    specific series color) — a --custom-property hook; every actual visual
-   rule lives here. ══════════════════════════════════════════════════════ */
+   rule lives here. ════════════════════════════════════════════════════════ */
 
-/* ── Header (App.tsx) — two compact rows, row 2 only for date-range tabs.
-   The bar itself (.hra-header) is full-bleed — background/blur/border span
-   the whole viewport width — but its content (.hra-header-inner) is capped
-   at the same maxWidth/padding as <main>, so the nav tabs and date-range
-   filters land in the exact same columns as the graphs/cards below them. */
+/* ── Header (App.tsx) — two compact rows inside one sticky header (the
+   2026-08-16 single-row merge was undone per frontend.md's Header section):
+   row 1 = brand + status dot + nav pills; row 2 = DateRangeBar, right-
+   aligned, only for tabs with a range. Both rows shorter than the old
+   header so the hero starts higher. The bar itself (.hra-header) is full-
+   bleed — background/blur/border span the whole viewport width — but its
+   content (.hra-header-inner) is capped at the same maxWidth/padding as
+   <main>, so the nav tabs land in the same columns as the content below. */
 .hra-header {
   border-bottom: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
   background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
@@ -529,7 +600,7 @@ input:focus, select:focus { border-color: var(--accent); }
   position: sticky;
   top: 0;
   z-index: 10;
-  padding: 8px 0;
+  padding: 10px 0;
 }
 .hra-header-inner {
   max-width: 860px;
@@ -538,13 +609,12 @@ input:focus, select:focus { border-color: var(--accent); }
   padding: 0 24px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
 }
 .hra-header-row {
-  display: flex; align-items: center; gap: 20px; height: 32px;
+  display: flex; align-items: center; gap: 20px; height: 28px;
 }
 .hra-header-row--controls {
-  justify-content: flex-end;
+  justify-content: flex-end; gap: 8px; margin-top: 6px;
 }
 .hra-brand {
   font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
@@ -584,10 +654,9 @@ input:focus, select:focus { border-color: var(--accent); }
    glow and the sparkline's end-dot glow are separate classes since they're
    SVG filters, not div backgrounds. */
 .hra-hero-tint {
-  background: linear-gradient(155deg,
-    color-mix(in srgb, var(--accent) 14%, var(--card-bg)) 0%,
-    var(--card-bg) 55%,
-    color-mix(in srgb, black 5%, var(--card-bg)) 100%);
+  background: radial-gradient(140% 140% at 0% 0%,
+  color-mix(in srgb, color-mix(in srgb, var(--accent) 16%, var(--card-bg)) 80%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 80%, transparent) 100%);
 }
 .hra-hero-ring-glow {
   filter: drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 38%, transparent));
@@ -597,9 +666,8 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 /* Recent-vs-previous delta chip — data-trend picks green/red, both are a
    single color-mix off the *same* semantic token used for its text color,
-   so the two states (color-mix background is 15% -> paired border? no
-   border here, so opacity of the mixed color IS the whole visual) stay
-   trivially in sync if the accent-green/red tokens ever move. */
+   so the two states stay trivially in sync if the accent-green/red tokens
+   ever move. */
 .hra-delta-chip {
   font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
 }

@@ -45,7 +45,7 @@ export function UploadSection() {
   }
 
   return (
-    <Card>
+    <Card style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Sync Garmin activities</div>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
         Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB.

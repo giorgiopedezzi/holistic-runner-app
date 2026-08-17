@@ -98,14 +98,18 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
 export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.accent_color;
   return (
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+    // flex-wrap: nowrap — the accent row must stay a single row (all 6
+    // curated accents fit comfortably at the settings card's own width);
+    // overflow-x lets it scroll rather than wrap on a genuinely narrow
+    // viewport instead of silently breaking the "one row" requirement.
+    <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", paddingBottom: 2 }}>
       {ACCENT_COLOR_NAMES.map((name: AccentColor) => {
         const def = ACCENT_PALETTE[name];
         const selected = current === name;
         return (
           // --swatch-color is the one per-instance hook, feeding both
           // .hra-swatch's hover glow and .hra-accent-swatch's gradient
-          // orb/selected border (index.css) — no gradient/border/hex
+          // fill/selected border (index.css) — no gradient/border/hex
           // literal computed here (correction pass).
           <button
             key={name}
@@ -308,29 +312,31 @@ export function SettingsTab({ appearance }: Props) {
   return (
     <div>
       <SectionTitle>Appearance</SectionTitle>
-      <Card style={{ maxWidth: 640, marginBottom: 24 }}>
-        {/* Background picture picker removed (2026-08-16 correction pass) —
-            replaced by the app-wide automatic ambient glow layer
-            (index.css's body::before: two radial accent/accent-glow washes
-            over the theme base), which needs no per-user picking. See
-            frontend.md's Appearance section. */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Theme</div>
-            <ThemePicker appearance={appearance} />
+      {/* Background picture picker removed (2026-08-16 correction pass) —
+          replaced by the app-wide automatic ambient glow layer (index.css's
+          body::before: two radial accent/accent-glow washes over the theme
+          base), which needs no per-user picking. See frontend.md's
+          Appearance section.
+          Three stacked rows (not the earlier 2-column grid): theme type,
+          then accent (kept to one row — see AccentPicker), then the live
+          chrome preview strip, each full-width so the row itself reads as
+          one group rather than two side-by-side halves. */}
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Theme</div>
+          <ThemePicker appearance={appearance} />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
+            Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors
           </div>
-          <div>
-            <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
-              Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors
-            </div>
-            <AccentPicker appearance={appearance} />
-          </div>
+          <AccentPicker appearance={appearance} />
         </div>
         <ChromePreviewStrip />
       </Card>
 
       <SectionTitle>Units</SectionTitle>
-      <Card style={{ maxWidth: 480, marginBottom: 24 }}>
+      <Card style={{ marginBottom: 24 }}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
           Applies to distance, pace, speed, elevation and weight everywhere in the app. "Auto"
           guesses from your browser's language/region (e.g. a US locale defaults to imperial) —
@@ -341,7 +347,7 @@ export function SettingsTab({ appearance }: Props) {
       </Card>
 
       <SectionTitle>Activity details</SectionTitle>
-      <Card style={{ maxWidth: 480, marginBottom: 24 }}>
+      <Card style={{ marginBottom: 24 }}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
           How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.
         </p>
@@ -363,7 +369,7 @@ export function SettingsTab({ appearance }: Props) {
       </Card>
 
       <SectionTitle>Overview & Trends</SectionTitle>
-      <Card style={{ maxWidth: 480, marginBottom: 24 }}>
+      <Card style={{ marginBottom: 24 }}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
           Minimum activities needed before a sport's trend chart is shown (in "Single" mode), or
           before "Week"/"Month" grouping is offered — below this, a "too few activities" message is
@@ -384,7 +390,7 @@ export function SettingsTab({ appearance }: Props) {
       </Card>
 
       <SectionTitle>Outlier detection</SectionTitle>
-      <Card style={{ maxWidth: 480 }}>
+      <Card>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
           Used by the activity chart's "Remove outliers" checkbox. Two independent rules: an
           isolated-spike filter (a point is flagged only when it jumps away <em>and</em> back from

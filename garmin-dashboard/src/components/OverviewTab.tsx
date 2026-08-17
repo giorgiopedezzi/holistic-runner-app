@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ComposedChart, Bar, Line, ReferenceLine, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
@@ -431,53 +431,73 @@ function DistanceSparkline({ days, deltaPct }: { days: { date: string; km: numbe
   );
 }
 
-function PeriodHeroRing({ activities, km, hours, sparklineDays, deltaPct }: {
-  activities: number; km: number; hours: number;
-  sparklineDays: { date: string; km: number }[]; deltaPct: number | null;
+// Dual concentric rings, one per hero measurement (Activities/Distance/
+// Time) — the inner ring is this period's share, the outer ring the
+// previous period of equal length's share, BOTH normalized against
+// whichever of the two is larger (that one draws a full circle, "100%");
+// the smaller one draws its proportional arc against that same max. So the
+// pair together always show which period "won" at a glance, not just two
+// independent percentages. Gradient stroke is purely accent-derived — dark
+// (--accent-strong) to light (--accent-light) — never a neutral/black
+// stop, so it can't drift toward looking like a different, unrelated hue.
+function DualRingGauge({ id, current, previous, centerValue, unitLabel, size = 148, stroke = 10, gap = 5 }: {
+  id: string; current: number; previous: number | null;
+  centerValue: string; unitLabel: string; size?: number; stroke?: number; gap?: number;
 }) {
-  const size = 132;
-  const stroke = 6;
-  const r = (size - stroke) / 2;
+  const max = Math.max(current, previous ?? 0, 0.0001);
+  const innerPct = Math.max(0, Math.min(1, current / max));
+  const outerPct = previous != null ? Math.max(0, Math.min(1, previous / max)) : 0;
+  const rOuter = (size - stroke) / 2;
+  const rInner = rOuter - stroke - gap;
   const c = size / 2;
-  const distance = splitUnit(fmtKm(km * 1000));
+  const dash = (r: number, pct: number) => {
+    const circ = 2 * Math.PI * r;
+    return `${circ * pct} ${circ}`;
+  };
   return (
-    <Card className="hra-hero-tint" style={{ display: "flex", alignItems: "center", gap: 24, padding: "20px 24px", marginBottom: 20 }}>
-      <svg className="hra-hero-ring-glow" width={size} height={size} style={{ flexShrink: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+      <svg className="hra-hero-ring-glow" width={size} height={size}>
         <defs>
-          {/* Chrome-only gradient — accent → accent-strong, never a data
-              color, since this ring frames the app's own totals, not a
-              specific metric (see the component note above). */}
-          <linearGradient id="heroRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="var(--accent)" />
-            <stop offset="100%" stopColor="var(--accent-strong)" />
+          <linearGradient id={`ringGrad-${id}`} x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="var(--accent-strong)" />
+            <stop offset="100%" stopColor="var(--accent-light)" />
           </linearGradient>
         </defs>
-        <circle cx={c} cy={c} r={r} fill="none" stroke="var(--border)" strokeWidth={stroke} />
-        <circle cx={c} cy={c} r={r} fill="none" stroke="url(#heroRingGrad)" strokeWidth={stroke}
-          strokeLinecap="round" strokeDasharray={`${2 * Math.PI * r * 0.78} ${2 * Math.PI * r}`}
+        <circle cx={c} cy={c} r={rOuter} fill="none" stroke="var(--border)" strokeWidth={stroke} />
+        <circle cx={c} cy={c} r={rInner} fill="none" stroke="var(--border)" strokeWidth={stroke} />
+        {/* Outer ring — previous period, fainter (a reference, not the headline) */}
+        {previous != null && (
+          <circle cx={c} cy={c} r={rOuter} fill="none" stroke={`url(#ringGrad-${id})`} strokeWidth={stroke}
+            strokeLinecap="round" strokeDasharray={dash(rOuter, outerPct)} strokeOpacity={0.5}
+            transform={`rotate(-90 ${c} ${c})`} />
+        )}
+        {/* Inner ring — this period, full strength */}
+        <circle cx={c} cy={c} r={rInner} fill="none" stroke={`url(#ringGrad-${id})`} strokeWidth={stroke}
+          strokeLinecap="round" strokeDasharray={dash(rInner, innerPct)}
           transform={`rotate(-90 ${c} ${c})`} />
-        <text x={c} y={c - 4} textAnchor="middle" fontSize={30} fontWeight={700} fill="var(--text-primary)" style={{ fontVariantNumeric: "tabular-nums" }}>
-          {activities}
+        <text x={c} y={c - 3} textAnchor="middle" fontSize={size * 0.19} fontWeight={700} fill="var(--text-primary)" style={{ fontVariantNumeric: "tabular-nums" }}>
+          {centerValue}
         </text>
-        <text x={c} y={c + 16} textAnchor="middle" fontSize={10} letterSpacing="0.1em" fill="var(--text-muted)">
-          ACTIVITIES
+        <text x={c} y={c + size * 0.14} textAnchor="middle" fontSize={size * 0.065} letterSpacing="0.1em" fill="var(--text-muted)">
+          {unitLabel}
         </text>
       </svg>
-      <div style={{ display: "flex", gap: 28 }}>
-        <div>
-          <Label style={{ marginBottom: 6 }}>Distance</Label>
-          <div className="hra-kpi-value" style={{ "--kpi-color": "var(--accent-green)" } as CSSProperties}>
-            {distance.main}
-            {distance.unit && <span className="hra-kpi-unit"> {distance.unit}</span>}
-          </div>
-        </div>
-        <div>
-          <Label style={{ marginBottom: 6 }}>Time</Label>
-          <div className="hra-kpi-value">
-            {hours.toFixed(1)}<span className="hra-kpi-unit"> h</span>
-          </div>
-        </div>
-      </div>
+    </div>
+  );
+}
+
+function PeriodHeroRing({ activities, prevActivities, km, prevKm, hours, prevHours, sparklineDays, deltaPct }: {
+  activities: number; prevActivities: number | null;
+  km: number; prevKm: number | null;
+  hours: number; prevHours: number | null;
+  sparklineDays: { date: string; km: number }[]; deltaPct: number | null;
+}) {
+  const distance = splitUnit(fmtKm(km * 1000));
+  return (
+    <Card className="hra-hero-tint" style={{ display: "flex", alignItems: "center", gap: 20, padding: "20px 24px", marginBottom: 20, flexWrap: "wrap" }}>
+      <DualRingGauge id="acts" current={activities} previous={prevActivities} centerValue={String(activities)} unitLabel="ACTIVITIES" />
+      <DualRingGauge id="dist" current={km} previous={prevKm} centerValue={distance.main} unitLabel={distance.unit ?? "KM"} />
+      <DualRingGauge id="time" current={hours} previous={prevHours} centerValue={hours.toFixed(1)} unitLabel="HOURS" />
       <div style={{ marginLeft: "auto" }}>
         <DistanceSparkline days={sparklineDays} deltaPct={deltaPct} />
       </div>
@@ -536,14 +556,29 @@ export function OverviewTab({ from, to }: Props) {
 
   const run = sports.find(s => s.sport === "running");
   const sparklineDays = activitiesQ.state.status === "success" ? recentDistanceByDay(activitiesQ.state.data) : [];
+  // Previous-period totals for the hero rings' outer ring — same
+  // prevActivitiesQ fetch already used for the distance delta chip, just
+  // also reduced for count/hours. duration_sec/3600 mirrors exactly how the
+  // backend computes total_hours (SUM(duration_sec)/3600, see
+  // activities.repo.ts) — there's no summary endpoint for an arbitrary
+  // (previous) range, only the raw activity list.
+  const prevActs = prevActivitiesQ.state.status === "success" ? prevActivitiesQ.state.data.length : null;
   const prevKm = prevActivitiesQ.state.status === "success"
     ? prevActivitiesQ.state.data.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0)
+    : null;
+  const prevHours = prevActivitiesQ.state.status === "success"
+    ? prevActivitiesQ.state.data.reduce((s, a) => s + (a.duration_sec ?? 0) / 3600, 0)
     : null;
   const deltaPct = prevKm != null && prevKm > 0 ? ((totals.km - prevKm) / prevKm) * 100 : null;
 
   return (
     <>
-      <PeriodHeroRing activities={totals.acts} km={totals.km} hours={totals.hours} sparklineDays={sparklineDays} deltaPct={deltaPct} />
+      <PeriodHeroRing
+        activities={totals.acts} prevActivities={prevActs}
+        km={totals.km} prevKm={prevKm}
+        hours={totals.hours} prevHours={prevHours}
+        sparklineDays={sparklineDays} deltaPct={deltaPct}
+      />
 
       <SectionTitle>Total</SectionTitle>
       <StatGrid>
