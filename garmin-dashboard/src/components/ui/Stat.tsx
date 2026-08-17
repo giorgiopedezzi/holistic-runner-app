@@ -7,6 +7,7 @@ interface StatProps {
   value:  string | number;
   sub?:   string;
   accent?: string;
+  tooltip?: string;
 }
 
 // Splits a formatted "68.36 km" into a value/unit pair so the unit can render
@@ -22,10 +23,10 @@ export function splitUnit(value: string | number): { main: string; unit?: string
   return { main: m[1], unit: m[2] };
 }
 
-export function Stat({ label, value, sub, accent }: StatProps) {
+export function Stat({ label, value, sub, accent, tooltip }: StatProps) {
   const { main, unit } = splitUnit(value);
   return (
-    <Card className="hra-lift">
+    <Card className="hra-lift" tooltip={tooltip}>
       <Label style={{ marginBottom: 8 }}>{label}</Label>
       {/* `accent` is a caller-supplied var() token (e.g. "var(--accent-green)"),
           threaded through as a --kpi-color custom-property hook rather than a

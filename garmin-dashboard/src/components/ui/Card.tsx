@@ -4,13 +4,20 @@ interface CardProps {
   children: ReactNode;
   style?:   CSSProperties;
   className?: string;
+  // Custom hover tooltip (.hra-tooltip, index.css) instead of the native
+  // `title` attribute — a browser tooltip can't be restyled, so anything
+  // that wants to actually look like part of the app (comparison figures,
+  // etc.) goes through this class/attribute pair instead.
+  tooltip?: string;
 }
 
-export function Card({ children, style, className }: CardProps) {
+export function Card({ children, style, className, tooltip }: CardProps) {
+  const classes = [className, tooltip ? "hra-tooltip" : null].filter(Boolean).join(" ") || undefined;
   return (
     <div
-      className={className ? `card ${className}` : "card"}
+      className={classes ? `card ${classes}` : "card"}
       style={style}
+      data-tooltip={tooltip}
     >
       {children}
     </div>

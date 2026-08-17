@@ -698,18 +698,51 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-hero-ring-glow {
   filter: drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 38%, transparent));
 }
-.hra-spark-dot-glow {
-  filter: drop-shadow(0 0 6px var(--data-pace));
+/* Hero ring center text (OverviewTab's DualRingGauge) — current-period
+   value & the smaller previous-period comparison line below it. Value
+   echoes .hra-kpi-value's weight/letter-spacing/tabular-nums but ~15%
+   smaller (26px vs 30px) since it sits inside a ring, not a full KPI card.
+   Both brighten on hover together with the ring's own .hra-tooltip
+   wrapper, signalling there's a fuller comparison in the tooltip. */
+.hra-ring-value {
+  font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+  fill: var(--text-primary); font-variant-numeric: tabular-nums;
+  transition: fill 0.15s ease;
 }
-/* Recent-vs-previous delta chip — data-trend picks green/red, both are a
-   single color-mix off the *same* semantic token used for its text color,
-   so the two states stay trivially in sync if the accent-green/red tokens
-   ever move. */
-.hra-delta-chip {
-  font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; font-variant-numeric: tabular-nums;
+.hra-ring-compare {
+  font-size: 10px; fill: var(--text-muted); font-variant-numeric: tabular-nums;
+  transition: fill 0.15s ease;
 }
-.hra-delta-chip[data-trend="up"]   { color: var(--accent-green); background: color-mix(in srgb, var(--accent-green) 15%, transparent); }
-.hra-delta-chip[data-trend="down"] { color: var(--accent-red);   background: color-mix(in srgb, var(--accent-red) 15%, transparent); }
+.hra-tooltip:hover .hra-ring-value   { fill: var(--accent-light); }
+.hra-tooltip:hover .hra-ring-compare { fill: var(--text-secondary); }
+
+/* ── Custom hover tooltip (Card's `tooltip` prop, DualRingGauge) ──────────
+   A styled CSS-only replacement for the native `title` attribute — browsers
+   don't let you restyle that one, and these comparison figures (Total/
+   Running/By-sport cards, hero rings) are frequent and central enough on
+   this tab to deserve looking like part of the app rather than an OS
+   tooltip. `attr(data-tooltip)` content means no extra DOM/JS per instance:
+   any element just needs the class + a data-tooltip value. */
+.hra-tooltip { position: relative; }
+.hra-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%; left: 50%;
+  transform: translateX(-50%) translateY(-4px);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-card) 94%);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-strong));
+  color: var(--text-primary);
+  font-size: 11px; font-weight: 500; white-space: nowrap;
+  padding: 6px 11px; border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 20;
+}
+.hra-tooltip:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-9px);
+}
 
 /* ── Trend chart (SportTrendChart) — glassy combined tooltip + per-line glow
    + pill-chip legend. Bars stay a muted --data-pace SVG gradient defined

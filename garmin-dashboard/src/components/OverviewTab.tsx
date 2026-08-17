@@ -8,7 +8,7 @@ import { api } from "@/api/client";
 import {
   Card, ChartCard, ChartPillLegend, chartGrid, chartTick,
   Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
-  Label, splitUnit,
+  splitUnit,
 } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw } from "@/utils/fmt";
@@ -366,70 +366,6 @@ function TrendsBySport({ from, to }: Props) {
 // that doesn't exist. Distance/Time sit beside it as the same numbers
 // already shown in the Total StatGrid below, just given one large, unmissable
 // read before the grid breaks them out individually.
-// Builds a compact recent-activity distance sparkline from the same
-// Activity[] shape TrendsBySport already fetches elsewhere in this file (no
-// new endpoint) — one bar per distinct active day, most recent last, capped
-// to the last 14 that have any distance at all. Filling the hero card's
-// dead space (polish pass), not a calendar grid — days with no activity
-// simply don't produce a bar, rather than rendering as a misleading zero.
-function recentDistanceByDay(activities: Activity[]): { date: string; km: number }[] {
-  const byDate = new Map<string, number>();
-  for (const a of activities) {
-    if (a.distance_m == null) continue;
-    byDate.set(a.date_only, (byDate.get(a.date_only) ?? 0) + a.distance_m / 1000);
-  }
-  return [...byDate.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .slice(-14)
-    .map(([date, km]) => ({ date, km }));
-}
-
-// Gradient area sparkline ending in a glowing dot (polish pass, replaces the
-// earlier mini-bar version) — same --data-pace family as the trend charts'
-// distance bars, 35%→0 fill matching the standard chartGradientDef ratio.
-// deltaPct (± vs the previous window of equal length) renders as a small
-// chip beside the "Recent" label — green/red by sign, distance-only (more
-// distance in-period reads as "good" here; unlike an HR delta, there's no
-// inverted-good-direction case for this metric).
-function DistanceSparkline({ days, deltaPct }: { days: { date: string; km: number }[]; deltaPct: number | null }) {
-  if (days.length < 2) return null;
-  const w = 128, h = 40, pad = 4;
-  const max = Math.max(...days.map(d => d.km), 0.001);
-  const stepX = (w - pad * 2) / (days.length - 1);
-  const points = days.map((d, i) => [pad + i * stepX, pad + (1 - d.km / max) * (h - pad * 2)] as const);
-  const linePath = points.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const areaPath = `${linePath} L${points[points.length - 1][0].toFixed(1)},${h} L${points[0][0].toFixed(1)},${h} Z`;
-  const [lastX, lastY] = points[points.length - 1];
-  const good = deltaPct != null && deltaPct >= 0;
-  return (
-    <div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-        <Label style={{ marginBottom: 0 }}>Recent</Label>
-        {deltaPct != null && (
-          <span
-            className="hra-delta-chip"
-            data-trend={good ? "up" : "down"}
-            title="vs the previous period of equal length"
-          >
-            {deltaPct >= 0 ? "+" : ""}{deltaPct.toFixed(0)}% vs previous
-          </span>
-        )}
-      </div>
-      <svg width={w} height={h}>
-        <title>Distance on each of the most recent active days in range</title>
-        <defs>
-          <linearGradient id="heroSparkGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.35} />
-            <stop offset="100%" stopColor="var(--data-pace)" stopOpacity={0} />
-          </linearGradient>
-        </defs>
-        <path d={areaPath} fill="url(#heroSparkGrad)" stroke="none" />
-        <path d={linePath} fill="none" stroke="var(--data-pace)" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
-        <circle className="hra-spark-dot-glow" cx={lastX} cy={lastY} r={3} fill="var(--data-pace)" />
-      </svg>
-    </div>
-  );
-}
 
 // Dual concentric rings, one per hero measurement (Activities/Distance/
 // Time) — the inner ring is this period's share, the outer ring the
@@ -440,9 +376,13 @@ function DistanceSparkline({ days, deltaPct }: { days: { date: string; km: numbe
 // independent percentages. Gradient stroke is purely accent-derived — dark
 // (--accent-strong) to light (--accent-light) — never a neutral/black
 // stop, so it can't drift toward looking like a different, unrelated hue.
-function DualRingGauge({ id, current, previous, centerValue, unitLabel, size = 148, stroke = 10, gap = 5 }: {
+function DualRingGauge({
+  id, current, previous, centerValue, unitLabel, comparisonText, tooltip,
+  size = 179, stroke = 12, gap = 7,
+}: {
   id: string; current: number; previous: number | null;
-  centerValue: string; unitLabel: string; size?: number; stroke?: number; gap?: number;
+  centerValue: string; unitLabel: string; comparisonText?: string | null; tooltip?: string;
+  size?: number; stroke?: number; gap?: number;
 }) {
   const max = Math.max(current, previous ?? 0, 0.0001);
   const innerPct = Math.max(0, Math.min(1, current / max));
@@ -455,7 +395,10 @@ function DualRingGauge({ id, current, previous, centerValue, unitLabel, size = 1
     return `${circ * pct} ${circ}`;
   };
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
+    // .hra-tooltip (index.css) — a styled hover tooltip on the whole ring,
+    // not just its text; the value/comparison text also brighten on this
+    // same hover (see .hra-tooltip:hover .hra-ring-* in index.css).
+    <div className="hra-tooltip" data-tooltip={tooltip} style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
       <svg className="hra-hero-ring-glow" width={size} height={size}>
         <defs>
           <linearGradient id={`ringGrad-${id}`} x1="0%" y1="0%" x2="100%" y2="100%">
@@ -475,33 +418,92 @@ function DualRingGauge({ id, current, previous, centerValue, unitLabel, size = 1
         <circle cx={c} cy={c} r={rInner} fill="none" stroke={`url(#ringGrad-${id})`} strokeWidth={stroke}
           strokeLinecap="round" strokeDasharray={dash(rInner, innerPct)}
           transform={`rotate(-90 ${c} ${c})`} />
-        <text x={c} y={c - 3} textAnchor="middle" fontSize={size * 0.19} fontWeight={700} fill="var(--text-primary)" style={{ fontVariantNumeric: "tabular-nums" }}>
+        <text className="hra-ring-value" x={c} y={c - 3} textAnchor="middle">
           {centerValue}
         </text>
         <text x={c} y={c + size * 0.14} textAnchor="middle" fontSize={size * 0.065} letterSpacing="0.1em" fill="var(--text-muted)">
           {unitLabel}
         </text>
+        {/* Previous-period value + delta — omitted entirely (not even an
+            empty line) when there isn't enough previous-period data to
+            compare against, per the "no comparison without data" rule; the
+            caller decides that, this just renders whatever string it's
+            given. */}
+        {comparisonText && (
+          <text className="hra-ring-compare" x={c} y={c + size * 0.14 + 14} textAnchor="middle">
+            {comparisonText}
+          </text>
+        )}
       </svg>
     </div>
   );
 }
 
-function PeriodHeroRing({ activities, prevActivities, km, prevKm, hours, prevHours, sparklineDays, deltaPct }: {
+// The one gate for "do not compare without enough previous data": null
+// whenever there isn't a usable previous value — no fetch yet, an empty
+// previous period, or a previous value of exactly 0 (a percentage against
+// zero is undefined, not "∞%"/"N/A"). Every comparison below (ring text,
+// Total/By-sport tooltips) goes through this.
+function pctChange(current: number, previous: number | null): number | null {
+  if (previous == null || previous <= 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
+// "(previous value, ±N%)" for a ring's small comparison line.
+function ringComparison(current: number, previous: number | null, fmt: (v: number) => string): string | null {
+  const pct = pctChange(current, previous);
+  if (pct == null) return null;
+  return `(${fmt(previous!)}, ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)`;
+}
+
+// Same comparison, as a full sentence for a native `title` tooltip (Total
+// StatGrid, By-sport rows) rather than a ring's compact bracketed line.
+function comparisonTooltip(current: number, previous: number | null, fmt: (v: number) => string): string | undefined {
+  const pct = pctChange(current, previous);
+  if (pct == null) return undefined;
+  return `vs previous period: ${fmt(previous!)} (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)`;
+}
+
+function PeriodHeroRing({
+  activities, prevActivities, km, prevKm, hours, prevHours, calories, prevCalories, periodLabel,
+}: {
   activities: number; prevActivities: number | null;
   km: number; prevKm: number | null;
   hours: number; prevHours: number | null;
-  sparklineDays: { date: string; km: number }[]; deltaPct: number | null;
+  calories: number; prevCalories: number | null;
+  periodLabel: string | null;
 }) {
   const distance = splitUnit(fmtKm(km * 1000));
   return (
-    <Card className="hra-hero-tint" style={{ display: "flex", alignItems: "center", gap: 20, padding: "20px 24px", marginBottom: 20, flexWrap: "wrap" }}>
-      <DualRingGauge id="acts" current={activities} previous={prevActivities} centerValue={String(activities)} unitLabel="ACTIVITIES" />
-      <DualRingGauge id="dist" current={km} previous={prevKm} centerValue={distance.main} unitLabel={distance.unit ?? "KM"} />
-      <DualRingGauge id="time" current={hours} previous={prevHours} centerValue={hours.toFixed(1)} unitLabel="HOURS" />
-      <div style={{ marginLeft: "auto" }}>
-        <DistanceSparkline days={sparklineDays} deltaPct={deltaPct} />
-      </div>
-    </Card>
+    <>
+      {/* Title sits OUTSIDE the card, same as every other section's
+          SectionTitle above its content (Total/Running/By sport) — this
+          card used to carry its own header inside the tinted panel, which
+          read as though the whole section had gone missing since nothing
+          above the panel announced it. */}
+      {/* Same element as the title (not a second line below it in a
+          different, smaller font) — the period comparison reads as part of
+          the section heading, not an annotation under it. */}
+      <SectionTitle>Summary{periodLabel && ` — ${periodLabel}`}</SectionTitle>
+      <Card className="hra-hero-tint" style={{ padding: "20px 24px", marginBottom: 20 }}>
+        {/* justify-content: space-between — four rings spread evenly across
+            the card's full width rather than clumping with a fixed gap. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 20 }}>
+          <DualRingGauge id="acts" current={activities} previous={prevActivities} centerValue={String(activities)} unitLabel="ACTIVITIES"
+            comparisonText={ringComparison(activities, prevActivities, v => String(v))}
+            tooltip={comparisonTooltip(activities, prevActivities, v => String(v))} />
+          <DualRingGauge id="dist" current={km} previous={prevKm} centerValue={distance.main} unitLabel={distance.unit ?? "KM"}
+            comparisonText={ringComparison(km, prevKm, v => fmtKm(v * 1000))}
+            tooltip={comparisonTooltip(km, prevKm, v => fmtKm(v * 1000))} />
+          <DualRingGauge id="time" current={hours} previous={prevHours} centerValue={hours.toFixed(1)} unitLabel="HOURS"
+            comparisonText={ringComparison(hours, prevHours, v => `${v.toFixed(1)} h`)}
+            tooltip={comparisonTooltip(hours, prevHours, v => `${v.toFixed(1)} h`)} />
+          <DualRingGauge id="cal" current={calories} previous={prevCalories} centerValue={String(Math.round(calories))} unitLabel="CALORIES"
+            comparisonText={ringComparison(calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)}
+            tooltip={comparisonTooltip(calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
+        </div>
+      </Card>
+    </>
   );
 }
 
@@ -518,17 +520,34 @@ function daysBetween(fromIso: string, toIso: string): number {
   return Math.round((new Date(`${toIso}T00:00:00Z`).getTime() - new Date(`${fromIso}T00:00:00Z`).getTime()) / 86_400_000);
 }
 
+// Reduces one sport's previous-period activities into the same shape its
+// SportSummary counterpart exposes — shared by the Running section and the
+// By-sport list below, both of which compare a live SportSummary against
+// this same previous-period slice.
+function prevSportStats(prevActs: Activity[]) {
+  const hrs    = prevActs.map(a => a.avg_hr).filter((v): v is number => v != null);
+  const paces  = prevActs.map(a => a.avg_pace_minkm).filter((v): v is number => v != null);
+  const ascents = prevActs.map(a => a.ascent_m).filter((v): v is number => v != null);
+  return {
+    sessions: prevActs.length,
+    km:      prevActs.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0),
+    avgHr:   hrs.length ? hrs.reduce((s, v) => s + v, 0) / hrs.length : null,
+    avgPace: paces.length ? paces.reduce((s, v) => s + v, 0) / paces.length : null,
+    ascent:  ascents.length ? ascents.reduce((s, v) => s + v, 0) : null,
+  };
+}
+
 export function OverviewTab({ from, to }: Props) {
   const { state } = useQuery(() => api.garmin.summary(from, to), [from, to]);
   const rangeQ = useQuery(() => api.garmin.range(), []);
-  // Same client method/endpoint TrendsBySport below already calls — reused
-  // here only to build the hero card's sparkline (polish pass), not new
-  // backend surface.
-  const activitiesQ = useQuery(() => api.garmin.activities(from, to), [from, to]);
   // Previous window of equal length, immediately preceding `from` — powers
-  // the hero card's "+8% vs previous" delta chip. A second, independent
-  // fetch of the same endpoint/shape, not a new one.
-  const windowDays = daysBetween(from, to) + 1;
+  // every "vs previous period" comparison on this tab (hero rings, Total
+  // tooltips, By-sport tooltips). One fetch, reused for all of them.
+  // windowDays is the plain from→to difference, with NO +1 — that would
+  // count one extra day (e.g. the "30d" preset sets from = today−30,
+  // to = today, a 30-day difference; +1 turned that into a 31-day
+  // comparison window, one longer than the period it was meant to match).
+  const windowDays = daysBetween(from, to);
   const prevTo = shiftIsoDate(from, -1);
   const prevFrom = shiftIsoDate(prevTo, -(windowDays - 1));
   const prevActivitiesQ = useQuery(() => api.garmin.activities(prevFrom, prevTo), [prevFrom, prevTo]);
@@ -555,21 +574,23 @@ export function OverviewTab({ from, to }: Props) {
   );
 
   const run = sports.find(s => s.sport === "running");
-  const sparklineDays = activitiesQ.state.status === "success" ? recentDistanceByDay(activitiesQ.state.data) : [];
-  // Previous-period totals for the hero rings' outer ring — same
-  // prevActivitiesQ fetch already used for the distance delta chip, just
-  // also reduced for count/hours. duration_sec/3600 mirrors exactly how the
-  // backend computes total_hours (SUM(duration_sec)/3600, see
-  // activities.repo.ts) — there's no summary endpoint for an arbitrary
-  // (previous) range, only the raw activity list.
-  const prevActs = prevActivitiesQ.state.status === "success" ? prevActivitiesQ.state.data.length : null;
-  const prevKm = prevActivitiesQ.state.status === "success"
-    ? prevActivitiesQ.state.data.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0)
-    : null;
-  const prevHours = prevActivitiesQ.state.status === "success"
-    ? prevActivitiesQ.state.data.reduce((s, a) => s + (a.duration_sec ?? 0) / 3600, 0)
-    : null;
-  const deltaPct = prevKm != null && prevKm > 0 ? ((totals.km - prevKm) / prevKm) * 100 : null;
+  // Previous-period totals for the hero rings' outer ring + every tooltip
+  // below — duration_sec/3600 and ascent_m mirror exactly how the backend
+  // computes total_hours/total_ascent (SUM(...)/3600, see activities.repo.ts)
+  // — there's no summary endpoint for an arbitrary (previous) range, only
+  // the raw activity list. "Enough previous data" (per the no-comparison
+  // rule) means the previous period actually has activities in it — an
+  // empty previous period suppresses every comparison on this tab, not
+  // just the ones that would divide by zero.
+  const prevActivities = prevActivitiesQ.state.status === "success" ? prevActivitiesQ.state.data : [];
+  const hasPrevData = prevActivities.length > 0;
+  const prevActs      = hasPrevData ? prevActivities.length : null;
+  const prevKm         = hasPrevData ? prevActivities.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0) : null;
+  const prevHours       = hasPrevData ? prevActivities.reduce((s, a) => s + (a.duration_sec ?? 0) / 3600, 0) : null;
+  const prevCalories = hasPrevData ? prevActivities.reduce((s, a) => s + (a.calories ?? 0), 0) : null;
+  const prevAscent   = hasPrevData ? prevActivities.reduce((s, a) => s + (a.ascent_m ?? 0), 0) : null;
+  const periodLabel = hasPrevData ? `vs previous ${windowDays}-day period (${prevFrom} – ${prevTo})` : null;
+  const prevBySport = new Map(groupActivitiesBySport(prevActivities));
 
   return (
     <>
@@ -577,53 +598,90 @@ export function OverviewTab({ from, to }: Props) {
         activities={totals.acts} prevActivities={prevActs}
         km={totals.km} prevKm={prevKm}
         hours={totals.hours} prevHours={prevHours}
-        sparklineDays={sparklineDays} deltaPct={deltaPct}
+        calories={totals.calories} prevCalories={prevCalories}
+        periodLabel={periodLabel}
       />
 
       <SectionTitle>Total</SectionTitle>
       <StatGrid>
-        <Stat label="Activities"    value={totals.acts} />
-        <Stat label="Distance"      value={fmtKm(totals.km * 1000)}  accent="var(--accent-green)" />
-        <Stat label="Time"          value={`${totals.hours.toFixed(1)} h`} />
-        {totals.calories > 0 && <Stat label="Calories" value={`${totals.calories.toLocaleString()} kcal`} />}
-        {totals.ascent   > 0 && <Stat label="Elevation gain" value={fmtElevation(totals.ascent)} />}
+        <Stat label="Activities" value={totals.acts} tooltip={comparisonTooltip(totals.acts, prevActs, v => String(v))} />
+        <Stat label="Distance"   value={fmtKm(totals.km * 1000)} accent="var(--accent-green)"
+          tooltip={comparisonTooltip(totals.km, prevKm, v => fmtKm(v * 1000))} />
+        <Stat label="Time"       value={`${totals.hours.toFixed(1)} h`}
+          tooltip={comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`)} />
+        {totals.calories > 0 && (
+          <Stat label="Calories" value={`${totals.calories.toLocaleString()} kcal`}
+            tooltip={comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
+        )}
+        {totals.ascent > 0 && (
+          <Stat label="Elevation gain" value={fmtElevation(totals.ascent)}
+            tooltip={comparisonTooltip(totals.ascent, prevAscent, v => fmtElevation(v))} />
+        )}
       </StatGrid>
 
-      {run && (
-        <>
-          <SectionTitle>Running</SectionTitle>
-          <StatGrid>
-            <Stat label="Sessions"    value={run.total_activities} />
-            <Stat label="Distance"    value={fmtKm(run.total_km * 1000)} accent="var(--accent-green)" />
-            {run.avg_hr   && <Stat label="Avg HR"   value={`${run.avg_hr} bpm`}     accent="var(--accent-red)" />}
-            {run.avg_pace && <Stat label="Avg pace" value={fmtPace(run.avg_pace)}    sub={paceUnitLabel()} />}
-            {run.total_ascent && <Stat label="Elevation" value={fmtElevation(run.total_ascent)} />}
-          </StatGrid>
-        </>
-      )}
+      {run && (() => {
+        const prevRun = prevSportStats(prevBySport.get(run.sport ?? "other") ?? []);
+        return (
+          <>
+            <SectionTitle>Running</SectionTitle>
+            <StatGrid>
+              <Stat label="Sessions" value={run.total_activities}
+                tooltip={comparisonTooltip(run.total_activities, prevRun.sessions || null, v => String(v))} />
+              <Stat label="Distance" value={fmtKm(run.total_km * 1000)} accent="var(--accent-green)"
+                tooltip={comparisonTooltip(run.total_km, prevRun.km || null, v => fmtKm(v * 1000))} />
+              {run.avg_hr && (
+                <Stat label="Avg HR" value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
+                  tooltip={comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`)} />
+              )}
+              {run.avg_pace && (
+                <Stat label="Avg pace" value={fmtPace(run.avg_pace)} sub={paceUnitLabel()}
+                  tooltip={comparisonTooltip(run.avg_pace, prevRun.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`)} />
+              )}
+              {run.total_ascent && (
+                <Stat label="Elevation" value={fmtElevation(run.total_ascent)}
+                  tooltip={comparisonTooltip(run.total_ascent, prevRun.ascent, v => fmtElevation(v))} />
+              )}
+            </StatGrid>
+          </>
+        );
+      })()}
 
       {sports.length > 1 && (
         <>
           <SectionTitle>By sport</SectionTitle>
           <div style={{ display: "grid", gap: 8 }}>
-            {sports.map(s => (
-              <Card
-                key={s.sport}
-                style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", fontSize: 14 }}
-              >
-                <Badge label={s.sport ?? "other"} color={SPORT_COLOR[s.sport ?? "other"] ?? "#888"} />
-                <span style={{ flex: 1, color: "var(--text-primary)", fontWeight: 500 }}>
-                  {fmtKm(s.total_km * 1000)}
-                </span>
-                <span style={{ color: "var(--text-secondary)" }}>{s.total_activities} sessions</span>
-                {s.avg_hr && (
-                  <span style={{ color: "var(--accent-red)", fontSize: 13 }}>♥ {s.avg_hr}</span>
-                )}
-                {s.avg_pace && (
-                  <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
-                )}
-              </Card>
-            ))}
+            {sports.map(s => {
+              const prevSport = prevSportStats(prevBySport.get(s.sport ?? "other") ?? []);
+              // One combined tooltip covering every comparable figure on the
+              // row, not a separate title per span — a sport row has no room
+              // for four individual tooltip targets the way the Total
+              // StatGrid's cards do.
+              const tooltip = [
+                comparisonTooltip(s.total_km, prevSport.km || null, v => fmtKm(v * 1000)),
+                comparisonTooltip(s.total_activities, prevSport.sessions || null, v => String(v))?.replace("vs previous period: ", "sessions: "),
+                s.avg_hr != null ? comparisonTooltip(s.avg_hr, prevSport.avgHr, v => `${Math.round(v)} bpm`)?.replace("vs previous period: ", "HR: ") : undefined,
+                s.avg_pace != null ? comparisonTooltip(s.avg_pace, prevSport.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`)?.replace("vs previous period: ", "pace: ") : undefined,
+              ].filter(Boolean).join(" · ") || undefined;
+              return (
+                <Card
+                  key={s.sport}
+                  tooltip={tooltip}
+                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", fontSize: 14 }}
+                >
+                  <Badge label={s.sport ?? "other"} color={SPORT_COLOR[s.sport ?? "other"] ?? "#888"} />
+                  <span style={{ flex: 1, color: "var(--text-primary)", fontWeight: 500 }}>
+                    {fmtKm(s.total_km * 1000)}
+                  </span>
+                  <span style={{ color: "var(--text-secondary)" }}>{s.total_activities} sessions</span>
+                  {s.avg_hr && (
+                    <span style={{ color: "var(--accent-red)", fontSize: 13 }}>♥ {s.avg_hr}</span>
+                  )}
+                  {s.avg_pace && (
+                    <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         </>
       )}
