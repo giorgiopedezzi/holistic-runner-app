@@ -4,20 +4,20 @@
 > this file DESCRIBES how the system works. Reachable from CLAUDE.md's routing table.
 
 ## Header (App.tsx)
-Two compact rows inside one sticky `<header>` (`.hra-header`, corrected 2026-08-16 — an earlier pass
-briefly merged everything into one row and moved the date range into it at a `>=1280px` breakpoint;
-both are undone):
-- **Row 1** (`.hra-header-row`) — brand + status dot + nav pills, ~48px, `text-sm` (13px) labels.
-- **Row 2** (`.hra-header-row--controls`) — `DateRangeBar` (presets + the two date-picker buttons),
-  right-aligned, shorter controls than row 1's — only rendered for tabs in `TABS_WITH_DATERANGE`
-  (Overview/Activities/Body), so Manage/Settings show a single-row header. `DateRangeBar` now has
-  exactly one call site (here); it used to also render standalone in `<main>` below the header on
-  narrower viewports — that branch (and the `useWideHeader`/`matchMedia` hook that drove it) is gone,
-  since row 2 is now unconditionally part of the header at every width. Both rows are shorter than
-  the old single merged row, so the hero content starts higher on the page.
+Single compact row inside one sticky `<header>` (`.hra-header` → `.hra-header-inner` →
+`.hra-header-row`): brand + status dot + nav pills. `.hra-header-inner` shares `<main>`'s own
+maxWidth/padding (860px, 24px) so the nav pills land in the same columns as the content below — the
+header bar itself stays full-bleed (background/blur/border), only its content is column-aligned.
+
+`DateRangeBar` is **not** in the header — it renders in `<main>`, left-aligned above the tab content,
+only for tabs in `TABS_WITH_DATERANGE` (Overview/Activities/Body); Manage/Settings show no date-range
+row at all. `DateRangeBar` has exactly one call site. (This reverses the two-row-header/right-aligned
+layout an earlier pass tried and then undid — don't reintroduce a second header row for it.)
+
 All header/nav visuals (background, border, backdrop-blur, the online-status dot's color, the active
 nav pill) are `index.css` classes/data-attributes — see the "styles live in index.css" rule in
-CLAUDE.md.
+CLAUDE.md. The per-pill `padding`/`fontSize`/`fontWeight` inline in `App.tsx` are structural, not
+theme, so they stay inline per that same rule.
 
 ## Activity detail chart (ActivityModal.tsx)
 **Reference activity for manual verification**: `2026-08-04-10-28-43.fit` (Garmin, `activities.id` 200 as of this writing) — 50:35 duration, 35:59 moving time, ascent 31m / descent 24m, 5 real pauses (~14.6min total), a km-3.80 stretch that's a genuine ~20-sample deceleration into the 360s pause (not noise). Chart-related fixes in this app have repeatedly needed real numbers to verify against (see the git history of this file); this activity is the one already dissected in detail, so re-check against it first before pulling a fresh one.
