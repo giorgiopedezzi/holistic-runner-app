@@ -322,25 +322,49 @@ garmin_and_withings/
         ├── index.css                 # CSS variables, 4 themes via [data-theme="…"] blocks — see "Appearance" below
         ├── api/client.ts             # all fetch calls — GET + POST/PUT + DELETE methods
         ├── types/api.ts              # shared types mirroring DB schema
+        ├── lib/utils.ts              # shadcn's cn() helper (clsx + tailwind-merge)
         ├── hooks/
         │   ├── useQuery.ts           # fires fn on every deps change (plain useEffect) — no `auto`
         │   │                         #   param, no manual "Load" step
         │   ├── useDateRange.ts       # date range state + presets
-        │   └── useAppearance.ts      # fetches + immediately applies theme/background/unit system; see "Appearance" below
+        │   ├── useAppearance.ts      # fetches + immediately applies theme/background/unit system; see "Appearance" below
+        │   └── useSettings.tsx       # settings fetch/save context, wraps the server-persisted settings blob
+        ├── domain/                   # pure chart/metric transforms (no I/O): activity-chart, body-metrics, outliers, pauses, trends
         ├── utils/
         │   ├── fmt.ts                # fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed — all unit-system-aware, see "Units" below
         │   ├── units.ts              # metric/imperial state + conversions + locale-based auto-detect
+        │   ├── accent.ts             # accent-color picker helpers
+        │   ├── date.ts               # date parsing/formatting helpers
         │   └── backgrounds.ts        # bundled background-picture presets (CSS gradients, not photo files)
+        ├── test/                     # api-stub, fixtures, setup — shared Vitest test infra (not app code)
         └── components/
-            ├── ui.tsx                # Card, Stat, StatGrid, Badge, Empty, ErrorBanner, Pagination…
+            ├── ui/                    # shadcn-derived primitives, one file per component: Card, Stat,
+            │                          #   StatGrid, Badge, Empty, ErrorBanner, Pagination, ChartCard,
+            │                          #   Select, Popover, Calendar, Checkbox, Label, DatePicker,
+            │                          #   ProgressBar, LoadingSpinner, RangeEmpty, SectionTitle,
+            │                          #   StatusLine, pill.ts, index.ts (barrel)
+            ├── activity/              # activity-detail internals: ActivityDetailBody, ActivityModal
+            │                          #   (popup chrome), ActivityChartSection, MetricRow,
+            │                          #   SpeedPaceStat, TrackTooltip, HrRecoveryFlagShape,
+            │                          #   PauseFlagShape, shared.ts
+            ├── manage/                 # Data & Sync tab internals: SyncAllBar, OAuthSyncSection,
+            │                          #   ClassifySection, UploadSection, DeleteSection, TrashSection,
+            │                          #   TrashList, oauthProviders.ts, shared.ts
             ├── DateRangeBar.tsx
-            ├── OverviewTab.tsx       # tab label "Overview & Trends" — absorbed the former TrendsTab.tsx (deleted)
-            ├── ActivitiesTab.tsx     # paginated list → accordion (default) or ActivityModal popup, per activity_detail_view setting
-            ├── ActivityModal.tsx     # exports ActivityDetailBody (the actual detail content — stats + charts + delete) and ActivityModal (popup chrome wrapping it); see "Activity detail chart" below
-            ├── BodyTab.tsx           # Withings body metrics (indexed overlay chart) + correlation chart
-            ├── ManageTab.tsx         # sync trigger (device/token status-gated), login popup, delete range (soft), trash (restore/purge) — tab label "Data & Sync"
-            └── SettingsTab.tsx       # outlier-detection thresholds, trend threshold, activity detail view, appearance (theme, background, units), persisted server-side
+            ├── ClassificationCard.tsx
+            ├── OverviewTab.tsx        # tab label "Overview & Trends" — absorbed the former TrendsTab.tsx (deleted)
+            ├── ActivitiesTab.tsx      # paginated list → accordion (default) or ActivityModal popup, per activity_detail_view setting
+            ├── BodyTab.tsx            # Withings body metrics (indexed overlay chart) + correlation chart
+            ├── ManageTab.tsx          # composes components/manage/* — sync trigger (device/token
+            │                          #   status-gated), login popup, delete range (soft), trash
+            │                          #   (restore/purge) — tab label "Data & Sync"
+            └── SettingsTab.tsx        # outlier-detection thresholds, trend threshold, activity detail
+                                        #   view, appearance (theme, background, units), persisted server-side
 ```
+
+Test files (`*.test.ts`/`*.test.tsx`) sit next to the module they cover throughout `src/` and are
+omitted from this tree — see the file listing (`find garmin-dashboard/src -type f`) for the current
+set, don't infer it from here.
 
 **src/ layout (Epic HRA-52, 2026-08-09).** Only `config.ts`, `db.ts`, `server.ts` sit at `src/` root; everything else is grouped by concern. The layered request pipeline is `http/` → `controllers/` → `services/` → `repositories/`. Beyond that: `domain/` = pure logic (no I/O), `integrations/` = external-service clients, `jobs/` = runnable batch/CLI (spawned by the server or run via npm), `powershell/` = the two `.ps1` MTP helpers. Naming rule: **module = noun** (`integrations/withings.ts`, the client), **command = verb** (`jobs/withings-login.ts`, the CLI). Renames from the reorg: `withings-auth.ts`→`integrations/withings.ts`, `strava-auth.ts`→`integrations/strava.ts`, `ollama-service.ts`→`integrations/ollama.ts`, `auth-withings.ts`→`jobs/withings-login.ts` (npm `auth:withings`→`withings:login`), `services/integrations.service.ts`→`services/device.service.ts`. Jobs anchor data dirs via `__dirname` at the new depth (`../../fit-archive` etc.); `scriptsDir` injected into services stays `src/` (the `.ps1` join adds `powershell/`, the sync scriptName strings add `jobs/`).
 
@@ -541,8 +565,15 @@ decision at a time.
 
 So the rule now has both halves:
 
-1. **Add**, at the end of a session, anything learned that would PREVENT a future mistake.
-2. **Evict**, in the same pass, by these three tests:
+1. **Repository layout drifts fastest of anything in this file — check it every round, not just at
+   session end.** "Round" = any turn where you added, removed, or moved a file under
+   `garmin-stats/src/` or `garmin-dashboard/src/`. Before ending that turn, diff the change against
+   the "Repository layout" tree above and fix it in the same turn — don't defer to a session-end
+   pass, because rounds get compacted/summarized and the drift is exactly the kind of detail that
+   doesn't survive a summary. A stale tree is worse than no tree: rule 3's "verify before you keep"
+   test exists because of exactly this failure mode once already.
+2. **Add**, at the end of a session, anything learned that would PREVENT a future mistake.
+3. **Evict**, in the same pass, by these three tests:
    - **Prevent vs describe.** Does the section stop someone doing the wrong thing, or does it
      explain how the thing works? Prevention stays. Description moves to `docs/`.
    - **Reachability.** Anything moved to `docs/` must get a row in the routing table above. No row
@@ -555,7 +586,7 @@ So the rule now has both halves:
      gets ignored, a **stale rule gets acted on**. An unverified claim in this file is a liability,
      not context. (This test exists because the split of 2026-08-12 preserved a claim about
      `useQuery`'s `auto=false`/`loadKey` that had not been true for some time — see HRA-80.)
-3. **Status does not live here.** No "current status", no "in flight", no "awaiting review" — those
+4. **Status does not live here.** No "current status", no "in flight", no "awaiting review" — those
    are stale within days and Jira already holds them. Live work state belongs in Jira and in
    `sessions/*.md`.
 
