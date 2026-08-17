@@ -6,6 +6,7 @@
  * CLAUDE.md's "AI workout classifier" notes / docs/classifier.md for the methods.
  */
 import { useState, useEffect, useRef } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner } from "@/components/ui";
 import {
@@ -123,16 +124,13 @@ function MethodResultCard({
         </span>
         <div style={{ flex: 1 }} />
         <button
+          className="hra-btn"
+          data-variant="cta"
           onClick={handleClassify}
           disabled={classifying}
           title={method === "ai"
             ? "Runs a local Ollama model against this activity's pace/HR pattern (takes ~15-25s on CPU). Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending."
             : "Applies deterministic rules to this activity's pace variance, splits, and pauses — instant, no Ollama needed. Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending."}
-          style={{
-            fontSize: 12, border: "1px solid var(--accent)", borderRadius: 6, padding: "4px 12px",
-            background: "none", color: "var(--accent)",
-            cursor: classifying ? "not-allowed" : "pointer", opacity: classifying ? 0.6 : 1,
-          }}
         >
           {classifying ? `Classifying… ${elapsedSec.toFixed(1)}s` : classification ? "Reclassify" : "Classify"}
         </button>
@@ -202,11 +200,11 @@ function MethodResultCard({
             <option value="">What was it actually?</option>
             {WORKOUT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <button onClick={handleReject} disabled={!reason || !corrected || submitting}
-            style={{
-              fontSize: 12, border: "none", borderRadius: 6, padding: "4px 12px", background: "var(--accent-red)", color: "#fff",
-              cursor: (!reason || !corrected || submitting) ? "not-allowed" : "pointer", opacity: (!reason || !corrected) ? 0.5 : 1,
-            }}>
+          <button
+            className="hra-btn" data-variant="cta"
+            style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+            onClick={handleReject} disabled={!reason || !corrected || submitting}
+          >
             {submitting ? "…" : "Submit"}
           </button>
           <button onClick={() => setShowCorrection(false)}

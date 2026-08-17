@@ -98,6 +98,7 @@
   --swatch-color: var(--accent);
   --kpi-color:    var(--text-primary);
   --legend-color: var(--text-secondary);
+  --btn-color:    var(--accent);
 
   color-scheme: dark;
 }
@@ -236,13 +237,14 @@ body {
 }
 
 /* Gradient accent pill for "active" chrome (nav tabs, range/mode toggles,
-   trend group-mode) — the class itself only carries the transition; the
-   actual active-state visuals live in .hra-pill-active below, added/removed
-   by className (never an inline style object) per the "styles live in
-   index.css" rule (CLAUDE.md). ui/pill.ts's glowPillStyle() JS helper is the
-   pre-correction mechanism — still used by call sites outside this pass's
-   scope (BodyTab), left as-is; Overview/Settings/App/DateRangeBar were
-   switched to this class instead. */
+   trend group-mode, Body tab's Chart/Table toggle) — the class itself only
+   carries the transition; the actual active-state visuals live in
+   .hra-pill-active below, added/removed by className (never an inline style
+   object) per the "styles live in index.css" rule (CLAUDE.md). ui/pill.ts's
+   glowPillStyle() JS helper was the pre-correction mechanism (computed the
+   same gradient inline, and had drifted to reference the since-removed
+   --accent-glow token) — deleted in the button/pill pass (2026-08-17) once
+   BodyTab, its last caller, moved to this class instead. */
 .hra-pill {
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
 }
@@ -270,6 +272,12 @@ body {
      from an intermediate over-bright revision. Same box-shadow recipe as
      .hra-hero-ring-glow below, so pill and ring read as one glow language. */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 38%, transparent), 0 0 16px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+/* Hover intensifies the glow alone — never the border, matching ".hra-lift"'s
+   "a light, not a border" language above — so an active pill still reads as
+   the same flat gradient chip on hover, just brighter. */
+.hra-pill-active:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent), 0 0 24px color-mix(in srgb, var(--accent) 50%, transparent);
 }
 
 /* ── Global micro-interactions (polish pass) ──────────────────────────────
@@ -317,11 +325,12 @@ body {
 
 /* ── Action-button primitive (2026-08-17) — filled/outline action buttons
    get a hover glow tinted to their OWN semantic color via the --btn-glow
-   hook (same philosophy as .hra-swatch's per-swatch glow): accent buttons
-   glow accent, sync/Save glow green, destructive glow red. Defaults to
-   --accent so a bare .hra-btn still glows correctly. Call sites:
-   ManageTab's three sync buttons (green), SettingsTab Save (green),
-   Delete/Restore/Purge (danger), .hra-chrome-preview-button (accent). */
+   hook (same philosophy as .hra-swatch's per-swatch glow). Defaults to
+   --accent so a bare .hra-btn still glows correctly. Two families:
+   `accent` is the one solid-fill button (.hra-chrome-preview's sample only,
+   as of the button/pill pass); everything else — sync, save, confirm,
+   delete, login/re-login, classify — is the ghost `cta` shape (see below),
+   which is the actual majority of the app's action chrome. */
 .hra-btn {
   font-family: inherit; font-size: 12px; font-weight: 600;
   padding: 6px 14px; border-radius: var(--radius-sm);
@@ -340,6 +349,34 @@ body {
 .hra-btn[data-variant="outline"] { background: var(--bg-card); color: var(--text-primary);
   border-color: var(--border-strong); }
 .hra-btn[data-variant="outline"]:hover { border-color: var(--accent); }
+/* Ghost CTA (2026-08-17, generalized) — transparent fill, border+text tinted
+   to ONE color, hover fills a 12% tint of that same color (same recipe as
+   .hra-toggle-pill[data-active]'s tint). The color itself is the one
+   per-instance hook (--btn-color), same pattern as --swatch-color/
+   --kpi-color/--legend-color elsewhere in this file — defaults to --accent
+   so a bare cta button (Login, Classify/Reclassify, Restore selected) needs
+   no inline hook at all; call sites that must be red or green (Delete,
+   Confirm, Sync — anything that "doesn't follow the accent") set
+   style={{"--btn-color": "var(--accent-red)"}} etc. This is now the
+   dominant button shape in the app — the solid `accent`/`green`/`danger`/
+   `outline` variants above stay defined as the primitive's full vocabulary,
+   but as of the button/pill pass no call site outside .hra-chrome-preview
+   uses them; the ghost shape is what "Classify / Reclassify" in the
+   Activity detail view established as the reference look, and every other
+   action button (right or wrong color) now matches its behavior. */
+.hra-btn[data-variant="cta"] {
+  background: transparent; color: var(--btn-color, var(--accent));
+  border-color: color-mix(in srgb, var(--btn-color, var(--accent)) 45%, transparent);
+  --btn-glow: var(--btn-color, var(--accent));
+}
+.hra-btn[data-variant="cta"]:hover {
+  background: color-mix(in srgb, var(--btn-color, var(--accent)) 12%, transparent);
+}
+/* AFTER the variant rules (same specificity — order decides): disabled always
+   wins, regardless of which variant is set, and its own :hover clears the
+   glow so a disabled button never looks interactive on mouseover. */
+.hra-btn:disabled { background: var(--border-strong); color: var(--text-muted); cursor: not-allowed; --btn-glow: transparent; }
+.hra-btn:disabled:hover { box-shadow: none; }
 
 /* Solid outline stays the primary, always-legible focus signal (readability
    first) — the box-shadow only ADDS a soft glow around it, never replaces
@@ -718,15 +755,12 @@ input:focus, select:focus { border-color: var(--accent); }
 
 /* ── Settings/Appearance chrome preview strip — a real button/pill/link/
    focus-ring sample rendered in the current accent, directly under the
-   accent swatches. */
+   accent swatches. The button sample is .hra-btn[data-variant="accent"] now
+   (button pass, 2026-08-17) — no dedicated CSS class needed for it anymore. */
 .hra-chrome-preview {
   display: flex; align-items: center; gap: 20px; margin-top: 16px; padding: 12px 14px;
   border-radius: var(--radius-md); border: 1px solid var(--border);
   background: color-mix(in srgb, var(--accent) 3%, var(--bg-surface));
-}
-.hra-chrome-preview-button {
-  font-size: 12px; padding: 6px 14px; border-radius: 6px; border: none; font-weight: 600;
-  background: var(--accent); color: var(--on-accent);
 }
 .hra-chrome-preview-focus {
   font-size: 11px; padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);

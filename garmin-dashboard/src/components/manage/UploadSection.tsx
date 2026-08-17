@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { Card, ProgressBar, StatusLine } from "@/components/ui";
 import type { DeviceStatus } from "@/types/api";
@@ -59,14 +60,12 @@ export function UploadSection() {
       />
 
       <button
+        className="hra-btn"
+        data-variant="cta"
+        style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
         onClick={triggerSync}
         disabled={!canSync}
         title={!canSync && status !== "running" ? "Connect the watch first" : undefined}
-        style={{
-          background: "var(--accent-green)", color: "var(--bg)", border: "none",
-          borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 500,
-          cursor: canSync ? "pointer" : "not-allowed", opacity: canSync ? 1 : 0.5,
-        }}
       >
         {status === "running" ? "Syncing…" : "↓ Sync from device"}
       </button>

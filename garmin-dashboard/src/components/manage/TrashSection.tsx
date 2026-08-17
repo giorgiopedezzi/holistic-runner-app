@@ -30,9 +30,10 @@ export function TrashSection() {
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
         <div style={{ fontSize: 14, fontWeight: 500 }}>Trash</div>
         <button
+          className="hra-nav-hover"
           onClick={() => { refreshActivities(); refreshMeasurements(); }}
           title="Refresh — e.g. after deleting something above"
-          style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 13, padding: "0 2px", lineHeight: 1 }}
+          style={{ background: "none", border: "none", borderRadius: "var(--radius-sm)", color: "var(--text-muted)", cursor: "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1 }}
         >
           ⟳
         </button>

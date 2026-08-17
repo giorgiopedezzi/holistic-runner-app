@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, LoadingSpinner, ProgressBar, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, ClassificationMethod } from "@/types/api";
@@ -223,21 +224,15 @@ export function ClassifySection() {
                 </button>
               ))}cd
             </div>
-            <button onClick={classifySelected} disabled={selected.size === 0 || busy}
-              style={{
-                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)",
-                background: "none", color: "var(--accent)",
-                cursor: (selected.size === 0 || busy) ? "not-allowed" : "pointer", opacity: selected.size === 0 ? 0.5 : 1,
-              }}>
+            <button className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy}>
               Classify / Reclassify selected
             </button>
-            <button onClick={confirmSelected} disabled={!canConfirm || busy}
+            <button
+              className="hra-btn" data-variant="cta"
+              style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
+              onClick={confirmSelected} disabled={!canConfirm || busy}
               title={`Bulk-approves the ${(method === "ai" ? "AI" : "Statistical")} classification for already-classified selected activities, no reason needed — same as thumbs-up per activity`}
-              style={{
-                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent-green)",
-                background: "none", color: "var(--accent-green)",
-                cursor: (!canConfirm || busy) ? "not-allowed" : "pointer", opacity: !canConfirm ? 0.5 : 1,
-              }}>
+            >
               Confirm selected ({(method === "ai" ? "AI" : "Statistical")})
             </button>
           </div>

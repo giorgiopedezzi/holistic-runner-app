@@ -24,12 +24,13 @@ export function StatusLine({ state, message, onRecheck }: StatusLineProps) {
       <span>{message}</span>
       {onRecheck && (
         <button
+          className="hra-nav-hover"
           onClick={onRecheck}
           disabled={checking}
           title="Recheck"
           style={{
-            background: "none", border: "none", color: "var(--text-muted)",
-            cursor: checking ? "not-allowed" : "pointer", fontSize: 13, padding: "0 2px", lineHeight: 1,
+            background: "none", border: "none", borderRadius: "var(--radius-sm)", color: "var(--text-muted)",
+            cursor: checking ? "not-allowed" : "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1,
           }}
         >
           ⟳

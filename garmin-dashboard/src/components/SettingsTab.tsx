@@ -139,7 +139,7 @@ export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
 function ChromePreviewStrip() {
   return (
     <div className="hra-chrome-preview">
-      <button className="hra-lift hra-chrome-preview-button">Button</button>
+      <button className="hra-btn" data-variant="accent">Button</button>
       <span className="hra-pill hra-pill-active" style={{ padding: "5px 14px", fontWeight: 600 }}>
         Active pill
       </span>
@@ -292,15 +292,11 @@ export function SettingsTab({ appearance }: Props) {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
         <button
-          className="hra-lift"
+          className="hra-btn"
+          data-variant="cta"
+          style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
           onClick={onSave}
           disabled={!dirty || saving}
-          style={{
-            fontSize: 13, padding: "6px 16px", borderRadius: 6, border: "none",
-            background: dirty && !saving ? "var(--accent-green)" : "var(--border-strong)",
-            color: dirty && !saving ? "var(--bg)" : "var(--text-muted)",
-            cursor: dirty && !saving ? "pointer" : "not-allowed",
-          }}
         >
           {saving ? "Saving…" : "Save"}
         </button>

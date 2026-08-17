@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { Card, StatusLine, DatePicker } from "@/components/ui";
 import type { SyncResult } from "@/api/client";
 import { fmtExpiry } from "./shared";
@@ -133,26 +134,21 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
 
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button
+          className="hra-btn"
+          data-variant="cta"
           onClick={login}
           disabled={loggingIn}
-          style={{
-            background: "none", color: "var(--accent)", border: "1px solid var(--accent)",
-            borderRadius: 8, padding: "8px 16px", fontSize: 13, fontWeight: 500,
-            cursor: loggingIn ? "not-allowed" : "pointer", opacity: loggingIn ? 0.6 : 1,
-          }}
         >
           {loggingIn ? "Waiting for login…" : connected ? "Re-login" : `Login to ${label}`}
         </button>
 
         <button
+          className="hra-btn"
+          data-variant="cta"
+          style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
           onClick={triggerSync}
           disabled={!canSync}
           title={!canSync && status !== "running" ? `Log in to ${label} first` : undefined}
-          style={{
-            background: "var(--accent-green)", color: "var(--bg)", border: "none",
-            borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 500,
-            cursor: canSync ? "pointer" : "not-allowed", opacity: canSync ? 1 : 0.5,
-          }}
         >
           {status === "running" ? "Syncing…" : `↓ Sync from ${label}`}
         </button>

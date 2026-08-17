@@ -1,4 +1,5 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { Card } from "@/components/ui";
 import { runGarminSync } from "./shared";
@@ -70,14 +71,11 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
           </div>
         </div>
         <button
+          className="hra-btn"
+          data-variant="cta"
           onClick={syncAll}
           disabled={status === "running"}
-          style={{
-            background: "var(--accent)", color: "#fff", border: "none",
-            borderRadius: 8, padding: "8px 20px", fontSize: 13, fontWeight: 500,
-            cursor: status === "running" ? "not-allowed" : "pointer", opacity: status === "running" ? 0.6 : 1,
-            whiteSpace: "nowrap",
-          }}
+          style={{ "--btn-color": "var(--accent-green)", whiteSpace: "nowrap" } as CSSProperties}
         >
           {status === "running" ? "Syncing…" : "⚡ Sync all"}
         </button>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { ErrorBanner, Checkbox } from "@/components/ui";
 
 // ── Trash ────────────────────────────────────────────────────────────────
@@ -63,30 +64,27 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
           </div>
 
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button onClick={doRestore} disabled={selected.size === 0 || busy}
-              style={{
-                fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent)",
-                background: "none", color: "var(--accent)",
-                cursor: selected.size === 0 || busy ? "not-allowed" : "pointer", opacity: selected.size === 0 ? 0.5 : 1,
-              }}>
+            <button className="hra-btn" data-variant="cta" onClick={doRestore} disabled={selected.size === 0 || busy}>
               Restore selected
             </button>
 
             {!confirmPurge ? (
-              <button onClick={() => setConfirmPurge(true)} disabled={selected.size === 0 || busy}
+              <button
+                className="hra-btn" data-variant="cta"
+                style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                onClick={() => setConfirmPurge(true)} disabled={selected.size === 0 || busy}
                 title="Permanently deletes the selected item(s) — this can't be undone. The filename/date is still kept internally so a resync won't bring it back."
-                style={{
-                  fontSize: 12, padding: "5px 14px", borderRadius: 6, border: "1px solid var(--accent-red)",
-                  background: "none", color: "var(--accent-red)",
-                  cursor: selected.size === 0 || busy ? "not-allowed" : "pointer", opacity: selected.size === 0 ? 0.5 : 1,
-                }}>
+              >
                 Delete permanently…
               </button>
             ) : (
               <>
                 <span style={{ fontSize: 12, color: "var(--accent-red)" }}>Permanently delete {selected.size} item(s)? This can't be undone.</span>
-                <button onClick={doPurge} disabled={busy}
-                  style={{ background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }}>
+                <button
+                  className="hra-btn" data-variant="cta"
+                  style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                  onClick={doPurge} disabled={busy}
+                >
                   {busy ? "…" : "Confirm"}
                 </button>
                 <button onClick={() => setConfirmPurge(false)}

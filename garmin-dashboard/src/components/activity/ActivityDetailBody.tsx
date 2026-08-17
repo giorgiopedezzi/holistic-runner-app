@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components/ui";
@@ -176,17 +177,22 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           <div style={{ flex: 1 }} />
           {!confirmDelete ? (
             <button
+              className="hra-btn"
+              data-variant="cta"
+              style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
               onClick={() => setConfirmDelete(true)}
               title="Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own."
-              style={{ fontSize: 12, border: "1px solid var(--accent-red)", borderRadius: 6, padding: "4px 12px", background: "none", color: "var(--accent-red)", cursor: "pointer" }}
             >
               Delete activity (locally)
             </button>
           ) : (
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
               <span style={{ fontSize: 12, color: "var(--accent-red)" }}>Move to trash?</span>
-              <button onClick={handleDelete} disabled={deleting}
-                style={{ fontSize: 12, border: "none", borderRadius: 6, padding: "4px 12px", background: "var(--accent-red)", color: "#fff", cursor: "pointer" }}>
+              <button
+                className="hra-btn" data-variant="cta"
+                style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                onClick={handleDelete} disabled={deleting}
+              >
                 {deleting ? "…" : "Yes, delete"}
               </button>
               <button onClick={() => setConfirmDelete(false)}

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, BodyMeasurement } from "@/types/api";
@@ -149,11 +150,11 @@ export function DeleteSection() {
       )}
 
       {!confirm ? (
-        <button onClick={() => setConfirm(true)} disabled={!canDelete}
-          style={{
-            background: "none", color: "var(--accent-red)", border: "1px solid var(--accent-red)", borderRadius: 8,
-            padding: "6px 16px", fontSize: 13, cursor: canDelete ? "pointer" : "not-allowed", opacity: canDelete ? 1 : 0.5,
-          }}>
+        <button
+          className="hra-btn" data-variant="cta"
+          style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+          onClick={() => setConfirm(true)} disabled={!canDelete}
+        >
           Move to trash…
         </button>
       ) : (
@@ -161,8 +162,11 @@ export function DeleteSection() {
           <span style={{ fontSize: 12, color: "var(--accent-red)" }}>
             Move to trash, {from} to {to}?
           </span>
-          <button onClick={doDelete} disabled={loading}
-            style={{ background: "var(--accent-red)", color: "#fff", border: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }}>
+          <button
+            className="hra-btn" data-variant="cta"
+            style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+            onClick={doDelete} disabled={loading}
+          >
             {loading ? "…" : "Confirm"}
           </button>
           <button onClick={() => setConfirm(false)}
