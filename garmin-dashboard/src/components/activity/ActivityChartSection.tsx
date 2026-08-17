@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
   fmtMetricValue, axisDomainMinMax, xTickFormatter,
@@ -5,12 +6,22 @@ import {
 } from "@/domain/activity-chart";
 import type { TrackPoint } from "@/types/api";
 import { speedUnitLabel } from "@/utils/units";
-import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR } from "./shared";
+import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR, hrRunnerColor } from "./shared";
 import { Label, ChartCard, Checkbox } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { TrackTooltip } from "./TrackTooltip";
 import { PauseFlagShape } from "./PauseFlagShape";
 import { HrRecoveryFlagShape } from "./HrRecoveryFlagShape";
+import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
+import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
+import { RunnerPlayButton, type PlayStatus } from "./RunnerPlayButton";
+
+const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
+const PAUSE_DWELL_MS = 3000;        // hold on a pause row before continuing
+const AXIS_WIDTH = 42;              // must match the YAxis `width` props below
+const MARGIN_LEFT = 5;
+const MARGIN_RIGHT = 5;
+const RUNNER_IDLE_COLOR = "white";  // shown standing, before/after any hover or playback
 
 // Chart controls + the main multi-metric overlay chart + per-metric
 // standalone cards — split out of ActivityDetailBody (HRA-74) to keep both
@@ -42,6 +53,175 @@ export function ActivityChartSection({
   activeMetrics, effectiveActive, availableMetrics, axisVisible, showCard,
   toggleMetric, toggleAxis, toggleCard,
 }: ActivityChartSectionProps) {
+  // ── Mouse-follow runner (icon in its own row above the chart, readout
+  // pinned below the chart's vertical center) ────────────────────────────
+  // Both RunnerIcon and RunnerReadout hold their OWN local hover state,
+  // exposed via an imperative handle rather than a prop driven from here —
+  // a mousemove-driven setState living in THIS component would re-render
+  // the whole ComposedChart (every Line's path, every axis) on every event,
+  // which is the exact perf trap an earlier attempt at this feature hit.
+  // This way a hover update only ever re-renders the two small components
+  // that actually need to change.
+  const runnerIconRef = useRef<RunnerIconHandle>(null);
+  const runnerReadoutRef = useRef<RunnerReadoutHandle>(null);
+
+  // Plot width for both RunnerReadout's edge math and the autoplay loop's
+  // own x-domain→pixel conversion below — measured off the chart's own
+  // wrapping div (ResponsiveContainer exposes no size itself).
+  const plotRef = useRef<HTMLDivElement>(null);
+  const [plotWidth, setPlotWidth] = useState(0);
+  useEffect(() => {
+    const el = plotRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => setPlotWidth(entries[0].contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  function rowColor(row: ChartRow): string {
+    const hr = row.heart_rate;
+    return typeof hr === "number" ? hrRunnerColor(hr) : "var(--data-hr)";
+  }
+
+  const [playStatus, setPlayStatus] = useState<PlayStatus>("idle");
+
+  function handleChartMouseMove(state: { activeCoordinate?: { x: number; y: number }; activeTooltipIndex?: number | string | null }) {
+    if (playStatus === "playing" || !state?.activeCoordinate) return;
+    const rawIdx = state.activeTooltipIndex;
+    const idx = typeof rawIdx === "string" ? Number(rawIdx) : rawIdx;
+    const row = typeof idx === "number" && !Number.isNaN(idx) ? chartData[idx] : undefined;
+    if (!row) return;
+    const cx = state.activeCoordinate.x;
+    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec != null);
+    runnerReadoutRef.current?.show(row);
+  }
+  function handleChartMouseLeave() {
+    if (playStatus === "playing") return;
+    showIdleStand(chartData[0]?.x ?? 0);
+    runnerReadoutRef.current?.hide();
+  }
+
+  // White, standing — shown at rest (before any hover/play, on mouse-leave,
+  // and once autoplay finishes) rather than disappearing entirely, so the
+  // chart never reads as "broken" between interactions.
+  function showIdleStand(x: number) {
+    runnerIconRef.current?.show(pixelX(x), RUNNER_IDLE_COLOR, true);
+  }
+
+  // ── Autoplay ──────────────────────────────────────────────────────────
+  // Drives RunnerIcon/RunnerReadout the same imperative way as the mouse
+  // does (see the note above) — via requestAnimationFrame stepping a
+  // position through chartData's own synthetic x-domain, converted to a
+  // pixel offset by replicating the chart's own axis layout math (its
+  // inner plot area = container width minus the fixed left/right axis
+  // widths and margins below). This is what keeps a 60fps loop from ever
+  // re-rendering the ComposedChart: nothing here touches React state past
+  // playStatus itself, which only changes at play/pause/finish, not per
+  // frame.
+  const rafRef = useRef<number | null>(null);
+  const xRef = useRef(0);
+  const lastTsRef = useRef<number | null>(null);
+  const dwellUntilRef = useRef<number | null>(null);
+  const lastDwellIdxRef = useRef<number | null>(null);
+  // Re-synced every render so a running loop always reads current data/
+  // layout, never a stale closure from whichever render scheduled it.
+  const playCtxRef = useRef({ chartData, plotWidth, leftInset: 0, rightInset: 0 });
+  useEffect(() => {
+    const rightInset = MARGIN_RIGHT + activeMetrics.filter(k => axisVisible[k]).length * AXIS_WIDTH;
+    playCtxRef.current = { chartData, plotWidth, leftInset: MARGIN_LEFT + AXIS_WIDTH, rightInset };
+  });
+  // Default resting pose, shown as soon as the chart has real geometry to
+  // place it at — only while idle, so it doesn't fight a mouse hover or an
+  // in-progress/finished play (those set their own runner state directly).
+  useEffect(() => {
+    if (playStatus !== "idle" || plotWidth === 0 || chartData.length === 0) return;
+    showIdleStand(chartData[0].x);
+  }, [playStatus, plotWidth, chartData]);
+
+  function findRowByX(x: number): { row: ChartRow; idx: number } {
+    const { chartData: data } = playCtxRef.current;
+    let lo = 0, hi = data.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (data[mid].x < x) lo = mid + 1; else hi = mid;
+    }
+    return { row: data[lo], idx: lo };
+  }
+
+  function pixelX(x: number): number {
+    const { chartData: data, plotWidth: w, leftInset, rightInset } = playCtxRef.current;
+    const domainMin = data[0]?.x ?? 0;
+    const domainMax = data[data.length - 1]?.x ?? 0;
+    const inner = Math.max(0, w - leftInset - rightInset);
+    return leftInset + ((x - domainMin) / (domainMax - domainMin || 1)) * inner;
+  }
+
+  function showRow(row: ChartRow, dwelling: boolean) {
+    runnerIconRef.current?.show(pixelX(row.x), rowColor(row), row.pauseDurationSec != null, dwelling);
+    runnerReadoutRef.current?.show(row);
+  }
+
+  function step(ts: number) {
+    if (dwellUntilRef.current != null) {
+      if (ts < dwellUntilRef.current) {
+        rafRef.current = requestAnimationFrame(step);
+        return;
+      }
+      dwellUntilRef.current = null;
+      lastTsRef.current = ts;
+    }
+    if (lastTsRef.current == null) lastTsRef.current = ts;
+    const dt = ts - lastTsRef.current;
+    lastTsRef.current = ts;
+
+    const { chartData: data } = playCtxRef.current;
+    if (data.length === 0) { setPlayStatus("finished"); rafRef.current = null; return; }
+    const domainMin = data[0].x, domainMax = data[data.length - 1].x;
+    const rate = (domainMax - domainMin) / PLAYBACK_DURATION_MS;
+    xRef.current += dt * rate;
+
+    if (xRef.current >= domainMax) {
+      xRef.current = domainMax;
+      const lastRow = data[data.length - 1];
+      showIdleStand(lastRow.x);
+      runnerReadoutRef.current?.show(lastRow);
+      setPlayStatus("finished");
+      rafRef.current = null;
+      return;
+    }
+
+    const { row, idx } = findRowByX(xRef.current);
+    if (row.pauseDurationSec != null && lastDwellIdxRef.current !== idx) {
+      lastDwellIdxRef.current = idx;
+      dwellUntilRef.current = ts + PAUSE_DWELL_MS;
+      showRow(row, true);
+      rafRef.current = requestAnimationFrame(step);
+      return;
+    }
+    showRow(row, false);
+    rafRef.current = requestAnimationFrame(step);
+  }
+
+  useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
+
+  function handlePlayClick() {
+    if (playStatus === "playing") {
+      if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      lastTsRef.current = null;
+      setPlayStatus("paused");
+      return;
+    }
+    if (playStatus === "idle" || playStatus === "finished") {
+      xRef.current = playCtxRef.current.chartData[0]?.x ?? 0;
+      lastDwellIdxRef.current = null;
+      dwellUntilRef.current = null;
+    }
+    lastTsRef.current = null;
+    setPlayStatus("playing");
+    rafRef.current = requestAnimationFrame(step);
+  }
+
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
@@ -121,13 +301,30 @@ export function ActivityChartSection({
       </div>
 
       <ChartCard>
+      {/* A separate row, on top of the chart, inside the card — not an
+          overlay floating on the plot. Same width as the chart below it
+          (both direct children of ChartCard, same padding context), so
+          RunnerIcon's `cx` — a pixel offset from Recharts' own
+          activeCoordinate (mouse) or the replicated axis-layout math
+          (autoplay) — lines up between the two without extra translation.
+          The play/pause/replay control shares this row, pinned to the
+          left, while the runner itself roams the rest of the row's width. */}
+      <div style={{ position: "relative", height: 24, marginBottom: 4, display: "flex", alignItems: "center" }}>
+        <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
+        <RunnerIcon ref={runnerIconRef} />
+      </div>
+      <div ref={plotRef} style={{ position: "relative" }}>
+      <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} />
       <ResponsiveContainer width="100%" height={220}>
         {/* top:16 gives the pause-flag pill (a 14px-tall shape
             centered exactly on the y=1 point at the very top of
             its own [0,1] axis) room to render fully — Recharts'
             default ~5px top margin put half the pill above the
             SVG's own top edge, silently clipping it. */}
-        <ComposedChart data={chartData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}>
+        <ComposedChart
+          data={chartData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}
+          onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
+        >
           <CartesianGrid {...gridStyle} />
           <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
             tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
@@ -159,7 +356,6 @@ export function ActivityChartSection({
               tickFormatter={(v: number) => fmtMetricValue(key, v, speedMode)}
               width={axisVisible[key] ? 42 : 0} />
           ))}
-          <Tooltip content={<TrackTooltip xMode={xMode} metrics={effectiveActive} speedMode={speedMode} />} />
           {effectiveActive.map(key => (
             <Line key={key} yAxisId={key} dataKey={key} stroke={METRIC_DEFS[key].color}
               strokeWidth={1.5} dot={false} isAnimationActive={false} name={METRIC_DEFS[key].label} />
@@ -196,6 +392,7 @@ export function ActivityChartSection({
           />
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
       </ChartCard>
 
       {effectiveActive.filter(key => showCard[key]).map(key => {

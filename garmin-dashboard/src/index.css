@@ -731,6 +731,45 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-chart-tooltip-pace  { color: var(--data-pace); }
 .hra-chart-tooltip-hr    { color: var(--data-hr); }
 
+/* Runner mouse-follow/autoplay readout (ActivityChartSection) — bare text,
+   no chip/box (deliberately NOT `.hra-chart-tooltip` — a panel floating
+   directly over the lines/axes read as visual clutter); the per-metric
+   spans still reuse `.hra-chart-tooltip-*`'s color rules below for their
+   text color. A text-shadow stands in for the box's old contrast, since
+   there's no background of its own to separate it from the chart under it.
+   Sits just above the x-axis tick labels, centered under the runner's row. */
+.hra-runner-values {
+  position: absolute; z-index: 5;
+  bottom: 36px; left: 50%; transform: translateX(-50%);
+  pointer-events: none;
+  display: flex; gap: 6px; align-items: center; white-space: nowrap;
+  font-size: 10px; font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 6px rgba(0, 0, 0, 0.5);
+}
+
+/* Runner autoplay — parked on a pause for its 3s dwell (ActivityChartSection
+   step()/RunnerIcon) fades the icon in and out to read as "resting" rather
+   than a frozen glitch. Pure CSS so the fade costs nothing on top of the
+   already-cheap imperative position updates. */
+@keyframes hra-runner-dwell-fade {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+.hra-runner-dwell { animation: hra-runner-dwell-fade 1.5s ease-in-out infinite; }
+
+/* Runner autoplay control (RunnerPlayButton) — a single round icon button,
+   YouTube-style (one control, its icon swaps for play/pause/replay) sharing
+   the runner's own row above the chart, not the app's `.hra-btn` family
+   (that primitive is sized/shaped for labeled text buttons, not a bare
+   icon-only circle). */
+.hra-runner-playbtn {
+  width: 22px; height: 22px; border-radius: 999px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--bg-card); border: 1px solid rgba(255, 255, 255, 0.5);
+  color: white; cursor: pointer; padding: 0;
+}
+.hra-runner-playbtn:hover { background: color-mix(in srgb, white 14%, var(--bg-card)); }
+
 .hra-trend-line-pace { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-pace) 55%, transparent)); }
 .hra-trend-line-hr   { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-hr) 55%, transparent)); }
 

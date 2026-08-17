@@ -41,6 +41,14 @@ export const METRIC_DEFS: Record<MetricKey, { label: string; color: string }> = 
 };
 export const OPTIONAL_METRIC_ORDER: OptionalMetricKey[] = ["heart_rate", "altitude_m", "cadence", "power"];
 
+// Compact labels for the runner's mouse-follow readout — "HR", not "Heart
+// rate", to keep the single-line pill short. speed's own real label is
+// picked separately (speed vs pace, per speedMode); this entry only exists
+// so the Record's key set stays complete against MetricKey.
+export const METRIC_LABEL_SHORT: Record<MetricKey, string> = {
+  speed: "speed", heart_rate: "HR", altitude_m: "Alt", cadence: "Cad", power: "Pwr",
+};
+
 // Speed/Pace (the one mandatory metric) is ALONE on the left — every
 // optional metric (heart_rate, altitude_m, cadence, power) goes right, no
 // exceptions. Earlier versions only isolated Speed from whichever single
@@ -62,3 +70,23 @@ export const AXIS_SIDE: Record<MetricKey, "left" | "right"> = {
 // the +/− in the label, not by color), with the biggest drop rendering
 // darkest, same "how much" visual language as pause duration.
 export const HR_RECOVERY_COLOR_CAP = 60; // bpm — observed real deltas run ~8-55bpm
+
+// White (resting, ≤70bpm) → #c4706a (135bpm) → pure red (≥190bpm) for the
+// mouse-follow runner icon, keyed on the actual bpm value (fixed anatomical
+// thresholds, not normalized against this activity's own min/max) so the
+// same HR always reads the same color across activities. Pure function (no
+// React) so it can be called from an imperative mousemove handler without
+// touching component state.
+const HR_COLOR_STOPS: [number, [number, number, number]][] = [
+  [70, [255, 255, 255]],
+  [135, [196, 112, 106]],
+  [190, [255, 0, 0]],
+];
+export function hrRunnerColor(bpm: number): string {
+  if (bpm <= HR_COLOR_STOPS[0][0]) return `rgb(${HR_COLOR_STOPS[0][1].join(" ")})`;
+  if (bpm >= HR_COLOR_STOPS[2][0]) return `rgb(${HR_COLOR_STOPS[2][1].join(" ")})`;
+  const [lo, hi] = bpm < HR_COLOR_STOPS[1][0] ? [HR_COLOR_STOPS[0], HR_COLOR_STOPS[1]] : [HR_COLOR_STOPS[1], HR_COLOR_STOPS[2]];
+  const t = (bpm - lo[0]) / (hi[0] - lo[0]);
+  const c = lo[1].map((v, i) => Math.round(v + (hi[1][i] - v) * t));
+  return `rgb(${c[0]} ${c[1]} ${c[2]})`;
+}
