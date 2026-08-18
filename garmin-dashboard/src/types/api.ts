@@ -54,6 +54,20 @@ export interface Activity {
   // Which card (ai/statistical) the confirmed verdict above came from — set
   // at feedback time, not classify time.
   classification_method:  ClassificationMethod | null;
+  // Training session type (FK to activity_types, default "Training" id=1) +
+  // an optional free-text label (e.g. a race's name) — see
+  // ActivityDetailBody.tsx's type/save dropdown.
+  activity_type_id: number;
+  activity_name:    string | null;
+}
+
+// A kind of training session an activity can be tagged as (Training, Race
+// 5km, ...). min_distance_m gates which types are selectable for a given
+// activity — see ActivityDetailBody.tsx.
+export interface ActivityType {
+  id:             number;
+  name:           string;
+  min_distance_m: number;
 }
 
 export interface SportSummary {

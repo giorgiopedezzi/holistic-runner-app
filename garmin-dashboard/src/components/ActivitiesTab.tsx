@@ -87,6 +87,9 @@ export function ActivitiesTab({ from, to }: Props) {
                   {a.date_only}
                 </span>
                 <Badge label={a.sport ?? "other"} color={color} />
+                {a.activity_name && (
+                  <span style={{ fontStyle: "italic", color: "var(--text-secondary)", fontSize: 13 }}>{a.activity_name}</span>
+                )}
                 <span style={{ flex: 1, fontWeight: 600 }}>{fmtKm(a.distance_m)}</span>
                 <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>{fmtDuration(a.duration_sec)}</span>
                 {a.avg_hr         && <span style={{ color: "var(--accent-red)",   fontSize: 13 }}>♥ {a.avg_hr}</span>}

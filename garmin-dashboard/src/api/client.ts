@@ -9,7 +9,7 @@ import type {
   DeviceStatus, WithingsStatus, StravaStatus, Settings, Theme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
-  Paginated,
+  ActivityType, Paginated,
 } from "@/types/api";
 
 // Sentinel "give me everything" limit for consumers that need the full set
@@ -119,6 +119,13 @@ export const api = {
     feedback:     (id: number, body: FeedbackBody) => request<Activity>(`/api/v1/activities/${id}/feedback`, "POST", undefined, body),
     confirmBulk:  (ids: number[], method?: ClassificationMethod) =>
       request<ConfirmResult>("/api/v1/activities/confirm", "POST", undefined, { ids, method }),
+    // PUT (full replacement of the {activity_type_id, name} sub-resource) —
+    // see garmin-stats' activities.controller.ts setType.
+    setType: (id: number, activityTypeId: number, name: string | null) =>
+      request<Activity>(`/api/v1/activities/${id}/type`, "PUT", undefined, { activity_type_id: activityTypeId, name }),
+  },
+  activityTypes: {
+    list: async () => (await request<Paginated<ActivityType>>("/api/v1/activity-types", "GET", { limit: ALL })).data,
   },
   body: {
     range:       ()                          => request<DateRange>("/api/v1/body-measurements/range"),

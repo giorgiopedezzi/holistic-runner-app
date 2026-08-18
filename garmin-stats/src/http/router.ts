@@ -18,6 +18,7 @@ import { createSyncController } from "../controllers/sync.controller.ts";
 import { createIntegrationsController } from "../controllers/integrations.controller.ts";
 import { createDocsController } from "../controllers/docs.controller.ts";
 import { createDateRangesController } from "../controllers/date-ranges.controller.ts";
+import { createActivityTypesController } from "../controllers/activity-types.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -28,6 +29,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const integrations = createIntegrationsController(ctx);
   const docs         = createDocsController(ctx);
   const dateRanges   = createDateRangesController(ctx);
+  const activityTypes = createActivityTypesController(ctx);
   const { port } = ctx;
 
   return async (req, res) => {
@@ -69,6 +71,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements/monthly")             return await body.monthly(req, res, url);
         if (route === "/api/v1/body-measurements/correlation")         return await body.correlation(req, res, url);
         if (route === "/api/v1/date-ranges")               return await dateRanges.list(req, res, url);
+        if (route === "/api/v1/activity-types")            return await activityTypes.list(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
@@ -95,6 +98,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/units")           return await settings.updateUnits(req, res, url);
         if (route === "/api/v1/settings/detail-view")     return await settings.updateDetailView(req, res, url);
         if (route === "/api/v1/settings/accent")          return await settings.updateAccent(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
       }
 
       if (req.method === "POST") {

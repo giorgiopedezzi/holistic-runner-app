@@ -52,6 +52,8 @@ export const activity = (overrides: Partial<Activity> = {}): Activity => ({
   user_correction_reason: null,
   final_classification: null,
   classification_method: null,
+  activity_type_id: 1,
+  activity_name: null,
   ...overrides,
 });
 

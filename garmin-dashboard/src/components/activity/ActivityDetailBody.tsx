@@ -4,6 +4,7 @@ import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components/ui";
 import { ClassificationCard } from "../ClassificationCard";
+import { ActivityTypePicker } from "./ActivityTypePicker";
 import { SPORT_COLOR, type Activity, type TrackPoint } from "@/types/api";
 import { fmtDuration, fmtKm, fmtElevation } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
@@ -175,6 +176,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>via {activity.source}</span>
           )}
           <div style={{ flex: 1 }} />
+          {activity && <ActivityTypePicker activity={activity} onUpdate={setActivity} />}
           {!confirmDelete ? (
             <button
               className="hra-btn"

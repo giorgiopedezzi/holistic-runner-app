@@ -26,6 +26,7 @@ function parseId(pathname: string): number {
 
 export function createActivitiesController(ctx: AppContext) {
   const repo = ctx.repos.activities;
+  const activityTypes = ctx.repos.activityTypes;
   const service = ctx.services.activities;
   const classification = ctx.services.classification;
 
@@ -132,6 +133,32 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, repo.byId(id));
   };
 
+  // PUT /api/v1/activities/:id/type — body { activity_type_id, name? }. Full
+  // replacement of this sub-resource (rest-api §2/§1, same "own path per
+  // Settings card" pattern as HRA-40) — the type and its name are set
+  // together, not merged field-by-field.
+  const setType: Handler = async (req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/type$/)![1]);
+    const current = repo.byId(id) as unknown as { distance_m: number | null } | undefined;
+    if (!current) throw notFound(`Activity ${id} not found.`);
+
+    const body = await readJsonBody<{ activity_type_id?: unknown; name?: unknown }>(req);
+    const activityTypeId = Number(body.activity_type_id);
+    if (!Number.isInteger(activityTypeId)) throw unprocessable("activity_type_id must be an integer.");
+    const type = activityTypes.byId(activityTypeId);
+    if (!type) throw unprocessable(`Unknown activity_type_id ${activityTypeId}.`);
+    if ((current.distance_m ?? 0) < type.min_distance_m) {
+      throw unprocessable(`Activity distance is shorter than ${type.name} requires.`);
+    }
+    if (body.name !== undefined && typeof body.name !== "string") {
+      throw unprocessable("name must be a string.");
+    }
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null;
+
+    repo.updateType({ $id: id, $activity_type_id: activityTypeId, $activity_name: name });
+    return send(res, repo.byId(id));
+  };
+
   // POST /api/activities/confirm — bulk-equivalent of thumbs-up. Body { ids, method? }.
   const confirm: Handler = async (req, res) => {
     const body = await readJsonBody<{ ids?: unknown; method?: unknown }>(req);
@@ -153,5 +180,5 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, purge ? service.purge(ids) : service.restore(ids));
   };
 
-  return { range, list, count, trash, getById, track, deleteRange, deleteById, classify, feedback, confirm, restorePurge };
+  return { range, list, count, trash, getById, track, deleteRange, deleteById, classify, feedback, setType, confirm, restorePurge };
 }

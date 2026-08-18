@@ -191,6 +191,16 @@ export function initSchema(db: DatabaseSync): void {
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
+    -- Reference lookup: the kinds of training session an activity can be
+    -- tagged as. min_distance_m gates which types are selectable for a given
+    -- activity (see activities.activity_type_id below) — an activity shorter
+    -- than a type's min_distance_m can't be tagged as that type.
+    CREATE TABLE IF NOT EXISTS activity_types (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      name           TEXT NOT NULL UNIQUE,
+      min_distance_m REAL NOT NULL DEFAULT 0
+    );
+
     -- Named date ranges the user saves for later recall, e.g. re-loading a
     -- specific "Compare to" window on the Overview & Trends tab without
     -- re-picking both dates by hand. name is UNIQUE so recall-by-name stays
@@ -212,6 +222,18 @@ export function initSchema(db: DatabaseSync): void {
   // Ensure the single settings row exists — CREATE TABLE IF NOT EXISTS above
   // creates the table but not a row; column DEFAULTs populate it on first run.
   db.exec("INSERT OR IGNORE INTO settings (id) VALUES (1)");
+
+  // Fixed ids (not autoincrement-assigned) so activities.activity_type_id's
+  // column DEFAULT below can point at Training (id=1) as a constant — SQLite
+  // ALTER TABLE ADD COLUMN DEFAULT must be a literal, not a subquery.
+  db.exec(`
+    INSERT OR IGNORE INTO activity_types (id, name, min_distance_m) VALUES
+      (1, 'Training', 0),
+      (2, 'Race 5km', 5000),
+      (3, 'Race 10km', 10000),
+      (4, 'Half-Marathon', 21097.5),
+      (5, 'Marathon', 42195)
+  `);
 
   // Migrations for columns added after activities/track_points already
   // existed in the wild. CREATE TABLE IF NOT EXISTS above won't add columns
@@ -284,6 +306,22 @@ export function initSchema(db: DatabaseSync): void {
   }
   if (!activityCols.some(c => c.name === "classification_method")) {
     db.exec("ALTER TABLE activities ADD COLUMN classification_method TEXT");
+  }
+  if (!activityCols.some(c => c.name === "activity_type_id")) {
+    // Defaults every existing row to Training (id=1, seeded above) —
+    // untagged activities are training sessions until a human says otherwise.
+    // No REFERENCES clause here: SQLite's ALTER TABLE ADD COLUMN rejects a
+    // REFERENCES column paired with a non-NULL DEFAULT ("Cannot add a
+    // REFERENCES column with non-NULL default value"). The FK relationship
+    // is enforced application-side (activities.controller.ts's setType looks
+    // up activityTypes.byId before writing) — CREATE TABLE-time columns
+    // elsewhere in this file do get a real REFERENCES; this one can't.
+    db.exec("ALTER TABLE activities ADD COLUMN activity_type_id INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!activityCols.some(c => c.name === "activity_name")) {
+    // Free-text label set alongside activity_type_id (e.g. the race's name) —
+    // NULL until a human sets it, see controllers/activities.controller.ts's setType.
+    db.exec("ALTER TABLE activities ADD COLUMN activity_name TEXT");
   }
 
   const trackCols = db.prepare("PRAGMA table_info(track_points)").all() as { name: string }[];
@@ -375,6 +413,12 @@ export interface BodyMeasurementRow {
   bone_mass_kg: number | null;
   bmi: number | null;
   heart_rate: number | null;
+}
+
+export interface ActivityTypeRow {
+  id: number;
+  name: string;
+  min_distance_m: number;
 }
 
 export interface DateRangeRow {
