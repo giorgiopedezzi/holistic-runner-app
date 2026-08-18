@@ -222,7 +222,7 @@ export function ClassifySection() {
                   }}>
                   {m === 1000 ? "1km" : "0.5km"}
                 </button>
-              ))}cd
+              ))}
             </div>
             <button className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy}>
               Classify / Reclassify selected
