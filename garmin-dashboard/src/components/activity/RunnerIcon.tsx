@@ -1,12 +1,16 @@
-import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { RunnerGlyph } from "./RunnerGlyph";
+import { NEUTRAL_DYNAMICS, type RunnerDynamics } from "@/domain/runner-dynamics";
 
 export interface RunnerIconHandle {
   // pauseDurationSec: null while actually running/striding; a number (the
   // pause's duration) whenever the runner is parked on a pause row —
   // >= LONG_PAUSE_SEC bends the runner over instead of just standing.
-  show(cx: number, color: string, pauseDurationSec: number | null, dwelling?: boolean): void;
+  // dynamics: the runner's motion at this point — how fast the legs turn
+  // over (speed) and where it sits on the altitude profile. See
+  // domain/runner-dynamics.ts.
+  show(cx: number, color: string, pauseDurationSec: number | null, dwelling?: boolean, dynamics?: RunnerDynamics): void;
   hide(): void;
 }
 
@@ -22,22 +26,38 @@ const LONG_PAUSE_SEC = 60; // >= this, "bent" instead of "stand"
 // every mousemove/animation frame would re-render the parent's whole JSX
 // tree, including the ComposedChart.
 export const RunnerIcon = forwardRef<RunnerIconHandle>(function RunnerIcon(_props, ref) {
-  const [state, setState] = useState<{ cx: number; color: string; pauseDurationSec: number | null; dwelling: boolean } | null>(null);
+  const [state, setState] = useState<{ cx: number; color: string; pauseDurationSec: number | null; dwelling: boolean; dynamics: RunnerDynamics } | null>(null);
   const [stride, setStride] = useState(false);
 
   useImperativeHandle(ref, () => ({
-    show: (cx, color, pauseDurationSec, dwelling = false) => setState({ cx, color, pauseDurationSec, dwelling }),
+    show: (cx, color, pauseDurationSec, dwelling = false, dynamics = NEUTRAL_DYNAMICS) =>
+      setState({ cx, color, pauseDurationSec, dwelling, dynamics }),
     hide: () => setState(null),
   }), []);
 
+  // Read by the stride timer below without re-arming it — see there.
+  const strideScaleRef = useRef(1);
+  strideScaleRef.current = state?.dynamics.strideScale ?? 1;
+
   // Pose alternation runs on its own timer, gated only by "visible and not
   // paused" — not on every mousemove/frame position update — so a stream of
-  // updates doesn't reset the stride's phase on each call.
+  // updates doesn't reset the stride's phase on each call. Its rate tracks
+  // the runner's actual speed (STRIDE_MS is the rate at this run's median
+  // pace), so it is a self-rescheduling timeout reading the CURRENT scale off
+  // a ref at each tick rather than a setInterval keyed on that scale:
+  // re-arming an interval whenever the speed changed would restart the
+  // stride's phase on every frame of autoplay, which reads as a stutter
+  // rather than as a faster cadence.
   const striding = state != null && state.pauseDurationSec == null;
   useEffect(() => {
     if (!striding) return;
-    const id = setInterval(() => setStride(s => !s), STRIDE_MS);
-    return () => clearInterval(id);
+    let id = 0;
+    const tick = () => {
+      setStride(s => !s);
+      id = window.setTimeout(tick, STRIDE_MS / strideScaleRef.current);
+    };
+    id = window.setTimeout(tick, STRIDE_MS / strideScaleRef.current);
+    return () => clearTimeout(id);
   }, [striding]);
 
   if (!state) return null;
@@ -52,7 +72,12 @@ export const RunnerIcon = forwardRef<RunnerIconHandle>(function RunnerIcon(_prop
     <div
       className={animClass}
       style={{
-        position: "absolute", left: state.cx, top: "50%",
+        // The altitude ride (1m = 1px) goes on `top`, NOT on this element's
+        // transform: `.hra-runner-hop` animates transform and would drop any
+        // offset expressed there (the same reason its keyframes have to
+        // repeat the centering translate). The row reserves
+        // RUNNER_ELEVATION_MAX_PX above and below its center for this.
+        position: "absolute", left: state.cx, top: `calc(50% - ${state.dynamics.elevationPx}px)`,
         transform: "translate(-50%, -50%)", pointerEvents: "none",
         "--runner-color": state.color,
       } as CSSProperties}

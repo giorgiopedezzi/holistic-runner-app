@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
   fmtMetricValue, axisDomainMinMax, xTickFormatter,
@@ -6,16 +6,19 @@ import {
 } from "@/domain/activity-chart";
 import type { TrackPoint } from "@/types/api";
 import { speedUnitLabel } from "@/utils/units";
-import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR, hrRunnerColor } from "./shared";
+import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR, hrRunnerColor, metricStroke } from "./shared";
 import { Label, ChartCard, Checkbox } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { TrackTooltip } from "./TrackTooltip";
 import { PauseFlagShape } from "./PauseFlagShape";
 import { HrRecoveryFlagShape } from "./HrRecoveryFlagShape";
+import { MetricGradientDefs } from "./MetricGradient";
+import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
 import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPlayButton";
 import { nearestHr } from "@/domain/pauses";
+import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 
 const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
 const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
@@ -23,6 +26,23 @@ const AXIS_WIDTH = 42;              // must match the YAxis `width` props below
 const MARGIN_LEFT = 5;
 const MARGIN_RIGHT = 5;
 const RUNNER_IDLE_COLOR = "white";  // shown standing, before/after any hover or playback
+// The runner's own row: the band the glyph itself occupies, plus the reserved
+// vertical travel for the altitude ride (see domain/runner-dynamics.ts, which
+// owns the clamp this is sized from). The glyph band has to clear the 25px
+// glyph AND the 5px lift of its pause hop at the very top of the travel —
+// 36/2 = 18 against a worst case of 12.5 + 5 — or a summit start clips
+// against the row's edge.
+const RUNNER_BAND_HEIGHT = 36;
+const RUNNER_ROW_HEIGHT = RUNNER_BAND_HEIGHT + 2 * RUNNER_ELEVATION_MAX_PX;
+
+// A chart-domain x to a pixel offset inside the plot area — the chart's own
+// axis layout math, replicated (Recharts exposes no scale to read). Shared by
+// the autoplay loop and the terrain silhouette so the runner can never stand
+// somewhere its ground isn't.
+function xToPixel(x: number, domainMin: number, domainMax: number, width: number, leftInset: number, rightInset: number): number {
+  const inner = Math.max(0, width - leftInset - rightInset);
+  return leftInset + ((x - domainMin) / (domainMax - domainMin || 1)) * inner;
+}
 
 // Chart controls + the main multi-metric overlay chart + per-metric
 // standalone cards — split out of ActivityDetailBody (HRA-74) to keep both
@@ -98,6 +118,13 @@ export function ActivityChartSection({
     };
   }
 
+  // Per-row altitude offset + cumulative moving seconds — the two things the
+  // runner's motion is made of (see domain/runner-dynamics.ts).
+  const rowDynamics = useMemo<RunnerDynamics[]>(
+    () => computeRunnerDynamics(displayTrack, chartData),
+    [displayTrack, chartData],
+  );
+
   const [playStatus, setPlayStatus] = useState<PlayStatus>("idle");
 
   // Hover is simply off while autoplay is running — the two drive the same
@@ -107,10 +134,11 @@ export function ActivityChartSection({
     if (playStatus === "playing" || !state?.activeCoordinate) return;
     const rawIdx = state.activeTooltipIndex;
     const idx = typeof rawIdx === "string" ? Number(rawIdx) : rawIdx;
-    const row = typeof idx === "number" && !Number.isNaN(idx) ? chartData[idx] : undefined;
+    if (typeof idx !== "number" || Number.isNaN(idx)) return;
+    const row = chartData[idx];
     if (!row) return;
     const cx = state.activeCoordinate.x;
-    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null);
+    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, false, rowDynamics[idx]);
     runnerReadoutRef.current?.show(row);
   }
   function handleChartMouseLeave() {
@@ -130,25 +158,29 @@ export function ActivityChartSection({
 
   // ── Autoplay ──────────────────────────────────────────────────────────
   // Drives RunnerIcon/RunnerReadout the same imperative way as the mouse
-  // does (see the note above) — via requestAnimationFrame stepping a
-  // position through chartData's own synthetic x-domain, converted to a
-  // pixel offset by replicating the chart's own axis layout math (its
-  // inner plot area = container width minus the fixed left/right axis
-  // widths and margins below). This is what keeps a 60fps loop from ever
-  // re-rendering the ComposedChart: nothing here touches React state past
-  // playStatus itself, which only changes at play/pause/finish, not per
-  // frame.
+  // does (see the note above) — via requestAnimationFrame stepping the
+  // activity's own MOVING CLOCK (rowDynamics' movingSec), whose row is then
+  // converted to a pixel offset by replicating the chart's own axis layout
+  // math (its inner plot area = container width minus the fixed left/right
+  // axis widths and margins below). Stepping the clock rather than the
+  // x-domain is what makes the runner move consistently with pace: in
+  // distance mode a uniform x sweep crosses a slow kilometre and a fast one
+  // in the same time, which is precisely backwards. This still keeps a 60fps
+  // loop from ever re-rendering the ComposedChart: nothing here touches React
+  // state past playStatus itself, which only changes at play/pause/finish,
+  // not per frame.
   const rafRef = useRef<number | null>(null);
-  const xRef = useRef(0);
+  const clockRef = useRef(0);
+  const rowIdxRef = useRef(0);
   const lastTsRef = useRef<number | null>(null);
   const dwellUntilRef = useRef<number | null>(null);
   const lastDwellIdxRef = useRef<number | null>(null);
   // Re-synced every render so a running loop always reads current data/
   // layout, never a stale closure from whichever render scheduled it.
-  const playCtxRef = useRef({ chartData, plotWidth, leftInset: 0, rightInset: 0 });
+  const playCtxRef = useRef({ chartData, rowDynamics, plotWidth, leftInset: 0, rightInset: 0 });
   useEffect(() => {
     const rightInset = MARGIN_RIGHT + activeMetrics.filter(k => axisVisible[k]).length * AXIS_WIDTH;
-    playCtxRef.current = { chartData, plotWidth, leftInset: MARGIN_LEFT + AXIS_WIDTH, rightInset };
+    playCtxRef.current = { chartData, rowDynamics, plotWidth, leftInset: MARGIN_LEFT + AXIS_WIDTH, rightInset };
   });
   // Default resting pose, shown as soon as the chart has real geometry to
   // place it at — only while idle, so it doesn't fight a mouse hover or an
@@ -158,27 +190,51 @@ export function ActivityChartSection({
     showIdleStand(chartData[0].x);
   }, [playStatus, plotWidth, chartData]);
 
-  function findRowByX(x: number): { row: ChartRow; idx: number } {
-    const { chartData: data } = playCtxRef.current;
-    let lo = 0, hi = data.length - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (data[mid].x < x) lo = mid + 1; else hi = mid;
+  // Advance the row cursor to wherever the moving clock has reached, and
+  // stop the moment it steps ONTO a pause row.
+  //
+  // A search (binary or otherwise) cannot be used here, and that is the whole
+  // point of this function. A pause row shares its movingSec with the point
+  // before it — the pause's own gap is excluded from moving time, which is
+  // what keeps a long stop from eating the playback — so a value-based lookup
+  // has a tie to break and any tie-break that lands on the neighbouring point
+  // row skips the pause entirely: the clock crosses that timestamp between
+  // two frames and the dwell never fires. Playback only ever moves forward,
+  // so walking a cursor visits every row exactly once and cannot step over
+  // one.
+  function advanceRow(sec: number): { row: ChartRow; idx: number } {
+    const { chartData: data, rowDynamics: dyn } = playCtxRef.current;
+    let idx = Math.min(rowIdxRef.current, data.length - 1);
+    while (idx + 1 < data.length && (dyn[idx + 1]?.movingSec ?? 0) <= sec) {
+      idx += 1;
+      if (data[idx].pauseDurationSec != null) break; // land on it, don't pass it
     }
-    return { row: data[lo], idx: lo };
+    rowIdxRef.current = idx;
+    return { row: data[idx], idx };
   }
 
   function pixelX(x: number): number {
     const { chartData: data, plotWidth: w, leftInset, rightInset } = playCtxRef.current;
     const domainMin = data[0]?.x ?? 0;
     const domainMax = data[data.length - 1]?.x ?? 0;
-    const inner = Math.max(0, w - leftInset - rightInset);
-    return leftInset + ((x - domainMin) / (domainMax - domainMin || 1)) * inner;
+    return xToPixel(x, domainMin, domainMax, w, leftInset, rightInset);
   }
 
-  function showRow(row: ChartRow, dwelling: boolean) {
+  // Same conversion as pixelX, but for every row at once and off render-time
+  // values rather than playCtxRef (which the effect above only refreshes
+  // AFTER this render) — the terrain has to be right on the first paint.
+  const terrainXs = useMemo(() => {
+    if (plotWidth === 0 || chartData.length === 0) return [];
+    const rightInset = MARGIN_RIGHT + activeMetrics.filter(k => axisVisible[k]).length * AXIS_WIDTH;
+    const domainMin = chartData[0].x, domainMax = chartData[chartData.length - 1].x;
+    return chartData.map(row =>
+      xToPixel(row.x, domainMin, domainMax, plotWidth, MARGIN_LEFT + AXIS_WIDTH, rightInset));
+  }, [plotWidth, chartData, activeMetrics, axisVisible]);
+
+  function showRow(row: ChartRow, idx: number, dwelling: boolean) {
     const cx = pixelX(row.x);
-    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, dwelling);
+    const dynamics = playCtxRef.current.rowDynamics[idx] ?? NEUTRAL_DYNAMICS;
+    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, dwelling, dynamics);
     runnerReadoutRef.current?.show(row);
   }
 
@@ -195,14 +251,17 @@ export function ActivityChartSection({
     const dt = ts - lastTsRef.current;
     lastTsRef.current = ts;
 
-    const { chartData: data } = playCtxRef.current;
+    const { chartData: data, rowDynamics: dyn } = playCtxRef.current;
     if (data.length === 0) { setPlayStatus("finished"); rafRef.current = null; return; }
-    const domainMin = data[0].x, domainMax = data[data.length - 1].x;
-    const rate = (domainMax - domainMin) / PLAYBACK_DURATION_MS;
-    xRef.current += dt * rate;
+    // The whole activity's moving time, compressed into PLAYBACK_DURATION_MS
+    // — so every second of real running gets the same share of the playback,
+    // and the runner's speed across the chart is the run's own speed.
+    const totalSec = dyn[data.length - 1]?.movingSec ?? 0;
+    const rate = totalSec / PLAYBACK_DURATION_MS;
+    clockRef.current += dt * rate;
 
-    if (xRef.current >= domainMax) {
-      xRef.current = domainMax;
+    if (clockRef.current >= totalSec) {
+      clockRef.current = totalSec;
       const lastRow = data[data.length - 1];
       showIdleStand(lastRow.x);
       runnerReadoutRef.current?.show(lastRow);
@@ -211,15 +270,15 @@ export function ActivityChartSection({
       return;
     }
 
-    const { row, idx } = findRowByX(xRef.current);
+    const { row, idx } = advanceRow(clockRef.current);
     if (row.pauseDurationSec != null && lastDwellIdxRef.current !== idx) {
       lastDwellIdxRef.current = idx;
       dwellUntilRef.current = ts + PAUSE_DWELL_MS;
-      showRow(row, true);
+      showRow(row, idx, true);
       rafRef.current = requestAnimationFrame(step);
       return;
     }
-    showRow(row, false);
+    showRow(row, idx, false);
     rafRef.current = requestAnimationFrame(step);
   }
 
@@ -234,7 +293,8 @@ export function ActivityChartSection({
       return;
     }
     if (playStatus === "idle" || playStatus === "finished") {
-      xRef.current = playCtxRef.current.chartData[0]?.x ?? 0;
+      clockRef.current = 0;
+      rowIdxRef.current = 0;
       lastDwellIdxRef.current = null;
       dwellUntilRef.current = null;
     }
@@ -253,8 +313,9 @@ export function ActivityChartSection({
     lastTsRef.current = null;
     dwellUntilRef.current = null;
     lastDwellIdxRef.current = null;
-    xRef.current = playCtxRef.current.chartData[0]?.x ?? 0;
-    showIdleStand(xRef.current);
+    clockRef.current = 0;
+    rowIdxRef.current = 0;
+    showIdleStand(playCtxRef.current.chartData[0]?.x ?? 0);
     runnerReadoutRef.current?.hide();
     setPlayStatus("idle");
   }
@@ -346,10 +407,22 @@ export function ActivityChartSection({
           (autoplay) — lines up between the two without extra translation.
           The play/pause/replay + stop controls share this row, pinned to
           the left, while the runner itself roams the rest of the row's
-          width. */}
-      <div style={{ position: "relative", height: 24, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
-        <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
-        <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+          width — and, since the runner also rides the altitude profile at
+          1m = 1px, the row is tall enough to hold that full travel
+          (RUNNER_ELEVATION_MAX_PX either side of its center) without the
+          glyph clipping at a summit or a valley. The controls stay
+          vertically centered, which is exactly the runner's own flat-ground
+          height. */}
+      <div style={{ position: "relative", height: RUNNER_ROW_HEIGHT, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+        <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
+        {/* Positioned + raised so the controls sit above the terrain fill:
+            an absolutely-positioned sibling otherwise paints over in-flow
+            content regardless of DOM order. RunnerIcon needs no such wrapper
+            — it is itself positioned and comes later. */}
+        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+          <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
+          <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+        </div>
         <RunnerIcon ref={runnerIconRef} />
       </div>
       <div ref={plotRef} style={{ position: "relative" }}>
@@ -364,6 +437,11 @@ export function ActivityChartSection({
           data={chartData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}
           onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
         >
+          {/* Speed/Pace and HR are drawn with value-mapped gradients rather
+              than a flat stroke — see MetricGradient.tsx. The overlay
+              chart's speed axis is reversed in pace mode, so faster is at
+              the top in both modes here. */}
+          <MetricGradientDefs id="overlay" rows={chartData} speedFastAtTop fasterIsHigherValue={speedMode === "speed"} />
           <CartesianGrid {...gridStyle} />
           <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
             tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
@@ -396,7 +474,7 @@ export function ActivityChartSection({
               width={axisVisible[key] ? 42 : 0} />
           ))}
           {effectiveActive.map(key => (
-            <Line key={key} yAxisId={key} dataKey={key} stroke={METRIC_DEFS[key].color}
+            <Line key={key} yAxisId={key} dataKey={key} stroke={metricStroke(key, "overlay")}
               strokeWidth={1.5} dot={false} isAnimationActive={false} name={METRIC_DEFS[key].label} />
           ))}
           {/* Pause flags get their own fixed, never-reversed,
@@ -455,13 +533,19 @@ export function ActivityChartSection({
                   value, which sits at the very top pixel row
                   regardless of the domain's data-space padding. */}
               <ComposedChart data={cardData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}>
+                {/* Own gradient ids per card — one <svg> each, and a
+                    url(#…) may not reach across them. Unlike the overlay
+                    chart, this axis is never reversed, so in pace mode the
+                    faster (lower) values sit at the BOTTOM. */}
+                <MetricGradientDefs id={`card-${key}`} rows={cardData} speedFastAtTop={speedMode === "speed"}
+                  fasterIsHigherValue={speedMode === "speed"} />
                 <CartesianGrid {...gridStyle} />
                 <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
                   tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="main" domain={domain} tick={axisStyle} tickLine={false} axisLine={false} width={42}
                   tickFormatter={(v: number) => fmtMetricValue(key, v, speedMode)} />
                 <Tooltip content={<TrackTooltip xMode={xMode} metrics={[key]} speedMode={speedMode} />} />
-                <Line yAxisId="main" dataKey={key} stroke={METRIC_DEFS[key].color} strokeWidth={1.5} dot={false} isAnimationActive={false} />
+                <Line yAxisId="main" dataKey={key} stroke={metricStroke(key, `card-${key}`)} strokeWidth={1.5} dot={false} isAnimationActive={false} />
                 {key === "heart_rate" && (
                   <Scatter
                     yAxisId="main"

@@ -71,22 +71,63 @@ export const AXIS_SIDE: Record<MetricKey, "left" | "right"> = {
 // darkest, same "how much" visual language as pause duration.
 export const HR_RECOVERY_COLOR_CAP = 60; // bpm — observed real deltas run ~8-55bpm
 
-// White (resting, ≤70bpm) → #c4706a (135bpm) → pure red (≥190bpm) for the
-// mouse-follow runner icon, keyed on the actual bpm value (fixed anatomical
-// thresholds, not normalized against this activity's own min/max) so the
-// same HR always reads the same color across activities. Pure function (no
-// React) so it can be called from an imperative mousemove handler without
-// touching component state.
+// Pink (easy, ≤80bpm) → deeper pink (135bpm) → red (≥190bpm), keyed on the
+// actual bpm value (fixed anatomical thresholds, not normalized against this
+// activity's own min/max) so the same HR always reads the same color across
+// activities. Drives BOTH the mouse-follow runner icon and the HR line's
+// gradient (MetricGradient.tsx samples this same function), which is what
+// keeps the runner's color and the line it's standing over in agreement by
+// construction rather than by two lists that have to be kept in sync. Pure
+// function (no React) so it can be called from an imperative mousemove
+// handler without touching component state.
 const HR_COLOR_STOPS: [number, [number, number, number]][] = [
-  [70, [255, 255, 255]],
-  [135, [196, 112, 106]],
-  [190, [255, 0, 0]],
+  [80,  [219, 160, 206]], // #dba0ce
+  [135, [214,  86, 141]], // #d6568d
+  [190, [255,   0,  38]], // #ff0026
 ];
 export function hrRunnerColor(bpm: number): string {
-  if (bpm <= HR_COLOR_STOPS[0][0]) return `rgb(${HR_COLOR_STOPS[0][1].join(" ")})`;
-  if (bpm >= HR_COLOR_STOPS[2][0]) return `rgb(${HR_COLOR_STOPS[2][1].join(" ")})`;
-  const [lo, hi] = bpm < HR_COLOR_STOPS[1][0] ? [HR_COLOR_STOPS[0], HR_COLOR_STOPS[1]] : [HR_COLOR_STOPS[1], HR_COLOR_STOPS[2]];
-  const t = (bpm - lo[0]) / (hi[0] - lo[0]);
-  const c = lo[1].map((v, i) => Math.round(v + (hi[1][i] - v) * t));
+  return rampColor(HR_COLOR_STOPS, bpm);
+}
+
+// Gradient element ids for a chart, and the stroke each series should use:
+// the value-mapped gradient for the two that have one (see
+// MetricGradient.tsx), the series' own flat token for everything else. Charts
+// call metricStroke rather than reaching for METRIC_DEFS[key].color, so
+// giving another metric a ramp later is a change here, not at every <Line>.
+// `id` is per-chart because each ResponsiveContainer renders its own <svg>.
+export function speedGradientId(id: string): string { return `${id}-speed-grad`; }
+export function hrGradientId(id: string): string { return `${id}-hr-grad`; }
+export function metricStroke(key: MetricKey, id: string): string {
+  if (key === "speed") return `url(#${speedGradientId(id)})`;
+  if (key === "heart_rate") return `url(#${hrGradientId(id)})`;
+  return METRIC_DEFS[key].color;
+}
+
+// Speed/Pace's ramp, on a NORMALIZED 0-1 scale rather than absolute units:
+// 0 = this activity's slowest, 0.5 = its average, 1 = its fastest. Unlike HR
+// there is no anatomical scale to key on — 12 km/h is a jog for one runner
+// and a race for another, and one absolute mapping would flatten every easy
+// run to a single color. MetricGradient.tsx does the value→position mapping,
+// anchoring 0.5 to the activity's own mean.
+const SPEED_COLOR_STOPS: [number, [number, number, number]][] = [
+  [0,   [237, 221,  83]], // #eddd53 — slowest
+  [0.5, [ 20, 219,  90]], // #14db5a — average
+  [1,   [  0,  37, 245]], // #0025f5 — fastest
+];
+export function speedRampColor(t: number): string {
+  return rampColor(SPEED_COLOR_STOPS, t);
+}
+
+// Linear interpolation across an ascending list of (position, rgb) anchors,
+// clamped at both ends.
+function rampColor(stops: [number, [number, number, number]][], at: number): string {
+  const first = stops[0], last = stops[stops.length - 1];
+  if (at <= first[0]) return `rgb(${first[1].join(" ")})`;
+  if (at >= last[0]) return `rgb(${last[1].join(" ")})`;
+  let i = 1;
+  while (i < stops.length - 1 && at >= stops[i][0]) i++;
+  const lo = stops[i - 1], hi = stops[i];
+  const t = (at - lo[0]) / (hi[0] - lo[0]);
+  const c = lo[1].map((v, j) => Math.round(v + (hi[1][j] - v) * t));
   return `rgb(${c[0]} ${c[1]} ${c[2]})`;
 }

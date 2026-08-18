@@ -329,7 +329,7 @@ garmin_and_withings/
         │   ├── useDateRange.ts       # date range state + presets
         │   ├── useAppearance.ts      # fetches + immediately applies theme/background/unit system; see "Appearance" below
         │   └── useSettings.tsx       # settings fetch/save context, wraps the server-persisted settings blob
-        ├── domain/                   # pure chart/metric transforms (no I/O): activity-chart, body-metrics, outliers, pauses, trends
+        ├── domain/                   # pure chart/metric transforms (no I/O): activity-chart, body-metrics, outliers, pauses, runner-dynamics, trends
         ├── utils/
         │   ├── fmt.ts                # fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed — all unit-system-aware, see "Units" below
         │   ├── units.ts              # metric/imperial state + conversions + locale-based auto-detect
@@ -346,7 +346,11 @@ garmin_and_withings/
             ├── activity/              # activity-detail internals: ActivityDetailBody, ActivityModal
             │                          #   (popup chrome), ActivityChartSection, MetricRow,
             │                          #   SpeedPaceStat, TrackTooltip, HrRecoveryFlagShape,
-            │                          #   PauseFlagShape, shared.ts
+            │                          #   PauseFlagShape, MetricGradient (value-mapped stroke
+            │                          #   gradients), RunnerGlyph/RunnerIcon/RunnerReadout/
+            │                          #   RunnerPlayButton/RunnerTerrain (the chart's animated
+            │                          #   runner and the altitude silhouette it runs on),
+            │                          #   shared.ts
             ├── manage/                 # Data & Sync tab internals: SyncAllBar, OAuthSyncSection,
             │                          #   ClassifySection, UploadSection, DeleteSection, TrashSection,
             │                          #   TrashList, oauthProviders.ts, shared.ts

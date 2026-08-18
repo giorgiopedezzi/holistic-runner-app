@@ -58,6 +58,13 @@
   --data-fat:    #d97706;
   --data-muscle: #15965f;
 
+  /* NOTE: the value-mapped stroke ramps for Speed/Pace and HR are NOT tokens
+     here — they are interpolated per value in components/activity/shared.ts
+     (HR_COLOR_STOPS / SPEED_COLOR_STOPS), because a gradient stop's color is
+     computed from the datum, which no static custom property can express.
+     The flat --data-pace/--data-hr tokens above remain each series'
+     identity color for legend, axis ticks and tooltip text. */
+
   --font-sans: "Inter", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
