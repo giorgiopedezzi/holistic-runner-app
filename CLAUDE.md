@@ -1,7 +1,7 @@
 # Garmin Stats — Claude Code context
 
 ## Project root
-`C:\Projects\PERSONAL\garmin_and_withings\`
+`C:\Projects\PERSONAL\holistic-runner-app\`
 
 ## What this project is
 A personal health dashboard that pulls data from a **Garmin Forerunner 965** (via MTP/PowerShell bridge), **Strava** (via OAuth API, a second/independent activity source with cross-source duplicate detection), and a **Withings scale** (via OAuth API), stores everything in a local **SQLite database**, and visualises it in a React dashboard.
@@ -56,15 +56,11 @@ subagent spawned from one. These are constraints, not suggestions.
 rule 2. A rule nobody checks is theatre.
 
 **Policy epoch — do NOT backfill.** These fields are mandatory for Stories entering Ready to Develop
-from **2026-08-12, ~17:30 CEST** (anchored to a verified Jira server timestamp, not a guessed clock
-read) — the point the field design itself stabilized, after several same-day revisions (Cost Tier →
-Planned/Actual thinking effort; the option set changed from three to six to the final five; option
-ids were only fully captured at this point). A bare date would be misleading: a Story groomed earlier
-the same day was groomed against a design that did not yet exist. Nulls on issues from before this
-point (e.g. HRA-64, and any Story groomed earlier on 2026-08-12) are **pre-policy, not violations**,
-and must never be filled in retrospectively. A backfilled value records a reconstruction made with
-hindsight, is indistinguishable from a real one once written, and silently corrupts the only thing
-these fields are for — measuring how well a human's *up-front* call matched what the work needed.
+from **2026-08-12, ~17:30 CEST** (the point the field design itself stabilized). Nulls on issues from
+before this point (e.g. HRA-64) are **pre-policy, not violations** — never fill them in
+retrospectively. A backfilled value is a hindsight reconstruction indistinguishable from a real one
+once written, and it corrupts the only thing these fields measure: how well the up-front call matched
+what the work needed.
 
 ---
 
@@ -156,8 +152,8 @@ planned-vs-actual delta computable as higher / matched / lower.
 > spend is highest. If it ever needs recording, use `labels: [ultrathink]`.
 
 The levels differ in *kind*, not only degree: **`high` buys depth of judgment · `xhigh` buys coverage
-over a large surface · `max` buys independent verification.** Effort is *"a behavioral signal, not a
-strict token budget"* (official docs) — so these rows describe commitments, not budgets.
+over a large surface · `max` buys independent verification.** Effort is a behavioral signal, not a
+token budget — these rows describe commitments, not spend.
 
 **low** — *the answer is obvious before you start.*
 - Act directly. No extended thinking, no plan.
@@ -203,29 +199,18 @@ is the right problem at all is a different *kind* of work, not a higher effort �
 (a test baseline, the first slice of an epic) or when failure would be **silent** (a load-bearing
 constraint no test guards).
 
-⚠️ **Our default is deliberately one notch below the vendor's.** Per the official effort docs,
-`high` **is** the API and Claude Code default for Sonnet 5 — omitting the parameter and setting
-`high` are identical. Stepping down to `medium` is therefore a conscious deviation, and the
-justification is specific: here the Epic and Story have already absorbed the expensive thinking. The
-approach is decided, the criteria are written, and the oracle has moved from the model's judgment to
-the acceptance criteria. **That displacement is the whole point of the operating model** — the
-human's up-front work is what buys the right to spend less per slice. The docs' own calibration
-supports it: on Sonnet 5, `medium` is described as *"comparable to Claude Sonnet 4.6 at high
-effort"* — a step down from today's default, not a weak setting.
+⚠️ **Our default is deliberately one notch below the vendor's** (`high` is the actual API/Claude Code
+default for Sonnet 5). Justification: the Epic and Story have already absorbed the expensive
+thinking — the oracle has moved from model judgment to acceptance criteria, and that displacement is
+the whole point of the operating model. **If `medium` is genuinely not enough for an approved slice,
+the Story is under-specified — fix the Story, not the level.**
 
-**If `medium` is genuinely not enough for an approved slice, the Story is under-specified — fix the
-Story, not the level.**
+⚠️ **More effort is not monotonically better** — `max` can add cost for small or negative quality
+gains. A high `Actual` reading is **not** automatically an argument to raise `Planned` next time;
+check whether the extra spend actually bought a better outcome.
 
-⚠️ **More effort is not monotonically better.** The docs warn that `max` *"adds significant cost for
-relatively small quality gains, and on some structured-output or less intelligence-sensitive tasks
-it can lead to overthinking."* So a high `Actual` reading is **not** automatically an argument to
-raise `Planned` next time — check whether the extra spend actually bought a better outcome before
-concluding it was under-tiered.
-
-⚠️ **Hold the level constant for the whole run.** Effort is a request-level setting, and changing it
-mid-conversation **invalidates the prompt cache** — every later turn pays to re-read the context.
-This is a second, independent reason for rule 7 (*one Story per invocation*): the structural gate is
-also the cache-efficient shape.
+⚠️ **Hold the level constant for the whole run.** Changing effort mid-conversation invalidates the
+prompt cache — a second, independent reason for rule 7 (*one Story per invocation*).
 
 **Never change your own effort mid-slice.** Not upward (self-raising is self-granting) and not
 downward — *"this is simpler than planned"* is the **least reliable judgment you can make**: the
@@ -270,107 +255,30 @@ Skills are selected by their `description`; **multiple can load for one task and
 ## Repository layout
 
 ```
-garmin_and_withings/
-├── .gitignore
-├── CLAUDE.md                         # ← this file — keep up to date
-├── start.sh                          # checks ports 3001+5173, starts what's missing
-├── launcher.html                     # standalone status page (open in browser)
-│
-├── garmin-stats/                     # Node 24 backend — NO build step
-│   ├── config.json                   # ← user fills in paths + credentials (gitignored)
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── fit-archive/                  # permanent store of raw .FIT files (gitignored, never deleted)
-│   ├── strava-archive/               # permanent store of raw Strava API JSON (summary+detail+streams; gitignored, never deleted)
-│   ├── backgrounds/                  # uploaded custom background images for the Settings tab (gitignored)
-│   └── src/                         # reorganized 2026-08-09 (Epic HRA-52) — see "src/ layout" note below
-│       ├── config.ts                 # (root) loads config.json, CLI arg helpers
-│       ├── db.ts                     # (root) node:sqlite schema, typed row interfaces, param builders
-│       ├── server.ts                 # (root) entry: wiring only — build repos/services, start both HTTP servers (3001 API + 3002 Withings callback)
-│       ├── http/                     # request pipeline: router, respond, request, context (AppContext/Handler), oauth, stream-sync, withings-callback
-│       ├── controllers/              # HTTP↔domain, one per resource: activities, body, trends, settings, sync, integrations, docs
-│       ├── services/                 # business logic (no http/SQL): activities, body, classification, sync, device (device.service.ts = Garmin "is it plugged in" check; was integrations.service.ts)
-│       ├── repositories/             # data access — the only layer that runs SQL: activities.repo, body.repo, settings.repo
-│       ├── domain/                   # pure, framework-agnostic logic (no I/O)
-│       │   ├── fit-parser.ts             # binary .FIT decoder (many subtle fixes — do not simplify)
-│       │   ├── fit-file-parser-validate.ts  # cross-validates fit-parser.ts vs the fit-file-parser npm dep (never persists)
-│       │   ├── workout-metrics.ts        # reduces track_points into a compact summary (pace stdev, pauses, splits) for the classifier
-│       │   └── stats-classifier.ts       # deterministic, no-LLM workout classifier over the same summary
-│       ├── integrations/             # external-service clients (module = noun)
-│       │   ├── withings.ts               # Withings OAuth+token client (was withings-auth.ts)
-│       │   ├── strava.ts                 # Strava OAuth+token client, rotating refresh token (was strava-auth.ts)
-│       │   └── ollama.ts                 # local Ollama classifier client (was ollama-service.ts)
-│       ├── jobs/                     # runnable batch / CLI — spawned by the server or run via npm (command = verb)
-│       │   ├── sync-garmin.ts            # PowerShell MTP bridge → SQLite (spawns powershell/activities-file-extractor.ps1)
-│       │   ├── sync-withings.ts          # Withings API → SQLite
-│       │   ├── sync-strava.ts            # Strava API → SQLite (+ track_points from streams, raw JSON archive, cross-source dedup)
-│       │   ├── reprocess-fit-archive.ts  # one-time backfill: re-parse fit-archive/*.fit with current domain/fit-parser.ts (`npm run reprocess:fit`)
-│       │   └── withings-login.ts         # standalone CLI OAuth flow, port 3002 (was auth-withings.ts; `npm run withings:login`) — don't run alongside server.ts
-│       ├── powershell/               # native PowerShell helpers — spawned; take -Target/-ExistingJsonFiles as args, no self-relative paths
-│       │   ├── activities-file-extractor.ps1  # MTP file copy off the watch, called by jobs/sync-garmin.ts
-│       │   └── check-garmin-device.ps1        # lightweight "is the watch plugged in" check, no copying
-│       └── @types/                   # ambient type declarations (webmtp.d.ts)
-│
-└── garmin-dashboard/                 # Vite 8 + React 19 + TypeScript 6 frontend
-    ├── vite.config.ts                # proxies /api/* → localhost:3001, @/ alias
-    ├── tsconfig.json                 # types: ["vite/client"]
-    ├── tsconfig.node.json            # types: ["node"] — covers vite.config.ts only
+holistic-runner-app/
+├── CLAUDE.md                # this file
+├── start.sh                 # checks ports 3001+5173, starts what's missing
+├── garmin-stats/             # Node 24 backend — NO build step
+│   └── src/
+│       ├── config.ts / db.ts / server.ts   # root: wiring only
+│       ├── http/ → controllers/ → services/ → repositories/   # layered pipeline, in that order
+│       ├── domain/                          # pure logic, no I/O — includes fit-parser.ts (do not simplify, see FIT notes below)
+│       ├── integrations/                    # external-service clients — module = noun
+│       ├── jobs/                             # runnable batch/CLI, spawned by server or npm — command = verb
+│       └── powershell/                       # the two .ps1 MTP helpers, spawned
+└── garmin-dashboard/          # Vite 8 + React 19 + TS 6 frontend
     └── src/
-        ├── main.tsx
-        ├── App.tsx                   # tab routing; tabs render as {tab === "x" && <XTab/>} — a real
-        │                              #   unmount/remount, not a hide (load-bearing, see below)
-        ├── index.css                 # CSS variables, 4 themes via [data-theme="…"] blocks — see "Appearance" below
-        ├── api/client.ts             # all fetch calls — GET + POST/PUT + DELETE methods
-        ├── types/api.ts              # shared types mirroring DB schema
-        ├── lib/utils.ts              # shadcn's cn() helper (clsx + tailwind-merge)
-        ├── hooks/
-        │   ├── useQuery.ts           # fires fn on every deps change (plain useEffect) — no `auto`
-        │   │                         #   param, no manual "Load" step
-        │   ├── useDateRange.ts       # date range state + presets
-        │   ├── useAppearance.ts      # fetches + immediately applies theme/background/unit system; see "Appearance" below
-        │   └── useSettings.tsx       # settings fetch/save context, wraps the server-persisted settings blob
-        ├── domain/                   # pure chart/metric transforms (no I/O): activity-chart, body-metrics, outliers, pauses, runner-dynamics, trends
-        ├── utils/
-        │   ├── fmt.ts                # fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed — all unit-system-aware, see "Units" below
-        │   ├── units.ts              # metric/imperial state + conversions + locale-based auto-detect
-        │   ├── accent.ts             # accent-color picker helpers
-        │   ├── date.ts               # date parsing/formatting helpers
-        │   └── backgrounds.ts        # bundled background-picture presets (CSS gradients, not photo files)
-        ├── test/                     # api-stub, fixtures, setup — shared Vitest test infra (not app code)
-        └── components/
-            ├── ui/                    # shadcn-derived primitives, one file per component: Card, Stat,
-            │                          #   StatGrid, Badge, Empty, ErrorBanner, Pagination, ChartCard,
-            │                          #   Select, Popover, Calendar, Checkbox, Label, DatePicker,
-            │                          #   ProgressBar, LoadingSpinner, RangeEmpty, SectionTitle,
-            │                          #   StatusLine, pill.ts, index.ts (barrel)
-            ├── activity/              # activity-detail internals: ActivityDetailBody, ActivityModal
-            │                          #   (popup chrome), ActivityChartSection, MetricRow,
-            │                          #   SpeedPaceStat, TrackTooltip, HrRecoveryFlagShape,
-            │                          #   PauseFlagShape, MetricGradient (value-mapped stroke
-            │                          #   gradients), RunnerGlyph/RunnerIcon/RunnerReadout/
-            │                          #   RunnerPlayButton/RunnerTerrain (the chart's animated
-            │                          #   runner and the altitude silhouette it runs on),
-            │                          #   shared.ts
-            ├── manage/                 # Data & Sync tab internals: SyncAllBar, OAuthSyncSection,
-            │                          #   ClassifySection, UploadSection, DeleteSection, TrashSection,
-            │                          #   TrashList, oauthProviders.ts, shared.ts
-            ├── DateRangeBar.tsx
-            ├── ClassificationCard.tsx
-            ├── OverviewTab.tsx        # tab label "Overview & Trends" — absorbed the former TrendsTab.tsx (deleted)
-            ├── ActivitiesTab.tsx      # paginated list → accordion (default) or ActivityModal popup, per activity_detail_view setting
-            ├── BodyTab.tsx            # Withings body metrics (indexed overlay chart) + correlation chart
-            ├── ManageTab.tsx          # composes components/manage/* — sync trigger (device/token
-            │                          #   status-gated), login popup, delete range (soft), trash
-            │                          #   (restore/purge) — tab label "Data & Sync"
-            └── SettingsTab.tsx        # outlier-detection thresholds, trend threshold, activity detail
-                                        #   view, appearance (theme, background, units), persisted server-side
+        ├── App.tsx           # tabs render as {tab==="x" && <XTab/>} — real unmount/remount,
+        │                     #   LOAD-BEARING: utils/units.ts is module-scope state, see Stack & constraints
+        ├── hooks/useQuery.ts # fires on every deps change (plain useEffect) — no auto/manual-load step
+        ├── domain/           # pure chart/metric transforms, no I/O
+        └── components/       # ui/ (shadcn primitives) · activity/ · manage/ · top-level *Tab.tsx components
 ```
 
-Test files (`*.test.ts`/`*.test.tsx`) sit next to the module they cover throughout `src/` and are
-omitted from this tree — see the file listing (`find garmin-dashboard/src -type f`) for the current
-set, don't infer it from here.
-
-**src/ layout (Epic HRA-52, 2026-08-09).** Only `config.ts`, `db.ts`, `server.ts` sit at `src/` root; everything else is grouped by concern. The layered request pipeline is `http/` → `controllers/` → `services/` → `repositories/`. Beyond that: `domain/` = pure logic (no I/O), `integrations/` = external-service clients, `jobs/` = runnable batch/CLI (spawned by the server or run via npm), `powershell/` = the two `.ps1` MTP helpers. Naming rule: **module = noun** (`integrations/withings.ts`, the client), **command = verb** (`jobs/withings-login.ts`, the CLI). Renames from the reorg: `withings-auth.ts`→`integrations/withings.ts`, `strava-auth.ts`→`integrations/strava.ts`, `ollama-service.ts`→`integrations/ollama.ts`, `auth-withings.ts`→`jobs/withings-login.ts` (npm `auth:withings`→`withings:login`), `services/integrations.service.ts`→`services/device.service.ts`. Jobs anchor data dirs via `__dirname` at the new depth (`../../fit-archive` etc.); `scriptsDir` injected into services stays `src/` (the `.ps1` join adds `powershell/`, the sync scriptName strings add `jobs/`).
+Full current tree, incl. test files: `find garmin-stats/src garmin-dashboard/src -type f`. Don't
+infer file lists from this skeleton — it drifts; see the Maintenance rule below for what to check
+each round. Naming rule from the Epic HRA-52 reorg: **module = noun**, **command = verb**
+(`integrations/withings.ts` the client vs `jobs/withings-login.ts` the CLI).
 
 ---
 
@@ -412,10 +320,8 @@ set, don't infer it from here.
   computed style in the component, and (3) pass a `var(--x)` token as a plain component/SVG prop
   (`stroke="var(--data-pace)"`, `fill="var(--accent)"` — not a `style=` object). Plain structural
   layout (`fontSize`, `padding`, `gap`, `display`, `width/height`, `letterSpacing`) is not "theme"
-  and can stay inline. **Why:** a color/gradient/shadow value recomputed ad hoc inside a component is
-  invisible to anyone auditing the theme system from `index.css` alone, and drifts silently from the
-  rest of the palette the next time someone tweaks a token. Corrected into this file 2026-08-16 after
-  the polish passes on Overview/Settings reintroduced exactly that drift.
+  and can stay inline. **Why:** an ad hoc color/gradient/shadow value inside a component is invisible
+  to anyone auditing the theme system from `index.css` alone, and drifts silently from the palette.
 - **Path alias**: `@/` → `src/` (configured in both `vite.config.ts` and `tsconfig.json`)
 - **`import.meta.env`**: typed via `"types": ["vite/client"]` in `tsconfig.json`
 - **`useQuery` fetches on every deps change** (a plain `useEffect`, no `auto`/manual-load step) — see
@@ -448,20 +354,20 @@ set, don't infer it from here.
 - **avg/max speed**: use enhanced fields **124/125** when legacy fields 14/15 = `0xFFFF`
 - **enhanced_speed** in records is field **73** (not 82)
 - **Running cadence, per-record** (field 4, `cadence`): single-leg strides/min, same convention as Strava's cadence stream — **× 2 for running** to get steps/min (applied in `fit-parser.ts` itself now, not left to callers)
-- **`avg_cadence` (activity-level)**: do NOT trust session fields 56/`avg_cadence` or 89/`avg_running_cadence` — on real files these produced nonsense (e.g. 1684 spm on a run that averaged 170). Computed instead as the mean of the already-scaled per-record `cadence` values (see `parseFit()`) — validated against several real archived activities, all landing in a sane 150-190 spm range
-- **`total_ascent`/`total_descent` are session fields 22/23** (not 24/25 — the same class of off-by-N field mismap as cadence's 56/89 above). Confirmed by dumping every raw numbered session field for a real file and matching against its known-correct ascent/descent (31m/24m): field 22 held 31, field 23 held 24, while the old 24/25 mapping read 36/0.
+- **`avg_cadence` (activity-level)**: do NOT trust session fields 56/`avg_cadence` or 89/`avg_running_cadence` — on real files these produced nonsense (e.g. 1684 spm on a run that averaged 170). Computed instead as the mean of the already-scaled per-record `cadence` values (see `parseFit()`).
+- **`total_ascent`/`total_descent` are session fields 22/23** (not 24/25 — same off-by-N mismap class as cadence's 56/89 above).
 - **activity_date**: from session `start_time` (field 2)
-- **Developer fields** (`hasDev`): both halves must be skipped, or the parser loses byte alignment — (1) each field's 3-byte descriptor in the *definition* message (`field_num, size, dev_data_index`), and (2) critically, **the developer fields' actual payload bytes appended after the fixed fields in the matching *data* message** (fixed 2026-08-06 — the original code only did (1), recording that dev fields existed but never their sizes, so data-message reads silently ran short by the unaccounted payload length). Confirmed via a byte-level trace on a real archived file: a single unaccounted 14-byte dev payload on a session message corrupted the global-message-number of every message read after it for the rest of the file (e.g. one came out as `30466`, not a real FIT message type) — no `record` message was ever read correctly again, so the activity parsed with a normal-looking summary but **0 track points**. This affected most of the archive (developer fields are common on Forerunner 965 files via running-dynamics extensions) and matched the live DB before the fix (most Garmin activities had empty `track_points`). Now fixed by summing each local message type's declared dev-field sizes in the definition branch and skipping that many extra bytes after the fixed fields in the data branch. Backfilled into the live DB via `npm run reprocess:fit` (200/200 files updated, 0 errors); the reference activity below was re-verified unaffected by the fix (its own ascent/descent/duration/moving-time all still match exactly, since it never had a desyncing dev field).
+- **Developer fields** (`hasDev`): both halves must be skipped, or the parser loses byte alignment — (1) each field's 3-byte descriptor in the *definition* message (`field_num, size, dev_data_index`), and (2) **the developer fields' actual payload bytes appended after the fixed fields in the matching *data* message.** Skipping only (1) desyncs the global-message-number of every subsequent message, silently producing activities with a normal-looking summary but **0 track points** — common on Forerunner 965 files via running-dynamics extensions. Fix: sum each local message type's declared dev-field sizes in the definition branch, skip that many extra bytes after the fixed fields in the data branch.
 - **Invalid sentinels**: `0xFF`, `0xFFFF`, `0xFFFFFFFF` filtered via `validNum()`
 - **`moving_time_sec`** (session field 8, `total_timer_time`) is the activity-level moving/active time excluding auto-paused stretches — distinct from `duration_sec` (session field 7, `total_elapsed_time`, total wall-clock time). Both are ms, divide by 1000.
-- **Per-record `timestamp_unix`** (record field **253**, `uint32` FIT-epoch seconds) is real wall-clock time and always advances — the only trustworthy per-record time source. **Per-record `elapsed_sec` (field 29, `elapsed_time`, ms) is NOT a reliable moving/timer clock** — an earlier version of this note assumed it tracked moving time and only froze during pauses, but on real data it lags wall-clock at a roughly constant ~20-30% rate for the *entire* activity, not just during pauses (confirmed on a real 50:35 activity: its last point's `elapsed_sec` read only 10:44). Whatever field 29 actually represents, it isn't per-record elapsed/moving time, and nothing should compute a pause duration or a time-mode chart axis from it. Use `timestamp_unix` deltas directly instead: this device stops recording entirely during an auto-pause (no frozen-clock samples in between), so a plain gap ≥ threshold between two *consecutive* recorded points' `timestamp_unix` values IS the pause, no heuristics needed. Confirmed against a real archived activity's FIT data (2026-08-04): this found 5 real pauses totalling ~14.6min, matching that activity's own `duration_sec − moving_time_sec` gap almost exactly. `elapsed_sec` remains useful only as a last-resort fallback (e.g. for Strava, whose `time` stream genuinely is real elapsed seconds, or pre-timestamp_unix Garmin rows).
+- **Per-record `timestamp_unix`** (record field **253**, `uint32` FIT-epoch seconds) is real wall-clock time and always advances — the only trustworthy per-record time source. **Per-record `elapsed_sec` (field 29, `elapsed_time`, ms) is NOT a reliable moving/timer clock** — on real data it lags wall-clock ~20-30% for the *entire* activity, not just during pauses, so nothing should compute a pause duration or a time-mode chart axis from it. Use `timestamp_unix` deltas instead: the device stops recording entirely during an auto-pause, so a gap ≥ threshold between two *consecutive* points' `timestamp_unix` values IS the pause, no heuristics needed. `elapsed_sec` remains useful only as a last-resort fallback (e.g. Strava's `time` stream, or pre-timestamp_unix Garmin rows).
 
 ---
 
 ## Routing table — where the detail lives
 
 `CLAUDE.md` holds only what PREVENTS a mistake. Everything that DESCRIBES the system lives in
-`docs/` — meaning **repo-root `garmin_and_withings/docs/`**, NOT `garmin-stats/docs/` (there is no
+`docs/` — meaning **repo-root `holistic-runner-app/docs/`**, NOT `garmin-stats/docs/` (there is no
 such dir) — and is read on demand. **Read the relevant file before working in that area** — do not
 re-derive it from the source, and do not assume the summary above is complete.
 
@@ -485,14 +391,13 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
 
 - **IDs:** cloudId `2e4f6af1-c76d-45be-9a00-ca9f30589199` · project id `10067` · issue types Epic
   `10114`, Story `10117` · transition to Done = id `41`.
-- **`createIssueLink` direction — counter-intuitive, verified wrong once (2026-08-15).** For the
-  `Blocks` type, `inwardIssue` = the issue that **blocks**, `outwardIssue` = the issue that **is
-  blocked** (e.g. "A is blocked by B" → `inwardIssue: B, outwardIssue: A`). This is the *opposite*
-  of what a naive reading of `getIssueLinkTypes`' own `{inward: "is blocked by", outward: "blocks"}`
-  suggests — that field describes the *phrase*, not which parameter produces which role, and
-  reasoning from it directly produced backwards links (HRA-94↔HRA-95/96/97/98) that looked
-  self-consistent in the API response and were still wrong. **Verify link direction visually in the
-  Jira UI after creating — not via another API read, which is exactly what failed here.**
+- **`createIssueLink` direction — counter-intuitive.** For the `Blocks` type, `inwardIssue` = the
+  issue that **blocks**, `outwardIssue` = the issue that **is blocked** (e.g. "A is blocked by B" →
+  `inwardIssue: B, outwardIssue: A`) — the opposite of a naive reading of `getIssueLinkTypes`'
+  `{inward: "is blocked by", outward: "blocks"}` (that field names the *phrase*, not the parameter
+  role). **Verify link direction visually in the Jira UI after creating — not via another API read**
+  (a second API read reasons from the same ambiguous data as the first and can confirm the same
+  error; verified wrong this way once, HRA-94↔HRA-95/96/97/98).
 - **Custom fields** (project-scoped, single-select) — **not on the create/edit screen**, so
   `getJiraIssueTypeMetaWithFields`/`editmeta` omit them, but they CAN be set by passing
   `{ "customfield_101xx": { "value": "<option>" } }` in `createJiraIssue`'s `additional_fields` or
@@ -571,11 +476,8 @@ So the rule now has both halves:
 
 1. **Repository layout drifts fastest of anything in this file — check it every round, not just at
    session end.** "Round" = any turn where you added, removed, or moved a file under
-   `garmin-stats/src/` or `garmin-dashboard/src/`. Before ending that turn, diff the change against
-   the "Repository layout" tree above and fix it in the same turn — don't defer to a session-end
-   pass, because rounds get compacted/summarized and the drift is exactly the kind of detail that
-   doesn't survive a summary. A stale tree is worse than no tree: rule 3's "verify before you keep"
-   test exists because of exactly this failure mode once already.
+   `garmin-stats/src/` or `garmin-dashboard/src/`. Fix the tree in the same turn — rounds get
+   compacted/summarized and drift is exactly the detail that doesn't survive a summary.
 2. **Add**, at the end of a session, anything learned that would PREVENT a future mistake.
 3. **Evict**, in the same pass, by these three tests:
    - **Prevent vs describe.** Does the section stop someone doing the wrong thing, or does it

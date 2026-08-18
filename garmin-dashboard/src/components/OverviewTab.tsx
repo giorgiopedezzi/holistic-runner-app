@@ -4,6 +4,7 @@ import {
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
+import { defaultCompareRange } from "@/hooks/useCompareRange";
 import { api } from "@/api/client";
 import {
   Card, ChartCard, ChartPillLegend, chartGrid, chartTick,
@@ -18,7 +19,14 @@ import {
   groupActivitiesBySport,
 } from "@/domain/trends";
 
-interface Props { from: string; to: string; }
+interface Props {
+  from: string; to: string;
+  // Optional — callers that don't pass an explicit compare window (tests,
+  // mainly) get the same "previous period of equal length" default that
+  // used to be computed unconditionally inside this component; App.tsx
+  // passes the live, user-editable pair from useCompareRange.
+  compareFrom?: string; compareTo?: string;
+}
 
 // ── Distance/pace/HR trend, one chart per sport ─────────────────────────────
 // Bars are total distance per group (one activity per bar in "single" mode,
@@ -60,18 +68,21 @@ const BAR_COLOR = "var(--text-secondary)";
 const BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
 
-function SportTrendChart({ sport, activities, mode }: { sport: string; activities: Activity[]; mode: GroupMode }) {
+// `hidden`/`onToggle` are owned by SportTrendPair (below), not this
+// component — a sport's current and comparison charts share ONE series-
+// visibility state, so a toggle clicked on the current chart's legend also
+// hides that series on its comparison chart. `onToggle` absent means "don't
+// render a legend at all" (the comparison chart's case — it mirrors
+// whichever series the current chart's legend shows/hides, with no
+// interactive control of its own). `title` replaces the sport Badge this
+// component used to render itself — the Badge is shown once, above both
+// charts, by SportTrendPair; each chart instead gets ChartCard's own title
+// slot ("Running - current" / "Running - comparison").
+function SportTrendChart({ sport, activities, mode, title, hidden, onToggle }: {
+  sport: string; activities: Activity[]; mode: GroupMode; title: string;
+  hidden: Set<string>; onToggle?: (key: string) => void;
+}) {
   const points = buildTrendPoints(activities, mode);
-  // Legend as clickable pill chips (polish pass) — each series can be hidden
-  // independently, same toggle-a-Set pattern BodyTab's metric pills already
-  // use. Reference lines for a hidden pace/HR line hide with it, so a
-  // toggled-off series never leaves orphaned dashed lines on screen.
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const toggleSeries = (key: string) => setHidden(h => {
-    const next = new Set(h);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    return next;
-  });
 
   // Swimming pace is conventionally per 100m, not per km — avg_pace_minkm
   // (minutes per km) × 0.1 = minutes per 100m, a plain unit conversion, no
@@ -140,31 +151,36 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
     absoluteMaxHr != null ? Math.max(hrDomainBase[1], absoluteMaxHr) : hrDomainBase[1],
   ];
 
-  const badgeColor = SPORT_COLOR[sport] ?? "#888";
   const hrColor = "var(--data-hr)"; // fixed semantic data color (HRA-94/97) — was --accent-red, same hex today
 
   return (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-        <Badge label={sport} color={badgeColor} />
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ marginBottom: 8 }}>
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {points.length} {mode === "single" ? "activities" : mode === "week" ? "weeks" : "months"}
           {overallAvgPace != null && <> · avg {fmtMinSecRaw(overallAvgPace)}{paceUnit} ({fmtMinSecRaw(refMinPace!)}–{fmtMinSecRaw(refMaxPace!)})</>}
           {overallAvgHr != null && <> · avg {Math.round(overallAvgHr)} bpm ({Math.round(refMinHr!)}–{Math.round(refMaxHr!)})</>}
         </span>
       </div>
-      <ChartCard legend={
+      <ChartCard title={title} legend={onToggle && (
         <div style={{ marginLeft: "auto" }}>
           <ChartPillLegend
             items={[
-              { key: "totalKm", label: "Distance", color: "color-mix(in srgb, var(--data-pace) 28%, transparent)", active: !hidden.has("totalKm") },
+              // Solid var(--data-pace), same as Avg pace below — NOT the
+              // bar's own faint 28% wash. That muted value is deliberate for
+              // the bar fill itself (a background volume wash, see
+              // BAR_RADIUS's comment above), but reusing it as this chip's
+              // TEXT color made even the active chip read as low-contrast/
+              // disabled, which was never the intent — the toggle itself is
+              // fully active, only the bar it controls is drawn faint.
+              { key: "totalKm", label: "Distance", color: PACE_LINE_COLOR, active: !hidden.has("totalKm") },
               { key: "avgPace", label: "Avg pace", color: PACE_LINE_COLOR, active: !hidden.has("avgPace") },
               { key: "avgHr", label: "Avg HR", color: hrColor, active: !hidden.has("avgHr") },
             ]}
-            onToggle={toggleSeries}
+            onToggle={onToggle}
           />
         </div>
-      }>
+      )}>
       <ResponsiveContainer width="100%" height={220}>
         <ComposedChart data={displayPoints}>
           <defs>
@@ -261,15 +277,76 @@ function SportTrendChart({ sport, activities, mode }: { sport: string; activitie
   );
 }
 
+// Pairs a sport's current-period chart with its comparison-period chart,
+// stacked vertically (current above comparison, per request) — ONE shared
+// series-visibility state for the pair, so toggling "Distance"/"Avg pace"/
+// "Avg HR" on the current chart's legend also hides that series on the
+// comparison chart below it. `mode` is a prop, not owned here — the single
+// Single/Week/Month control in TrendsBySport already drives every sport's
+// pair identically ("driven by the first one for frequency selection", per
+// request — there is no separate control to drive it FROM). Comparison
+// chart renders no legend of its own (see SportTrendChart's `onToggle` doc).
+function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSize }: {
+  sport: string; activities: Activity[]; compareActivities: Activity[]; mode: GroupMode; minGroupSize: number;
+}) {
+  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  const toggleSeries = (key: string) => setHidden(h => {
+    const next = new Set(h);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  const label = sport.charAt(0).toUpperCase() + sport.slice(1);
+
+  // Same "too few activities for single mode" rule TrendsBySport used to
+  // apply once per sport (see its old sportsSorted.map) — now applied to
+  // EACH side independently, since the compare window is a free choice and
+  // can easily hold a different amount of data than the current one; a
+  // sparse comparison period shouldn't block the current chart from
+  // rendering, or vice versa.
+  const tooFew = (acts: Activity[]) => mode === "single" && acts.length < minGroupSize;
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+        <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
+      </div>
+      {tooFew(activities) ? (
+        <Empty message={`Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`} />
+      ) : (
+        <SportTrendChart sport={sport} activities={activities} mode={mode}
+          title={`${label} - current`} hidden={hidden} onToggle={toggleSeries} />
+      )}
+      <div style={{ marginTop: 12 }}>
+        {tooFew(compareActivities) ? (
+          <Empty message={`Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`} />
+        ) : (
+          <SportTrendChart sport={sport} activities={compareActivities} mode={mode}
+            title={`${label} - comparison`} hidden={hidden} />
+        )}
+      </div>
+    </div>
+  );
+}
+
 // A grouping is only offered if it actually produces something worth
 // grouping — fewer groups than the configured threshold (Settings tab,
 // default 5) isn't a meaningful trend, it's just a couple of bars. The same
 // threshold also gates whether a sport's chart is shown at all in "single"
-// mode (see sportsSorted.map below) — one number, two uses.
+// mode (see SportTrendPair's tooFew above) — one number, two uses.
 const DEFAULT_MIN_TREND_GROUP_SIZE = 5;
 
-function TrendsBySport({ from, to }: Props) {
+// Unlike Props (from/to only), the compare window is required here — always
+// resolved by the caller (OverviewTab) before rendering, whether that's the
+// live App.tsx-driven pair or the same-shape default computed locally.
+interface TrendsProps { from: string; to: string; compareFrom: string; compareTo: string; }
+
+function TrendsBySport({ from, to, compareFrom, compareTo }: TrendsProps) {
   const { state } = useQuery(() => api.garmin.activities(from, to), [from, to]);
+  // Same shape/pattern as the current-period query above — comparison
+  // activities for the trend charts. compareFrom/compareTo already carry
+  // the same "previous period of equal length" default OverviewTab computes
+  // when the caller doesn't pass an explicit compare window (see there).
+  const compareQ = useQuery(() => api.garmin.activities(compareFrom, compareTo), [compareFrom, compareTo]);
   const { settings } = useSettings();
   const minGroupSize = settings?.min_trend_group_size ?? DEFAULT_MIN_TREND_GROUP_SIZE;
   const [groupMode, setGroupMode] = useState<GroupMode>(() => defaultGroupMode(from, to));
@@ -290,6 +367,14 @@ function TrendsBySport({ from, to }: Props) {
   // above). Called before the loading/error early returns below since hooks
   // must run unconditionally.
   const sportsSorted = useMemo(() => groupActivitiesBySport(activities), [activities]);
+
+  // Comparison side, same memoization pattern as `activities`/`sportsSorted`
+  // above — a Map (not the sorted array groupActivitiesBySport returns) is
+  // all the render below needs: a per-sport lookup, keyed the same way, with
+  // no comparison-side sort order of its own to matter (each sport renders
+  // wherever the CURRENT side's sportsSorted places it).
+  const compareActivities = useMemo(() => (compareQ.state.status === "success" ? compareQ.state.data : []), [compareQ.state]);
+  const compareBySport = useMemo(() => new Map(groupActivitiesBySport(compareActivities)), [compareActivities]);
 
   // Downgrade out of a now-disabled mode (range shrank, or the auto-default
   // picked something the real data doesn't support) — only once data has
@@ -336,24 +421,16 @@ function TrendsBySport({ from, to }: Props) {
       <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 10 }}>
         Dashed horizontal lines: the bolder one is the overall avg pace/HR, the two fainter ones mark the highest/lowest pace/HR among the bars/points shown.
       </div>
-      {sportsSorted.map(([sport, acts]) => {
-        // In "single" mode each activity is its own bar, so the group-count
-        // gate above doesn't apply — instead, gate directly on how many
-        // activities of this sport exist at all. Week/month modes are
-        // already gated by weekEnabled/monthEnabled (disabling the mode
-        // entirely, not per-sport), so this only fires for "single".
-        if (groupMode === "single" && acts.length < minGroupSize) {
-          return (
-            <div key={sport} style={{ marginBottom: 20 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
-              </div>
-              <Empty message={`Too few ${sport} activities to determine a trend (${acts.length} of ${minGroupSize} needed).`} />
-            </div>
-          );
-        }
-        return <SportTrendChart key={sport} sport={sport} activities={acts} mode={groupMode} />;
-      })}
+      {/* Week/month enable/disable above is still driven by the CURRENT
+          period's data only — the comparison window has no vote over which
+          modes are offered, only over what its own chart shows once a mode
+          is picked (per-side "too few" gating is SportTrendPair's job now,
+          not this map). */}
+      {sportsSorted.map(([sport, acts]) => (
+        <SportTrendPair key={sport} sport={sport} activities={acts}
+          compareActivities={compareBySport.get(sport) ?? []}
+          mode={groupMode} minGroupSize={minGroupSize} />
+      ))}
     </>
   );
 }
@@ -507,19 +584,6 @@ function PeriodHeroRing({
   );
 }
 
-// Plain UTC-midnight date math on the app's own "YYYY-MM-DD" date strings —
-// used only to derive the hero card's "previous window of equal length" for
-// its delta chip (polish pass). UTC avoids any local-timezone day-boundary
-// drift when shifting a date string that carries no time component.
-function shiftIsoDate(iso: string, days: number): string {
-  const d = new Date(`${iso}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-function daysBetween(fromIso: string, toIso: string): number {
-  return Math.round((new Date(`${toIso}T00:00:00Z`).getTime() - new Date(`${fromIso}T00:00:00Z`).getTime()) / 86_400_000);
-}
-
 // Reduces one sport's previous-period activities into the same shape its
 // SportSummary counterpart exposes — shared by the Running section and the
 // By-sport list below, both of which compare a live SportSummary against
@@ -537,20 +601,21 @@ function prevSportStats(prevActs: Activity[]) {
   };
 }
 
-export function OverviewTab({ from, to }: Props) {
+export function OverviewTab({ from, to, compareFrom: compareFromProp, compareTo: compareToProp }: Props) {
   const { state } = useQuery(() => api.garmin.summary(from, to), [from, to]);
   const rangeQ = useQuery(() => api.garmin.range(), []);
-  // Previous window of equal length, immediately preceding `from` — powers
-  // every "vs previous period" comparison on this tab (hero rings, Total
-  // tooltips, By-sport tooltips). One fetch, reused for all of them.
-  // windowDays is the plain from→to difference, with NO +1 — that would
-  // count one extra day (e.g. the "30d" preset sets from = today−30,
-  // to = today, a 30-day difference; +1 turned that into a 31-day
-  // comparison window, one longer than the period it was meant to match).
-  const windowDays = daysBetween(from, to);
-  const prevTo = shiftIsoDate(from, -1);
-  const prevFrom = shiftIsoDate(prevTo, -(windowDays - 1));
-  const prevActivitiesQ = useQuery(() => api.garmin.activities(prevFrom, prevTo), [prevFrom, prevTo]);
+  // The "compare to" range — powers every "vs previous period" comparison on
+  // this tab (hero rings, Total tooltips, By-sport tooltips, AND each sport's
+  // second trend chart). One fetch, reused for all of them. `compareFrom`/
+  // `compareTo` are normally the live, user-editable pair from App.tsx's
+  // useCompareRange (rendered via DateRangeBar's "Compare to" column); a
+  // caller that omits them (tests, mainly) gets the same "previous period of
+  // equal length, ending the day before `from`" default that range would
+  // start at anyway — see defaultCompareRange for the exact formula.
+  const defaultCompare = defaultCompareRange(from, to);
+  const compareFrom = compareFromProp ?? defaultCompare.from;
+  const compareTo = compareToProp ?? defaultCompare.to;
+  const prevActivitiesQ = useQuery(() => api.garmin.activities(compareFrom, compareTo), [compareFrom, compareTo]);
 
   if (state.status === "loading") return <LoadingSpinner />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;
@@ -589,7 +654,10 @@ export function OverviewTab({ from, to }: Props) {
   const prevHours       = hasPrevData ? prevActivities.reduce((s, a) => s + (a.duration_sec ?? 0) / 3600, 0) : null;
   const prevCalories = hasPrevData ? prevActivities.reduce((s, a) => s + (a.calories ?? 0), 0) : null;
   const prevAscent   = hasPrevData ? prevActivities.reduce((s, a) => s + (a.ascent_m ?? 0), 0) : null;
-  const periodLabel = hasPrevData ? `vs previous ${windowDays}-day period (${prevFrom} – ${prevTo})` : null;
+  // No longer assumes the compare window is the same length as the current
+  // one (it used to be, by construction) — it's freely editable now, so the
+  // label just names the range rather than claiming an "N-day period".
+  const periodLabel = hasPrevData ? `vs compare range (${compareFrom} – ${compareTo})` : null;
   const prevBySport = new Map(groupActivitiesBySport(prevActivities));
 
   return (
@@ -686,7 +754,7 @@ export function OverviewTab({ from, to }: Props) {
         </>
       )}
 
-      <TrendsBySport from={from} to={to} />
+      <TrendsBySport from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} />
     </>
   );
 }

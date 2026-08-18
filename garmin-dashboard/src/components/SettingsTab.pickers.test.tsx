@@ -40,13 +40,14 @@ describe("ThemePicker (hand-written AppearanceApi stub)", () => {
     expect(appearance.setTheme).toHaveBeenCalledWith("light");
   });
 
-  it("calls setTheme('auto') from the Auto swatch", () => {
-    const appearance = stubAppearance();
+  // No Auto swatch (removed) — highlights the swatch matching resolvedTheme
+  // instead, whenever the stored theme isn't an explicit "dark"/"light".
+  it("highlights the swatch matching resolvedTheme when no explicit choice is stored", () => {
+    const appearance = stubAppearance({ settings: settings({ theme: "auto" }), resolvedTheme: "light" });
     render(<ThemePicker appearance={appearance} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /^Auto/ }));
-
-    expect(appearance.setTheme).toHaveBeenCalledWith("auto");
+    expect(screen.getByRole("button", { name: /^Light/ })).toHaveAttribute("data-selected", "true");
+    expect(screen.getByRole("button", { name: /^Dark/ })).toHaveAttribute("data-selected", "false");
   });
 });
 

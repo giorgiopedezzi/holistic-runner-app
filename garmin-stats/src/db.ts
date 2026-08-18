@@ -155,11 +155,14 @@ export function initSchema(db: DatabaseSync): void {
       outlier_speed_delta_per_sec   REAL NOT NULL DEFAULT 2.0,
       outlier_cadence_delta_per_sec REAL NOT NULL DEFAULT 60.0,
       outlier_min_speed_kmh         REAL NOT NULL DEFAULT 6.0,
-      -- Appearance: theme is one of the app's 4 predefined names, OR 'auto'
-      -- meaning "not yet explicitly chosen — resolve from the OS's
-      -- prefers-color-scheme at render time" (applied via a data-theme
-      -- attribute, see index.css; resolution happens in useAppearance.ts,
-      -- never stored as anything but 'auto' itself once selected).
+      -- Appearance: theme is 'dark' or 'light' once explicitly chosen.
+      -- 'auto' is no longer a user-selectable value (removed from
+      -- ThemePicker) — it survives here only as this column's DEFAULT, the
+      -- internal sentinel for "never explicitly chosen", still meaning
+      -- "resolve from the OS's prefers-color-scheme at render time" (applied
+      -- via a data-theme attribute, see index.css; resolution happens in
+      -- useAppearance.ts's resolveTheme(), which treats it the same as any
+      -- other non-dark/light legacy value).
       -- background_kind is 'none' | 'bundled' | 'custom' — 'bundled' selects
       -- one of the shipped CSS-gradient presets by id (background_value),
       -- 'custom' points at an uploaded file's name under

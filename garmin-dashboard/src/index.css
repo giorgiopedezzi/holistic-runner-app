@@ -89,6 +89,19 @@
      (--accent-glow, a fixed cyan pairing, existed here until 2026-08-17 and
      was removed when .hra-pill-active went monochromatic and the ambient
      became a single-hue ramp — nothing references it anymore.) */
+  /* Ambient (body::before) and card (.card) tinting strength — how much
+     --accent gets kissed into the near corner, and how much the far corner
+     darkens, in each of the two recipes below. Same values for both since
+     dark theme's existing look is already "right" (per the approved
+     soft-ambient render); light theme overrides both pairs below to read as
+     genuinely accent-tinted rather than a flat gray regardless of accent —
+     an 8%/9% accent concentration barely registers against a near-white
+     --bg/--card-bg the way it does against a near-black one. */
+  --ambient-accent-mix: 8%;
+  --ambient-dark-mix:   30%;
+  --card-accent-mix:    9%;
+  --card-dark-mix:      12%;
+
   --accent-strong: color-mix(in srgb, var(--accent) 75%, black);
   /* Light sibling of --accent-strong (Overview hero rings) — a bright tint
      of --accent, never a plain neutral/white or a different hue, so the
@@ -138,24 +151,6 @@
   color-scheme: dark;
 }
 
-/* Cooler, navy-tinted dark variant. */
-:root[data-theme="dark-blue"] {
-  --bg:             #070a13;
-  --bg-surface:     #0c1120;
-  --bg-card:        #11172a;
-  --bg-danger:      #ef5a5a18;
-  --border:         #232b47;
-  --border-strong:  #313b5c;
-  --text-primary:   #e6eaf5;
-  --text-secondary: #98a1c0;
-  --text-muted:     #7a82a8;
-  --accent-green:   #2ee0a3;
-  --accent-blue:    #4d9dff;
-  --accent-red:     #ef5a5a;
-  --accent-orange:  #ffab2e;
-  color-scheme: dark;
-}
-
 :root[data-theme="light"] {
   --bg:             #eceef1;
   --bg-surface:     #f7f8fa;
@@ -171,24 +166,16 @@
   --accent-red:     #d23f3e;
   --accent-orange:  #d97706;
   color-scheme: light;
-}
 
-/* Warm, cream/paper-toned light variant. */
-:root[data-theme="light-warm"] {
-  --bg:             #f0ebe1;
-  --bg-surface:     #f7f4ee;
-  --bg-card:        #f5efe5;
-  --bg-danger:      #c1443e14;
-  --border:         #ece3d6;
-  --border-strong:  #d8ccb8;
-  --text-primary:   #2b2118;
-  --text-secondary: #6b6052;
-  --text-muted:     #7a715f;
-  --accent-green:   #0a6d49;
-  --accent-blue:    #3568c9;
-  --accent-red:     #c1443e;
-  --accent-orange:  #b8650a;
-  color-scheme: light;
+  /* Stronger accent concentration than dark's default (see :root) — a light
+     --bg/--card-bg needs much more of the accent mixed in before the tint
+     actually reads at all. The far-corner (black) mix stays roughly in the
+     same range as dark's — it's the near-corner accent stop that was doing
+     almost nothing before. */
+  --ambient-accent-mix: 22%;
+  --ambient-dark-mix:   26%;
+  --card-accent-mix:    20%;
+  --card-dark-mix:      14%;
 }
 
 html, body, #root { height: 100%; }
@@ -226,8 +213,8 @@ body {
    resting shadow/highlight stack, border-color stays exactly as-is. */
 .card {
   background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, color-mix(in srgb, var(--accent) 9%, var(--card-bg)) 80%, transparent) 0%,
-  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 80%, transparent) 100%);
+  color-mix(in srgb, color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 80%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 80%, transparent) 100%);
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--card-border));
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -463,8 +450,6 @@ body {
    frontend.md). */
 [data-theme-preview="dark"]      { --preview-bg: #0f1117; --preview-card: #1e2330; --preview-text: #e8eaf0; --preview-accent: #1db87a; }
 [data-theme-preview="light"]     { --preview-bg: #f5f6f8; --preview-card: #ffffff; --preview-text: #1a1d27; --preview-accent: #0e9f6a; }
-[data-theme-preview="dark-blue"] { --preview-bg: #0a0e1a; --preview-card: #161d35; --preview-text: #e6eaf5; --preview-accent: #4d9dff; }
-[data-theme-preview="light-warm"]{ --preview-bg: #faf6f0; --preview-card: #fffaf3; --preview-text: #2b2118; --preview-accent: #b8650a; }
 
 .hra-theme-swatch {
   position: relative; width: 96px; padding: 0; border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
@@ -504,11 +489,16 @@ body {
    soft-ambient render: lighter at the top-left corner, darker toward the
    bottom-right, ONE accent hue throughout — no second independent color
    (the brief 2026-08-16 two-glow accent+cyan version was replaced the next
-   day). Light end = a sliver of --accent kissed into --bg; dark end = --bg
-   mixed toward black; same two-stop recipe as .card's own radial, just
-   page-sized. Follows accent + theme automatically via var(). Cards stay
-   ~80% opaque on top, so the ramp shows through the page's margins and,
-   faintly, through the cards themselves (glass, not solid). */
+   day). Light end = --accent kissed into --bg at --ambient-accent-mix; dark
+   end = --bg mixed toward black at --ambient-dark-mix — same two-stop
+   recipe as .card's own radial (--card-accent-mix/--card-dark-mix), just
+   page-sized. Both mix strengths are per-theme custom properties (:root),
+   not fixed percentages — light theme's are set much higher than dark's,
+   since the same 8%/9% accent concentration that reads clearly against a
+   near-black --bg/--card-bg is nearly invisible against a near-white one.
+   Follows accent + theme automatically via var(). Cards stay ~80% opaque on
+   top, so the ramp shows through the page's margins and, faintly, through
+   the cards themselves (glass, not solid). */
 body::before {
   content: "";
   position: fixed;
@@ -516,9 +506,9 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background: radial-gradient(135% 135% at 0% 0%,
-  color-mix(in srgb, var(--accent) 8%, var(--bg)) 0%,
+  color-mix(in srgb, var(--accent) var(--ambient-accent-mix), var(--bg)) 0%,
   var(--bg) 46%,
-  color-mix(in srgb, black 30%, var(--bg)) 100%);
+  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 100%);
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -817,14 +807,18 @@ input:focus, select:focus { border-color: var(--accent); }
    YouTube-style (one control, its icon swaps for play/pause/replay) sharing
    the runner's own row above the chart, not the app's `.hra-btn` family
    (that primitive is sized/shaped for labeled text buttons, not a bare
-   icon-only circle). */
+   icon-only circle). Themed via --text-primary rather than a literal white
+   — dark theme's --text-primary is near-white (#e8eaf0, same look as
+   before), light theme's is near-black (#1a1d27), so the icon/border stay
+   legible against --bg-card instead of rendering a near-invisible
+   white-on-light-gray icon on the light theme. */
 .hra-runner-playbtn {
   width: 22px; height: 22px; border-radius: 999px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bg-card); border: 1px solid rgba(255, 255, 255, 0.5);
-  color: white; cursor: pointer; padding: 0;
+  background: var(--bg-card); border: 1px solid color-mix(in srgb, var(--text-primary) 50%, transparent);
+  color: var(--text-primary); cursor: pointer; padding: 0;
 }
-.hra-runner-playbtn:hover { background: color-mix(in srgb, white 14%, var(--bg-card)); }
+.hra-runner-playbtn:hover { background: color-mix(in srgb, var(--text-primary) 14%, var(--bg-card)); }
 .hra-runner-playbtn:disabled { opacity: 0.35; cursor: not-allowed; }
 .hra-runner-playbtn:disabled:hover { background: var(--bg-card); }
 

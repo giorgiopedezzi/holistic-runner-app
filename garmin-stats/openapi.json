@@ -194,7 +194,7 @@
           "outlier_speed_delta_per_sec": { "type": "number" },
           "outlier_cadence_delta_per_sec": { "type": "number" },
           "outlier_min_speed_kmh": { "type": "number" },
-          "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] },
+          "theme": { "type": "string", "enum": ["dark", "light", "auto"] },
           "background_kind": { "type": "string", "enum": ["none", "bundled", "custom"] },
           "background_value": { "type": ["string", "null"] },
           "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] },
@@ -350,7 +350,7 @@
       }
     },
     "/api/v1/settings/theme": {
-      "put": { "tags": ["settings"], "summary": "Set theme (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light", "dark-blue", "light-warm", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "put": { "tags": ["settings"], "summary": "Set theme (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/background": {
       "put": { "tags": ["settings"], "summary": "Set the background (replace the sub-resource): a bundled preset or clear it", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["background_kind"], "properties": { "background_kind": { "type": "string", "enum": ["none", "bundled"] }, "background_value": { "type": "string", "description": "Preset id, required when background_kind=bundled." } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }

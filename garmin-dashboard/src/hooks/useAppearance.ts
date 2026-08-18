@@ -10,8 +10,12 @@ import { useSettings } from "@/hooks/useSettings";
 // which has no equivalent API; see utils/units.ts's locale-based heuristic
 // for that one).
 function resolveTheme(stored: StoredTheme): Theme {
-  if (stored !== "auto") return stored;
   const prefersDark = typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: dark)").matches;
+  // Falls back the same way 'auto' does for any value that isn't a current
+  // concrete Theme — covers a settings row persisted under a since-retired
+  // name (e.g. 'dark-blue'/'light-warm') so index.css's [data-theme="…"]
+  // blocks never see an unmatched attribute value.
+  if (stored === "dark" || stored === "light") return stored;
   return prefersDark ? "dark" : "light";
 }
 
@@ -52,7 +56,9 @@ export interface AppearanceState {
   settings: Settings | null;
 }
 export interface AppearanceActions {
-  setTheme:         (theme: StoredTheme) => Promise<void>;
+  // Theme, not StoredTheme — 'auto' is no longer a writable choice (removed
+  // from ThemePicker); only an explicit dark/light pick can be persisted.
+  setTheme:         (theme: Theme) => Promise<void>;
   setUnits:         (unitSystem: StoredUnitSystem) => Promise<void>;
   // Optional (HRA-95), unlike the actions above — so the pre-existing,
   // hand-written AppearanceApi stub in SettingsTab.pickers.test.tsx keeps
@@ -105,7 +111,7 @@ export function useAppearance(): AppearanceApi {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.theme]);
 
-  const setTheme = useCallback(async (theme: StoredTheme) => {
+  const setTheme = useCallback(async (theme: Theme) => {
     const updated = await api.settings.setTheme(theme);
     update(updated);
   }, [update]);

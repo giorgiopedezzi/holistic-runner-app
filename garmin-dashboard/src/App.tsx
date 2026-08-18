@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useDateRange } from "@/hooks/useDateRange";
+import { useCompareRange } from "@/hooks/useCompareRange";
 import { useAppearance } from "@/hooks/useAppearance";
 import { SettingsProvider } from "@/hooks/useSettings";
 import { DateRangeBar } from "@/components/DateRangeBar";
@@ -36,6 +37,13 @@ export default function App() {
 
 function AppShell() {
   const range = useDateRange(30);
+  // Only meaningful on the Overview & Trends tab (the only consumer of a
+  // "compare to" range), but created here rather than inside OverviewTab so
+  // DateRangeBar — rendered once, above the tab content, shared across tabs
+  // — can host its pickers. Passed to DateRangeBar/OverviewTab only while
+  // tab === "overview" below; the hook itself is cheap to keep alive
+  // regardless of which tab is active.
+  const compareRange = useCompareRange(range.from, range.to);
   const appearance = useAppearance();
   const [tab, setTab] = useState<TabId>("overview");
   const [online, setOnline] = useState<boolean | null>(null);
@@ -113,11 +121,13 @@ function AppShell() {
             out of the header). */}
         {showDateRange && (
           <div style={{ marginBottom: 20 }}>
-            <DateRangeBar {...range} />
+            <DateRangeBar {...range} compare={tab === "overview" ? compareRange : undefined} />
           </div>
         )}
 
-        {tab === "overview"   && <OverviewTab   from={range.from} to={range.to} />}
+        {tab === "overview"   && (
+          <OverviewTab from={range.from} to={range.to} compareFrom={compareRange.from} compareTo={compareRange.to} />
+        )}
         {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
         {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
         {tab === "manage"     && <ManageTab />}

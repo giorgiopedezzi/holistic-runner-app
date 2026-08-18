@@ -154,12 +154,12 @@ export interface StravaStatus {
   error?:     string;
 }
 
-// Theme is the 4 concrete, CSS-applicable names (matched by index.css's
-// [data-theme="…"] blocks). StoredTheme adds 'auto' — a 5th value that's
+// Theme is the 2 concrete, CSS-applicable names (matched by index.css's
+// [data-theme="…"] blocks). StoredTheme adds 'auto' — a 3rd value that's
 // valid to persist but never applied directly as data-theme; useAppearance
 // resolves it to a concrete Theme via prefers-color-scheme first.
-export type Theme = "dark" | "light" | "dark-blue" | "light-warm";
-export const THEME_NAMES: Theme[] = ["dark", "light", "dark-blue", "light-warm"];
+export type Theme = "dark" | "light";
+export const THEME_NAMES: Theme[] = ["dark", "light"];
 export type StoredTheme = Theme | "auto";
 
 export type BackgroundKind = "none" | "bundled" | "custom";

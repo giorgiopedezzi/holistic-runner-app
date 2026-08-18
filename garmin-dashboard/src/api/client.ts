@@ -6,7 +6,7 @@
 import type {
   DateRange, Activity, SportSummary,
   TrackPoint, BodyMeasurement, MonthlyBody, CorrelationPoint,
-  DeviceStatus, WithingsStatus, StravaStatus, Settings, StoredTheme, BackgroundKind, StoredUnitSystem,
+  DeviceStatus, WithingsStatus, StravaStatus, Settings, Theme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   Paginated,
@@ -153,7 +153,7 @@ export const api = {
     updateThresholds: (s: Settings) => request<Settings>("/api/v1/settings/thresholds", "PUT", undefined, {
       min_trend_group_size: s.min_trend_group_size,
     }),
-    setTheme: (theme: StoredTheme) => request<Settings>("/api/v1/settings/theme", "PUT", undefined, { theme }),
+    setTheme: (theme: Theme) => request<Settings>("/api/v1/settings/theme", "PUT", undefined, { theme }),
     setBackground: (kind: BackgroundKind, value?: string) =>
       request<Settings>("/api/v1/settings/background", "PUT", undefined, { background_kind: kind, background_value: value }),
     setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PUT", undefined, { unit_system: unitSystem }),

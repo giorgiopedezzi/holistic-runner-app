@@ -12,9 +12,14 @@ import { send } from "../http/respond.ts";
 import { readJsonBody, readBodyBuffer } from "../http/request.ts";
 import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 
-// 'auto' is a valid stored value for theme/units — it means "resolve from the
-// OS/browser at render time" (see useAppearance.ts); the backend just persists it.
-const THEME_NAMES = ["dark", "light", "dark-blue", "light-warm", "auto"];
+// theme: no writable 'auto' anymore (removed from ThemePicker) — only an
+// explicit choice can be PUT. A settings row can still legally hold a
+// legacy non-dark/light value (the 'auto' sentinel a never-touched install
+// defaults to, or a retired name like 'dark-blue'/'light-warm') on GET;
+// resolveTheme() on the frontend treats any of those the same way, as
+// "resolve from the OS at render time". unit_system keeps its own 'auto' —
+// unrelated to this change, still writable.
+const THEME_NAMES = ["dark", "light"];
 const UNIT_SYSTEMS = ["metric", "imperial", "auto"];
 const DETAIL_VIEWS = ["accordion", "modal"];
 // Curated selectable-accent set (HRA-95) — see garmin-dashboard's

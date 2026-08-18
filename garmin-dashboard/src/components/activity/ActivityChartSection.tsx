@@ -25,7 +25,12 @@ const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
 const AXIS_WIDTH = 42;              // must match the YAxis `width` props below
 const MARGIN_LEFT = 5;
 const MARGIN_RIGHT = 5;
-const RUNNER_IDLE_COLOR = "white";  // shown standing, before/after any hover or playback
+// Shown standing, before/after any hover or playback (the "beginning and
+// end" pose) — the same pale pink hrRunnerColor(80) itself uses for an
+// easy 80bpm effort, not a literal/theme color, so it reads identically in
+// both themes and matches the resting-HR end of the runner's own color
+// scale instead of an arbitrary neutral.
+const RUNNER_IDLE_COLOR = hrRunnerColor(80);
 // The runner's own row: the band the glyph itself occupies, plus the reserved
 // vertical travel for the altitude ride (see domain/runner-dynamics.ts, which
 // owns the clamp this is sized from). The glyph band has to clear the 25px

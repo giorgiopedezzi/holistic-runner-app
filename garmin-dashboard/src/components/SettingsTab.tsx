@@ -29,10 +29,8 @@ import { fmtMinSecRaw } from "@/utils/fmt";
 // data-theme-preview (rather than the real data-theme, which only ever
 // reflects the theme actually in effect) makes possible.
 const THEME_LABEL: Record<Theme, string> = {
-  "dark":       "Dark",
-  "light":      "Light",
-  "dark-blue":  "Dark Blue",
-  "light-warm": "Light Warm",
+  "dark":  "Dark",
+  "light": "Light",
 };
 
 // A single theme swatch: the "real system" preview is a small gradient pill
@@ -63,28 +61,27 @@ function ThemeSwatch({ theme, label, selected, onClick, title }: {
   );
 }
 
+// No "Auto" swatch (removed — was a 3rd persisted value; auto-follow is now
+// implicit, not a user choice: a settings row that has never had a theme
+// explicitly picked reads as anything other than "dark"/"light" — e.g. the
+// legacy 'auto' sentinel a never-touched install still has —
+// and resolveTheme() falls back to the OS's prefers-color-scheme live for
+// exactly that case, same as before. Clicking either swatch below just
+// writes a real, explicit choice for the first time. Until then neither
+// swatch is "selected" by name, but whichever one matches the OS's current
+// scheme is highlighted anyway, so the picker still shows what's in effect.
 export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.theme;
-  const isAuto = current === "auto";
-  // "Auto" previews whichever concrete theme it currently resolves to (via
-  // prefers-color-scheme) — there's no single "auto" color scheme.
-  const autoResolved = appearance.resolvedTheme ?? "dark";
+  const hasExplicitChoice = current === "dark" || current === "light";
 
   return (
     <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-      <ThemeSwatch
-        theme={autoResolved}
-        label={`Auto (${THEME_LABEL[autoResolved]})`}
-        selected={isAuto}
-        onClick={() => appearance.setTheme("auto")}
-        title={`Follows your OS's light/dark setting — currently: ${THEME_LABEL[autoResolved]}`}
-      />
       {THEME_NAMES.map(t => (
         <ThemeSwatch
           key={t}
           theme={t}
           label={THEME_LABEL[t]}
-          selected={current === t}
+          selected={hasExplicitChoice ? current === t : appearance.resolvedTheme === t}
           onClick={() => appearance.setTheme(t)}
         />
       ))}

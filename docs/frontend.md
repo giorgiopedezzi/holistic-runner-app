@@ -14,10 +14,71 @@ only for tabs in `TABS_WITH_DATERANGE` (Overview/Activities/Body); Manage/Settin
 row at all. `DateRangeBar` has exactly one call site. (This reverses the two-row-header/right-aligned
 layout an earlier pass tried and then undid — don't reintroduce a second header row for it.)
 
+**`DateRangeBar`'s optional `compare` prop** (`CompareRangeState`, `hooks/useCompareRange.ts`) adds a
+second "Compare to" picker pair — only ever passed on the Overview & Trends tab (`App.tsx` passes
+`compare={tab === "overview" ? compareRange : undefined}`); Activities/Body render the exact same bar
+without it and get the original single-row layout. When present, `DateRangeBar` renders ONE shared
+flex row per line — a title line (`Current` / `Compare to`, `justify-content: space-between`) above a
+selector line with the same shape (one flush-left group, one flush-right group). This is deliberately
+NOT a `display: grid; gridTemplateColumns: "1fr 1fr"` split (tried first, twice): a rigid 50/50 grid
+caps the CURRENT side to half the row's width even though only the compare-to side is actually short,
+which forced the "to" date picker onto its own line while the right half sat mostly empty — and a grid
+built as two *separately*-configured grid containers (title row, selector row) drifted out of column
+alignment the moment one of them had a `gap` the other didn't. Flush-left/flush-right flex groups have
+neither failure mode: each side sizes to its own content (no artificial width cap), and the title and
+selector lines align for free because both use the exact same two-groups-pinned-to-the-edges shape,
+not two independently-configured containers that happen to agree today.
+
+`useCompareRange(from, to)` mirrors `useDateRange`'s shape (`{ from, to, setFrom, setTo }`) and resets
+to `defaultCompareRange(from, to)` — same length as the current range, ending the day before it starts
+— every time `from`/`to` change; a manual edit to the compare pickers persists only until the current
+range next changes, deliberately (re-picking a preset should give a clean, predictable comparison
+window again, not silently carry over a stale manual pick of a different length). `shiftIsoDate`/
+`daysBetween` (plain UTC-midnight date math on `"YYYY-MM-DD"` strings) moved from `OverviewTab.tsx` to
+`utils/date.ts` so both `useCompareRange` and `OverviewTab` share one implementation.
+
 All header/nav visuals (background, border, backdrop-blur, the online-status dot's color, the active
 nav pill) are `index.css` classes/data-attributes — see the "styles live in index.css" rule in
 CLAUDE.md. The per-pill `padding`/`fontSize`/`fontWeight` inline in `App.tsx` are structural, not
 theme, so they stay inline per that same rule.
+
+## Date pickers (ui/DatePicker.tsx, ui/Calendar.tsx, utils/locale.ts)
+Every date picker in the app (`DateRangeBar`'s 4, plus any future one) matches the OS's own date
+format/language, not a hardcoded convention — two independent pieces, both driven by the browser's
+locale (`navigator.language`, which reflects the OS's regional settings):
+- **The trigger's displayed text** (`DatePicker.tsx`'s `formatDisplay()`) uses
+  `new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" })` — passing
+  `undefined` as the locale argument is what makes it "use the runtime's default locale" rather than a
+  fixed one. `value`/`onChange`/`min`/`max` are untouched — still plain `"YYYY-MM-DD"` throughout,
+  matching the native `<input type="date">` contract this component replaces (HRA-98); only the trigger
+  button's TEXT is reformatted for display.
+- **The calendar popup's month/weekday names and week-start day** (`Calendar.tsx`'s `locale` prop,
+  passed to `react-day-picker`'s `<DayPicker>`) — omitted, `react-day-picker` defaults to English
+  (`enUS`) regardless of the OS's actual language, including defaulting every week to start on Sunday
+  (the US convention) even for locales where Monday is standard. `utils/locale.ts` resolves
+  `navigator.language` (e.g. `"it-IT"`) to a `date-fns` locale object: exact tag first (`"it-IT"` →
+  key `"itIT"`), then the base language (`"it"`) if date-fns has no dedicated region variant (it
+  doesn't ship every language×region combination — there's no `"itIT"`, only the base `"it"`), then
+  `undefined` (react-day-picker's own `enUS` default) if neither exists. No `weekStartsOn` override on
+  `<DayPicker>` — omitting it lets the resolved locale's own convention decide, same as every other
+  calendar app on the machine.
+- **Lazy-loaded, not bundled whole** — `utils/locale.ts` uses `import.meta.glob` (Vite, code-split per
+  file) against `date-fns`'s one-file-per-locale layout, rather than `import * as locales from
+  "react-day-picker/locale"` (tried first): that barrel re-exports `date-fns/locale` in full, and a
+  plain namespace import of it bundles **every** supported locale unconditionally into the main chunk
+  — measured +670KB raw / +118KB gzip for a feature that only ever needs the ONE locale the browser
+  actually resolves to. The glob also explicitly excludes `cdn*.js` (`!**/cdn*.js`) — `date-fns` ships
+  `locale/cdn.js`/`locale/cdn.min.js`, a ~630KB UMD bundle of every locale combined for `<script>`-tag
+  consumption, which an unqualified `*.js` glob matches too even though nothing ever requests a key
+  named `"cdn"`; left in, the build still had to emit two dead ~630KB output chunks. The result: the
+  main bundle grew only ~13KB (from `enUS` — date-fns's own internal default, already pulled in by
+  `date-fns/_lib/defaultLocale.js` regardless of anything here), and every other locale is its own
+  small (~2-13KB) chunk, fetched only if a browser actually resolves to it. The resolved locale is
+  cached at module scope (`loadBrowserCalendarLocale()`) — one fetch total, shared by every `Calendar`
+  instance on the page (there can be several at once, e.g. `DateRangeBar`'s 4 pickers), not one fetch
+  per mount. No `date-fns` entry was added to `package.json` — nothing here imports from the `date-fns`
+  package directly; `react-day-picker` already depends on it (for the `Locale`/`DayPickerLocale`
+  types and the actual per-locale modules the glob targets), so it stays a transitive dependency.
 
 ## Activity detail chart (ActivityModal.tsx)
 **Reference activity for manual verification**: `2026-08-04-10-28-43.fit` (Garmin, `activities.id` 200 as of this writing) — 50:35 duration, 35:59 moving time, ascent 31m / descent 24m, 5 real pauses (~14.6min total), a km-3.80 stretch that's a genuine ~20-sample deceleration into the 360s pause (not noise). Chart-related fixes in this app have repeatedly needed real numbers to verify against (see the git history of this file); this activity is the one already dissected in detail, so re-check against it first before pulling a fresh one.
@@ -57,12 +118,30 @@ Several independent sections, two different UX patterns — deliberately not uni
 All persist in the SQLite `settings` table rather than `localStorage` (see Stack & constraints above) — the pattern to follow for any future global setting.
 
 ## Appearance (theming + automatic ambient glow)
-- **4 predefined themes** (`dark`, `light`, `dark-blue`, `light-warm`, `types/api.ts`'s `THEME_NAMES`), each a full `[data-theme="…"] { --bg, --bg-surface, --bg-card, --border, --border-strong, --text-primary/secondary/muted, --accent-green/blue/red/orange, color-scheme }` block in `index.css`. `:root` itself duplicates the `dark` theme's values directly (not just a fallback) so the very first paint — before `useAppearance()`'s `GET /api/settings` resolves — still looks right; there's no earlier client-side value to flash from since this app has no localStorage.
-- **`--text-muted` and `--accent-green` were contrast-corrected** in all 4 themes after real-world use surfaced them as too low-contrast (measured ~2.9-3.1:1 against their own theme's `--bg`, well under a readable ~4.5:1) — dark themes' versions were lightened, light themes' darkened. See the CSS design tokens section below for the actual values and the reasoning.
-- **`theme` supports a 5th value, `'auto'`** — not a real CSS-applicable theme, a sentinel meaning "resolve from the OS's `prefers-color-scheme` at render time" (the one appearance signal a web page can read directly, unlike measurement system below). `useAppearance.ts`'s `resolveTheme()` does the resolution; a `matchMedia("(prefers-color-scheme: dark)")` change listener keeps it live while `'auto'` is selected, no reload needed. New installs default to `'auto'` (`CREATE TABLE`'s default) — **existing installs do not retroactively get this**: SQLite can't cheaply change an existing NOT-NULL column's effective value for already-inserted rows, and there's no way to distinguish "user explicitly chose dark" from "never touched, still the old hardcoded default" from the stored value alone, so an already-populated `theme` column is left exactly as it was. A user on an existing install can still pick "Auto" from the theme picker (it's the first swatch, shown as a live preview of whatever it currently resolves to) to opt in explicitly.
+- **2 predefined themes** (`dark`, `light`, `types/api.ts`'s `THEME_NAMES` — narrowed from 4 by dropping `dark-blue`/`light-warm`), each a full `[data-theme="…"] { --bg, --bg-surface, --bg-card, --border, --border-strong, --text-primary/secondary/muted, --accent-green/blue/red/orange, color-scheme }` block in `index.css`. `:root` itself duplicates the `dark` theme's values directly (not just a fallback) so the very first paint — before `useAppearance()`'s `GET /api/settings` resolves — still looks right; there's no earlier client-side value to flash from since this app has no localStorage. A settings row persisted under a since-retired theme name falls back to resolving as if `'auto'` were selected — see `resolveTheme()`.
+- **`--text-muted` and `--accent-green` were contrast-corrected** in both themes after real-world use surfaced them as too low-contrast (measured ~2.9-3.1:1 against their own theme's `--bg`, well under a readable ~4.5:1) — the dark theme's versions were lightened, the light theme's darkened. See the CSS design tokens section below for the actual values and the reasoning.
+- **`'auto'` is no longer a user-selectable value** — `ThemePicker` only offers Dark/Light, and `setTheme`'s type narrowed to `Theme` (no `StoredTheme`) so the client literally cannot write it again. It survives purely as the DB column's internal default/sentinel: a settings row that was never explicitly set (a fresh install's default row, or an existing install that predates this change) still reads back as `'auto'` on `GET`, and `useAppearance.ts`'s `resolveTheme()` treats that — and any other non-`'dark'`/`'light'` value, e.g. a retired theme name — identically: resolve from the OS's `prefers-color-scheme` at render time (the one appearance signal a web page can read directly, unlike measurement system below), live, via a `matchMedia("(prefers-color-scheme: dark)")` change listener, no reload needed. Once a user clicks either swatch, that install's row holds a real `'dark'`/`'light'` value from then on and OS-following stops. `ThemePicker` still highlights whichever swatch matches `resolvedTheme` while no explicit choice is stored, so the picker shows what's currently in effect even with nothing "selected" by name.
 - **Only general UI chrome is themed.** Chart-specific colors defined in TS (`ActivityModal.tsx`'s `METRIC_DEFS`, `SPORT_COLOR`, `BodyTab.tsx`'s per-metric hexes) were validated specifically against the dark `--bg-card` surface (see the Body metrics chart section below) and are **not** re-validated per theme — they still render on light themes, just without a fresh contrast pass. A real follow-up task if the light themes see much use.
 - **`useAppearance()`** (`hooks/useAppearance.ts`) fetches the full `settings` row once, applies `theme` (resolved) as a `data-theme` attribute on `<html>` and `unit_system` (resolved) to `utils/units.ts`'s module state, then exposes `setTheme`/`setUnits`/`setAccentColor` — each updates the backend *and* immediately re-applies, so `SettingsTab` and the actual document never drift out of sync. Also exposes `resolvedTheme`/`resolvedUnitSystem` (the concrete values after resolving `'auto'`) for `SettingsTab`'s live previews. Lifted to `App.tsx` (not fetched again per-tab) so appearance applies regardless of which tab is open, and passed down to `SettingsTab` as a prop.
 - ** Automatic ambient glow, not a background picture (corrected 2026-08-16, then again 2026-08-17 — supersedes the earlier per-user picker). The old SettingsTab.tsx "Background picture" gallery (BackgroundPicker, bundled presets + custom upload, --bg-image) is gone: useAppearance.ts no longer computes or sets --bg-image, and index.css's body::before paints ONE page-sized single-hue radial ramp — radial-gradient(135% 135% at 0% 0%, color-mix(accent 8%, --bg) 0%, --bg 46%, color-mix(black 30%, --bg) 100%) — lighter at the top-left, darker toward the bottom-right, per the approved soft-ambient render. The brief 2026-08-16 two-glow version (accent + fixed cyan --accent-glow) was replaced the next day: two independent hues read as "two colors", the user asked for one accent-derived ramp. --accent-glow itself was removed from :root on 2026-08-17 when .hra-pill-active went monochromatic (--accent → --accent-light), leaving nothing that references it. CSS-only, no JS, no per-user setting; follows theme + accent automatically via var(), nothing to persist. types/api.ts's background_kind/background_value fields and their backend routes were left in place — removing the API contract itself is Epic HRA-36's job — but nothing in the frontend calls them anymore.
+- **The two mix percentages in that gradient (and `.card`'s own matching radial) are `:root` custom
+  properties, not literals baked into the formula** — `--ambient-accent-mix`/`--ambient-dark-mix` for
+  `body::before`, `--card-accent-mix`/`--card-dark-mix` for `.card`. Light theme overrides all four to
+  noticeably higher values than dark theme's: the same 8%/9% accent concentration that reads clearly
+  against a near-black `--bg`/`--card-bg` barely registers against a near-white one, which used to make
+  the light theme's ambient glow and card tint look the same regardless of the chosen accent — fixed by
+  raising the percentages per-theme (`:root[data-theme="light"]`), not by changing the gradient formula
+  itself, which stays identical between themes.
+- **`.hra-runner-playbtn` (the Play/Stop controls above an activity's chart, `ActivityChartSection.tsx`)
+  is themed via `var(--text-primary)`, not a literal `white`** — dark theme's `--text-primary` is
+  near-white (`#e8eaf0`, same look as before the fix), light theme's is near-black (`#1a1d27`), so the
+  icon/border stay legible against `--bg-card` on both themes instead of a near-invisible white-on-
+  light-gray icon on light theme.
+- **`RUNNER_IDLE_COLOR` (`ActivityChartSection.tsx`) is `hrRunnerColor(80)`, not a literal `"white"`** —
+  shown standing at rest (before any hover/play, on mouse-leave, stop, and once autoplay finishes): the
+  same pale pink `hrRunnerColor` already uses for an easy 80bpm effort (`shared.ts`'s `HR_COLOR_STOPS`),
+  so the "at rest" pose reads as the calm end of the runner's own HR-driven color scale rather than an
+  arbitrary neutral — identical in both themes, since it's a fixed RGB value, not a CSS token.
 ## Units (metric/imperial)
 - **`utils/units.ts`** holds a module-level `ResolvedUnitSystem` (`'metric' | 'imperial'`, never `'auto'` — resolution happens in `useAppearance.ts`) plus conversion functions (`kmToMi`, `mToFt`, `kgToLb`, `paceKmToMi`, `kmhToMph`) and unit-label helpers (`distanceUnitLabel()`, `paceUnitLabel()`, `speedUnitLabel()`, `weightUnitLabel()`, `elevationUnitLabel()`). State lives in a plain module variable, **not React context** — the same "global side-channel every component reads at render time" pattern the CSS theme already uses. This works here specifically because unit system only ever changes from the Settings tab, and every other tab is conditionally rendered in `App.tsx` (`{tab === "x" && <XTab/>}`, a real unmount/remount on every switch, not a hide) — so a tab always picks up the latest value the next time it's viewed, without needing a change to propagate into an already-mounted, unrelated tree.
 - **`'auto'` resolves via browser locale**, not a real OS API — there is no equivalent of `prefers-color-scheme` for measurement system. `detectUnitSystemFromLocale()` checks the browser's locale region (`Intl.Locale(navigator.language).maximize().region`, falling back to parsing `navigator.language` directly) against a small imperial-region set (`US`, `LR`, `MM`) — the same heuristic most web apps use for this exact problem. Disclosed as a best-effort guess in the Settings tab UI, not presented as authoritative.
@@ -98,7 +177,49 @@ Client-side pagination via `ui.tsx`'s `Pagination` component (per-page selector,
 ## Overview tab (OverviewTab.tsx, tab label "Overview & Trends")
 Absorbed the former `TrendsTab.tsx` (deleted — its monthly/weekly bar charts were superseded by this section, which is strictly more capable: per-sport, groupable, with pace/HR overlaid). `api.garmin.weekly`/`monthly` client methods were removed too (dead — no remaining caller); the backend `/api/weekly`/`/api/monthly` routes themselves were left in place, not in scope to remove.
 
+**The "compare to" range drives every comparison on this tab** (Hero Ring's outer ring, Total/Running/
+By-sport tooltips, AND each sport's second trend chart below) — one `prevActivitiesQ` fetch, reused for
+all of them, same as before. What changed: this range used to be computed unconditionally inside
+`OverviewTab` (`windowDays`/`prevFrom`/`prevTo`, always exactly "the previous period of equal length");
+it's now `compareFrom`/`compareTo` **props**, normally the live, user-editable pair from `App.tsx`'s
+`useCompareRange` (see the Header section above for the picker UI) — a caller that omits them (tests,
+mainly) still gets the identical default via `defaultCompareRange(from, to)` (`hooks/useCompareRange.ts`),
+computed once and used as the fallback. Because the range is now freely editable and not guaranteed to
+match the current period's length, the Hero Ring's period label dropped its old "vs previous N-day
+period" claim for a plain "vs compare range (from – to)".
+
 "Distance & pace/HR trend" section, one combined bar+line chart **per sport** (running, cycling, etc. each get their own chart — deliberately not mixed, since averaging pace/HR across different sports in one number is meaningless):
+- **Two charts per sport now, stacked vertically** — `SportTrendPair` renders the CURRENT period's chart
+  above the COMPARE period's chart for the same sport, titled `"{Sport} - current"` / `"{Sport} -
+  comparison"` (`ChartCard`'s own `title` prop — previously unused here) via `SportTrendChart`'s new
+  `title` prop. The sport `Badge` that used to render once per `SportTrendChart` now renders once per
+  `SportTrendPair` instead, above both charts (a sport's Badge no longer duplicates per chart). The
+  comparison chart's activities are looked up from a `Map<sport, Activity[]>` built the same
+  memoized way as the current side's `sportsSorted` (`compareBySport`, keyed off a second
+  `api.garmin.activities(compareFrom, compareTo)` query inside `TrendsBySport`) — a sport present in
+  the current period but absent from the compare period simply renders its comparison chart's "too few
+  activities" empty state with a 0 count, not an error.
+- **One shared series-visibility state per sport pair, not two independent ones** — `SportTrendPair`
+  owns the `hidden: Set<string>` state (Distance/Avg pace/Avg HR toggles) and passes it to BOTH
+  `SportTrendChart` instances; only the current chart gets an `onToggle` callback (so only it renders an
+  interactive `ChartPillLegend` — `ChartCard`'s `legend` slot is conditional on `onToggle` being passed).
+  The comparison chart silently mirrors whichever series the current chart's legend shows/hides, per
+  request ("driven by the first one … for distance, avg pace, avg hr") — it has no legend of its own.
+- **Mode (Single/Week/Month) was already one shared toggle across every sport** (`TrendsBySport`'s
+  `groupMode`, below) — extending the "driven by the first chart" idea to two charts per sport needed no
+  change there; both a sport's current and comparison charts already receive the same `mode` prop.
+  Week/Month enable/disable (`modeEnabled`, below) is still computed from the CURRENT period's data
+  only — the compare period has no vote over which modes are offered, only over what its own chart
+  shows once a mode is picked. The old per-sport "too few activities for Single mode" gate moved from
+  `TrendsBySport`'s render loop into `SportTrendPair` (`tooFew()`), applied to EACH side independently —
+  a sparse compare window doesn't block the current chart, and vice versa.
+- **The "Distance" legend chip's color bug**: its swatch/text color used to be the bar's own faint 28%-
+  opacity wash (`color-mix(in srgb, var(--data-pace) 28%, transparent)`) — correct for the bar FILL
+  itself (deliberately muted, see below), wrong reused as the legend chip's TEXT color
+  (`.hra-legend-chip[data-active="true"] { color: var(--legend-color) }`, `index.css`): even in its
+  active state the chip read as low-contrast/disabled. Fixed by giving the "Distance" `ChartPillLegend`
+  item the same solid `PACE_LINE_COLOR` (`var(--data-pace)`) the "Avg pace" chip already used — the bar
+  fill itself is untouched, still the muted wash described below.
 - **Bars = total distance** for that sport, either per individual activity ("Single" mode) or summed per week/month (grouped modes) — a plain bar chart, not a real OHLC candlestick (candles were considered and explicitly rejected in favor of this simpler semantic). Fill is a **muted `--data-pace` volume wash** (a vertical gradient, `color-mix(in srgb, var(--data-pace) 28%, transparent)` at the top fading to `8%` at the base — the SVG `<linearGradient>` stops live in `SportTrendChart` itself, since Recharts gradients have no CSS-class equivalent), not the flat neutral gray this used before (2026-08-16 correction) and not `SPORT_COLOR` — an earlier version colored bars by sport, which could collide with the pace/HR line colors (cycling's `SPORT_COLOR` was literally the same hex as the pace line's old blue; running's green measured ~1.3:1 mutual contrast against it — a line crossing a bar was nearly invisible). The bars intentionally read as **background volume, never as the pace series itself** — that's what the low opacity (28%→8%, and a restrained `activeBar` hover of `40%`) buys, even though the fill is drawn from the same `--data-pace` token the pace line uses at full strength; the two are still visually distinct because of that opacity gap, not because of a different hue. Sport identity still shows via the `Badge` above the chart, which keeps `SPORT_COLOR`.
 - **Lines = avg pace and avg HR** for that sport, one point per bar, connected (`connectNulls`), full-strength `--data-pace`/`--data-hr` at `strokeWidth={2.5}`, small always-visible dots (`dot={{r:2.5}}`) plus a larger `activeDot` on hover, and a subtle per-line glow (`.hra-trend-line-pace`/`.hra-trend-line-hr` in `index.css`, a `drop-shadow` filter class passed via each `<Line>`'s `className` — Recharts forwards `className` straight to the rendered `<path>`). Pace's color (`PACE_LINE_COLOR = "var(--data-pace)"`) intentionally matches `ActivityModal.tsx`'s `METRIC_DEFS.speed.color` exactly — the activity detail view is this app's color "reference" for speed/pace, so this chart reuses it rather than a generic accent, for one consistent color app-wide. HR uses `--data-hr` (was `--accent-red`; same hex).
 - **Hover**: a vertical crosshair (`Tooltip`'s `cursor` prop) plus one combined glassy tooltip (`.hra-chart-tooltip` in `index.css`) reading e.g. "07-24 · 6.5 km · pace 5:12 · HR 158" — a custom `content` render function, not Recharts' default per-series rows, with each value colored to its own series (km neutral/`--text-secondary` now that bars are a muted wash rather than a foreground series; pace `--data-pace`; HR `--data-hr`) and `font-variant-numeric: tabular-nums`.
