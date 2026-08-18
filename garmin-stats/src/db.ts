@@ -191,6 +191,19 @@ export function initSchema(db: DatabaseSync): void {
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
+    -- Named date ranges the user saves for later recall, e.g. re-loading a
+    -- specific "Compare to" window on the Overview & Trends tab without
+    -- re-picking both dates by hand. name is UNIQUE so recall-by-name stays
+    -- unambiguous — a duplicate save is rejected (409), never silently
+    -- overwritten (HRA TBD).
+    CREATE TABLE IF NOT EXISTS date_ranges (
+      id         INTEGER PRIMARY KEY AUTOINCREMENT,
+      name       TEXT    NOT NULL UNIQUE,
+      from_date  TEXT    NOT NULL,
+      to_date    TEXT    NOT NULL,
+      created_at TEXT    DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
     CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
     CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
@@ -362,6 +375,14 @@ export interface BodyMeasurementRow {
   bone_mass_kg: number | null;
   bmi: number | null;
   heart_rate: number | null;
+}
+
+export interface DateRangeRow {
+  id: number;
+  name: string;
+  from_date: string;
+  to_date: string;
+  created_at: string;
 }
 
 export interface WithingsTokenRow {

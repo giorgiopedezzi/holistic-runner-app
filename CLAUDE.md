@@ -90,6 +90,14 @@ fires on every such compound regardless of which git subcommand follows). **Use 
 <cmd>` instead** — same result, doesn't trip the guard, and collapses to one atomic command besides
 (HRA-91).
 
+**Never kill a background job by shell job-control syntax (`kill %1`, `%+`, etc.).** The `%N` job
+number is scoped to the shell session that launched it and is not a reliable handle on a process
+started via a tool's `run_in_background` — it can silently target the wrong process, or none, with
+no error. **Find the exact PID first, then kill that PID** — e.g. `netstat -ano | grep <port>` (or
+`lsof -i :<port>` on non-Windows) to find the listening PID, then `taskkill //PID <pid> //F` (this
+repo runs on Windows) or `kill <pid>`. Same principle as the `git -C` rule above: an explicit,
+unambiguous handle over a syntax that quietly resolves to the wrong target.
+
 ---
 
 ## `Model`, `Planned` and `Actual thinking effort` — what the values commit you to

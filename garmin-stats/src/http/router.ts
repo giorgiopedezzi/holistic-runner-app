@@ -17,6 +17,7 @@ import { createSettingsController } from "../controllers/settings.controller.ts"
 import { createSyncController } from "../controllers/sync.controller.ts";
 import { createIntegrationsController } from "../controllers/integrations.controller.ts";
 import { createDocsController } from "../controllers/docs.controller.ts";
+import { createDateRangesController } from "../controllers/date-ranges.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -26,6 +27,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const sync         = createSyncController(ctx);
   const integrations = createIntegrationsController(ctx);
   const docs         = createDocsController(ctx);
+  const dateRanges   = createDateRangesController(ctx);
   const { port } = ctx;
 
   return async (req, res) => {
@@ -66,6 +68,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements")        return await body.list(req, res, url);
         if (route === "/api/v1/body-measurements/monthly")             return await body.monthly(req, res, url);
         if (route === "/api/v1/body-measurements/correlation")         return await body.correlation(req, res, url);
+        if (route === "/api/v1/date-ranges")               return await dateRanges.list(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
@@ -74,6 +77,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/activities")               return await activities.deleteRange(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
         if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
+        if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.remove(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL
@@ -103,6 +107,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/activities/restore" || route === "/api/v1/activities/purge") return await activities.restorePurge(req, res, url);
         if (route === "/api/v1/body-measurements/restore" || route === "/api/v1/body-measurements/purge") return await body.restorePurge(req, res, url);
         if (route === "/api/v1/settings/background/upload") return await settings.uploadBackground(req, res, url);
+        if (route === "/api/v1/date-ranges")               return await dateRanges.create(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);

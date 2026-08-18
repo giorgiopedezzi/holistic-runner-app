@@ -18,6 +18,7 @@ import { startWithingsCallbackServer } from "./http/withings-callback.ts";
 import { createActivitiesRepo } from "./repositories/activities.repo.ts";
 import { createBodyRepo } from "./repositories/body.repo.ts";
 import { createSettingsRepo } from "./repositories/settings.repo.ts";
+import { createDateRangesRepo } from "./repositories/date-ranges.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -42,6 +43,7 @@ if (!fs.existsSync(backgroundsDir)) fs.mkdirSync(backgroundsDir, { recursive: tr
 const activitiesRepo = createActivitiesRepo(db);
 const bodyRepo       = createBodyRepo(db);
 const settingsRepo   = createSettingsRepo(db);
+const dateRangesRepo = createDateRangesRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -60,7 +62,7 @@ const server = http.createServer(createApiHandler({
   backgroundsDir,
   config,
   db,
-  repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo },
+  repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
     sync: syncService, device: deviceService,
