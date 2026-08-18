@@ -14,10 +14,11 @@ import { PauseFlagShape } from "./PauseFlagShape";
 import { HrRecoveryFlagShape } from "./HrRecoveryFlagShape";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
-import { RunnerPlayButton, type PlayStatus } from "./RunnerPlayButton";
+import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPlayButton";
+import { nearestHr } from "@/domain/pauses";
 
 const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
-const PAUSE_DWELL_MS = 3000;        // hold on a pause row before continuing
+const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
 const AXIS_WIDTH = 42;              // must match the YAxis `width` props below
 const MARGIN_LEFT = 5;
 const MARGIN_RIGHT = 5;
@@ -83,8 +84,25 @@ export function ActivityChartSection({
     return typeof hr === "number" ? hrRunnerColor(hr) : "var(--data-hr)";
   }
 
+  // HR right before stopping / right after resuming, for a pause break row
+  // — `pauseAfterIndex` is the displayTrack index the pause immediately
+  // follows (set by buildChartData), so this walks outward from it exactly
+  // like domain/pauses.ts's own computeHrRecovery does for the standalone
+  // HR-recovery flags, just resolved on demand for whichever pause row is
+  // currently shown instead of precomputed for all of them.
+  function pauseHrAt(row: ChartRow): { before: number | null; after: number | null } {
+    if (row.pauseAfterIndex == null) return { before: null, after: null };
+    return {
+      before: nearestHr(displayTrack, row.pauseAfterIndex, -1),
+      after: nearestHr(displayTrack, row.pauseAfterIndex + 1, 1),
+    };
+  }
+
   const [playStatus, setPlayStatus] = useState<PlayStatus>("idle");
 
+  // Hover is simply off while autoplay is running — the two drive the same
+  // display and fighting over it (whichever wins on a given frame) reads as
+  // broken, not helpful.
   function handleChartMouseMove(state: { activeCoordinate?: { x: number; y: number }; activeTooltipIndex?: number | string | null }) {
     if (playStatus === "playing" || !state?.activeCoordinate) return;
     const rawIdx = state.activeTooltipIndex;
@@ -92,7 +110,7 @@ export function ActivityChartSection({
     const row = typeof idx === "number" && !Number.isNaN(idx) ? chartData[idx] : undefined;
     if (!row) return;
     const cx = state.activeCoordinate.x;
-    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec != null);
+    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null);
     runnerReadoutRef.current?.show(row);
   }
   function handleChartMouseLeave() {
@@ -102,10 +120,12 @@ export function ActivityChartSection({
   }
 
   // White, standing — shown at rest (before any hover/play, on mouse-leave,
-  // and once autoplay finishes) rather than disappearing entirely, so the
-  // chart never reads as "broken" between interactions.
+  // stop, and once autoplay finishes) rather than disappearing entirely, so
+  // the chart never reads as "broken" between interactions. `0` as the
+  // pause-duration argument reads as a short pause below LONG_PAUSE_SEC, so
+  // RunnerIcon renders its plain standing pose (not bent-over).
   function showIdleStand(x: number) {
-    runnerIconRef.current?.show(pixelX(x), RUNNER_IDLE_COLOR, true);
+    runnerIconRef.current?.show(pixelX(x), RUNNER_IDLE_COLOR, 0);
   }
 
   // ── Autoplay ──────────────────────────────────────────────────────────
@@ -157,7 +177,8 @@ export function ActivityChartSection({
   }
 
   function showRow(row: ChartRow, dwelling: boolean) {
-    runnerIconRef.current?.show(pixelX(row.x), rowColor(row), row.pauseDurationSec != null, dwelling);
+    const cx = pixelX(row.x);
+    runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, dwelling);
     runnerReadoutRef.current?.show(row);
   }
 
@@ -220,6 +241,22 @@ export function ActivityChartSection({
     lastTsRef.current = null;
     setPlayStatus("playing");
     rafRef.current = requestAnimationFrame(step);
+  }
+
+  // Enabled whenever a session is actually in progress — "playing" or
+  // "paused" both count (a paused run is still a session to stop out of);
+  // disabled at "idle"/"finished", where there's nothing running to stop.
+  const stopEnabled = playStatus === "playing" || playStatus === "paused";
+  function handleStopClick() {
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    lastTsRef.current = null;
+    dwellUntilRef.current = null;
+    lastDwellIdxRef.current = null;
+    xRef.current = playCtxRef.current.chartData[0]?.x ?? 0;
+    showIdleStand(xRef.current);
+    runnerReadoutRef.current?.hide();
+    setPlayStatus("idle");
   }
 
   return (
@@ -307,14 +344,16 @@ export function ActivityChartSection({
           RunnerIcon's `cx` — a pixel offset from Recharts' own
           activeCoordinate (mouse) or the replicated axis-layout math
           (autoplay) — lines up between the two without extra translation.
-          The play/pause/replay control shares this row, pinned to the
-          left, while the runner itself roams the rest of the row's width. */}
-      <div style={{ position: "relative", height: 24, marginBottom: 4, display: "flex", alignItems: "center" }}>
+          The play/pause/replay + stop controls share this row, pinned to
+          the left, while the runner itself roams the rest of the row's
+          width. */}
+      <div style={{ position: "relative", height: 24, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
         <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
+        <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
         <RunnerIcon ref={runnerIconRef} />
       </div>
       <div ref={plotRef} style={{ position: "relative" }}>
-      <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} />
+      <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
       <ResponsiveContainer width="100%" height={220}>
         {/* top:16 gives the pause-flag pill (a 14px-tall shape
             centered exactly on the y=1 point at the very top of

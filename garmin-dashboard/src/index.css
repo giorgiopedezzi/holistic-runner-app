@@ -780,15 +780,31 @@ input:focus, select:focus { border-color: var(--accent); }
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 6px rgba(0, 0, 0, 0.5);
 }
 
-/* Runner autoplay — parked on a pause for its 3s dwell (ActivityChartSection
-   step()/RunnerIcon) fades the icon in and out to read as "resting" rather
-   than a frozen glitch. Pure CSS so the fade costs nothing on top of the
-   already-cheap imperative position updates. */
+/* Runner autoplay — parked on a long pause (RunnerIcon's "bent" pose, >= a
+   minute) for its dwell (ActivityChartSection step()) fades the icon in and
+   out to read as "resting" rather than a frozen glitch. Pure CSS so the
+   fade costs nothing on top of the already-cheap imperative position
+   updates. */
 @keyframes hra-runner-dwell-fade {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.3; }
 }
 .hra-runner-dwell { animation: hra-runner-dwell-fade 1.5s ease-in-out infinite; }
+
+/* "stand" pose (a pause under a minute) hops in place instead — a short
+   pause reads as still-moving-in-place, not an actual rest, so it gets
+   motion rather than the long-pause fade above. The base translate(-50%,
+   -50%) (RunnerIcon's own inline style, for centering on `cx`) is repeated
+   in each keyframe rather than relied on from the element's own style
+   attribute — a running CSS animation overrides an animated property
+   wherever it's declared, but only within the animation's own keyframes,
+   so the centering offset has to be part of them, not assumed carried over. */
+@keyframes hra-runner-hop {
+  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
+  45%      { transform: translate(-50%, -50%) translateY(-5px); }
+  70%      { transform: translate(-50%, -50%) translateY(0); }
+}
+.hra-runner-hop { animation: hra-runner-hop 0.6s ease-in-out infinite; }
 
 /* Runner autoplay control (RunnerPlayButton) — a single round icon button,
    YouTube-style (one control, its icon swaps for play/pause/replay) sharing
@@ -802,6 +818,8 @@ input:focus, select:focus { border-color: var(--accent); }
   color: white; cursor: pointer; padding: 0;
 }
 .hra-runner-playbtn:hover { background: color-mix(in srgb, white 14%, var(--bg-card)); }
+.hra-runner-playbtn:disabled { opacity: 0.35; cursor: not-allowed; }
+.hra-runner-playbtn:disabled:hover { background: var(--bg-card); }
 
 .hra-trend-line-pace { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-pace) 55%, transparent)); }
 .hra-trend-line-hr   { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-hr) 55%, transparent)); }

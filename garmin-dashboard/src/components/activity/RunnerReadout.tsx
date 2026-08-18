@@ -16,6 +16,11 @@ interface RunnerReadoutProps {
   xMode: XMode;
   metrics: MetricKey[];
   speedMode: SpeedMode;
+  // Resolves a pause break row's HR just before stopping / just after
+  // resuming — a function rather than pre-baked fields on ChartRow, since
+  // that lookup needs displayTrack (not available to this component) and is
+  // only ever needed for whichever single pause row is currently shown.
+  pauseHr: (row: ChartRow) => { before: number | null; after: number | null };
 }
 
 // Fixed position — horizontally centered, just above the chart's bottom
@@ -28,7 +33,7 @@ interface RunnerReadoutProps {
 // Same isolated-local-state pattern as RunnerIcon: a hover/playback update
 // only re-renders this component.
 export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>(function RunnerReadout(
-  { xMode, metrics, speedMode }, ref,
+  { xMode, metrics, speedMode, pauseHr }, ref,
 ) {
   const [row, setRow] = useState<ChartRow | null>(null);
 
@@ -41,7 +46,21 @@ export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>
 
   let content: React.ReactNode;
   if (row.pauseDurationSec != null) {
-    content = <>⏸ Paused {fmtPauseDuration(row.pauseDurationSec)}</>;
+    const { before, after } = pauseHr(row);
+    const delta = before != null && after != null ? after - before : null;
+    content = (
+      <>
+        ⏸ Paused {fmtPauseDuration(row.pauseDurationSec)}
+        {before != null && after != null && (
+          <>
+            <span className="hra-chart-tooltip-sep">·</span>
+            <span className="hra-chart-tooltip-hr">
+              HR {Math.round(before)}→{Math.round(after)} ({delta! >= 0 ? "+" : ""}{Math.round(delta!)})
+            </span>
+          </>
+        )}
+      </>
+    );
   } else if (row.realX == null) {
     return null;
   } else {
