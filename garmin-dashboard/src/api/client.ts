@@ -9,7 +9,7 @@ import type {
   DeviceStatus, WithingsStatus, StravaStatus, Settings, Theme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
-  ActivityType, Paginated,
+  ActivityType, RaceActivity, SavedDateRange, DateFormat, Paginated,
 } from "@/types/api";
 
 // Sentinel "give me everything" limit for consumers that need the full set
@@ -123,9 +123,18 @@ export const api = {
     // see garmin-stats' activities.controller.ts setType.
     setType: (id: number, activityTypeId: number, name: string | null) =>
       request<Activity>(`/api/v1/activities/${id}/type`, "PUT", undefined, { activity_type_id: activityTypeId, name }),
+    races: async () => (await request<Paginated<RaceActivity>>("/api/v1/activities/races", "GET", { limit: ALL })).data,
   },
   activityTypes: {
     list: async () => (await request<Paginated<ActivityType>>("/api/v1/activity-types", "GET", { limit: ALL })).data,
+  },
+  dateRanges: {
+    list:   async () => (await request<Paginated<SavedDateRange>>("/api/v1/date-ranges", "GET", { limit: ALL })).data,
+    create: (name: string, from: string, to: string, activityId: number | null) =>
+      request<SavedDateRange>("/api/v1/date-ranges", "POST", undefined, { name, from, to, activity_id: activityId }),
+    update: (id: number, name: string, from: string, to: string, activityId: number | null) =>
+      request<SavedDateRange>(`/api/v1/date-ranges/${id}`, "PUT", undefined, { name, from, to, activity_id: activityId }),
+    remove: (id: number) => request<null>(`/api/v1/date-ranges/${id}`, "DELETE"),
   },
   body: {
     range:       ()                          => request<DateRange>("/api/v1/body-measurements/range"),
@@ -166,6 +175,7 @@ export const api = {
     setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PUT", undefined, { unit_system: unitSystem }),
     setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PUT", undefined, { activity_detail_view: view }),
     setAccentColor: (accent: AccentColor) => request<Settings>("/api/v1/settings/accent", "PUT", undefined, { accent_color: accent }),
+    setDateFormat: (format: DateFormat) => request<Settings>("/api/v1/settings/date-format", "PUT", undefined, { date_format: format }),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {

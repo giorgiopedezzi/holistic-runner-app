@@ -70,6 +70,34 @@ export interface ActivityType {
   min_distance_m: number;
 }
 
+// A race-type activity (activity_type_id != Training), as offered on the
+// "link a race" dropdown when saving a date range — see
+// components/manage/DateRangesSection.tsx.
+export interface RaceActivity {
+  id:                number;
+  date_only:         string;
+  activity_type_id:  number;
+  activity_name:     string | null;
+  distance_m:        number | null;
+}
+
+// A named, saved date range (Data & Sync tab) — mainly for comparing
+// training blocks (e.g. week 2 vs week 3 of marathon prep). Optionally
+// linked to the race it led up to (LEFT JOIN'd server-side, so the race_*
+// fields are all null when activity_id is null).
+export interface SavedDateRange {
+  id:                     number;
+  name:                   string;
+  from_date:              string;
+  to_date:                string;
+  activity_id:            number | null;
+  created_at:             string;
+  race_date_only:         string | null;
+  race_activity_name:     string | null;
+  race_distance_m:        number | null;
+  race_activity_type_id:  number | null;
+}
+
 export interface SportSummary {
   sport:              string;
   total_activities:   number;
@@ -193,6 +221,19 @@ export type ActivityDetailView = "accordion" | "modal";
 export type AccentColor = "teal" | "violet" | "magenta" | "amber" | "sky" | "lime";
 export const ACCENT_COLOR_NAMES: AccentColor[] = ["teal", "violet", "magenta", "amber", "sky", "lime"];
 
+// How every displayed date is formatted app-wide (utils/fmt.ts's fmtDate) —
+// style (numeric vs literal) × region (uk vs us). See utils/dateFormat.ts for
+// the module-scope resolved value + the region helper Overview & Trends'
+// chart axes read (always numeric, only the uk/us day-month order varies).
+export type DateFormat = "numeric_uk" | "numeric_us" | "literal_uk" | "literal_us";
+export const DATE_FORMAT_OPTIONS: { value: DateFormat; label: string; example: string }[] = [
+  { value: "numeric_uk", label: "Numeric (UK)", example: "23/03/2026" },
+  { value: "numeric_us", label: "Numeric (US)", example: "03/23/2026" },
+  { value: "literal_uk", label: "Literal (UK)",  example: "23 Mar 2026" },
+  { value: "literal_us", label: "Literal (US)",  example: "Mar 23, 2026" },
+];
+export const DATE_FORMAT_NAMES: DateFormat[] = DATE_FORMAT_OPTIONS.map(o => o.value);
+
 export interface Settings {
   outlier_speed_delta_per_sec:   number;
   outlier_cadence_delta_per_sec: number;
@@ -206,6 +247,7 @@ export interface Settings {
   min_trend_group_size: number;
   activity_detail_view: ActivityDetailView;
   accent_color: AccentColor;
+  date_format: DateFormat;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

@@ -25,6 +25,9 @@ const DETAIL_VIEWS = ["accordion", "modal"];
 // Curated selectable-accent set (HRA-95) — see garmin-dashboard's
 // utils/accent.ts for the fixed hex + WCAG-verified --on-accent per name.
 const ACCENT_COLORS = ["teal", "violet", "magenta", "amber", "sky", "lime"];
+// Style (numeric/literal) × region (uk/us) — see db.ts's date_format column
+// comment and garmin-dashboard's utils/dateFormat.ts for what each renders as.
+const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };
@@ -118,6 +121,15 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
+  const updateDateFormat: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    if (!body.date_format || !DATE_FORMATS.includes(body.date_format)) {
+      throw unprocessable(`date_format must be one of: ${DATE_FORMATS.join(", ")}`);
+    }
+    repo.updateDateFormat({ $date_format: body.date_format });
+    return send(res, repo.get());
+  };
+
   const backgroundImage: Handler = (_req, res) => {
     const row = repo.get() as unknown as SettingsRow;
     if (row.background_kind !== "custom" || !row.background_value) throw notFound("No custom background set.");
@@ -152,5 +164,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, backgroundImage, uploadBackground };
 }

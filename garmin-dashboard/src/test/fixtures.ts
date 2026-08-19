@@ -22,6 +22,7 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   min_trend_group_size: 5,
   activity_detail_view: "accordion",
   accent_color: "sky",
+  date_format: "literal_uk",
   ...overrides,
 });
 

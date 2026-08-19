@@ -118,15 +118,18 @@ function AppShell() {
         )}
 
         {/* Date-range controls — left-aligned, above the tab content (moved
-            out of the header). */}
-        {showDateRange && (
+            out of the header). Overview & Trends renders its own DateRangeBar
+            internally now (wrapped, with the Summary card, in one sticky
+            header — see OverviewTab.tsx), so it's excluded here to avoid a
+            duplicate bar. */}
+        {showDateRange && tab !== "overview" && (
           <div style={{ marginBottom: 20 }}>
-            <DateRangeBar {...range} compare={tab === "overview" ? compareRange : undefined} />
+            <DateRangeBar {...range} />
           </div>
         )}
 
         {tab === "overview"   && (
-          <OverviewTab from={range.from} to={range.to} compareFrom={compareRange.from} compareTo={compareRange.to} />
+          <OverviewTab range={range} compareRange={compareRange} />
         )}
         {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
         {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}

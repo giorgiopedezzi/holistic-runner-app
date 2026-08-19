@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor } from "@/types/api";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
+import { setDateFormatSystem } from "@/utils/dateFormat";
 import { ACCENT_PALETTE } from "@/utils/accent";
 import { useSettings } from "@/hooks/useSettings";
 
@@ -43,6 +44,7 @@ function applyToDocument(settings: Settings) {
   document.documentElement.style.setProperty("--on-accent", accent.onAccent);
 
   setUnitSystem(resolveUnitSystem(settings.unit_system));
+  setDateFormatSystem(settings.date_format);
 }
 
 // Explicit contract (HRA-77) — state / actions / meta, composed by
@@ -65,6 +67,10 @@ export interface AppearanceActions {
   // structurally satisfying this interface unmodified. The real hook below
   // always provides it.
   setAccentColor?:  (accent: AccentColor) => Promise<void>;
+  // Optional for the same reason setAccentColor is — keeps the pre-existing
+  // hand-written AppearanceApi stub (SettingsTab.pickers.test.tsx) valid
+  // without modification.
+  setDateFormat?:   (format: DateFormat) => Promise<void>;
 }
 export interface AppearanceMeta {
   resolvedTheme:       Theme | null;
@@ -126,11 +132,17 @@ export function useAppearance(): AppearanceApi {
     update(updated);
   }, [update]);
 
+  const setDateFormat = useCallback(async (format: DateFormat) => {
+    const updated = await api.settings.setDateFormat(format);
+    update(updated);
+  }, [update]);
+
   return {
     settings,
     setTheme,
     setUnits,
     setAccentColor,
+    setDateFormat,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
   };

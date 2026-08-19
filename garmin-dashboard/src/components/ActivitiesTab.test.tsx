@@ -8,6 +8,7 @@ import { ActivitiesTab } from "./ActivitiesTab";
 import { installFetch, problem, paginated } from "@/test/api-stub";
 import { activity, dateRange, settings } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
+import { fmtDate } from "@/utils/fmt";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -23,7 +24,7 @@ describe("ActivitiesTab", () => {
     });
     render(<ActivitiesTab from="2026-07-15" to="2026-08-14" />);
 
-    expect(await screen.findByText("2026-08-01")).toBeInTheDocument();
+    expect(await screen.findByText(fmtDate("2026-08-01"))).toBeInTheDocument();
     expect(screen.getByText("10.00 km")).toBeInTheDocument();
     // Pagination renders above and below the list, so the total appears twice.
     expect(screen.getAllByText(/1 total/).length).toBeGreaterThan(0);

@@ -1,5 +1,6 @@
 import type { DateRange } from "@/types/api";
 import { Empty } from "./Empty";
+import { fmtDate } from "@/utils/fmt";
 
 // An empty-range result reads very differently depending on whether there's
 // no data anywhere yet (first run, nothing synced) vs. real data exists but
@@ -19,6 +20,6 @@ export function RangeEmpty({ range, from, to, entityLabel }: RangeEmptyProps) {
     return <Empty message={`No ${entityLabel} yet — sync some data from the Data & Sync tab.`} />;
   }
   return (
-    <Empty message={`No ${entityLabel} in the selected range (${from} to ${to}). Data available from ${range.min_date} to ${range.max_date}.`} />
+    <Empty message={`No ${entityLabel} in the selected range (${fmtDate(from)} to ${fmtDate(to)}). Data available from ${fmtDate(range.min_date)} to ${fmtDate(range.max_date)}.`} />
   );
 }

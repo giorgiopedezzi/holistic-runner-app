@@ -6,6 +6,8 @@
  * pace-per-100m scoping, mean-centered chart domains).
  */
 import type { Activity } from "@/types/api";
+import { fmtDateChart } from "@/utils/fmt";
+import { daysBetween } from "@/utils/date";
 
 export type GroupMode = "single" | "week" | "month";
 
@@ -53,11 +55,110 @@ export function buildTrendPoints(activities: Activity[], mode: GroupMode): Trend
     const avgPace = paces.length ? paces.reduce((s, v) => s + v, 0) / paces.length : null;
     const avgHr = hrs.length ? hrs.reduce((s, v) => s + v, 0) / hrs.length : null;
     const sortDate = acts.reduce((m, a) => (a.date_only < m ? a.date_only : m), acts[0].date_only);
-    const label = mode === "month" ? key : mode === "week" ? sortDate.slice(5) : sortDate.slice(5);
+    // Numeric-only, uk/us day-month order per the Settings tab's date-format
+    // preference (fmtDateChart) — was a hardcoded "MM-DD" slice (sortDate.slice(5))
+    // regardless of that setting; "month" mode's "YYYY-MM" key has no day
+    // component, so there's no ordering ambiguity to fix there.
+    const label = mode === "month" ? key : fmtDateChart(sortDate);
     points.push({ key, label, sortDate, totalKm, avgPace, avgHr, count: acts.length });
   }
   points.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
   return points;
+}
+
+// ── Overview & Trends' overlapped current-vs-compare chart ─────────────────
+// One shared x-axis "slot" pairing a current-period TrendPoint with a
+// compare-period one — works identically for Single (one point per
+// activity), Week, and Month (buildTrendPoints already reduces any mode to
+// this same shape, so the pairing logic below never needs to know which
+// mode produced its input). Two alignment strategies:
+export type AlignMode = "index" | "time";
+
+export interface OverlapPoint {
+  slot: number;
+  currentLabel: string | null;
+  compareLabel: string | null;
+  currentKm: number | null;
+  currentPace: number | null;
+  currentHr: number | null;
+  compareKm: number | null;
+  comparePace: number | null;
+  compareHr: number | null;
+}
+
+function emptyOverlapPoint(slot: number): OverlapPoint {
+  return {
+    slot, currentLabel: null, compareLabel: null,
+    currentKm: null, currentPace: null, currentHr: null,
+    compareKm: null, comparePace: null, compareHr: null,
+  };
+}
+
+function fillSide(point: OverlapPoint, p: TrendPoint, side: "current" | "compare"): void {
+  if (side === "current") {
+    point.currentLabel = p.label; point.currentKm = p.totalKm; point.currentPace = p.avgPace; point.currentHr = p.avgHr;
+  } else {
+    point.compareLabel = p.label; point.compareKm = p.totalKm; point.comparePace = p.avgPace; point.compareHr = p.avgHr;
+  }
+}
+
+// "index": positional 1:1 pairing in chronological order — the longer
+// side's leftover points each get their own trailing, half-filled slot.
+// The only alignment Week/Month use (each bucket is already a period-
+// relative slot — "week 2 of the period" — so position IS "distance in
+// time" there; the ambiguity "time" mode resolves only arises at
+// per-activity granularity, i.e. Single mode).
+function buildOverlapByIndex(cur: TrendPoint[], cmp: TrendPoint[]): OverlapPoint[] {
+  const len = Math.max(cur.length, cmp.length);
+  const points: OverlapPoint[] = [];
+  for (let i = 0; i < len; i++) {
+    const point = emptyOverlapPoint(i);
+    if (cur[i]) fillSide(point, cur[i], "current");
+    if (cmp[i]) fillSide(point, cmp[i], "compare");
+    points.push(point);
+  }
+  return points;
+}
+
+// "time": a sorted merge of both periods' points by "days since that
+// period's own start" (using each point's own `sortDate`) — an EXACT
+// day-offset match becomes one shared slot; everything else gets its own
+// slot, interleaved in chronological day-offset order (a classic
+// sorted-merge, not nearest-neighbor matching). Verified against the spec
+// example: current days [0,2,5,9] vs compare days [0,3,8] → 6 slots, only
+// the first (day 0) overlapping.
+function buildOverlapByTime(cur: TrendPoint[], cmp: TrendPoint[], currentFrom: string, compareFrom: string): OverlapPoint[] {
+  const curOffsets = cur.map(p => daysBetween(currentFrom, p.sortDate));
+  const cmpOffsets = cmp.map(p => daysBetween(compareFrom, p.sortDate));
+  const points: OverlapPoint[] = [];
+  let i = 0, j = 0;
+  while (i < cur.length || j < cmp.length) {
+    const ci = i < cur.length ? curOffsets[i] : null;
+    const cj = j < cmp.length ? cmpOffsets[j] : null;
+    const point = emptyOverlapPoint(points.length);
+    if (ci != null && cj != null && ci === cj) {
+      fillSide(point, cur[i], "current"); fillSide(point, cmp[j], "compare"); i++; j++;
+    } else if (cj == null || (ci != null && ci < cj)) {
+      fillSide(point, cur[i], "current"); i++;
+    } else {
+      fillSide(point, cmp[j], "compare"); j++;
+    }
+    points.push(point);
+  }
+  return points;
+}
+
+// Both point arrays are sorted chronologically first (buildTrendPoints
+// already sorts, but this makes the function correct regardless of caller
+// order too, which matters for "time" mode's merge in particular).
+export function buildOverlapPoints(
+  currentPoints: TrendPoint[], comparePoints: TrendPoint[],
+  currentFrom: string, compareFrom: string,
+  mode: AlignMode,
+): OverlapPoint[] {
+  const cur = [...currentPoints].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+  const cmp = [...comparePoints].sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+  return mode === "index" ? buildOverlapByIndex(cur, cmp) : buildOverlapByTime(cur, cmp, currentFrom, compareFrom);
 }
 
 // Mean-centered domain, same "own real scale, aligned at the mean" pattern

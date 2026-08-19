@@ -3,7 +3,7 @@ import type { CSSProperties } from "react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, BodyMeasurement } from "@/types/api";
-import { fmtKm, fmtWeight } from "@/utils/fmt";
+import { fmtKm, fmtWeight, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 
 // ── Delete section ─────────────────────────────────────────────────────────
@@ -129,7 +129,7 @@ export function DeleteSection() {
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No activities in this range.</div>
           ) : activityPreview.map(a => (
             <div key={a.id} style={{ fontSize: 12, padding: "3px 0", color: "var(--text-secondary)" }}>
-              {a.date_only} — {a.sport ?? "other"} — {fmtKm(a.distance_m)} — {a.source ?? "garmin"}
+              {fmtDate(a.date_only)} — {a.sport ?? "other"} — {fmtKm(a.distance_m)} — {a.source ?? "garmin"}
             </div>
           ))}
         </div>
@@ -143,7 +143,7 @@ export function DeleteSection() {
             <div style={{ fontSize: 12, color: "var(--text-muted)" }}>No measurements in this range.</div>
           ) : bodyPreview.map((m, i) => (
             <div key={i} style={{ fontSize: 12, padding: "3px 0", color: "var(--text-secondary)" }}>
-              {m.date_only} — {fmtWeight(m.weight_kg)}
+              {fmtDate(m.date_only)} — {fmtWeight(m.weight_kg)}
             </div>
           ))}
         </div>

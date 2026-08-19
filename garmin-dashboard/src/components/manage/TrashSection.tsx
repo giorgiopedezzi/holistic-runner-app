@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/api/client";
 import { Card } from "@/components/ui";
 import type { TrashedActivity, TrashedBodyMeasurement } from "@/types/api";
-import { fmtKm, fmtWeight } from "@/utils/fmt";
+import { fmtKm, fmtWeight, fmtDate } from "@/utils/fmt";
 import { TrashList } from "./TrashList";
 
 export function TrashSection() {
@@ -48,7 +48,7 @@ export function TrashSection() {
         items={activities}
         loading={activitiesLoading}
         error={activitiesError}
-        renderRow={a => `${a.date_only} — ${a.sport ?? "other"} — ${a.distance_m != null ? fmtKm(a.distance_m) : "—"} — ${a.source}`}
+        renderRow={a => `${fmtDate(a.date_only)} — ${a.sport ?? "other"} — ${a.distance_m != null ? fmtKm(a.distance_m) : "—"} — ${a.source}`}
         onRestore={async ids => { await api.garmin.restore(ids); refreshActivities(); }}
         onPurge={async ids => { await api.garmin.purge(ids); refreshActivities(); }}
       />
@@ -57,7 +57,7 @@ export function TrashSection() {
         items={measurements}
         loading={measurementsLoading}
         error={measurementsError}
-        renderRow={m => `${m.date_only} — ${m.weight_kg != null ? fmtWeight(m.weight_kg) : "—"}`}
+        renderRow={m => `${fmtDate(m.date_only)} — ${m.weight_kg != null ? fmtWeight(m.weight_kg) : "—"}`}
         onRestore={async ids => { await api.body.restore(ids); refreshMeasurements(); }}
         onPurge={async ids => { await api.body.purge(ids); refreshMeasurements(); }}
       />

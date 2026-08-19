@@ -17,6 +17,7 @@ import {
   deviceStatus, withingsStatus, stravaStatus,
 } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
+import { fmtDate } from "@/utils/fmt";
 
 function appRoutes(): Routes {
   return {
@@ -50,7 +51,7 @@ describe("settings — single fetch across the app (HRA-76)", () => {
     expect(await screen.findByText("Total")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Activities" }));
-    expect(await screen.findByText("2026-08-01")).toBeInTheDocument();
+    expect(await screen.findByText(fmtDate("2026-08-01"))).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Body" }));
     expect(await screen.findByText(/Latest measurement/)).toBeInTheDocument();

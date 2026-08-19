@@ -39,7 +39,10 @@ describe("SettingsTab save flows", () => {
     });
     render(<SettingsTab appearance={fakeAppearance()} />);
 
-    // Trend card is the first number field (outlier fields follow it).
+    // Sections are accordion cards now (collapsed by default) — expand
+    // "Overview & Trends" before its fields exist in the DOM.
+    fireEvent.click(await screen.findByRole("button", { name: /Overview & Trends/ }));
+
     const trendInput = (await screen.findAllByRole("spinbutton"))[0];
     fireEvent.change(trendInput, { target: { value: "7" } });
 
@@ -62,9 +65,12 @@ describe("SettingsTab save flows", () => {
     });
     render(<SettingsTab appearance={fakeAppearance()} />);
 
+    // Single-expand accordion: opening "Outlier detection" is enough — its
+    // own fields are then the only spinbuttons in the DOM.
+    fireEvent.click(await screen.findByRole("button", { name: /Outlier detection/ }));
+
     const inputs = await screen.findAllByRole("spinbutton");
-    // Outlier "max speed change" is the 2nd number field (after the trend one).
-    fireEvent.change(inputs[1], { target: { value: "4.5" } });
+    fireEvent.change(inputs[0], { target: { value: "4.5" } });
 
     const saveBtn = screen.getAllByRole("button", { name: "Save" }).find((b) => !(b as HTMLButtonElement).disabled)!;
     fireEvent.click(saveBtn);
@@ -84,6 +90,7 @@ describe("SettingsTab save flows", () => {
     });
     render(<SettingsTab appearance={fakeAppearance()} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /Activity details/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Popup" }));
 
     await waitFor(() =>
@@ -99,6 +106,7 @@ describe("SettingsTab save flows", () => {
     const appearance = fakeAppearance();
     render(<SettingsTab appearance={appearance} />);
 
+    fireEvent.click(await screen.findByRole("button", { name: /^Units/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Imperial (mi, lb)" }));
     expect(appearance.setUnits).toHaveBeenCalledWith("imperial");
   });

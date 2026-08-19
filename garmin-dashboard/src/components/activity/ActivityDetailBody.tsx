@@ -6,7 +6,7 @@ import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components
 import { ClassificationCard } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
 import { SPORT_COLOR, type Activity, type TrackPoint } from "@/types/api";
-import { fmtDuration, fmtKm, fmtElevation } from "@/utils/fmt";
+import { fmtDuration, fmtKm, fmtElevation, fmtDate } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
 import { detectPauses, computeHrRecovery } from "@/domain/pauses";
 import {
@@ -171,7 +171,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           {activity && (
             <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[activity.sport ?? "other"] ?? "#888"} />
           )}
-          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{activity?.date_only}</span>
+          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
             <span style={{ fontSize: 11, color: "var(--text-muted)" }}>via {activity.source}</span>
           )}

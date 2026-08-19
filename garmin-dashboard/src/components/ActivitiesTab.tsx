@@ -2,11 +2,9 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
-import { Badge, ErrorBanner, LoadingSpinner, Pagination, RangeEmpty } from "@/components/ui";
+import { ErrorBanner, LoadingSpinner, Pagination, RangeEmpty } from "@/components/ui";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
-import { SPORT_COLOR } from "@/types/api";
-import { fmtPace, fmtDuration, fmtKm } from "@/utils/fmt";
-import { distanceUnitLabel } from "@/utils/units";
+import { ActivityRow } from "@/components/activity/ActivityRow";
 
 interface Props { from: string; to: string; }
 
@@ -67,47 +65,23 @@ export function ActivitiesTab({ from, to }: Props) {
 
       <div style={{ display: "grid", gap: 6, marginTop: 14 }}>
         {pageItems.map(a => {
-          const color = SPORT_COLOR[a.sport ?? "other"] ?? "#888";
           const isExpanded = detailView === "accordion" && expandedId === a.id;
           return (
-            <div key={a.id}>
-              <button
-                className="card"
-                onClick={() => detailView === "accordion"
-                  ? setExpandedId(id => id === a.id ? null : a.id)
-                  : setModalId(a.id)}
-                style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: "12px 14px",
-                  borderRadius: isExpanded ? "16px 16px 0 0" : "16px", textAlign: "left", fontSize: 14,
-                  color: "var(--text-primary)", cursor: "pointer", width: "100%",
-                }}
-              >
-                <span style={{ color: "var(--text-muted)", fontSize: 12, minWidth: 86 }}>
-                  {a.date_only}
-                </span>
-                <Badge label={a.sport ?? "other"} color={color} />
-                {a.activity_name && (
-                  <span style={{ fontStyle: "italic", color: "var(--text-secondary)", fontSize: 13 }}>{a.activity_name}</span>
-                )}
-                <span style={{ flex: 1, fontWeight: 600 }}>{fmtKm(a.distance_m)}</span>
-                <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>{fmtDuration(a.duration_sec)}</span>
-                {a.avg_hr         && <span style={{ color: "var(--accent-red)",   fontSize: 13 }}>♥ {a.avg_hr}</span>}
-                {a.avg_pace_minkm && <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
-                <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{detailView === "accordion" ? (isExpanded ? "▲" : "▼") : "→"}</span>
-              </button>
-              {isExpanded && (
-                <div className="card" style={{
-                  borderTop: "none",
-                  borderRadius: "0 0 16px 16px", padding: "16px 14px",
-                }}>
-                  <ActivityDetailBody
-                    activityId={a.id}
-                    onDelete={() => { setExpandedId(null); refetch(); }}
-                  />
-                </div>
-              )}
-            </div>
+            <ActivityRow
+              key={a.id}
+              activity={a}
+              expanded={isExpanded}
+              expandIndicator={detailView}
+              onClick={() => detailView === "accordion"
+                ? setExpandedId(id => id === a.id ? null : a.id)
+                : setModalId(a.id)}
+              expandedContent={
+                <ActivityDetailBody
+                  activityId={a.id}
+                  onDelete={() => { setExpandedId(null); refetch(); }}
+                />
+              }
+            />
           );
         })}
       </div>

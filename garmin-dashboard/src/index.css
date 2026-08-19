@@ -17,6 +17,12 @@
    NOT re-validated per theme here — on light themes they still render, just
    without a fresh contrast pass. */
 :root {
+  /* .hra-header's own rendered height (10px+10px padding + 28px row) — the
+     `top` offset .hra-sticky-summary (below) needs so it sits flush under
+     the already-sticky header instead of overlapping it. Kept as one named
+     value so the two stay in sync if the header's own sizing ever changes. */
+  --header-height:  48px;
+
   --bg:             #0b0d12;
   --bg-surface:     #14171f;
   --bg-card:        #191d28;
@@ -441,6 +447,24 @@ body {
   color: var(--accent);
 }
 
+/* Boolean on/off switch (DateRangeBar's "Compare" toggle) — a plain <button
+   role="switch">, not @radix-ui/react-switch (not a project dependency;
+   this control needs no more than checked/onCheckedChange, which a styled
+   button already gives for free). */
+.hra-switch {
+  position: relative; width: 34px; height: 20px; border-radius: 999px;
+  border: 1px solid var(--border-strong); background: var(--bg-card);
+  cursor: pointer; padding: 0; flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hra-switch[data-checked="true"] { background: var(--accent); border-color: var(--accent); }
+.hra-switch:disabled { opacity: 0.4; cursor: not-allowed; }
+.hra-switch-thumb {
+  position: absolute; top: 1px; left: 1px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--text-primary); transition: transform 0.15s;
+}
+.hra-switch[data-checked="true"] .hra-switch-thumb { transform: translateX(14px); background: var(--bg); }
+
 /* Theme swatch previews (SettingsTab's ThemePicker) — each theme's actual
    colors, keyed by data-theme-preview so a swatch can show a DIFFERENT
    theme's look while a different one is currently active (var(--bg) etc.
@@ -575,7 +599,9 @@ input:focus, select:focus { border-color: var(--accent); }
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-size: 13px; color: var(--text-primary);
   padding: 6px 10px; cursor: pointer; outline: none;
+  max-width: min(60vw, 320px);
 }
+.hra-select-item > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hra-select-item[data-highlighted] { background: var(--bg-surface); }
 .hra-select-item[data-disabled] { opacity: 0.4; pointer-events: none; }
 .hra-select-item-indicator { color: var(--accent); display: flex; }
@@ -635,6 +661,21 @@ input:focus, select:focus { border-color: var(--accent); }
   top: 0;
   z-index: 10;
   padding: 10px 0;
+}
+
+/* Overview & Trends' DateRangeBar + named-range rows + "SUMMARY ..." card
+   stay pinned while the rest of the tab (Total/Running/By sport/trend
+   charts) scrolls underneath — pins to the header's own bottom edge
+   (--header-height), one z-index below it so the header still wins if the
+   two ever visually collide, and paints a solid background so scrolled
+   content doesn't show through. */
+.hra-sticky-summary {
+  position: sticky;
+  top: var(--header-height);
+  z-index: 9;
+  background: var(--bg);
+  padding-top: 4px;
+  padding-bottom: 8px;
 }
 .hra-header-inner {
   max-width: 860px;
@@ -760,6 +801,19 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-chart-tooltip-km    { color: var(--text-secondary); }
 .hra-chart-tooltip-pace  { color: var(--data-pace); }
 .hra-chart-tooltip-hr    { color: var(--data-hr); }
+
+/* Overlap/Distinct view-mode switch (TrendsBySport) — whichever chart card
+   mounts as a result of the switch (the overlap chart, or the "comparison"
+   card in distinct mode) fades + slides in rather than popping in instantly.
+   Plain CSS mount animation, not a transition — the card is conditionally
+   rendered (real mount, not a hidden/shown one, per this app's existing
+   "conditional render over CSS-hide" convention), so there's no prior state
+   for a `transition` to interpolate from. */
+@keyframes hra-compare-card-enter {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.hra-compare-card-enter { animation: hra-compare-card-enter 0.28s ease-out; }
 
 /* Runner mouse-follow/autoplay readout (ActivityChartSection) — bare text,
    no chip/box (deliberately NOT `.hra-chart-tooltip` — a panel floating

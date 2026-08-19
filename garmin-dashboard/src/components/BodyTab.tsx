@@ -11,7 +11,7 @@ import {
   ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef,
   Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty, Checkbox,
 } from "@/components/ui";
-import { fmtWeight, fmtPercent } from "@/utils/fmt";
+import { fmtWeight, fmtPercent, fmtDate } from "@/utils/fmt";
 import { getUnitSystem, kgToLb, kmToMi, weightUnitLabel, distanceUnitLabel } from "@/utils/units";
 import {
   type PrimaryKey, type OtherKey, type MetricKey, type MetricRow,
@@ -67,11 +67,12 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
                 {series.map(s => chartGradientDef(`bodyGrad-${s.key}`, s.color))}
               </defs>
               <CartesianGrid {...gridStyle} />
-              <XAxis dataKey="date_only" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
+              <XAxis dataKey="date_only" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" tickFormatter={fmtDate} />
               <YAxis tick={axisStyle} tickLine={false} axisLine={false} width={44} domain={["auto", "auto"]} />
               {deltaMode && <ReferenceLine y={0} stroke="var(--border-strong)" />}
               <Tooltip
                 {...tooltipStyle}
+                labelFormatter={label => fmtDate(String(label))}
                 formatter={(v: unknown, _name: unknown, entry: unknown) => {
                   const key = entry && typeof entry === "object" && "dataKey" in entry ? (entry as { dataKey?: string }).dataKey : undefined;
                   const s = series.find(s => s.key === key);
@@ -102,7 +103,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
               <tbody>
                 {tableData.map((row, i) => (
                   <tr key={i}>
-                    <td style={{ padding: "5px 8px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{row.date_only}</td>
+                    <td style={{ padding: "5px 8px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{fmtDate(row.date_only)}</td>
                     {series.map(s => {
                       const v = row[s.key];
                       return (
@@ -177,7 +178,7 @@ export function BodyTab({ from, to }: Props) {
 
   return (
     <>
-      <SectionTitle>Latest measurement — {latest.date_only}</SectionTitle>
+      <SectionTitle>Latest measurement — {fmtDate(latest.date_only)}</SectionTitle>
       <StatGrid>
         <Stat label="Weight"       value={fmtWeight(latest.weight_kg)} accent="var(--data-weight)" />
         {latest.fat_ratio      && <Stat label="Body fat"    value={fmtPercent(latest.fat_ratio)} />}

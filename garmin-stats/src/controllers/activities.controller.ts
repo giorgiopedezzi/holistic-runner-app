@@ -44,6 +44,14 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, repo.countInRange(from, to));
   };
 
+  // GET /api/v1/activities/races — race-type activities (not Training), full
+  // history, for the "link a race" dropdown on the date-ranges save form.
+  const races: Handler = (_req, res, url) => {
+    const { limit, offset } = parsePageParams(url.searchParams);
+    const total = (repo.racesCount() as { count: number }).count;
+    return send(res, paginated(repo.races(limit, offset), total, limit, offset));
+  };
+
   const trash: Handler = (_req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
     const total = (repo.trashCount() as { count: number }).count;
@@ -180,5 +188,5 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, purge ? service.purge(ids) : service.restore(ids));
   };
 
-  return { range, list, count, trash, getById, track, deleteRange, deleteById, classify, feedback, setType, confirm, restorePurge };
+  return { range, list, count, races, trash, getById, track, deleteRange, deleteById, classify, feedback, setType, confirm, restorePurge };
 }

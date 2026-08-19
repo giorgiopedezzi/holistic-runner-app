@@ -18,6 +18,12 @@ export function createActivitiesRepo(db: DatabaseSync) {
   const weekly       = db.prepare("SELECT strftime('%Y-W%W',date_only) AS week,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY week ORDER BY week");
   const monthly      = db.prepare("SELECT strftime('%Y-%m',date_only) AS month,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace,ROUND(SUM(ascent_m)) AS ascent FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY month ORDER BY month");
   const track        = db.prepare("SELECT elapsed_sec,timestamp_unix,distance_m,heart_rate,speed_ms,cadence,altitude_m,temperature,power FROM track_points WHERE activity_id=? ORDER BY COALESCE(elapsed_sec,distance_m) ASC");
+  // Race-type activities only (activity_type_id != Training's fixed id 1),
+  // full history — feeds the "link a race" dropdown when saving a date range
+  // (date-ranges.controller.ts). No date filter: a race can be far outside
+  // any recently-viewed range.
+  const races         = db.prepare("SELECT id,date_only,activity_type_id,activity_name,distance_m FROM activities WHERE activity_type_id != 1 AND deleted_at IS NULL ORDER BY date_only DESC LIMIT ? OFFSET ?");
+  const racesCount     = db.prepare("SELECT COUNT(*) AS count FROM activities WHERE activity_type_id != 1 AND deleted_at IS NULL");
 
   // delete (soft) / trash / restore / purge
   const deleteActivitiesRange = db.prepare("UPDATE activities SET deleted_at = datetime('now') WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
@@ -98,6 +104,8 @@ export function createActivitiesRepo(db: DatabaseSync) {
     updateFeedback:   (p: NamedParams) => feedbackUpdate.run(p),
     confirmById:      (p: NamedParams) => confirmActivityById.run(p),
     updateType:       (p: NamedParams) => updateActivityType.run(p),
+    races:            (limit: number, offset: number) => races.all(limit, offset),
+    racesCount:       () => racesCount.get(),
   };
 }
 

@@ -14,6 +14,7 @@ import { SyncAllBar } from "@/components/manage/SyncAllBar";
 import { UploadSection } from "@/components/manage/UploadSection";
 import { OAuthSyncSection } from "@/components/manage/OAuthSyncSection";
 import { WITHINGS_PROVIDER, STRAVA_PROVIDER } from "@/components/manage/oauthProviders";
+import { DateRangesSection } from "@/components/manage/DateRangesSection";
 import { ClassifySection } from "@/components/manage/ClassifySection";
 import { DeleteSection } from "@/components/manage/DeleteSection";
 import { TrashSection } from "@/components/manage/TrashSection";
@@ -31,6 +32,9 @@ export function ManageTab() {
       <UploadSection />
       <OAuthSyncSection provider={WITHINGS_PROVIDER} from={withingsFrom} to={withingsTo} onFromChange={setWithingsFrom} onToChange={setWithingsTo} />
       <OAuthSyncSection provider={STRAVA_PROVIDER} from={stravaFrom} to={stravaTo} onFromChange={setStravaFrom} onToChange={setStravaTo} />
+
+      <SectionTitle>Named date ranges</SectionTitle>
+      <DateRangesSection />
 
       <SectionTitle>AI workout classification</SectionTitle>
       <ClassifySection />

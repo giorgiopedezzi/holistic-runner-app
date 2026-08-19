@@ -14,44 +14,102 @@ only for tabs in `TABS_WITH_DATERANGE` (Overview/Activities/Body); Manage/Settin
 row at all. `DateRangeBar` has exactly one call site. (This reverses the two-row-header/right-aligned
 layout an earlier pass tried and then undid — don't reintroduce a second header row for it.)
 
-**`DateRangeBar`'s optional `compare` prop** (`CompareRangeState`, `hooks/useCompareRange.ts`) adds a
-second "Compare to" picker pair — only ever passed on the Overview & Trends tab (`App.tsx` passes
-`compare={tab === "overview" ? compareRange : undefined}`); Activities/Body render the exact same bar
-without it and get the original single-row layout. When present, `DateRangeBar` renders ONE shared
-flex row per line — a title line (`Current` / `Compare to`, `justify-content: space-between`) above a
-selector line with the same shape (one flush-left group, one flush-right group). This is deliberately
-NOT a `display: grid; gridTemplateColumns: "1fr 1fr"` split (tried first, twice): a rigid 50/50 grid
-caps the CURRENT side to half the row's width even though only the compare-to side is actually short,
-which forced the "to" date picker onto its own line while the right half sat mostly empty — and a grid
-built as two *separately*-configured grid containers (title row, selector row) drifted out of column
-alignment the moment one of them had a `gap` the other didn't. Flush-left/flush-right flex groups have
-neither failure mode: each side sizes to its own content (no artificial width cap), and the title and
-selector lines align for free because both use the exact same two-groups-pinned-to-the-edges shape,
-not two independently-configured containers that happen to agree today.
+**`DateRangeBar`'s optional `compare` prop** (`CompareRangeState`, `hooks/useCompareRange.ts`) switches
+it into the Overview & Trends layout — only ever passed on that tab (`App.tsx` renders `DateRangeBar`
+itself only for Activities/Body now; Overview renders its own copy, see the Overview tab section
+below); Activities/Body's bar has no `compare` and keeps the original single-row pill layout.
 
-`useCompareRange(from, to)` mirrors `useDateRange`'s shape (`{ from, to, setFrom, setTo }`) and resets
-to `defaultCompareRange(from, to)` — same length as the current range, ending the day before it starts
-— every time `from`/`to` change; a manual edit to the compare pickers persists only until the current
-range next changes, deliberately (re-picking a preset should give a clean, predictable comparison
-window again, not silently carry over a stale manual pick of a different length). `shiftIsoDate`/
-`daysBetween` (plain UTC-midnight date math on `"YYYY-MM-DD"` strings) moved from `OverviewTab.tsx` to
-`utils/date.ts` so both `useCompareRange` and `OverviewTab` share one implementation.
+**Stacked rows, not a two-column split** (corrected from an earlier two-column `Current`/`Compare to`
+layout — the two-groups-pinned-to-the-edges shape that replaced an even earlier rigid grid is now
+retired too, superseded by this stacked design):
+1. A heading row: **"Current"** on the left, a **`Switch`** (`ui/Switch.tsx`, a plain `role="switch"`
+   button — no `@radix-ui/react-switch` dependency added) labeled "Enable comparison" pinned to the
+   row's right end (`justify-content: space-between` — the switch is NOT beside the "Current" text;
+   an earlier version put them adjacent on the left, corrected per explicit feedback), `checked={compare.enabled}`.
+   Off means no second row and NO comparison data anywhere on the tab (rings, each sport's second trend
+   chart, the linked-race row all key off `compareRange.enabled` — see the Overview tab section).
+2. The "Current" picker row, one line: a `Select` of the preset windows (was individual pills —
+   `PRESETS.map` — converted to a dropdown specifically to free up enough width for the named-range
+   picker to sit on the same line; value is the active preset's `days` if one matches `isActive()`,
+   else empty so the `Select`'s placeholder ("Custom range") shows), `or`, the two `DatePicker`s, `or`,
+   the current-side named-range `Select` (unchanged derivation/eligibility — see below).
+3. A second heading, **"Compared to"** (mirrors "Current"'s own heading treatment — same style, its
+   own line, not squeezed onto the switch row), then a second picker row: the two compare
+   `DatePicker`s, `or`, the compare-side named-range `Select` — same single-line shape as row 2, just
+   without a preset dropdown (Compare never had presets). **Always mounted, never conditionally
+   rendered** — wrapped in one `<div style={{opacity, pointerEvents}}>` that dims to `0.4` and disables
+   interaction (`pointerEvents: "none"`) while `compare.enabled` is false, rather than being
+   added/removed from the DOM. An earlier version only rendered this block at all while enabled; changed
+   per explicit feedback against a "moving UI" — toggling the switch used to shift every section below
+   it up/down as the block un/mounted, which this fixed layout avoids. `DatePicker`/`Select` have no
+   `disabled` prop of their own, so `pointerEvents: "none"` on the wrapper is what actually blocks
+   interaction (the opacity alone is cosmetic).
+
+Both named-range dropdowns keep their pre-existing rules unchanged: a side's value is **derived**, not
+separately stored (whichever saved range's `(from_date, to_date)` matches that side's live `from`/`to`,
+same pattern the preset `isActive()` check uses), picking one calls the same `setFrom`/`setTo` every
+other control here uses (so "the named range takes precedence" falls out for free — last write wins),
+and the compare-side list is filtered to `r.to_date < from` (ranges that ended before Current's own
+start).
+
+`useCompareRange(from, to)` mirrors `useDateRange`'s shape (`{ from, to, setFrom, setTo }`) plus
+`enabled`/`setEnabled` (default `true`, so existing always-on comparison behavior is unchanged until a
+user explicitly flips the switch) and resets `from`/`to` to `defaultCompareRange(from, to)` — same
+length as the current range, ending the day before it starts — every time `from`/`to` change; a manual
+edit to the compare pickers persists only until the current range next changes, deliberately (re-picking
+a preset should give a clean, predictable comparison window again, not silently carry over a stale
+manual pick of a different length). `enabled` is untouched by that reset — toggling Current's range
+doesn't silently re-enable a comparison the user turned off. `shiftIsoDate`/`daysBetween` (plain
+UTC-midnight date math on `"YYYY-MM-DD"` strings) moved from `OverviewTab.tsx` to `utils/date.ts` so
+both `useCompareRange` and `OverviewTab` share one implementation.
 
 All header/nav visuals (background, border, backdrop-blur, the online-status dot's color, the active
 nav pill) are `index.css` classes/data-attributes — see the "styles live in index.css" rule in
 CLAUDE.md. The per-pill `padding`/`fontSize`/`fontWeight` inline in `App.tsx` are structural, not
 theme, so they stay inline per that same rule.
 
-## Date pickers (ui/DatePicker.tsx, ui/Calendar.tsx, utils/locale.ts)
-Every date picker in the app (`DateRangeBar`'s 4, plus any future one) matches the OS's own date
-format/language, not a hardcoded convention — two independent pieces, both driven by the browser's
-locale (`navigator.language`, which reflects the OS's regional settings):
-- **The trigger's displayed text** (`DatePicker.tsx`'s `formatDisplay()`) uses
-  `new Intl.DateTimeFormat(undefined, { year: "numeric", month: "2-digit", day: "2-digit" })` — passing
-  `undefined` as the locale argument is what makes it "use the runtime's default locale" rather than a
-  fixed one. `value`/`onChange`/`min`/`max` are untouched — still plain `"YYYY-MM-DD"` throughout,
-  matching the native `<input type="date">` contract this component replaces (HRA-98); only the trigger
-  button's TEXT is reformatted for display.
+## Date pickers (ui/DatePicker.tsx, ui/Calendar.tsx, utils/locale.ts) + display dates (utils/fmt.ts's fmtDate/fmtDateChart, utils/dateFormat.ts)
+Every date picker in the app (`DateRangeBar`'s 4, plus any future one) and every displayed date renders
+in ONE explicit, user-chosen format — the Settings tab's "Date format" section (`SettingsTab.tsx`'s
+`DateFormatPicker`, `types/api.ts`'s `DateFormat`/`DATE_FORMAT_OPTIONS`) — not an implicit OS/browser
+locale guess:
+- **Four options, style × region**: `numeric_uk` (`23/03/2026`), `numeric_us` (`03/23/2026`),
+  `literal_uk` (`23 Mar 2026`), `literal_us` (`Mar 23, 2026`, default `literal_uk`). Each is a pinned
+  `Intl.DateTimeFormat` locale (`en-GB`/`en-US` per region — NOT `undefined`/runtime-locale) so the four
+  options render EXACTLY as their own `DATE_FORMAT_OPTIONS.example` string regardless of the browser's
+  actual language — an earlier version used `Intl.DateTimeFormat(undefined, {...})` (the runtime's own
+  locale), which meant the same setting could render differently on two different browsers/OSes; this
+  correction traded "matches the OS" for "matches what the user explicitly picked," on the reasoning that
+  numeric dd/mm vs mm/dd is genuinely ambiguous to a reader and deserves an explicit choice, not an
+  inherited one.
+- **`utils/dateFormat.ts`** holds the resolved `DateFormat` in module scope — the same "global
+  side-channel every component reads at render time" pattern `utils/units.ts` already uses for unit
+  system (see that file's own header comment for why a module variable, not React context, is
+  sufficient here). `useAppearance.ts`'s `applyToDocument()` calls `setDateFormatSystem()` whenever the
+  settings row loads/changes, alongside theme/units; `setDateFormat` is exposed through `AppearanceApi`
+  the same way `setAccentColor` is (both optional, so the pre-existing hand-written `AppearanceApi` stub
+  in `SettingsTab.pickers.test.tsx` keeps compiling unmodified).
+- **`utils/fmt.ts`'s `fmtDate()`** is the ONE formatter every date shown to the user goes through
+  app-wide, not just inside a picker — reads `getDateFormatSystem()` and picks the matching pinned
+  formatter. Added after an inconsistency bug report: several places (`ActivityRow`/`ActivityDetailBody`'s
+  date, `BodyTab`'s table + "Latest measurement" line + chart X-axis/tooltip, `ClassifySection`/
+  `DeleteSection`/`TrashSection`'s activity/measurement rows, `RangeEmpty`'s "available from X to Y",
+  `DateRangeBar`/`DateRangesSection`'s named-range and race labels) were printing the raw backend
+  `"YYYY-MM-DD"` string directly instead of going through the picker's own formatting. `fmtDate` parses
+  the `"YYYY-MM-DD"` prefix as a **local** calendar date (no `new Date("...")` UTC-parse timezone-shift
+  trap) and is the single place `DatePicker.tsx`'s trigger text calls too — one implementation, not two
+  copies that could drift. Internal ISO-string logic (sorting, grouping, range-filter comparisons, ISO
+  week keys in `domain/body-metrics.ts`) is untouched — `fmtDate` is display-only, never used for a
+  value that's compared/stored/sent back to the API. `value`/`onChange`/`min`/`max` on `DatePicker`
+  itself are also untouched — still plain `"YYYY-MM-DD"`, matching the native `<input type="date">`
+  contract this component replaces (HRA-98).
+- **`utils/fmt.ts`'s `fmtDateChart()`** — Overview & Trends' per-point chart labels (`domain/trends.ts`'s
+  `buildTrendPoints`, "single"/"week" grouping modes) always stay numeric with no year (e.g. `"13/08"`,
+  a compact axis tick has no room for a spelled-out month or the "literal" style choice), but still
+  follow the chosen REGION (`utils/dateFormat.ts`'s `dateFormatRegion()`, derived from the same
+  `DateFormat` setting — `_us` suffix → `"us"`/mm-first, else `"uk"`/dd-first). Replaced a hardcoded
+  `sortDate.slice(5)` (always `"MM-DD"`) that ignored the setting entirely. "Month" mode's label (a
+  plain `"YYYY-MM"` key) has no day component, so it's untouched — no ordering ambiguity to fix there.
 - **The calendar popup's month/weekday names and week-start day** (`Calendar.tsx`'s `locale` prop,
   passed to `react-day-picker`'s `<DayPicker>`) — omitted, `react-day-picker` defaults to English
   (`enUS`) regardless of the OS's actual language, including defaulting every week to start on Sunday
@@ -111,9 +169,15 @@ Multi-metric overlay chart (Speed/Pace mandatory, plus optional HR/altitude/cade
 - **`ui.tsx`'s `Stat` value font is 18px, not the original 22px** — reduced app-wide (every tab using `Stat` inherits it) specifically so `SpeedPaceStat`'s two side-by-side values could match Stat's size exactly rather than needing their own smaller, inconsistent size to fit the card width.
 
 ## Settings tab (SettingsTab.tsx)
-Several independent sections, two different UX patterns — deliberately not unified into one form:
+**Every section is an `AccordionCard` now** (`ui/AccordionCard.tsx`) — a clickable "card" header (title
++ ▲/▼ chevron) with its content in an attached panel below when expanded, the same visual language
+ActivitiesTab.tsx's row accordion and the Overview tab's linked-race row already use
+(`components/activity/ActivityRow.tsx`). Single-expand (one `expanded: SectionKey | null` state, all
+collapsed by default), same pattern as ActivitiesTab's accordion. `AccordionCard` is purely
+presentational — `SettingsTab` owns the expand/collapse state and passes `expanded`/`onToggle` per
+section; two different UX patterns fill each section's content, deliberately not unified into one form:
 - **Outlier detection** and **Overview & Trends** (explicit save, sharing one `draft`/`saved`/`dirty` state and Save button — see `SaveBar()`, rendered in both cards so either one's button persists everything in one `PUT /api/settings`): `outlier_speed_delta_per_sec`, `outlier_cadence_delta_per_sec` (isolated-spike thresholds), `outlier_min_speed_kmh` (absolute walking-pace floor, shown with a live min/km equivalent via `fmtPace(60 / kmh)`) — backs `ActivityModal.tsx`'s outlier filter. `min_trend_group_size` — backs `OverviewTab.tsx`'s trend gating (see below). Tracks `saved` (last-persisted, shown as "current: X" next to each input) separately from `draft` (the editable form) via `api.settings.get()`/`api.settings.update()` — Save is disabled unless `draft` differs from `saved`, so an unchanged form can't be re-submitted.
-- **Appearance**, **Units**, and **Activity details** (immediate-apply): theme + accent color via the useAppearance() hook (below) — the background-picture picker is gone, see Appearance section; measurement units, same hook;  `activity_detail_view` (accordion vs modal — see Activities tab below) handled locally in `SettingsTab` itself (not through `useAppearance()`, since it's a behavior choice, not a document/CSS-level concern) — `setDetailView()` calls `api.settings.setDetailView()` then updates both `saved`+`draft` so it never shows as a dangling unsaved change in the explicit-save cards. Clicking a swatch/button applies it right away, no draft/Save step, since that's the expected feel for this kind of preference.
+- **Appearance**, **Date format**, **Units**, and **Activity details** (immediate-apply): theme + accent color via the useAppearance() hook (below) — the background-picture picker is gone, see Appearance section; `date_format` (`DateFormatPicker`, `types/api.ts`'s `DATE_FORMAT_OPTIONS` — one pill per style×region combo, each pill's own example date doubles as its label) via the same hook's `setDateFormat`, see the Date pickers section above for what it drives; measurement units, same hook; `activity_detail_view` (accordion vs modal — see Activities tab below) handled locally in `SettingsTab` itself (not through `useAppearance()`, since it's a behavior choice, not a document/CSS-level concern) — `setDetailView()` calls `api.settings.setDetailView()` then updates both `saved`+`draft` so it never shows as a dangling unsaved change in the explicit-save cards. Clicking a swatch/button applies it right away, no draft/Save step, since that's the expected feel for this kind of preference.
 
 All persist in the SQLite `settings` table rather than `localStorage` (see Stack & constraints above) — the pattern to follow for any future global setting.
 
@@ -165,7 +229,65 @@ The correlation chart below it is untouched and still uses a dual y-axis (km/kg)
 - **Sync all**: `SyncAllBar` checks device/token status fresh at click time (not reused from the individual cards below), runs whichever sources are ready (Garmin, Withings, Strava), and skips the rest with a note rather than failing outright. Reuses `runGarminSync()` — a module-level function factored out of `UploadSection` so both the individual "Sync from device" button and Sync All use the exact same streaming/parsing logic.
 - **Garmin sync has no date range**: the MTP bridge diffs the device's files against what's already imported, not a date-queried API — a date picker here would be decorative, so it was removed (it never actually did anything even before this).
 - **Withings and Strava each have their own date range**, lifted to `ManageTab` (`withingsFrom`/`withingsTo`, `stravaFrom`/`stravaTo`) and passed down to both their respective section and `SyncAllBar` so there's exactly one control per source, not a duplicate hidden in each. Withings wired end-to-end: the picker → `api.body.sync(from, to)` → `POST /api/sync/withings?from=&to=` → `--from`/`--to` args on the spawned script (same pattern for Strava). Previously the UI had no Withings date control at all and the query params were silently dropped even if you'd sent them.
-- **`StravaSyncSection`** is a structural copy of `WithingsSyncSection` (status line, login popup, own date range, sync button) — see "Strava sync" above for the OAuth/dedup details behind it.
+- **`StravaSyncSection`** is a structural copy of `WithingsSyncSection` (status line, login popup, own date range, sync button) — see "Strava sync" above for the OAuth/dedup details behind it. (Both are now unified into one `OAuthSyncSection` driven by an explicit `OAuthProvider` descriptor — `oauthProviders.ts`'s `WITHINGS_PROVIDER`/`STRAVA_PROVIDER` — rather than two near-duplicate components.)
+- **`DateRangesSection`** (`components/manage/DateRangesSection.tsx`), rendered just above "AI workout classification": three separate full-width rows, each with one fixed purpose (no auto-detected create/edit guessing, no separate read-only list — each row's own dropdown is the one place a saved range is looked up by name) — save/edit/delete named date ranges for later recall, mainly comparing training blocks (e.g. week 2 vs week 3 of a marathon's prep). Structural twin of `OAuthSyncSection` (Card, description, form row, action button).
+  - **Create row**: plain text Name input → always `POST`s a new row.
+  - **Update row**: a plain `Select` dropdown listing existing ranges (`{name} ({from} → {to})`, no free typing — renaming isn't supported, a deliberate simplification) — picking one loads its `from`/`to`/race into the row and snapshots it in `loaded` state. Save is disabled until `from`/`to`/race differs from the snapshot (`isUpdateDirty`), then always `PUT`s the loaded row's id with its unchanged name (`PUT /api/v1/date-ranges/:id`), never creates a new one.
+  - **Delete row**: its own `Select` (same options) plus a Delete button with an inline "Delete this range? Yes/Cancel" confirm step (same pattern as the activity-detail Delete button) — no separate trash, a saved range is just a recall label, not synced data (see `docs/schema.md`'s `date_ranges` section).
+  - **Column widths match top-to-bottom**: Create's Name input and Update's/Delete's picker `Select` all share one `firstColumnStyle` (`flex: "2 1 120px"`); every action button (`Create`/`Update`/`Delete`/`Yes, delete`) shares one fixed `width: 100` (`actionButtonStyle`) instead of sizing to its own label — so the three stacked rows read as one aligned column set, not three independently-sized rows.
+  - Create/Update's race `Select` is populated from `api.garmin.races()` (`GET /api/v1/activities/races`, all race-typed activities, full history) filtered client-side to `date_only > to` (that row's own `to`) — same eligibility rule the backend enforces at save time (`date-ranges.controller.ts`).
+  - **Ellipsis + tooltip for long names/dropdown items**: `Select`'s trigger and each `SelectPrimitive.Item` both carry a native `title` (the full label) plus `overflow:hidden;text-overflow:ellipsis` (`index.css`'s `.hra-select-item`).
+
+## Overview & Trends' date-range rows (DateRangeBar.tsx, OverviewTab.tsx)
+`DateRangeBar`'s stacked-rows layout (heading + Compare switch, the Current picker row, the
+conditional Compare picker row) is described in full in the Header section above — this section
+covers what `OverviewTab` itself does with `compareRange`, notably `compareRange.enabled`.
+
+`OverviewTab.tsx` now takes `range: DateRangeState` / `compareRange: CompareRangeState` (the full
+live objects with setters, not plain `from`/`to`/`compareFrom`/`compareTo` strings) — it renders its
+own `DateRangeBar` internally now (moved out of `App.tsx`, which still renders it for
+Activities/Body) specifically so the bar and the Summary card can share one sticky wrapper:
+- **`.hra-sticky-summary`** (`index.css`) wraps `[DateRangeBar + its extra row(s)] + [the "SUMMARY
+  ..." SectionTitle + Card]` — `position: sticky; top: var(--header-height)` (a new `:root` token,
+  `48px`, matching `.hra-header`'s own rendered height so the two sticky elements sit flush, not
+  overlapping), solid `background: var(--bg)` so scrolled content underneath doesn't show through.
+  Present in every render branch (loading/error/empty/success) so the range can still be changed out
+  of any of those states — only the Summary Card itself is conditional on `state.status === "success"
+  && sports.length > 0`.
+- **Card title is computed, not a fixed literal** (`OverviewTab`'s `summaryTitle`, passed as
+  `PeriodHeroRing`'s `title` prop): `"SUMMARY"` alone while comparison is off; `"SUMMARY - {current}
+  vs {compare}"` while it's on, where each side is the REAL current value — its matching named range's
+  own name (same derivation `compareNamedRange` already used, applied to Current too via
+  `currentNamedRange`) if one is selected for that side, else the plain formatted date span
+  (`` `${fmtDate(from)} → ${fmtDate(to)}` ``) — never a generic placeholder. An earlier version used a
+  fixed literal title regardless of state; corrected per explicit feedback that the title must show
+  what's actually selected.
+- **`compareRange.enabled` gates EVERY comparison on this tab, not just the extra picker row** —
+  flipping the "Compare" switch off means no comparison data anywhere, not just a hidden row:
+  `prevActivitiesQ` (hero rings' outer ring + Total/Running `Stat` cards' "vs previous period"
+  tooltips) and `TrendsBySport`'s own `compareQ` (each sport's second "- comparison" trend chart,
+  rendered by `SportTrendPair`) both skip their fetch entirely (`() => enabled ?
+  api.garmin.activities(...) : Promise.resolve([])`) rather than fetching and discarding — since the
+  fetch resolves to `[]`, `hasPrevData`/`prevActs` etc. fall back to `null` through the SAME "no
+  comparison without data" logic that already existed (no new branch needed there). `SportTrendPair`
+  takes a `compareEnabled` prop and skips rendering its second chart block outright when false (not
+  just an empty state). `compareNamedRange`/`linkedRaceId` (next bullet) are also `undefined`/`null`
+  while disabled — no linked-race lookup happens with comparison off.
+- **The hero rings themselves never carry a hover tooltip, in any state** (`DualRingGauge` dropped its
+  `tooltip` prop/wiring entirely — not just an empty `data-tooltip`, which would still have shown a
+  visible blank bordered bubble on hover since `.hra-tooltip::after`'s box is unconditional; the whole
+  `.hra-tooltip` class was removed from the ring's wrapper). The comparison figure is already shown
+  inline (`comparisonText`, the small bracketed "(previous value, ±N%)" line under the center value),
+  so a redundant hover tooltip was removed per explicit feedback. `Stat`'s own `tooltip` prop (Total/
+  Running StatGrid, By-sport rows) is untouched — this only affects the four rings.
+- **Linked race row**: when the compare-side's derived named-range selection has `activity_id` set,
+  `OverviewTab` fetches that activity (`api.garmin.activity(id)`) and renders it via the shared
+  `components/activity/ActivityRow.tsx` — the same row component `ActivitiesTab.tsx` uses (extracted
+  out of it for exactly this reuse) — appended inside the Summary Card, below a divider. Click
+  behavior matches the `activity_detail_view` setting: `'accordion'` expands `ActivityDetailBody`
+  inline (local `raceExpanded` state); `'modal'` opens the same `ActivityModal` popup Activities tab
+  uses (local `raceModalOpen` state) — "exactly as if we were in the Activities tab," not just
+  visually similar.
 - **Delete card** now: (1) explicitly labeled "local database only" in both the section title and card copy — deleting never touches the Garmin device, Strava, or the Withings account; (2) checkboxes ("Activities (Garmin + Strava)" / "Withings measurements", both start unchecked) instead of a single-select dropdown, so checking both is "delete all" — the activities checkbox covers both sources at once since `DELETE /api/activities` doesn't filter by `source` (the label was updated to say so explicitly once Strava activities could share that table); (3) shows a live count for the selected range/target(s) instead of always showing full data, via the count endpoints; (4) a "Show data" checkbox reveals the actual matching records (compact preview, including `source` for activities) on demand instead of always fetching/rendering them; (5) is soft-delete now, not permanent — copy/confirm-step wording says "trash"/"move to trash", not "delete"/"permanent" (see "Soft delete & trash").
 - **Trash section** (`TrashSection`, below Delete): lists both entity types (`GET /api/activities/trash`, `GET /api/body/trash`) via a shared `TrashList<T>` generic component — checkbox per row + "select all", Restore selected (`POST .../restore`), and Delete permanently (`POST .../purge`, with its own confirm step, same UX pattern as Delete card's confirm). Each list fetches independently on mount; a manual ⟳ refresh button (`StatusLine`'s recheck-button pattern) re-fetches both, since deleting something via the Delete card above doesn't otherwise propagate into `TrashSection`'s already-mounted state within the same tab visit.
 
@@ -188,50 +310,125 @@ computed once and used as the fallback. Because the range is now freely editable
 match the current period's length, the Hero Ring's period label dropped its old "vs previous N-day
 period" claim for a plain "vs compare range (from – to)".
 
-"Distance & pace/HR trend" section, one combined bar+line chart **per sport** (running, cycling, etc. each get their own chart — deliberately not mixed, since averaging pace/HR across different sports in one number is meaningless):
-- **Two charts per sport now, stacked vertically** — `SportTrendPair` renders the CURRENT period's chart
-  above the COMPARE period's chart for the same sport, titled `"{Sport} - current"` / `"{Sport} -
-  comparison"` (`ChartCard`'s own `title` prop — previously unused here) via `SportTrendChart`'s new
-  `title` prop. The sport `Badge` that used to render once per `SportTrendChart` now renders once per
-  `SportTrendPair` instead, above both charts (a sport's Badge no longer duplicates per chart). The
-  comparison chart's activities are looked up from a `Map<sport, Activity[]>` built the same
-  memoized way as the current side's `sportsSorted` (`compareBySport`, keyed off a second
-  `api.garmin.activities(compareFrom, compareTo)` query inside `TrendsBySport`) — a sport present in
-  the current period but absent from the compare period simply renders its comparison chart's "too few
-  activities" empty state with a 0 count, not an error.
-- **One shared series-visibility state per sport pair, not two independent ones** — `SportTrendPair`
-  owns the `hidden: Set<string>` state (Distance/Avg pace/Avg HR toggles) and passes it to BOTH
-  `SportTrendChart` instances; only the current chart gets an `onToggle` callback (so only it renders an
-  interactive `ChartPillLegend` — `ChartCard`'s `legend` slot is conditional on `onToggle` being passed).
-  The comparison chart silently mirrors whichever series the current chart's legend shows/hides, per
-  request ("driven by the first one … for distance, avg pace, avg hr") — it has no legend of its own.
-- **Mode (Single/Week/Month) was already one shared toggle across every sport** (`TrendsBySport`'s
-  `groupMode`, below) — extending the "driven by the first chart" idea to two charts per sport needed no
-  change there; both a sport's current and comparison charts already receive the same `mode` prop.
-  Week/Month enable/disable (`modeEnabled`, below) is still computed from the CURRENT period's data
-  only — the compare period has no vote over which modes are offered, only over what its own chart
-  shows once a mode is picked. The old per-sport "too few activities for Single mode" gate moved from
-  `TrendsBySport`'s render loop into `SportTrendPair` (`tooFew()`), applied to EACH side independently —
-  a sparse compare window doesn't block the current chart, and vice versa.
-- **The "Distance" legend chip's color bug**: its swatch/text color used to be the bar's own faint 28%-
-  opacity wash (`color-mix(in srgb, var(--data-pace) 28%, transparent)`) — correct for the bar FILL
-  itself (deliberately muted, see below), wrong reused as the legend chip's TEXT color
-  (`.hra-legend-chip[data-active="true"] { color: var(--legend-color) }`, `index.css`): even in its
-  active state the chip read as low-contrast/disabled. Fixed by giving the "Distance" `ChartPillLegend`
-  item the same solid `PACE_LINE_COLOR` (`var(--data-pace)`) the "Avg pace" chip already used — the bar
-  fill itself is untouched, still the muted wash described below.
-- **Bars = total distance** for that sport, either per individual activity ("Single" mode) or summed per week/month (grouped modes) — a plain bar chart, not a real OHLC candlestick (candles were considered and explicitly rejected in favor of this simpler semantic). Fill is a **muted `--data-pace` volume wash** (a vertical gradient, `color-mix(in srgb, var(--data-pace) 28%, transparent)` at the top fading to `8%` at the base — the SVG `<linearGradient>` stops live in `SportTrendChart` itself, since Recharts gradients have no CSS-class equivalent), not the flat neutral gray this used before (2026-08-16 correction) and not `SPORT_COLOR` — an earlier version colored bars by sport, which could collide with the pace/HR line colors (cycling's `SPORT_COLOR` was literally the same hex as the pace line's old blue; running's green measured ~1.3:1 mutual contrast against it — a line crossing a bar was nearly invisible). The bars intentionally read as **background volume, never as the pace series itself** — that's what the low opacity (28%→8%, and a restrained `activeBar` hover of `40%`) buys, even though the fill is drawn from the same `--data-pace` token the pace line uses at full strength; the two are still visually distinct because of that opacity gap, not because of a different hue. Sport identity still shows via the `Badge` above the chart, which keeps `SPORT_COLOR`.
-- **Lines = avg pace and avg HR** for that sport, one point per bar, connected (`connectNulls`), full-strength `--data-pace`/`--data-hr` at `strokeWidth={2.5}`, small always-visible dots (`dot={{r:2.5}}`) plus a larger `activeDot` on hover, and a subtle per-line glow (`.hra-trend-line-pace`/`.hra-trend-line-hr` in `index.css`, a `drop-shadow` filter class passed via each `<Line>`'s `className` — Recharts forwards `className` straight to the rendered `<path>`). Pace's color (`PACE_LINE_COLOR = "var(--data-pace)"`) intentionally matches `ActivityModal.tsx`'s `METRIC_DEFS.speed.color` exactly — the activity detail view is this app's color "reference" for speed/pace, so this chart reuses it rather than a generic accent, for one consistent color app-wide. HR uses `--data-hr` (was `--accent-red`; same hex).
-- **Hover**: a vertical crosshair (`Tooltip`'s `cursor` prop) plus one combined glassy tooltip (`.hra-chart-tooltip` in `index.css`) reading e.g. "07-24 · 6.5 km · pace 5:12 · HR 158" — a custom `content` render function, not Recharts' default per-series rows, with each value colored to its own series (km neutral/`--text-secondary` now that bars are a muted wash rather than a foreground series; pace `--data-pace`; HR `--data-hr`) and `font-variant-numeric: tabular-nums`.
-- **Legend** is `ChartPillLegend` (`ui/ChartCard.tsx`) — clickable pill chips, top-right of the chart card, that hide/show a series (`hidden: Set<string>` local state) rather than plain static swatches; a toggled-off chip dims to `opacity: 0.4` and loses its glow (`.hra-legend-chip[data-active="false"]`), and the matching `ReferenceLine`s hide along with their series so a hidden line never leaves orphaned dashed lines on screen.
-- **Swimming pace is shown per 100m, not per km** (`SportTrendChart`'s `paceScale`/`paceUnit`, `sport === "swimming"` → ×0.1, unit `/100m`) — `avg_pace_minkm` is a plain per-km value regardless of sport, so this is a pure display-side unit conversion (min/km × 0.1 = min/100m), not a different data source. Verified against the one real swim in this app's DB: 23.21 min/km → 2.32 min/100m, a realistic recreational pace. **Scoped to this tab only** — `ActivityModal` and everywhere else still show swimming pace as /km.
-- **Pace's axis is on the left (paired with the km axis) and reversed** (`reversed` unconditional — this chart always shows pace, never speed, unlike `ActivityModal`, so it isn't conditional there); **HR's axis is on the right**, opposite it. Both are real, visible tick-label columns now (previously `hide`, no numbers at all) tinted to match their line. This is the same "put the two most-visible axes on opposite sides" fix applied to `ActivityModal.tsx`'s `AXIS_SIDE` above, for the same reason.
-- **Three `ReferenceLine`s per line** (pace, HR) show that sport's overall avg/min/max — but **min/max mark the highest/lowest *group average* actually plotted** (`refMinPace`/`refMaxPace`/`refMinHr`/`refMaxHr`, computed from `displayPoints`), **not** the single most extreme individual activity in range — a raw individual extreme is an outlier that isn't a meaningful comparison against the grouped bars on screen (in "Single" mode a "group" is one activity, so these end up identical to the individual extremes anyway). Avg stays a straight average across every individual activity (`overallAvgPace`/`overallAvgHr`) — mathematically a weighted average of the group averages, so it's always within `[refMin, refMax]` by construction, never outside the band. `paceDomain`/`hrDomain` are separately widened (never narrowed) to fit the **absolute** individual-activity extremes (`absoluteMinPace` etc.) even though the reference lines themselves don't reach that far — the axis's own scale is allowed to show the true range, only the marked lines are narrower. Avg renders at higher opacity (`strokeOpacity={0.7}`, `strokeDasharray="4 4"`) than min/max (`0.45`, `"2 3"`) so the three read as "the band this sport's pace/HR moved within" rather than three equally-loud competing lines. No per-line text labels (an earlier version tagged each line "avg"/"min"/"max" directly via `ReferenceLine`'s `label` prop — cluttered a 220px chart); a `<Legend/>` covers what each color is, and a one-line caption above the whole "Distance & pace/HR trend" section (not repeated per sport) explains the avg-vs-min/max dash convention once.
-- **Grouping** (Single/Week/Month, shared toggle across all sport charts) defaults from range length — `defaultGroupMode()`: ≤21 days → single, ≤120 days → week, else month — and re-picks automatically whenever `from`/`to` changes (not just on first mount), though it's always manually overridable via the toggle. "Week" buckets by ISO week (Monday start, `isoWeekStart()`); "Month" by `YYYY-MM`; "Single" by activity id (one bar per activity, not per day — two same-day activities each get their own bar).
-- **Week/Month are disabled when they'd produce fewer than `min_trend_group_size` distinct groups** (settings-configurable, default 5 — replaced a hardcoded `MIN_GROUPS` constant; fetched via its own `useQuery(() => api.settings.get(), [])` inside `TrendsBySport`) across the *whole* selected range (all sports combined, not per-sport — it's one shared toggle) — a 3-week range grouped "by week" is just 3 bars, not a trend. Disabled buttons show a tooltip explaining why; if the current or auto-picked mode becomes invalid (range shrinks, or the heuristic default outruns the real data), a `useEffect` downgrades it (month→week→single) once data has actually loaded — verified against real data: a 20-day range correctly disables both (3 weeks, 1 month), the full ~1-year dataset correctly enables both (53 weeks, 13 months).
-- **In "Single" mode, a sport's whole chart is replaced by a "too few activities" message** (`Empty`) when that sport has fewer than `min_trend_group_size` activities in range — the same setting/number as the Week/Month gate above, just applied to raw activity count instead of group count, since "single" mode has no grouping step for the group-count gate to apply to. Week/Month modes stay gated at the shared-toggle level (disabling the mode entirely), not per-sport.
-- Pace/HR axes use the **same mean-centered domain pattern** as `ActivityModal.tsx`'s multi-metric overlay (own real scale per metric, aligned at the mean, no dual-axis "arbitrary scale alignment") — kept intentionally simpler here (no percentile robustness) since these are already-averaged group values, not raw noisy per-record samples.
-- Verified against real data: summing the "week" and "month" grouped totals both reproduce the exact same overall total (429.77 km on a real 65-activity running range) — grouping logic reconciles correctly.
+"Distance & pace/HR trend" section, one combined bar+line chart **per sport** (running, cycling, etc. each get their own chart — deliberately not mixed, since averaging pace/HR across different sports in one number is meaningless). **All three metrics (Distance/Avg pace/Avg HR) are always rendered — no toggle pills, no `ReferenceLine` avg/min/max bands** (both removed entirely per explicit feedback; the `hidden`/`ChartPillLegend` machinery described in earlier revisions of this doc no longer exists on this tab).
+
+**Uniform across Single/Week/Month** — a single pairing/rendering pipeline handles all three grouping
+modes identically, not a Single-only special case plus a separate Week/Month path. This works because
+`buildTrendPoints(activities, mode)` (`domain/trends.ts`) already reduces every mode to the same
+`TrendPoint[]` shape (one point per activity in Single mode, one per ISO week/month in Week/Month) —
+everything downstream (pairing, domains, rendering) operates on that shape and never needs to know which
+mode produced it.
+
+- **`SportTrendPair`** (`OverviewTab.tsx`) is the per-sport orchestrator: builds `curPoints`/`cmpPoints`
+  via `buildTrendPoints`, builds `overlapPoints` via `domain/trends.ts`'s `buildOverlapPoints(curPoints,
+  cmpPoints, from, compareFrom, alignMode)`, scales all three point sets once (imperial/swim conversion,
+  applied exactly once so nothing double-converts), computes the shared cross-side Y-axis domains, and
+  renders either the merged overlap chart or two distinct charts depending on `viewMode`.
+- **`viewMode: "overlap" | "distinct"`** — one switch (segmented pill pair, defaults to `"overlap"`),
+  owned by `TrendsBySport` and shared across every sport's chart, shown only while `compareEnabled`
+  (nothing to distinguish otherwise). `"Overlapping"` renders one `SportTrendOverlapChart` per sport;
+  `"Distinct"` renders two stacked `SportTrendChart`s (`"{Sport} - current"` / `"{Sport} - comparison"`),
+  both fed the same shared domain props so they still read on one common scale despite being visually
+  separate.
+- **`domain/trends.ts`'s `buildOverlapPoints(currentPoints, comparePoints, currentFrom, compareFrom,
+  mode: AlignMode)`** builds the shared x-axis slots that both `viewMode`s' current/compare pairing is
+  based on (the "distinct" pair's own two `buildTrendPoints` outputs are unpaired; only the domains and
+  the align-mode choice come from this). `AlignMode` is `"index" | "time"`:
+  - `"index"` — positional 1:1 pairing in chronological order; the longer side's leftover points each
+    get their own trailing slot with only their own side filled. The only mode Week/Month ever use —
+    each bucket ("week 2 of the period") is already a period-relative slot, so position IS "distance in
+    time" there; no separate alignment choice is offered for those modes.
+  - `"time"` — Single mode only. A sorted merge of both periods' points by **days since that period's
+    own start** (`daysBetween(periodFrom, p.sortDate)`, `utils/date.ts`) — an EXACT day-offset match
+    becomes one shared slot, everything else gets its own slot, interleaved in chronological day-offset
+    order (a classic sorted-merge, NOT nearest-neighbor matching — a 1-day difference does not merge).
+    Pinned spec example (also a `domain/trends.test.ts` regression test): current activities on days
+    `[0,2,5,9]` of their period vs compare activities on days `[0,3,8]` of theirs → **6 slots, only the
+    first (day 0 = day 0) overlaps** — days 2,3,5,8,9 each land in their own slot, interleaved in that
+    chronological order.
+  - **The align-mode switch (two toggle pills, "Match order"/"Match by time") is only shown in Single
+    mode when the two periods' point counts actually differ** (`mode === "single" && compareEnabled &&
+    curPoints.length !== cmpPoints.length`) — per spec, it's "when the number of activities does not
+    match," not a permanent control; default is `"index"`.
+- **Shared cross-side Y-axis domains — "min of the mins, max of the maxes," across BOTH current and
+  compare, for all three measures (km/pace/HR)** — computed ONCE per sport pair (`SportTrendPair`, from
+  the combined scaled `overlapPoints`) and passed as `kmDomain`/`paceDomain`/`hrDomain` props into
+  whichever chart(s) render. This is what makes the vertical axis cover the same range for both sides
+  **in both `viewMode`s** — the overlap chart's one shared axis and the distinct mode's two separate
+  charts all read off the identical domain values, so a bar/line's height is comparable across either
+  view. km's floor is fixed at 0 (bars start there); pace/HR reuse the app's existing mean-centered
+  domain pattern (`meanCenteredDomain`), just fed the combined current+compare array instead of one
+  side's own values.
+- **Exact bar-on-bar overlap via the Recharts dual-XAxis trick** (`SportTrendOverlapChart`) — Recharts
+  auto-groups multiple `<Bar>`s sharing one `xAxisId` side by side by default, which would defeat "bar
+  and correspondent value must overlap exactly." Fixed with two `<XAxis dataKey="slot">`s on the same
+  data, different `xAxisId`s (`"xMain"`, visible/tick-labeled; `"xOverlay"`, `hide`) — only elements
+  sharing one `xAxisId` get auto-spaced relative to each other, so putting the compare bar on its own
+  hidden axis stops it being pushed aside; both axes compute identical x positions from the same
+  `dataKey`, so the two bars land exactly on top of each other. The compare bar renders FIRST (paint
+  order = behind) at `barSize={24}`, flat `fill="var(--data-pace)" fillOpacity={0.18}`; the current bar
+  renders second (on top) at `barSize={14}` with its usual gradient fill — larger and more transparent
+  underneath, narrower and opaque on top, so the compare bar visibly peeks out on every side ("must
+  always see it," per spec) without ever obscuring current. Every other element (Lines, the visible
+  XAxis, both YAxes) is pinned to `xAxisId="xMain"` explicitly.
+- **Current vs compare, beyond the bars** — pace/HR compare lines are the same color as their current
+  counterpart (`--data-pace`/`--data-hr`, "color follows the metric" everywhere else in this app) but
+  dashed (`strokeDasharray="5 4"`) and dimmed (`strokeOpacity={0.55}`), vs. current's solid full-strength
+  line — color alone can't distinguish the two sides, so a small non-interactive legend in `ChartCard`'s
+  `legend` slot (a short solid line + "Current", a translucent swatch + "Compare") carries that instead,
+  shown only while `compareEnabled`.
+- **Two-row x-axis tick** (`makeTwoRowTick`, a factory closing over the display points since Recharts'
+  `tick` render prop only receives `{x, y, index}`, not the actual data) — current period's date/period
+  label on top, compare period's underneath, at the same shared slot position (each formatted via
+  `fmtDateChart`/the month-key string, same as `buildTrendPoints`' own label already was).
+- **X-axis label sampling** — `sampleInterval(count)` (`OverviewTab.tsx`, `MAX_X_LABELS = 8`) returns a
+  numeric Recharts `interval` (a tick skip-count) so a long Single-mode range or a many-bucket Week/Month
+  span shows at most ~8 evenly-sampled labels instead of one illegible label per bar/point. Applied to
+  every chart's `XAxis` (both `SportTrendChart` and `SportTrendOverlapChart`), keyed off that chart's own
+  point count.
+- **Tooltip** (overlap chart) reads straight off the hovered point's own `payload[0].payload` (the full
+  `OverlapPoint`, not a per-series name lookup) and renders two stacked lines — current's date/km/pace/HR,
+  then (dimmed, `compareEnabled` only) compare's — rather than Recharts' default per-series rows. The
+  distinct-mode charts (`SportTrendChart`) keep the single-line combined tooltip ("07-24 · 6.5 km · pace
+  5:12 · HR 158") described below.
+- **Bars = total distance** for that sport/group, fill is a **muted `--data-pace` volume wash** (a
+  vertical gradient, `stopOpacity` 0.28 at the top fading to 0.08 at the base — the SVG
+  `<linearGradient>` stops live in each chart component itself, keyed by a `useId()`-derived id so
+  multiple chart instances never collide, since Recharts gradients have no CSS-class equivalent) — not
+  `SPORT_COLOR` (an earlier version colored bars by sport, which could collide with the pace/HR line
+  colors). Bars intentionally read as **background volume, never as the pace series itself** — that's
+  what the low opacity buys, even though the fill is drawn from the same `--data-pace` token the pace
+  line uses at full strength. Sport identity still shows via the `Badge` above the chart pair, which
+  keeps `SPORT_COLOR`.
+- **Lines = avg pace and avg HR**, one point per bar, connected (`connectNulls`), full-strength
+  `--data-pace`/`--data-hr` at `strokeWidth={2.5}` for current, small always-visible dots (`dot={{r:2.5}}`)
+  plus a larger `activeDot` on hover, and a subtle per-line glow (`.hra-trend-line-pace`/
+  `.hra-trend-line-hr` in `index.css`, a `drop-shadow` filter class passed via each `<Line>`'s
+  `className`). Pace's color intentionally matches `ActivityModal.tsx`'s `METRIC_DEFS.speed.color`
+  exactly — the activity detail view is this app's color "reference" for speed/pace. HR uses `--data-hr`.
+- **Swimming pace is shown per 100m, not per km** (`sport === "swimming"` → `swimPacePer100m()`, ×0.1,
+  unit `/100m`) — `avg_pace_minkm` is a plain per-km value regardless of sport, so this is a pure
+  display-side unit conversion, not a different data source. Verified against the one real swim in this
+  app's DB: 23.21 min/km → 2.32 min/100m. **Scoped to this tab only** — `ActivityModal` and everywhere
+  else still show swimming pace as /km.
+- **Pace's axis is on the left (paired with the km axis) and reversed** (this chart always shows pace,
+  never speed, unlike `ActivityModal`, so it isn't conditional here); **HR's axis is on the right**,
+  opposite it. Both are real, visible tick-label columns tinted to match their line.
+- **Grouping** (Single/Week/Month, shared toggle across all sport charts) defaults from range length —
+  `defaultGroupMode()`: ≤21 days → single, ≤120 days → week, else month — and re-picks automatically
+  whenever `from`/`to` changes, though it's always manually overridable via the toggle. "Week" buckets by
+  ISO week (Monday start, `isoWeekStart()`); "Month" by `YYYY-MM`; "Single" by activity id.
+- **Week/Month are disabled when they'd produce fewer than `min_trend_group_size` distinct groups**
+  (settings-configurable, default 5) across the CURRENT period's data only (the compare period has no
+  vote over which modes are offered, only over what its own side of the pairing shows once a mode is
+  picked). Disabled buttons show a tooltip explaining why; a `useEffect` downgrades an invalid mode
+  (month→week→single) once data has actually loaded.
+- **In "Single" mode, a sport's whole chart is replaced by a "too few activities" message** (`Empty`)
+  when that side (current or compare — `SportTrendPair`'s `tooFew()`, applied to each side independently)
+  has fewer than `min_trend_group_size` activities in range. Week/Month modes stay gated at the
+  shared-toggle level (disabling the mode entirely), not per-sport/per-side.
+- Verified against real data: summing the "week" and "month" grouped totals both reproduce the exact same
+  overall total (429.77 km on a real 65-activity running range) — grouping logic reconciles correctly.
 
 ## Empty states (RangeEmpty, ui.tsx)
 `OverviewTab`, `ActivitiesTab`, and `BodyTab` all distinguish two different "nothing to show" cases instead of one generic message: no data *at all* yet (nothing synced) vs. no data *in the currently-selected range* (data exists, just not here). `RangeEmpty` (`ui.tsx`) takes the entity's overall min/max date (`GET /api/range` / `GET /api/body/range`, fetched once per tab via its own `useQuery(..., [])`) plus the current `from`/`to`, and picks the message: `range.min_date == null` → "No {entity} yet — sync some data from the Data & Sync tab"; otherwise → "No {entity} in the selected range (X to Y). Data available from {min_date} to {max_date}." Generic `Empty` (no range awareness) is still used for everything else that isn't a range query (e.g. `OverviewTab`'s per-sport "too few activities" message above, `BodyTab`'s correlation-chart empty state).

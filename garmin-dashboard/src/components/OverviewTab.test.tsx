@@ -11,11 +11,23 @@ import { OverviewTab } from "./OverviewTab";
 import { installFetch, json, problem, paginated } from "@/test/api-stub";
 import { sportSummary, dateRange, settings } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
+import type { DateRangeState } from "@/hooks/useDateRange";
+import type { CompareRangeState } from "@/hooks/useCompareRange";
 
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnitSystem("metric");
 });
+
+// OverviewTab now takes the full live state (setters included) — it renders
+// its own DateRangeBar — not just from/to strings. Tests here never click
+// the bar, so the setters are no-ops.
+function fakeRange(from: string, to: string): DateRangeState {
+  return { from, to, setFrom: () => {}, setTo: () => {}, setPreset: () => {} };
+}
+function fakeCompareRange(from: string, to: string): CompareRangeState {
+  return { from, to, setFrom: () => {}, setTo: () => {}, enabled: true, setEnabled: () => {} };
+}
 
 describe("OverviewTab", () => {
   it("renders totals and a running section on success", async () => {
@@ -24,8 +36,9 @@ describe("OverviewTab", () => {
       "GET /api/v1/range": dateRange(),
       "GET /api/v1/activities": paginated([]),
       "GET /api/v1/settings": settings(),
+      "GET /api/v1/date-ranges": paginated([]),
     });
-    render(<OverviewTab from="2026-07-15" to="2026-08-14" />);
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} />);
 
     expect(await screen.findByText("Total")).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
@@ -39,8 +52,9 @@ describe("OverviewTab", () => {
       "GET /api/v1/range": dateRange(),
       "GET /api/v1/activities": paginated([]),
       "GET /api/v1/settings": settings(),
+      "GET /api/v1/date-ranges": paginated([]),
     });
-    render(<OverviewTab from="2026-07-15" to="2026-08-14" />);
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} />);
 
     expect(await screen.findByText(/No activities in the selected range/i)).toBeInTheDocument();
   });
@@ -51,8 +65,9 @@ describe("OverviewTab", () => {
       "GET /api/v1/range": () => json(dateRange()),
       "GET /api/v1/activities": paginated([]),
       "GET /api/v1/settings": settings(),
+      "GET /api/v1/date-ranges": paginated([]),
     });
-    render(<OverviewTab from="2026-07-15" to="2026-08-14" />);
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} />);
 
     expect(await screen.findByText("summary blew up")).toBeInTheDocument();
   });

@@ -8,6 +8,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { RangeEmpty } from "./ui";
 import type { DateRange } from "@/types/api";
+import { fmtDate } from "@/utils/fmt";
 
 describe("RangeEmpty", () => {
   it("no data at all → prompts to sync", () => {
@@ -25,7 +26,10 @@ describe("RangeEmpty", () => {
     const range: DateRange = { min_date: "2026-03-01", max_date: "2026-08-04" };
     render(<RangeEmpty range={range} from="2026-01-01" to="2026-02-01" entityLabel="activities" />);
     expect(
-      screen.getByText(/no activities in the selected range \(2026-01-01 to 2026-02-01\)\. data available from 2026-03-01 to 2026-08-04/i),
+      screen.getByText(
+        `No activities in the selected range (${fmtDate("2026-01-01")} to ${fmtDate("2026-02-01")}). ` +
+        `Data available from ${fmtDate("2026-03-01")} to ${fmtDate("2026-08-04")}.`,
+      ),
     ).toBeInTheDocument();
   });
 });

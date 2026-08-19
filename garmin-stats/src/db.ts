@@ -188,6 +188,13 @@ export function initSchema(db: DatabaseSync): void {
       -- match to the --accent-blue every theme was seeded to in HRA-94, so
       -- existing installs see the smallest possible jump on upgrade.
       accent_color                  TEXT NOT NULL DEFAULT 'sky',
+      -- How every displayed date is formatted app-wide (utils/fmt.ts's
+      -- fmtDate on the frontend) — one of 'numeric_uk' (23/03/2026),
+      -- 'numeric_us' (03/23/2026), 'literal_uk' (23 Mar 2026, the default —
+      -- matches the fixed "dd MMM yyyy" this app used before this setting
+      -- existed), 'literal_us' (Mar 23, 2026). Independent of unit_system —
+      -- a UK date format doesn't imply metric units or vice versa.
+      date_format                   TEXT NOT NULL DEFAULT 'literal_uk',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
@@ -203,15 +210,23 @@ export function initSchema(db: DatabaseSync): void {
 
     -- Named date ranges the user saves for later recall, e.g. re-loading a
     -- specific "Compare to" window on the Overview & Trends tab without
-    -- re-picking both dates by hand. name is UNIQUE so recall-by-name stays
+    -- re-picking both dates by hand, or comparing training blocks (2nd vs 3rd
+    -- week of marathon prep). name is UNIQUE so recall-by-name stays
     -- unambiguous — a duplicate save is rejected (409), never silently
     -- overwritten (HRA TBD).
     CREATE TABLE IF NOT EXISTS date_ranges (
-      id         INTEGER PRIMARY KEY AUTOINCREMENT,
-      name       TEXT    NOT NULL UNIQUE,
-      from_date  TEXT    NOT NULL,
-      to_date    TEXT    NOT NULL,
-      created_at TEXT    DEFAULT (datetime('now'))
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT    NOT NULL UNIQUE,
+      from_date   TEXT    NOT NULL,
+      to_date     TEXT    NOT NULL,
+      -- Optional: the race this training block led up to. One activity can be
+      -- the target of many date ranges (e.g. separate "week 2"/"week 3" blocks
+      -- both pointing at the same race) — nullable, no UNIQUE. Validated
+      -- app-side (activities.controller.ts / date-ranges.controller.ts): must
+      -- be a race-type activity (activity_type_id != Training) whose date is
+      -- strictly after this range's to_date, never before or during it.
+      activity_id INTEGER REFERENCES activities(id),
+      created_at  TEXT    DEFAULT (datetime('now'))
     );
 
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
@@ -324,6 +339,14 @@ export function initSchema(db: DatabaseSync): void {
     db.exec("ALTER TABLE activities ADD COLUMN activity_name TEXT");
   }
 
+  const dateRangeCols = db.prepare("PRAGMA table_info(date_ranges)").all() as { name: string }[];
+  if (!dateRangeCols.some(c => c.name === "activity_id")) {
+    // Nullable, no DEFAULT — unlike activities.activity_type_id above, a
+    // REFERENCES column is fine here since there's no non-NULL DEFAULT to
+    // conflict with it.
+    db.exec("ALTER TABLE date_ranges ADD COLUMN activity_id INTEGER REFERENCES activities(id)");
+  }
+
   const trackCols = db.prepare("PRAGMA table_info(track_points)").all() as { name: string }[];
   if (!trackCols.some(c => c.name === "timestamp_unix")) {
     db.exec("ALTER TABLE track_points ADD COLUMN timestamp_unix INTEGER");
@@ -361,6 +384,9 @@ export function initSchema(db: DatabaseSync): void {
   }
   if (!settingsCols.some(c => c.name === "accent_color")) {
     db.exec("ALTER TABLE settings ADD COLUMN accent_color TEXT NOT NULL DEFAULT 'sky'");
+  }
+  if (!settingsCols.some(c => c.name === "date_format")) {
+    db.exec("ALTER TABLE settings ADD COLUMN date_format TEXT NOT NULL DEFAULT 'literal_uk'");
   }
 }
 
@@ -426,7 +452,26 @@ export interface DateRangeRow {
   name: string;
   from_date: string;
   to_date: string;
+  activity_id: number | null;
   created_at: string;
+  // Joined from the linked race activity (LEFT JOIN — all null when
+  // activity_id is null, or when the linked activity was purged and lost its
+  // display fields). See repositories/date-ranges.repo.ts.
+  race_date_only: string | null;
+  race_activity_name: string | null;
+  race_distance_m: number | null;
+  race_activity_type_id: number | null;
+}
+
+// A race-type activity (activity_type_id != Training), as offered on the
+// "link a race" dropdown when saving a date range. See
+// controllers/activities.controller.ts's races handler.
+export interface RaceRow {
+  id: number;
+  date_only: string;
+  activity_type_id: number;
+  activity_name: string | null;
+  distance_m: number | null;
 }
 
 export interface WithingsTokenRow {
@@ -461,6 +506,7 @@ export interface SettingsRow {
   min_trend_group_size: number;
   activity_detail_view: string;
   accent_color: string;
+  date_format: string;
 }
 
 // ── Typed param builders ──────────────────────────────────────────────────

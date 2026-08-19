@@ -17,6 +17,7 @@ import {
   deviceStatus, withingsStatus, stravaStatus,
 } from "@/test/fixtures";
 import { getUnitSystem, setUnitSystem } from "@/utils/units";
+import { fmtDate } from "@/utils/fmt";
 
 // A broad stub covering every endpoint any tab hits on mount, so tab switches
 // render real content. `settingsBody` lets a test control the persisted units;
@@ -54,7 +55,7 @@ describe("App tab switching", () => {
     expect(await screen.findByText("Total")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Activities" }));
-    expect(await screen.findByText("2026-08-01")).toBeInTheDocument();
+    expect(await screen.findByText(fmtDate("2026-08-01"))).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Body" }));
     expect(await screen.findByText(/Latest measurement/)).toBeInTheDocument();
@@ -85,6 +86,8 @@ describe("unit-system propagation across tabs (load-bearing)", () => {
     // the (module-scope) unit system has actually flipped before switching
     // tabs — otherwise Overview would remount while units were still metric.
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    // Settings sections are accordion cards now — expand "Units" first.
+    fireEvent.click(await screen.findByRole("button", { name: /^Units/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Imperial (mi, lb)" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/v1/settings/units"), expect.objectContaining({ method: "PUT" })),

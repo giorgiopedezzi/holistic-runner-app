@@ -4,7 +4,7 @@ import { api } from "@/api/client";
 import { Card, ErrorBanner, LoadingSpinner, ProgressBar, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, ClassificationMethod } from "@/types/api";
 import { classificationStatus } from "@/types/api";
-import { fmtKm } from "@/utils/fmt";
+import { fmtKm, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 
 // ── AI workout classification (bulk) ────────────────────────────────────
@@ -186,7 +186,7 @@ export function ClassifySection() {
                     transition: "background-color 2.5s ease-out",
                   }}>
                     <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggle(a.id)} />
-                    <span style={{ minWidth: 86 }}>{a.date_only}</span>
+                    <span style={{ minWidth: 86 }}>{fmtDate(a.date_only)}</span>
                     <span style={{ minWidth: 60 }}>{fmtKm(a.distance_m)}</span>
                     {resultPills.length > 0 ? resultPills : (
                       <span style={{ fontSize: 10, color: "var(--text-muted)" }}>unclassified</span>

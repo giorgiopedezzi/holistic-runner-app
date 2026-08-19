@@ -1,4 +1,6 @@
 import { getUnitSystem, kmToMi, mToFt, kgToLb, paceKmToMi, kmhToMph } from "./units";
+import { getDateFormatSystem, dateFormatRegion } from "./dateFormat";
+import type { DateFormat } from "@/types/api";
 
 // Pace is passed in as minutes-per-km (this app's internal/backend unit,
 // regardless of display system) and converted to minutes-per-mile here when
@@ -76,4 +78,57 @@ export function fmtMinSecRaw(value: number): string {
   const m = Math.floor(value);
   const s = Math.round((value - m) * 60);
   return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+// The single date-display format every date shown to the user (not just
+// inside a picker) goes through, so a "YYYY-MM-DD" from the backend never
+// renders as the raw ISO string, and no two places in the app can show the
+// same date two different ways. Driven by the Settings tab's "Date format"
+// preference (utils/dateFormat.ts's module state, applied by
+// useAppearance.ts) rather than the OS/browser's own locale — a fixed,
+// user-chosen style×region (numeric/literal × uk/us) instead of an implicit,
+// possibly-ambiguous OS default (dd/mm vs mm/dd reads differently depending
+// on the reader's own locale; "23 Mar 2026" has no such ambiguity). Locales
+// are pinned to en-GB/en-US per format (not `undefined`/runtime-locale) so
+// the four options render EXACTLY as documented — DATE_FORMAT_OPTIONS'
+// `example` strings in types/api.ts — regardless of the browser's own
+// language.
+const DATE_FORMATTERS: Record<DateFormat, Intl.DateTimeFormat> = {
+  numeric_uk: new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }),
+  numeric_us: new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "2-digit", year: "numeric" }),
+  literal_uk: new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short",  year: "numeric" }),
+  literal_us: new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short",  year: "numeric" }),
+};
+
+// Overview & Trends' chart axis labels: always numeric (no spelled-out month
+// — a compact tick has no room for one), but still uk/dd-first or us/mm-first
+// per the same region the full date_format setting carries. No year (these
+// are short axis ticks, e.g. "13/08" — matches the compactness the
+// hyphenated "MM-DD" label this replaced already had).
+const NUMERIC_CHART_FORMATTERS: Record<"uk" | "us", Intl.DateTimeFormat> = {
+  uk: new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" }),
+  us: new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "2-digit" }),
+};
+
+// Parses a "YYYY-MM-DD" prefix as a LOCAL calendar date (no timezone shift) —
+// `new Date("2026-08-19")` would parse as UTC midnight, which can display as
+// the previous day in a timezone behind UTC. Accepts a longer ISO timestamp
+// too (e.g. activity_date's full "…T07:16:27") by taking just the date part.
+function parseIsoDateLocal(iso: string): Date | null {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d);
+}
+
+export function fmtDate(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const date = parseIsoDateLocal(iso);
+  return date ? DATE_FORMATTERS[getDateFormatSystem()].format(date) : iso;
+}
+
+// Numeric-only "dd/mm" or "mm/dd" (no year) — see NUMERIC_CHART_FORMATTERS
+// above. Used by domain/trends.ts's per-point chart labels.
+export function fmtDateChart(iso: string): string {
+  const date = parseIsoDateLocal(iso);
+  return date ? NUMERIC_CHART_FORMATTERS[dateFormatRegion()].format(date) : iso;
 }

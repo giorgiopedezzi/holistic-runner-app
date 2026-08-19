@@ -13,6 +13,18 @@ import { OverviewTab } from "./OverviewTab";
 import { installFetch, paginated } from "@/test/api-stub";
 import { activity, sportSummary, settings, dateRange } from "@/test/fixtures";
 import * as trends from "@/domain/trends";
+import type { DateRangeState } from "@/hooks/useDateRange";
+import type { CompareRangeState } from "@/hooks/useCompareRange";
+
+// See OverviewTab.test.tsx's identical helpers — OverviewTab takes the full
+// live range state now (it renders its own DateRangeBar); this test never
+// clicks it, so the setters are no-ops.
+function fakeRange(from: string, to: string): DateRangeState {
+  return { from, to, setFrom: () => {}, setTo: () => {}, setPreset: () => {} };
+}
+function fakeCompareRange(from: string, to: string): CompareRangeState {
+  return { from, to, setFrom: () => {}, setTo: () => {}, enabled: true, setEnabled: () => {} };
+}
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -28,9 +40,10 @@ describe("TrendsBySport sport-grouping memoization", () => {
       "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
       "GET /api/v1/activities": paginated([activity({ id: 1 }), activity({ id: 2 })]),
       "GET /api/v1/range": dateRange(),
+      "GET /api/v1/date-ranges": paginated([]),
     });
 
-    render(<OverviewTab from="2026-07-01" to="2026-08-01" />);
+    render(<OverviewTab range={fakeRange("2026-07-01", "2026-08-01")} compareRange={fakeCompareRange("2026-06-01", "2026-06-30")} />);
 
     expect(await screen.findByText("Distance & pace/HR trend")).toBeInTheDocument();
     await waitFor(() => expect(spy).toHaveBeenCalled());

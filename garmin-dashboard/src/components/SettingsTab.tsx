@@ -10,9 +10,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { api } from "@/api/client";
-import { Card, SectionTitle, ErrorBanner, LoadingSpinner } from "@/components/ui";
+import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import type { Settings, Theme, StoredUnitSystem, AccentColor } from "@/types/api";
-import { THEME_NAMES, ACCENT_COLOR_NAMES } from "@/types/api";
+import { THEME_NAMES, ACCENT_COLOR_NAMES, DATE_FORMAT_OPTIONS } from "@/types/api";
 import { ACCENT_PALETTE } from "@/utils/accent";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
@@ -178,6 +178,32 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
   );
 }
 
+// Immediate-apply (like theme/units), one pill per style×region combo — each
+// pill's own example date doubles as its label, so there's no separate
+// preview needed. appearance.setDateFormat is optional only so the
+// pre-existing hand-written AppearanceApi stub keeps compiling unmodified
+// (see useAppearance.ts); the real hook always provides it.
+export function DateFormatPicker({ appearance }: { appearance: AppearanceApi }) {
+  const current = appearance.settings?.date_format;
+  return (
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {DATE_FORMAT_OPTIONS.map(opt => {
+        const selected = current === opt.value;
+        return (
+          <button
+            key={opt.value}
+            className="hra-toggle-pill"
+            data-active={selected}
+            onClick={() => appearance.setDateFormat?.(opt.value)}
+          >
+            {opt.label} <span style={{ opacity: 0.7 }}>· {opt.example}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function SettingField({ label, current, value, onChange, min, step }: {
   label: string; current: number; value: number; onChange: (v: number) => void;
   min: number; step: number;
@@ -221,6 +247,11 @@ export function SettingsTab({ appearance }: Props) {
   const [draft, setDraft] = useState<Settings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const primed = useRef(false);
+  // Single-expand accordion, same pattern as ActivitiesTab.tsx's row
+  // accordion (one section open at a time; all collapsed by default).
+  type SectionKey = "appearance" | "dateFormat" | "units" | "activityDetails" | "overviewTrends" | "outliers";
+  const [expanded, setExpanded] = useState<SectionKey | null>(null);
+  const toggle = (key: SectionKey) => setExpanded(e => e === key ? null : key);
   // Which card is mid-save / just-saved — one card = one sub-resource, so the two
   // explicit-save cards (Outlier detection, Overview & Trends) each save
   // independently, hitting their own PUT endpoint (HRA-40). Keyed rather than two
@@ -304,7 +335,6 @@ export function SettingsTab({ appearance }: Props) {
 
   return (
     <div>
-      <SectionTitle>Appearance</SectionTitle>
       {/* Background picture picker removed (2026-08-16 correction pass) —
           replaced by the app-wide automatic ambient glow layer (index.css's
           body::before: two radial accent/accent-glow washes over the theme
@@ -314,7 +344,7 @@ export function SettingsTab({ appearance }: Props) {
           then accent (kept to one row — see AccentPicker), then the live
           chrome preview strip, each full-width so the row itself reads as
           one group rather than two side-by-side halves. */}
-      <Card style={{ marginBottom: 24 }}>
+      <AccordionCard title="Appearance" expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
         <div style={{ marginBottom: 20 }}>
           <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Theme</div>
           <ThemePicker appearance={appearance} />
@@ -326,10 +356,18 @@ export function SettingsTab({ appearance }: Props) {
           <AccentPicker appearance={appearance} />
         </div>
         <ChromePreviewStrip />
-      </Card>
+      </AccordionCard>
 
-      <SectionTitle>Units</SectionTitle>
-      <Card style={{ marginBottom: 24 }}>
+      <AccordionCard title="Date format" expanded={expanded === "dateFormat"} onToggle={() => toggle("dateFormat")}>
+        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
+          Applies to every date shown in the app. "Numeric" is dd/mm or mm/dd depending on region;
+          "Literal" spells the month out. Overview &amp; Trends' chart axes always stay numeric (no
+          room for a spelled-out month on a compact axis tick) but still follow the region here.
+        </p>
+        <DateFormatPicker appearance={appearance} />
+      </AccordionCard>
+
+      <AccordionCard title="Units" expanded={expanded === "units"} onToggle={() => toggle("units")}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
           Applies to distance, pace, speed, elevation and weight everywhere in the app. "Auto"
           guesses from your browser's language/region (e.g. a US locale defaults to imperial) —
@@ -337,10 +375,9 @@ export function SettingsTab({ appearance }: Props) {
           so this is a best-effort default you can always override.
         </p>
         <UnitsPicker appearance={appearance} />
-      </Card>
+      </AccordionCard>
 
-      <SectionTitle>Activity details</SectionTitle>
-      <Card style={{ marginBottom: 24 }}>
+      <AccordionCard title="Activity details" expanded={expanded === "activityDetails"} onToggle={() => toggle("activityDetails")}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
           How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.
         </p>
@@ -359,10 +396,9 @@ export function SettingsTab({ appearance }: Props) {
             );
           })}
         </div>
-      </Card>
+      </AccordionCard>
 
-      <SectionTitle>Overview & Trends</SectionTitle>
-      <Card style={{ marginBottom: 24 }}>
+      <AccordionCard title="Overview & Trends" expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
           Minimum activities needed before a sport's trend chart is shown (in "Single" mode), or
           before "Week"/"Month" grouping is offered — below this, a "too few activities" message is
@@ -380,10 +416,9 @@ export function SettingsTab({ appearance }: Props) {
             <SaveBar cardKey="trend" dirty={trendDirty} onSave={saveThresholds} />
           </>
         )}
-      </Card>
+      </AccordionCard>
 
-      <SectionTitle>Outlier detection</SectionTitle>
-      <Card>
+      <AccordionCard title="Outlier detection" expanded={expanded === "outliers"} onToggle={() => toggle("outliers")}>
         <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
           Used by the activity chart's "Remove outliers" checkbox. Two independent rules: an
           isolated-spike filter (a point is flagged only when it jumps away <em>and</em> back from
@@ -433,7 +468,7 @@ export function SettingsTab({ appearance }: Props) {
             <SaveBar cardKey="outliers" dirty={outliersDirty} onSave={saveOutliers} />
           </>
         )}
-      </Card>
+      </AccordionCard>
     </div>
   );
 }

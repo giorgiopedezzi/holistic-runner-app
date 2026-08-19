@@ -6,6 +6,12 @@ export interface CompareRangeState {
   to:      string;
   setFrom: (v: string) => void;
   setTo:   (v: string) => void;
+  // Whether "Compare to" is switched on at all (DateRangeBar's toggle beside
+  // "Current"). Defaults true so existing behavior — comparison always on —
+  // is unchanged until a user explicitly turns it off. Callers (OverviewTab)
+  // gate every comparison fetch/render on this, not just from/to presence.
+  enabled:    boolean;
+  setEnabled: (v: boolean) => void;
 }
 
 // Default "compare to" window: same number of days as [from, to], ending
@@ -28,6 +34,7 @@ export function defaultCompareRange(from: string, to: string): { from: string; t
 // stale manual pick of a different length from a previous current range.
 export function useCompareRange(from: string, to: string): CompareRangeState {
   const [range, setRange] = useState(() => defaultCompareRange(from, to));
+  const [enabled, setEnabled] = useState(true);
   useEffect(() => setRange(defaultCompareRange(from, to)), [from, to]);
 
   return {
@@ -35,5 +42,7 @@ export function useCompareRange(from: string, to: string): CompareRangeState {
     to:   range.to,
     setFrom: (v: string) => setRange(r => ({ ...r, from: v })),
     setTo:   (v: string) => setRange(r => ({ ...r, to: v })),
+    enabled,
+    setEnabled,
   };
 }

@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { setUnitSystem } from "./units";
-import { fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed, fmtMinSecRaw } from "./fmt";
+import { fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed, fmtMinSecRaw, fmtDate } from "./fmt";
 
 afterEach(() => setUnitSystem("metric"));
 
@@ -67,6 +67,28 @@ describe("fmtWeight / fmtElevation / fmtSpeed", () => {
     expect(fmtWeight(null)).toBe("—");
     expect(fmtElevation(null)).toBe("—");
     expect(fmtSpeed(null)).toBe("—");
+  });
+});
+
+describe("fmtDate", () => {
+  // Built independently of fmt.ts's own implementation (same Intl call, but a
+  // second instance here) so this actually catches a regression rather than
+  // comparing the implementation to itself.
+  const localeFormat = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short", year: "numeric" });
+
+  it("formats a YYYY-MM-DD date using the runtime's own locale/date order", () => {
+    expect(fmtDate("2026-08-01")).toBe(localeFormat.format(new Date(2026, 7, 1)));
+  });
+  it("parses as a LOCAL calendar date, not UTC — no timezone day-shift", () => {
+    expect(fmtDate("2026-01-01")).toBe(localeFormat.format(new Date(2026, 0, 1)));
+  });
+  it("accepts a full timestamp (e.g. activity_date), using just its date part", () => {
+    expect(fmtDate("2026-08-09T07:16:27.000")).toBe(localeFormat.format(new Date(2026, 7, 9)));
+  });
+  it("returns — for null/undefined/empty", () => {
+    expect(fmtDate(null)).toBe("—");
+    expect(fmtDate(undefined)).toBe("—");
+    expect(fmtDate("")).toBe("—");
   });
 });
 

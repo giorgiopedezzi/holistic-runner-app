@@ -62,6 +62,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/activities")               return await activities.list(req, res, url);
         if (route === "/api/v1/activities/count")         return await activities.count(req, res, url);
         if (route === "/api/v1/activities/trash")         return await activities.trash(req, res, url);
+        if (route === "/api/v1/activities/races")         return await activities.races(req, res, url);
         if (route === "/api/v1/body-measurements/count")               return await body.count(req, res, url);
         if (route === "/api/v1/body-measurements/trash")               return await body.trash(req, res, url);
         if (route === "/api/v1/summary")                  return await trends.summary(req, res, url);
@@ -98,7 +99,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/units")           return await settings.updateUnits(req, res, url);
         if (route === "/api/v1/settings/detail-view")     return await settings.updateDetailView(req, res, url);
         if (route === "/api/v1/settings/accent")          return await settings.updateAccent(req, res, url);
+        if (route === "/api/v1/settings/date-format")     return await settings.updateDateFormat(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
+        if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
       }
 
       if (req.method === "POST") {

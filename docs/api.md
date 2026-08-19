@@ -30,6 +30,9 @@
 | `/api/body/trash` | Soft-deleted, not-yet-purged body measurements (`id,measured_at,date_only,weight_kg,deleted_at`) |
 | `/api/settings` | Current row from `settings` |
 | `/api/settings/background-image` | Streams the current custom-uploaded background file (404 if `background_kind` isn't `'custom'` or the file is missing). Response has `Cache-Control: no-cache`; the frontend also cache-busts the URL with `?v=<background_value>` since the filename doesn't otherwise change when the setting does |
+| `/api/v1/activity-types` | The fixed `activity_types` lookup (Training, Race 5km, Race 10km, Half-Marathon, Marathon), each with `min_distance_m` |
+| `/api/v1/activities/races` | Race-type activities (`activity_type_id != 1`), full history, `{id,date_only,activity_type_id,activity_name,distance_m}` — feeds the "link a race" dropdown on the date-ranges save form |
+| `/api/v1/date-ranges` | Saved named date ranges (paginated envelope), newest first — each row `LEFT JOIN`s its linked race activity's display fields (`race_date_only`/`race_activity_name`/`race_distance_m`/`race_activity_type_id`, all `NULL` if unlinked). See `docs/schema.md`'s `date_ranges` section |
 
 ### DELETE
 Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they don't `DELETE` rows.
@@ -47,6 +50,9 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/settings/background` | Body `{background_kind: 'none'\|'bundled', background_value?}` — selects a bundled preset or clears back to none. `background_value` required when `background_kind` is `'bundled'`. Uploading a custom image is a separate route (below), since that carries a binary body |
 | `/api/settings/units` | Body `{unit_system}`, must be `'metric'`, `'imperial'`, or `'auto'` (400 otherwise). Same immediate-apply pattern as theme |
 | `/api/settings/detail-view` | Body `{activity_detail_view}`, must be `'accordion'` or `'modal'` (400 otherwise). Same immediate-apply pattern as theme/units |
+| `/api/v1/settings/date-format` | Body `{date_format}`, must be one of `'numeric_uk' | 'numeric_us' | 'literal_uk' | 'literal_us'` (422 otherwise). Same immediate-apply pattern as theme/units/detail-view |
+| `/api/v1/activities/:id/type` | Body `{activity_type_id, name?}` — full replacement of the activity's type/name sub-resource. 422 if the type is unknown or the activity's `distance_m` is shorter than the type's `min_distance_m`; 404 if the activity doesn't exist |
+| `/api/v1/date-ranges/:id` | Body `{name, from, to, activity_id?}` — full replacement, incl. renaming (the Data & Sync tab's "Update" row). Same validation as `POST /api/v1/date-ranges` below, except the duplicate-name check excludes the row's own id (so re-saving under its current name doesn't 409 itself). 404 if the row doesn't exist |
 
 ### POST
 | Endpoint | Description |
@@ -57,3 +63,9 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/settings/background/upload?ext=jpg\|jpeg\|png\|webp\|gif` | Body is the **raw image bytes** (`Content-Type` set to the image's own mime type) — deliberately not `multipart/form-data`, since this app has zero runtime dependencies and a raw-body upload needs no parser at all (frontend just does `fetch(url, {method:"POST", body: file})`). Max 10MB. Writes to `garmin-stats/backgrounds/bg-<timestamp>.<ext>`, best-effort deletes the previous custom file (failure swallowed, not fatal), sets `background_kind='custom'` |
 | `/api/activities/restore`, `/api/activities/purge` | Body `{ids: number[]}` (400 if empty/non-integers). Restore clears `deleted_at`; purge wipes the row's heavy data and sets `purged=1` — see "Soft delete & trash". Looped single-row prepared statements inside one transaction, not a dynamic `IN (...)` clause, so every bound value stays a real parameter |
 | `/api/body/restore`, `/api/body/purge` | Same shape/semantics as the activities pair, for `body_measurements` |
+| `/api/v1/date-ranges` | Body `{name, from, to, activity_id?}`. `name` must be unique (409 otherwise); `from`/`to` are `YYYY-MM-DD` with `from <= to`; `activity_id`, if given, must be a race-type activity (`activity_type_id != 1`) whose `date_only` is strictly after `to` (422 otherwise). Returns 201 + `Location` + the created row (with the joined race fields) |
+
+### DELETE (date ranges — hard delete, not soft)
+| Endpoint | Description |
+|---|---|
+| `/api/v1/date-ranges/:id` | Deletes a saved date range permanently (204). Unlike activities/body measurements, saved ranges have no trash — they're just a recall label, not synced data |
