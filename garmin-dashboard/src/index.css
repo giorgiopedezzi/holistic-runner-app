@@ -824,6 +824,20 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-status-dot[data-online="true"]  { background: var(--accent-green); }
 .hra-status-dot[data-online="false"] { background: var(--accent-red); }
 .hra-nav { display: flex; gap: 2px; margin-left: auto; }
+
+/* Language picker (HRA-104) — header nav bar dropdown. Trigger reuses
+   .hra-date-trigger's compact bordered-chip look; the list is a plain button
+   column (not Radix Select — just two flag+code choices, no native <select>
+   semantics needed), styled to match .hra-select-item's visual language. */
+.hra-lang-list { display: flex; flex-direction: column; gap: 2px; min-width: 88px; }
+.hra-lang-item {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; font: inherit; font-size: 13px; color: var(--text-primary);
+  background: none; border: none; border-radius: var(--radius-sm);
+  padding: 6px 10px; cursor: pointer; text-align: left;
+}
+.hra-lang-item:hover { background: var(--bg-surface); }
+.hra-lang-item[data-selected="true"] { color: var(--accent); }
 /* Manage tab's subtle red tint while inactive (a destructive-adjacent
    section) — a data attribute instead of the inline conditional color the
    nav used to compute per render. */

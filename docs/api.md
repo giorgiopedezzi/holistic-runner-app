@@ -33,6 +33,7 @@
 | `/api/v1/activity-types` | The fixed `activity_types` lookup (Training, Race 5km, Race 10km, Half-Marathon, Marathon), each with `min_distance_m` |
 | `/api/v1/activities/races` | Race-type activities (`activity_type_id != 1`), full history, `{id,date_only,activity_type_id,activity_name,distance_m}` — feeds the "link a race" dropdown on the date-ranges save form |
 | `/api/v1/date-ranges` | Saved named date ranges (paginated envelope), newest first — each row `LEFT JOIN`s its linked race activity's display fields (`race_date_only`/`race_activity_name`/`race_distance_m`/`race_activity_type_id`, all `NULL` if unlinked). See `docs/schema.md`'s `date_ranges` section |
+| `/api/v1/locales/:lang` | Translation bundle for `:lang` (`en` or `it`) — flat key→string JSON, read live off `garmin-stats/locales/<lang>.json`, no envelope. `:lang` is whitelisted before touching the filesystem; `problem+json` 404 for an unsupported or missing language |
 
 ### DELETE
 Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they don't `DELETE` rows.
@@ -51,6 +52,7 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/settings/units` | Body `{unit_system}`, must be `'metric'`, `'imperial'`, or `'auto'` (400 otherwise). Same immediate-apply pattern as theme |
 | `/api/settings/detail-view` | Body `{activity_detail_view}`, must be `'accordion'` or `'modal'` (400 otherwise). Same immediate-apply pattern as theme/units |
 | `/api/v1/settings/date-format` | Body `{date_format}`, must be one of `'numeric_uk' | 'numeric_us' | 'literal_uk' | 'literal_us'` (422 otherwise). Same immediate-apply pattern as theme/units/detail-view |
+| `/api/v1/settings/language` | Body `{language}`, must be one of `'auto' | 'en' | 'it'` (422 otherwise). `'auto'` resolves from the browser's `navigator.language` at render time (garmin-dashboard's `i18n.ts`), same idiom as `unit_system`'s `'auto'`. Same immediate-apply pattern as theme/units/detail-view/date-format |
 | `/api/v1/activities/:id/type` | Body `{activity_type_id, name?}` — full replacement of the activity's type/name sub-resource. 422 if the type is unknown or the activity's `distance_m` is shorter than the type's `min_distance_m`; 404 if the activity doesn't exist |
 | `/api/v1/date-ranges/:id` | Body `{name, from, to, activity_id?}` — full replacement, incl. renaming (the Data & Sync tab's "Update" row). Same validation as `POST /api/v1/date-ranges` below, except the duplicate-name check excludes the row's own id (so re-saving under its current name doesn't 409 itself). 404 if the row doesn't exist |
 

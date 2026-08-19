@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat } from "@/types/api";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { setDateFormatSystem } from "@/utils/dateFormat";
 import { ACCENT_PALETTE } from "@/utils/accent";
 import { useSettings } from "@/hooks/useSettings";
+import i18next, { detectLanguageFromLocale } from "@/i18n";
 
 // 'auto' resolves via the OS's prefers-color-scheme — the one appearance
 // signal a web page genuinely can read directly (unlike measurement system,
@@ -22,6 +23,10 @@ function resolveTheme(stored: StoredTheme): Theme {
 
 function resolveUnitSystem(stored: StoredUnitSystem): ResolvedUnitSystem {
   return stored === "auto" ? detectUnitSystemFromLocale() : stored;
+}
+
+function resolveLanguage(stored: StoredLanguage): Language {
+  return stored === "auto" ? detectLanguageFromLocale() : stored;
 }
 
 // Applies theme + unit system straight to the document/module state — a
@@ -45,6 +50,12 @@ function applyToDocument(settings: Settings) {
 
   setUnitSystem(resolveUnitSystem(settings.unit_system));
   setDateFormatSystem(settings.date_format);
+  // Cold load: i18next already initialized synchronously with a default
+  // language (i18n.ts) before this settings row resolved — this call, fired
+  // from the same effect as theme/units/date-format above, is what applies
+  // the persisted choice once it does (HRA-104). changeLanguage() is a no-op
+  // if already the target language.
+  void i18next.changeLanguage(resolveLanguage(settings.language));
 }
 
 // Explicit contract (HRA-77) — state / actions / meta, composed by
@@ -71,10 +82,22 @@ export interface AppearanceActions {
   // hand-written AppearanceApi stub (SettingsTab.pickers.test.tsx) valid
   // without modification.
   setDateFormat?:   (format: DateFormat) => Promise<void>;
+  // Optional for the same reason setAccentColor/setDateFormat are — keeps
+  // the pre-existing hand-written AppearanceApi stub (SettingsTab.pickers.
+  // test.tsx) valid without modification. Takes a concrete Language, not
+  // StoredLanguage — the header picker (HRA-104) only ever offers 'en'/'it',
+  // never 'auto' as a selectable option.
+  setLanguage?:     (language: Language) => Promise<void>;
 }
 export interface AppearanceMeta {
   resolvedTheme:       Theme | null;
   resolvedUnitSystem:  ResolvedUnitSystem | null;
+  // Optional, unlike resolvedTheme/resolvedUnitSystem above — those predate
+  // this convention; every field added since (setAccentColor, setDateFormat,
+  // and this one) stays optional so the pre-existing hand-written
+  // AppearanceApi stub (SettingsTab.pickers.test.tsx) keeps compiling
+  // unmodified.
+  resolvedLanguage?:   Language | null;
 }
 export type AppearanceApi = AppearanceState & AppearanceActions & AppearanceMeta;
 
@@ -137,13 +160,25 @@ export function useAppearance(): AppearanceApi {
     update(updated);
   }, [update]);
 
+  // PUTs the setting, then applies it immediately — deliberately not left to
+  // wait for the settings-changed effect above to round-trip back down, since
+  // react-i18next has its own subscription-based reactivity and doesn't need
+  // the tab-remount mechanism utils/units.ts relies on (HRA-104).
+  const setLanguage = useCallback(async (language: Language) => {
+    const updated = await api.settings.setLanguage(language);
+    update(updated);
+    void i18next.changeLanguage(language);
+  }, [update]);
+
   return {
     settings,
     setTheme,
     setUnits,
     setAccentColor,
     setDateFormat,
+    setLanguage,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
+    resolvedLanguage: settings ? resolveLanguage(settings.language) : null,
   };
 }

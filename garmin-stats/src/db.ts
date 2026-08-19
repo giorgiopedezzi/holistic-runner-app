@@ -195,6 +195,11 @@ export function initSchema(db: DatabaseSync): void {
       -- existed), 'literal_us' (Mar 23, 2026). Independent of unit_system —
       -- a UK date format doesn't imply metric units or vice versa.
       date_format                   TEXT NOT NULL DEFAULT 'literal_uk',
+      -- i18n (HRA-104): 'auto' resolves from navigator.language at render
+      -- time (see garmin-dashboard's i18n.ts detectLanguageFromLocale), same
+      -- 'auto' idiom as unit_system above — plus the two concrete supported
+      -- codes ('en'/'it'). Independent of date_format/unit_system.
+      language                      TEXT NOT NULL DEFAULT 'auto',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
@@ -388,6 +393,9 @@ export function initSchema(db: DatabaseSync): void {
   if (!settingsCols.some(c => c.name === "date_format")) {
     db.exec("ALTER TABLE settings ADD COLUMN date_format TEXT NOT NULL DEFAULT 'literal_uk'");
   }
+  if (!settingsCols.some(c => c.name === "language")) {
+    db.exec("ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto'");
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -507,6 +515,7 @@ export interface SettingsRow {
   activity_detail_view: string;
   accent_color: string;
   date_format: string;
+  language: string;
 }
 
 // ── Typed param builders ──────────────────────────────────────────────────

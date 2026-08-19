@@ -28,6 +28,10 @@ const ACCENT_COLORS = ["teal", "violet", "magenta", "amber", "sky", "lime"];
 // Style (numeric/literal) × region (uk/us) — see db.ts's date_format column
 // comment and garmin-dashboard's utils/dateFormat.ts for what each renders as.
 const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
+// 'auto' resolves from the browser's navigator.language at render time
+// (garmin-dashboard's i18n.ts) — same writable-'auto' idiom as unit_system,
+// unlike theme. 'en'/'it' are the two bundles under garmin-stats/locales/.
+const LANGUAGES = ["auto", "en", "it"];
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };
@@ -130,6 +134,15 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
+  const updateLanguage: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    if (!body.language || !LANGUAGES.includes(body.language)) {
+      throw unprocessable(`language must be one of: ${LANGUAGES.join(", ")}`);
+    }
+    repo.updateLanguage({ $language: body.language });
+    return send(res, repo.get());
+  };
+
   const backgroundImage: Handler = (_req, res) => {
     const row = repo.get() as unknown as SettingsRow;
     if (row.background_kind !== "custom" || !row.background_value) throw notFound("No custom background set.");
@@ -164,5 +177,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, backgroundImage, uploadBackground };
 }

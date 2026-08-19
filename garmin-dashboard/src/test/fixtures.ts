@@ -23,6 +23,7 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   activity_detail_view: "accordion",
   accent_color: "sky",
   date_format: "literal_uk",
+  language: "auto",
   ...overrides,
 });
 

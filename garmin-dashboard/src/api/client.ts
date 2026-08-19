@@ -9,7 +9,7 @@ import type {
   DeviceStatus, WithingsStatus, StravaStatus, Settings, Theme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
-  ActivityType, RaceActivity, SavedDateRange, DateFormat, Paginated,
+  ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated,
 } from "@/types/api";
 
 // Sentinel "give me everything" limit for consumers that need the full set
@@ -128,6 +128,13 @@ export const api = {
   activityTypes: {
     list: async () => (await request<Paginated<ActivityType>>("/api/v1/activity-types", "GET", { limit: ALL })).data,
   },
+  // Translation bundles — raw key→string, no envelope (static content, not a
+  // collection). Consumed only via i18n.ts's resourcesToBackend loader, so
+  // translation fetches go through this one centralized HTTP layer instead of
+  // a second parallel fetch mechanism (HRA-104).
+  locales: {
+    get: (lang: string) => request<Record<string, string>>(`/api/v1/locales/${lang}`),
+  },
   dateRanges: {
     list:   async () => (await request<Paginated<SavedDateRange>>("/api/v1/date-ranges", "GET", { limit: ALL })).data,
     create: (name: string, from: string, to: string, activityId: number | null) =>
@@ -176,6 +183,7 @@ export const api = {
     setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PUT", undefined, { activity_detail_view: view }),
     setAccentColor: (accent: AccentColor) => request<Settings>("/api/v1/settings/accent", "PUT", undefined, { accent_color: accent }),
     setDateFormat: (format: DateFormat) => request<Settings>("/api/v1/settings/date-format", "PUT", undefined, { date_format: format }),
+    setLanguage: (language: StoredLanguage) => request<Settings>("/api/v1/settings/language", "PUT", undefined, { language }),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {

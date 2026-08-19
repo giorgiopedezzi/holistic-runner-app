@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
+import "@/i18n";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
 import { useAppearance } from "@/hooks/useAppearance";
@@ -9,14 +11,19 @@ import { ActivitiesTab } from "@/components/ActivitiesTab";
 import { BodyTab }      from "@/components/BodyTab";
 import { ManageTab }    from "@/components/ManageTab";
 import { SettingsTab }  from "@/components/SettingsTab";
+import { LanguagePicker } from "@/components/LanguagePicker";
 import { ErrorBanner }  from "@/components/ui";
 
+// labelKey/fallback: the header nav bar's own strings are the one concrete
+// pipeline example proving i18n end to end (HRA-104) — fallback is the
+// pre-existing English literal, used as t()'s defaultValue so nothing flashes
+// a bare translation key before the backend bundle loads.
 const TABS = [
-  { id: "overview",    label: "Overview & Trends" },
-  { id: "activities",  label: "Activities"        },
-  { id: "body",        label: "Body"              },
-  { id: "manage",      label: "Data & Sync"       },
-  { id: "settings",    label: "Settings"          },
+  { id: "overview",    labelKey: "nav.overview",   fallback: "Overview & Trends" },
+  { id: "activities",  labelKey: "nav.activities", fallback: "Activities"        },
+  { id: "body",        labelKey: "nav.body",       fallback: "Body"              },
+  { id: "manage",      labelKey: "nav.manage",     fallback: "Data & Sync"       },
+  { id: "settings",    labelKey: "nav.settings",   fallback: "Settings"          },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -45,6 +52,7 @@ function AppShell() {
   // regardless of which tab is active.
   const compareRange = useCompareRange(range.from, range.to);
   const appearance = useAppearance();
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabId>("overview");
   const [online, setOnline] = useState<boolean | null>(null);
 
@@ -84,26 +92,28 @@ function AppShell() {
             )}
 
             <nav className="hra-nav">
-              {TABS.map(t => (
+              {TABS.map(tabDef => (
                 <button
-                  key={t.id}
+                  key={tabDef.id}
                   className={[
                     "hra-pill", "hra-nav-pill", "hra-nav-hover",
-                    t.id === "manage" ? "hra-nav-manage" : "",
-                    tab === t.id ? "hra-pill-active" : "",
+                    tabDef.id === "manage" ? "hra-nav-manage" : "",
+                    tab === tabDef.id ? "hra-pill-active" : "",
                   ].filter(Boolean).join(" ")}
-                  data-active={t.id === "manage" ? tab === t.id : undefined}
-                  onClick={() => setTab(t.id)}
+                  data-active={tabDef.id === "manage" ? tab === tabDef.id : undefined}
+                  onClick={() => setTab(tabDef.id)}
                   style={{
-                    padding: tab === t.id ? "6px 16px" : "5px 12px",
+                    padding: tab === tabDef.id ? "6px 16px" : "5px 12px",
                     fontSize: 13,
-                    fontWeight: tab === t.id ? 600 : 400,
+                    fontWeight: tab === tabDef.id ? 600 : 400,
                   }}
                 >
-                  {t.label}
+                  {t(tabDef.labelKey, tabDef.fallback)}
                 </button>
               ))}
             </nav>
+
+            <LanguagePicker appearance={appearance} />
           </div>
         </div>
       </header>

@@ -234,6 +234,14 @@ export const DATE_FORMAT_OPTIONS: { value: DateFormat; label: string; example: s
 ];
 export const DATE_FORMAT_NAMES: DateFormat[] = DATE_FORMAT_OPTIONS.map(o => o.value);
 
+// i18n (HRA-104): Language is the 2 concrete, translatable codes; StoredLanguage
+// adds 'auto' — valid to persist, resolved via navigator.language at render
+// time (see i18n.ts's detectLanguageFromLocale) rather than applied directly,
+// same 'auto' pattern as StoredUnitSystem above.
+export type Language = "en" | "it";
+export const LANGUAGE_NAMES: Language[] = ["en", "it"];
+export type StoredLanguage = Language | "auto";
+
 export interface Settings {
   outlier_speed_delta_per_sec:   number;
   outlier_cadence_delta_per_sec: number;
@@ -248,6 +256,7 @@ export interface Settings {
   activity_detail_view: ActivityDetailView;
   accent_color: AccentColor;
   date_format: DateFormat;
+  language: StoredLanguage;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

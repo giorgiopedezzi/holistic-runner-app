@@ -17,6 +17,7 @@ import { createSettingsController } from "../controllers/settings.controller.ts"
 import { createSyncController } from "../controllers/sync.controller.ts";
 import { createIntegrationsController } from "../controllers/integrations.controller.ts";
 import { createDocsController } from "../controllers/docs.controller.ts";
+import { createLocalesController } from "../controllers/locales.controller.ts";
 import { createDateRangesController } from "../controllers/date-ranges.controller.ts";
 import { createActivityTypesController } from "../controllers/activity-types.controller.ts";
 
@@ -30,6 +31,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const docs         = createDocsController(ctx);
   const dateRanges   = createDateRangesController(ctx);
   const activityTypes = createActivityTypesController(ctx);
+  const locales      = createLocalesController(ctx);
   const { port } = ctx;
 
   return async (req, res) => {
@@ -73,6 +75,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements/correlation")         return await body.correlation(req, res, url);
         if (route === "/api/v1/date-ranges")               return await dateRanges.list(req, res, url);
         if (route === "/api/v1/activity-types")            return await activityTypes.list(req, res, url);
+        if (/^\/api\/v1\/locales\/[^/]+$/.test(route))     return await locales.get(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
@@ -100,6 +103,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/detail-view")     return await settings.updateDetailView(req, res, url);
         if (route === "/api/v1/settings/accent")          return await settings.updateAccent(req, res, url);
         if (route === "/api/v1/settings/date-format")     return await settings.updateDateFormat(req, res, url);
+        if (route === "/api/v1/settings/language")        return await settings.updateLanguage(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
       }
