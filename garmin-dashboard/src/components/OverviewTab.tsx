@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -49,6 +49,18 @@ const GROUP_LABEL: Record<GroupMode, string> = { single: "Single", week: "Week",
 // two separate ones, side by side — a per-tab toggle (TrendsBySport), only
 // shown while comparison is enabled.
 type TrendViewMode = "overlap" | "distinct";
+
+// The distinct<->overlap switch is a two-step choreography, not a plain
+// mount fade — SportTrendPair steps through these phases on a timer:
+// distinct -> overlap: "d2o-move" (the compare card slides up until it
+//   overlaps the current card) -> "d2o-fade" (the merged pair crossfades
+//   into the single overlap chart) -> settle at "overlap".
+// overlap -> distinct: "o2d-fade" (the overlap chart crossfades into the
+//   distinct pair, compare card starting already merged over current) ->
+//   "o2d-slide" (the compare card slides back down into its own slot) ->
+//   settle at "distinct".
+type TrendPhase = TrendViewMode | "d2o-move" | "d2o-fade" | "o2d-fade" | "o2d-slide";
+const TREND_PHASE_MS = 1000;
 
 const axisStyle = chartTick;
 const gridStyle = chartGrid;
@@ -240,7 +252,7 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   const gradId = useId();
 
   return (
-    <div className="hra-compare-card-enter" style={{ marginBottom: 12 }}>
+    <div className="hra-overlap-card-enter" style={{ marginBottom: 12 }}>
       <ChartCard title={title} legend={compareEnabled && (
         <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11, color: "var(--text-muted)" }}>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -364,6 +376,26 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // IS "distance in time" there — no separate alignment choice needed.
   const [alignMode, setAlignMode] = useState<AlignMode>("index");
 
+  // Steps `phase` through the choreography (see TrendPhase above) whenever
+  // the OWNER's `viewMode` selection changes — `phase` (not `viewMode`)
+  // drives rendering below, so the two intermediate steps get their own
+  // render pass each. `!compareEnabled` skips straight to the target phase
+  // (nothing to merge/split when there's no compare card at all).
+  const [phase, setPhase] = useState<TrendPhase>(viewMode);
+  const prevViewMode = useRef(viewMode);
+  useEffect(() => {
+    if (!compareEnabled) { prevViewMode.current = viewMode; setPhase(viewMode); return; }
+    if (viewMode === prevViewMode.current) return;
+    const from = prevViewMode.current;
+    prevViewMode.current = viewMode;
+    const mid: TrendPhase = from === "distinct" ? "d2o-move" : "o2d-fade";
+    const late: TrendPhase = from === "distinct" ? "d2o-fade" : "o2d-slide";
+    setPhase(mid);
+    const t1 = setTimeout(() => setPhase(late), TREND_PHASE_MS);
+    const t2 = setTimeout(() => setPhase(viewMode), TREND_PHASE_MS * 2);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [viewMode, compareEnabled]);
+
   const curPoints = useMemo(() => buildTrendPoints(activities, mode), [activities, mode]);
   const cmpPoints = useMemo(() => compareEnabled ? buildTrendPoints(compareActivities, mode) : [], [compareActivities, mode, compareEnabled]);
   const countsDiffer = mode === "single" && compareEnabled && curPoints.length !== cmpPoints.length;
@@ -435,27 +467,79 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
 
       {tooFew(activities) ? (
         <Empty message={`Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`} />
-      ) : viewMode === "overlap" ? (
-        <SportTrendOverlapChart sport={sport} title={label} points={scaledOverlap} compareEnabled={compareEnabled}
-          kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
-      ) : (
-        <>
+      ) : (() => {
+        const currentChart = (
           <SportTrendChart sport={sport} title={`${label} - current`} points={scaledCur}
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
-          {compareEnabled && (
-            tooFew(compareActivities) ? (
-              <div className="hra-compare-card-enter" style={{ marginTop: 12 }}>
-                <Empty message={`Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`} />
+        );
+        const compareCard = !compareEnabled ? null : tooFew(compareActivities) ? (
+          <Empty message={`Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`} />
+        ) : (
+          <SportTrendChart sport={sport} title={`${label} - comparison`} points={scaledCmp}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
+        );
+        const overlapChart = (
+          <SportTrendOverlapChart sport={sport} title={label} points={scaledOverlap} compareEnabled={compareEnabled}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
+        );
+        // "Merged" = compareCard rendered as an absolutely-positioned overlay
+        // spanning its `position: relative` sibling wrapper 1:1 (`inset: 0`)
+        // — since currentChart alone defines that wrapper's height, this
+        // stacks compareCard exactly on top of currentChart with no dead
+        // space, standing in for a real overlap without measuring pixels.
+        const mergedPair = (
+          <div style={{ position: "relative" }}>
+            {currentChart}
+            {compareCard && <div className="hra-merged" style={{ position: "absolute", inset: 0 }}>{compareCard}</div>}
+          </div>
+        );
+
+        switch (phase) {
+          case "overlap":
+            return overlapChart;
+          case "distinct":
+            return (
+              <>
+                {currentChart}
+                {compareCard && <div style={{ marginTop: 12 }}>{compareCard}</div>}
+              </>
+            );
+          case "d2o-move":
+            // Compare card slides up (still in normal flow, so it briefly
+            // leaves dead space below it) until it visually overlaps
+            // current — the merged look `d2o-fade` picks up from.
+            return (
+              <>
+                {currentChart}
+                {compareCard && <div className="hra-merge-up" style={{ marginTop: 12 }}>{compareCard}</div>}
+              </>
+            );
+          case "d2o-fade":
+            return (
+              <div className="hra-crossfade">
+                <div className="hra-crossfade-out">{mergedPair}</div>
+                <div className="hra-crossfade-in">{overlapChart}</div>
               </div>
-            ) : (
-              <div className="hra-compare-card-enter" style={{ marginTop: 12 }}>
-                <SportTrendChart sport={sport} title={`${label} - comparison`} points={scaledCmp}
-                  kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
+            );
+          case "o2d-fade":
+            return (
+              <div className="hra-crossfade">
+                <div className="hra-crossfade-out">{overlapChart}</div>
+                <div className="hra-crossfade-in">{mergedPair}</div>
               </div>
-            )
-          )}
-        </>
-      )}
+            );
+          case "o2d-slide":
+            // Compare card starts merged (matching o2d-fade's end state) and
+            // slides down into its own slot — settling at "distinct" swaps
+            // it back to normal in-flow positioning at the matching spot.
+            return (
+              <div style={{ position: "relative" }}>
+                {currentChart}
+                {compareCard && <div className="hra-unmerge-down" style={{ position: "absolute", inset: 0 }}>{compareCard}</div>}
+              </div>
+            );
+        }
+      })()}
     </div>
   );
 }

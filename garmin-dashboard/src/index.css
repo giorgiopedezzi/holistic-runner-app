@@ -802,18 +802,42 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-chart-tooltip-pace  { color: var(--data-pace); }
 .hra-chart-tooltip-hr    { color: var(--data-hr); }
 
-/* Overlap/Distinct view-mode switch (TrendsBySport) — whichever chart card
-   mounts as a result of the switch (the overlap chart, or the "comparison"
-   card in distinct mode) fades + slides in rather than popping in instantly.
-   Plain CSS mount animation, not a transition — the card is conditionally
-   rendered (real mount, not a hidden/shown one, per this app's existing
-   "conditional render over CSS-hide" convention), so there's no prior state
-   for a `transition` to interpolate from. */
-@keyframes hra-compare-card-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0); }
+/* Overlap/Distinct view-mode switch (TrendsBySport / SportTrendPair's
+   `phase` state machine) — a two-step choreography per direction, not a
+   single mount fade. Every phase below is its own fresh mount (React
+   remounts across phase boundaries since the JSX shape differs), so each
+   keyframe's `from` state is written to visually match the PREVIOUS
+   phase's `to` state — the illusion of one continuous motion is entirely
+   compositional, not a single continuous DOM/transition chain.
+
+   distinct -> overlap: `.hra-merge-up` (compare card slides up over
+   current) -> `.hra-crossfade-out/-in` (the merged pair crossfades into
+   the single overlap chart).
+   overlap -> distinct: `.hra-crossfade-out/-in` (overlap chart crossfades
+   into the distinct pair, compare card starting already merged over
+   current) -> `.hra-unmerge-down` (compare card slides back into its own
+   slot). `.hra-merged` is the static (non-animated) "already merged" look
+   shared by both crossfade phases. */
+.hra-crossfade { display: grid; }
+.hra-crossfade > * { grid-area: 1 / 1; }
+@keyframes hra-fade-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes hra-fade-in  { from { opacity: 0; } to { opacity: 1; } }
+.hra-crossfade-out { animation: hra-fade-out 1s ease-in-out forwards; }
+.hra-crossfade-in  { animation: hra-fade-in  1s ease-in-out forwards; }
+
+.hra-merged { inset: 0; }
+
+@keyframes hra-merge-up-move {
+  from { transform: translateY(0); }
+  to   { transform: translateY(calc(-100% - 12px)); } /* own height ~= current chart's height, so this lands on top of it */
 }
-.hra-compare-card-enter { animation: hra-compare-card-enter 0.28s ease-out; }
+.hra-merge-up { animation: hra-merge-up-move 1s ease-in-out forwards; }
+
+@keyframes hra-unmerge-down-move {
+  from { transform: translateY(0); }
+  to   { transform: translateY(calc(100% + 12px)); }
+}
+.hra-unmerge-down { animation: hra-unmerge-down-move 1s ease-in-out forwards; }
 
 /* Runner mouse-follow/autoplay readout (ActivityChartSection) — bare text,
    no chip/box (deliberately NOT `.hra-chart-tooltip` — a panel floating
