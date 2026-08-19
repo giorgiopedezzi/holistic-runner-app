@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { MetricKey } from "@/domain/activity-chart";
 import { Checkbox } from "@/components/ui";
 import { METRIC_DEFS } from "./shared";
@@ -29,23 +30,24 @@ export function MetricRow({ mKey, label, state, onToggle }: {
         onClick={() => onToggle("active")}
         disabled={!available}
         title={available ? undefined : "No data for this metric"}
+        className="hra-dyn-border hra-dyn-bg hra-dyn-color"
         style={{
           fontSize: 11, padding: "4px 10px", borderRadius: 999, textAlign: "left",
           cursor: available ? "pointer" : "not-allowed",
           opacity: available ? 1 : 0.4,
-          border: `1px solid ${active ? color : "var(--border-strong)"}`,
-          background: active ? `color-mix(in srgb, ${color} 13%, transparent)` : "transparent",
-          color: active ? color : "var(--text-secondary)",
-        }}
+          "--dyn-border": active ? color : "var(--border-strong)",
+          "--dyn-bg": active ? `color-mix(in srgb, ${color} 13%, transparent)` : "transparent",
+          "--dyn-color": active ? color : "var(--text-secondary)",
+        } as CSSProperties}
       >
         {label}
       </button>
       {active && (
         <>
-          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", cursor: "pointer" }}>
+          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
             <Checkbox size={11} checked={axisOn} onCheckedChange={() => onToggle("axis")} /> Axis
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: "var(--text-muted)", cursor: "pointer" }}>
+          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
             <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> Card
           </label>
         </>

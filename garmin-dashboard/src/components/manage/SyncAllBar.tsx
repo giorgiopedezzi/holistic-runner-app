@@ -66,7 +66,7 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div className="hra-block-title">Sync all</div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
+          <div className="hra-text-secondary" style={{ fontSize: 12 }}>
             Runs every sync below in one go — skips whichever source isn't ready (device unplugged, not logged in).
           </div>
         </div>
@@ -81,7 +81,7 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
         </button>
       </div>
       {log.length > 0 && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 2 }}>
+        <div className="hra-text-secondary" style={{ marginTop: 10, fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
           {log.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}

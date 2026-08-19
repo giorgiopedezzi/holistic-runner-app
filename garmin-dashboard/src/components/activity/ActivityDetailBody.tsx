@@ -171,9 +171,9 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           {activity && (
             <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[activity.sport ?? "other"] ?? "#888"} />
           )}
-          <span style={{ fontSize: 13, color: "var(--text-secondary)" }}>{activity && fmtDate(activity.date_only)}</span>
+          <span className="hra-text-secondary" style={{ fontSize: 13 }}>{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>via {activity.source}</span>
+            <span className="hra-text-muted" style={{ fontSize: 11 }}>via {activity.source}</span>
           )}
           <div style={{ flex: 1 }} />
           {activity && <ActivityTypePicker activity={activity} onUpdate={setActivity} />}
@@ -189,7 +189,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
             </button>
           ) : (
             <div className="hra-row" style={{ gap: 6 }}>
-              <span style={{ fontSize: 12, color: "var(--accent-red)" }}>Move to trash?</span>
+              <span className="hra-text-danger" style={{ fontSize: 12 }}>Move to trash?</span>
               <button
                 className="hra-btn" data-variant="cta"
                 style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
@@ -198,14 +198,16 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                 {deleting ? "…" : "Yes, delete"}
               </button>
               <button onClick={() => setConfirmDelete(false)}
-                style={{ fontSize: 12, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "4px 12px", background: "none", color: "var(--text-secondary)", cursor: "pointer" }}>
+                className="hra-border-strong hra-text-secondary"
+                style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
                 Cancel
               </button>
             </div>
           )}
           {onClose && (
             <button onClick={onClose}
-              style={{ fontSize: 18, border: "none", background: "none", color: "var(--text-muted)", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>
+              className="hra-text-muted"
+              style={{ fontSize: 18, border: "none", background: "none", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>
               ×
             </button>
           )}

@@ -680,6 +680,86 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-stat-value    { font-size: 18px; font-weight: 600; line-height: 1.2; }
 
 /* ════════════════════════════════════════════════════════════════════════
+   Generic color/border utilities (2026-08-20 theme-leak sweep) — same
+   reasoning as the layout-row block above, for the ~140 sites that put a
+   fixed var(--text-*)/var(--border*)/var(--accent-*) value straight into
+   style={{}} instead of a class, the exact thing CLAUDE.md's "theme values
+   live in index.css" rule exists to catch. Compose these (e.g.
+   className="hra-border-strong hra-text-secondary") rather than adding a
+   combo class per pairing — each one is single-property on purpose. */
+.hra-text-muted     { color: var(--text-muted); }
+.hra-text-secondary { color: var(--text-secondary); }
+.hra-text-primary   { color: var(--text-primary); }
+.hra-text-danger    { color: var(--accent-red); }
+.hra-text-success   { color: var(--accent-green); }
+.hra-border         { border: 1px solid var(--border); }
+.hra-border-strong  { border: 1px solid var(--border-strong); }
+.hra-border-top     { border-top: 1px solid var(--border); }
+.hra-border-bottom  { border-bottom: 1px solid var(--border); }
+.hra-bg-card        { background: var(--bg-card); }
+.hra-bg-surface     { background: var(--bg-surface); }
+/* Modal popup's dim backdrop (ActivityModal) — a fixed black scrim, not a
+   theme token, since it's deliberately theme-independent (dims whatever's
+   behind it the same way in light or dark). */
+.hra-modal-backdrop { background: rgba(0, 0, 0, 0.6); }
+/* Delete-section Card — a subtle red border tinting the whole card as
+   "this section is destructive," was a raw #e24b4a33 hex-alpha literal. */
+.hra-card-danger-border { border-color: color-mix(in srgb, var(--accent-red) 20%, transparent); }
+/* Overview trend chart's overlap-vs-distinct legend swatches (current =
+   line, compare = bar) — line-swatch is 2px, not the 1px every other
+   .hra-border-* utility carries, so it needs its own rule rather than
+   reusing those. */
+.hra-legend-line-swatch { border-top: 2px solid var(--text-secondary); }
+.hra-legend-bar-swatch  { background: var(--data-pace); }
+/* ProgressBar's empty track — distinct from its accent-colored fill
+   (which is a real per-instance value, handled via --dyn-bg). */
+.hra-bg-border { background: var(--border); }
+
+/* Per-instance dynamic color hook — for the handful of sites where the
+   color is a genuine runtime value (a lookup table, a ternary between
+   different tokens), not a fixed literal one of the flat classes above can
+   carry. Always set on the SAME element that reads it, never passed to
+   descendants — so one shared variable name is safe, no inheritance
+   collision, same reasoning as --btn-color/--swatch-color elsewhere in
+   this file, just generic instead of one hook per component. */
+.hra-dyn-color  { color: var(--dyn-color); }
+.hra-dyn-bg     { background: var(--dyn-bg); }
+.hra-dyn-border { border: 1px solid var(--dyn-border); }
+
+/* Status message line (OAuthSyncSection/UploadSection sync results,
+   DateRangesSection's ErrorLine) — was a per-call-site ternary computing
+   background/color/border from `status`. Fixing it here also corrects two
+   live bugs that ternary had: `var(--surface-1)` (an undefined token —
+   silently resolved to nothing, leaving the non-error state with no
+   background at all) and `${token}44` (a hex-alpha suffix glued directly
+   onto a var() call — invalid CSS; color-mix() is the correct way to blend
+   a token toward transparent). */
+.hra-status-msg {
+  font-size: 12px; padding: 8px 12px; border-radius: 6px;
+  background: var(--bg-card); color: var(--text-secondary);
+  border: 1px solid color-mix(in srgb, var(--border) 27%, transparent);
+}
+.hra-status-msg[data-status="error"] {
+  background: var(--bg-danger); color: var(--accent-red);
+  border-color: color-mix(in srgb, var(--accent-red) 27%, transparent);
+}
+
+/* Generic fetch-failure banner (useQuery's error state, shown throughout
+   the app). Previously a bespoke #e85a2a — a third red/orange with no
+   token behind it and no comment explaining why it wasn't --accent-red —
+   remapped onto this app's one actual "error" semantic (same recipe as
+   .hra-status-msg's error variant) instead of inventing a token to
+   preserve an apparently-unintentional one-off value. */
+.hra-error-banner {
+  background: var(--bg-danger);
+  border: 1px solid color-mix(in srgb, var(--accent-red) 27%, transparent);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  color: var(--accent-red);
+  font-size: 13px;
+}
+
+/* ════════════════════════════════════════════════════════════════════════
    Overview + Settings correction pass (2026-08-16) — every theme-related
    visual (background/border/box-shadow/filter/gradient) these two tabs and
    the header use, moved out of component style={} objects per CLAUDE.md's

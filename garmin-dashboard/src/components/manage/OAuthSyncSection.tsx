@@ -110,7 +110,7 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
   return (
     <Card style={{ marginBottom: 16 }}>
       <div className="hra-block-title" style={{ marginBottom: 4 }}>Sync {label} {noun}</div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         {description}
       </div>
 
@@ -126,9 +126,9 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
       />
 
       <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
-        <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Date range:</label>
+        <label className="hra-text-muted" style={{ fontSize: 12 }}>Date range:</label>
         <DatePicker value={from} onChange={onFromChange} max={to} />
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
+        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
         <DatePicker value={to} onChange={onToChange} min={from} />
       </div>
 
@@ -155,12 +155,7 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
       </div>
 
       {msg && (
-        <div style={{
-          marginTop: 12, fontSize: 12, padding: "8px 12px", borderRadius: 6,
-          background: status === "error" ? "var(--bg-danger)" : "var(--surface-1)",
-          color: status === "error" ? "var(--accent-red)" : "var(--text-secondary)",
-          border: `1px solid ${status === "error" ? "var(--accent-red)" : "var(--border)"}44`,
-        }}>
+        <div className="hra-status-msg" data-status={status === "error" ? "error" : undefined} style={{ marginTop: 12 }}>
           {msg}
         </div>
       )}

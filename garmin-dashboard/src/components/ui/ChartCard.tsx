@@ -21,7 +21,7 @@ export function ChartCard({ title, legend, children }: ChartCardProps) {
     <Card style={{ padding: "16px 8px 8px" }}>
       {(title || legend) && (
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "0 8px" }}>
-          {title && <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>{title}</div>}
+          {title && <div className="hra-text-secondary" style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>}
           {legend}
         </div>
       )}
@@ -38,6 +38,10 @@ export const chartGrid = { vertical: false, stroke: "var(--border)", strokeDasha
 export const chartTick = { fill: "var(--text-secondary)", fontSize: 11 } as const;
 
 // Custom dark Tooltip content-style — pass to <Tooltip contentStyle={chartTooltipStyle}/>.
+// Deliberately NOT a class: Recharts' contentStyle renders its own wrapper
+// and only accepts a plain style object, no className — so this duplicates
+// .hra-chart-tooltip's recipe (index.css) in JS form. Keep the two in sync
+// by hand; there's no way to have Recharts consume the CSS class directly.
 export const chartTooltipStyle = {
   background: "color-mix(in srgb, var(--accent) 4%, var(--bg-card))",
   border: "1px solid color-mix(in srgb, var(--accent) 30%, var(--border-strong))",

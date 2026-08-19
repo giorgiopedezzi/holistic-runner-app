@@ -27,27 +27,27 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, e
   return (
     <div>
       <button
-        className="card"
+        className="card hra-text-primary"
         onClick={onClick}
         style={{
           display: "flex", alignItems: "center", gap: 12,
           padding: "12px 14px",
           borderRadius: expanded ? "16px 16px 0 0" : "16px", textAlign: "left", fontSize: 14,
-          color: "var(--text-primary)", cursor: "pointer", width: "100%",
+          cursor: "pointer", width: "100%",
         }}
       >
-        <span style={{ color: "var(--text-muted)", fontSize: 12, minWidth: 86 }}>
+        <span className="hra-text-muted" style={{ fontSize: 12, minWidth: 86 }}>
           {fmtDate(a.date_only)}
         </span>
         <Badge label={a.sport ?? "other"} color={color} />
         {a.activity_name && (
-          <span style={{ fontStyle: "italic", color: "var(--text-secondary)", fontSize: 13 }}>{a.activity_name}</span>
+          <span className="hra-text-secondary" style={{ fontStyle: "italic", fontSize: 13 }}>{a.activity_name}</span>
         )}
         <span style={{ flex: 1, fontWeight: 600 }}>{fmtKm(a.distance_m)}</span>
-        <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>{fmtDuration(a.duration_sec)}</span>
-        {a.avg_hr         && <span style={{ color: "var(--accent-red)",   fontSize: 13 }}>♥ {a.avg_hr}</span>}
-        {a.avg_pace_minkm && <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
-        <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
+        <span className="hra-text-secondary" style={{ fontSize: 13 }}>{fmtDuration(a.duration_sec)}</span>
+        {a.avg_hr         && <span className="hra-text-danger" style={{ fontSize: 13 }}>♥ {a.avg_hr}</span>}
+        {a.avg_pace_minkm && <span className="hra-text-muted" style={{ fontSize: 13 }}>{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
+        <span className="hra-text-muted" style={{ fontSize: 11 }}>{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
       </button>
       {expanded && expandedContent && (
         <div className="card hra-card-joined-bottom" style={{ padding: "16px 14px" }}>

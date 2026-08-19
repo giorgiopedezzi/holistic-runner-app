@@ -117,9 +117,9 @@ function MethodResultCard({
   }
 
   return (
-    <div style={{ flex: "1 1 240px", minWidth: 220, border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
+    <div className="hra-border" style={{ flex: "1 1 240px", minWidth: 220, borderRadius: 8, padding: 10 }}>
       <div className="hra-row" style={{ gap: 8 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+        <span className="hra-text-secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
           {methodLabel(method)}
         </span>
         <div style={{ flex: 1 }} />
@@ -136,57 +136,59 @@ function MethodResultCard({
         </button>
       </div>
       {!classifying && lastDurationSec != null && (
-        <div style={{ fontSize: 10, color: "var(--text-muted)", textAlign: "right", marginTop: 2 }}>
+        <div className="hra-text-muted" style={{ fontSize: 10, textAlign: "right", marginTop: 2 }}>
           took {lastDurationSec.toFixed(1)}s
         </div>
       )}
 
       <div style={{ marginTop: 8 }}>
         {classification ? (
-          <span style={{
+          <span className="hra-dyn-border hra-dyn-color" style={{
             display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
-            border: `1px solid ${isVerdictSource ? "var(--accent-green)" : "var(--border-strong)"}`,
-            color: isVerdictSource ? "var(--accent-green)" : "var(--text-primary)",
+            "--dyn-border": isVerdictSource ? "var(--accent-green)" : "var(--border-strong)",
+            "--dyn-color": isVerdictSource ? "var(--accent-green)" : "var(--text-primary)",
             letterSpacing: "0.04em", textTransform: "uppercase",
-          }}>
+          } as CSSProperties}>
             {classification}
             {isVerdictSource && <span title="This card's result is the activity's confirmed classification">✓</span>}
           </span>
         ) : (
-          <span style={{ fontSize: 12, color: "var(--text-muted)" }}>Not yet classified</span>
+          <span className="hra-text-muted" style={{ fontSize: 12 }}>Not yet classified</span>
         )}
       </div>
 
-      {explanation && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 6 }}>{explanation}</div>}
+      {explanation && <div className="hra-text-secondary" style={{ fontSize: 12, marginTop: 6 }}>{explanation}</div>}
 
       {classification && !showCorrection && (
         <div className="hra-row" style={{ gap: 8, marginTop: 8 }}>
           <button onClick={handleApprove} title="Confirm this card's classification as the activity's answer"
+            className="hra-dyn-border hra-dyn-color"
             style={{
               fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
-              border: `1px solid ${isVerdictSource && activity.user_feedback === "approved" ? "var(--accent-green)" : "var(--border-strong)"}`,
-              color: isVerdictSource && activity.user_feedback === "approved" ? "var(--accent-green)" : "var(--text-secondary)",
-            }}>
+              "--dyn-border": isVerdictSource && activity.user_feedback === "approved" ? "var(--accent-green)" : "var(--border-strong)",
+              "--dyn-color": isVerdictSource && activity.user_feedback === "approved" ? "var(--accent-green)" : "var(--text-secondary)",
+            } as CSSProperties}>
             👍
           </button>
           <button onClick={() => setShowCorrection(true)} title="This card's classification is wrong"
+            className="hra-dyn-border hra-dyn-color"
             style={{
               fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
-              border: `1px solid ${isVerdictSource && activity.user_feedback === "rejected" ? "var(--accent-red)" : "var(--border-strong)"}`,
-              color: isVerdictSource && activity.user_feedback === "rejected" ? "var(--accent-red)" : "var(--text-secondary)",
-            }}>
+              "--dyn-border": isVerdictSource && activity.user_feedback === "rejected" ? "var(--accent-red)" : "var(--border-strong)",
+              "--dyn-color": isVerdictSource && activity.user_feedback === "rejected" ? "var(--accent-red)" : "var(--text-secondary)",
+            } as CSSProperties}>
             👎
           </button>
         </div>
       )}
       {isVerdictSource && activity.user_feedback === "rejected" && activity.final_classification && (
-        <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 6 }}>
+        <div className="hra-text-muted" style={{ fontSize: 11, marginTop: 6 }}>
           Corrected to: {activity.final_classification}{activity.user_correction_reason ? ` (${activity.user_correction_reason})` : ""}
         </div>
       )}
 
       {showCorrection && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, paddingTop: 8, borderTop: "1px solid var(--border)" }}>
+        <div className="hra-border-top" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, paddingTop: 8 }}>
           {/* Deliberately still a native <select> (HRA-98 deviation) — a
               Radix Select can't be driven by the characterization test's
               fireEvent.change, and this Story's own AC requires the
@@ -208,7 +210,8 @@ function MethodResultCard({
             {submitting ? "…" : "Submit"}
           </button>
           <button onClick={() => setShowCorrection(false)}
-            style={{ fontSize: 12, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "4px 12px", background: "none", color: "var(--text-secondary)", cursor: "pointer" }}>
+            className="hra-border-strong hra-text-secondary"
+            style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
             Cancel
           </button>
         </div>
@@ -233,27 +236,28 @@ export function ClassificationCard({ activity, onUpdate }: { activity: Activity;
     <Card style={{ marginBottom: 16 }}>
       <div className="hra-control-row" style={{ gap: 10, marginBottom: 10 }}>
         {status === "confirmed" && activity.final_classification ? (
-          <span style={{
+          <span className="hra-dyn-border hra-dyn-color" style={{
             display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
-            border: `1px solid ${color}`, color, letterSpacing: "0.04em", textTransform: "uppercase",
-          }}>
+            "--dyn-border": color, "--dyn-color": color, letterSpacing: "0.04em", textTransform: "uppercase",
+          } as CSSProperties}>
             Confirmed: {activity.final_classification}
           </span>
         ) : (
-          <span style={{ fontSize: 12, color, fontWeight: status === "pending" ? 600 : 400 }}>
+          <span className="hra-dyn-color" style={{ fontSize: 12, "--dyn-color": color, fontWeight: status === "pending" ? 600 : 400 } as CSSProperties}>
             {status === "pending" ? "Pending review" : "Not yet classified"}
           </span>
         )}
         <div style={{ flex: 1 }} />
-        <div style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden", border: "1px solid var(--border-strong)" }}
+        <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
           title="Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out">
           {([1000, 500] as const).map(m => (
             <button key={m} onClick={() => setSplitMeters(m)}
+              className="hra-dyn-bg hra-dyn-color"
               style={{
                 fontSize: 10, padding: "3px 8px", border: "none", cursor: "pointer",
-                background: splitMeters === m ? "var(--bg-card)" : "transparent",
-                color: splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
-              }}>
+                "--dyn-bg": splitMeters === m ? "var(--bg-card)" : "transparent",
+                "--dyn-color": splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
+              } as CSSProperties}>
               {m === 1000 ? "1km" : "0.5km"}
             </button>
           ))}

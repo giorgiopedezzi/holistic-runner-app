@@ -120,7 +120,7 @@ export function ClassifySection() {
   return (
     <Card>
       <div className="hra-block-title" style={{ marginBottom: 4 }}>AI workout classification</div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata /
         Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine
         either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare
@@ -129,7 +129,7 @@ export function ClassifySection() {
 
       <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
         <DatePicker value={from} onChange={setFrom} max={to} />
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
+        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
         <DatePicker value={to} onChange={setTo} min={from} />
       </div>
 
@@ -139,10 +139,10 @@ export function ClassifySection() {
       {!loading && !loadError && activities && (
         <>
           {activities.length === 0 ? (
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>No running activities in this range.</div>
+            <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>No running activities in this range.</div>
           ) : (
-            <div style={{ maxHeight: 240, overflow: "auto", border: "1px solid var(--border)", borderRadius: 6, padding: 8, marginBottom: 10 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", cursor: "pointer", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
+            <div className="hra-border" style={{ maxHeight: 240, overflow: "auto", borderRadius: 6, padding: 8, marginBottom: 10 }}>
+              <label className="hra-text-muted hra-border-bottom" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", marginBottom: 6, paddingBottom: 6 }}>
                 <Checkbox checked={selected.size === activities.length} onCheckedChange={toggleAll} />
                 Select all ({activities.length})
               </label>
@@ -161,10 +161,10 @@ export function ClassifySection() {
                   // one shown.
                   const col = isConfirmedSource ? confirmedColor : status === "confirmed" ? mutedColor : pendingColor;
                   return (
-                    <span key={key} style={{
+                    <span key={key} className="hra-dyn-border hra-dyn-color" style={{
                       fontSize: 10, fontWeight: 600, padding: "1px 7px", borderRadius: 20,
-                      border: `1px solid ${col}`, color: col, textTransform: "uppercase", letterSpacing: "0.03em",
-                    }}>
+                      "--dyn-border": col, "--dyn-color": col, textTransform: "uppercase", letterSpacing: "0.03em",
+                    } as CSSProperties}>
                       {isConfirmedSource && "✓ "}{text}
                     </span>
                   );
@@ -174,22 +174,22 @@ export function ClassifySection() {
                   a.statistical_classification && pill(`Stats: ${a.statistical_classification}`, "stats", status === "confirmed" && a.classification_method === "statistical"),
                 ].filter((x): x is React.ReactElement => Boolean(x));
                 return (
-                  <label key={a.id} style={{
-                    display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-secondary)",
+                  <label key={a.id} className="hra-text-secondary hra-dyn-bg" style={{
+                    display: "flex", alignItems: "center", gap: 8, fontSize: 12,
                     cursor: "pointer", padding: "3px 4px", borderRadius: 4,
                     // Flash-then-fade marker for whichever rows a bulk
                     // confirm just touched — background is set immediately,
                     // then justConfirmed clears on a timer (see
                     // confirmSelected), and the transition animates that
                     // change back to transparent instead of an instant cut.
-                    background: justConfirmed.has(a.id) ? "color-mix(in srgb, var(--accent-green) 18%, transparent)" : "transparent",
+                    "--dyn-bg": justConfirmed.has(a.id) ? "color-mix(in srgb, var(--accent-green) 18%, transparent)" : "transparent",
                     transition: "background-color 2.5s ease-out",
-                  }}>
+                  } as CSSProperties}>
                     <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggle(a.id)} />
                     <span style={{ minWidth: 86 }}>{fmtDate(a.date_only)}</span>
                     <span style={{ minWidth: 60 }}>{fmtKm(a.distance_m)}</span>
                     {resultPills.length > 0 ? resultPills : (
-                      <span style={{ fontSize: 10, color: "var(--text-muted)" }}>unclassified</span>
+                      <span className="hra-text-muted" style={{ fontSize: 10 }}>unclassified</span>
                     )}
                   </label>
                 );
@@ -198,28 +198,30 @@ export function ClassifySection() {
           )}
 
           <div className="hra-row-wrap">
-            <div style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden", border: "1px solid var(--border-strong)" }}
+            <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
               title="Classification method: a local Ollama model, or instant deterministic rules over the same pace-variance/split/pause stats (no LLM, works even if Ollama isn't running)">
               {(["ai", "statistical"] as const).map(m => (
                 <button key={m} onClick={() => setMethod(m)}
+                  className="hra-dyn-bg hra-dyn-color"
                   style={{
                     fontSize: 10, padding: "3px 8px", border: "none", cursor: "pointer",
-                    background: method === m ? "var(--bg-card)" : "transparent",
-                    color: method === m ? "var(--text-primary)" : "var(--text-muted)",
-                  }}>
+                    "--dyn-bg": method === m ? "var(--bg-card)" : "transparent",
+                    "--dyn-color": method === m ? "var(--text-primary)" : "var(--text-muted)",
+                  } as CSSProperties}>
                   {m === "ai" ? "AI" : "Statistical"}
                 </button>
               ))}
             </div>
-            <div style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden", border: "1px solid var(--border-strong)" }}
+            <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
               title="Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out">
               {([1000, 500] as const).map(m => (
                 <button key={m} onClick={() => setSplitMeters(m)}
+                  className="hra-dyn-bg hra-dyn-color"
                   style={{
                     fontSize: 10, padding: "3px 8px", border: "none", cursor: "pointer",
-                    background: splitMeters === m ? "var(--bg-card)" : "transparent",
-                    color: splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
-                  }}>
+                    "--dyn-bg": splitMeters === m ? "var(--bg-card)" : "transparent",
+                    "--dyn-color": splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
+                  } as CSSProperties}>
                   {m === 1000 ? "1km" : "0.5km"}
                 </button>
               ))}

@@ -11,14 +11,14 @@ interface Props {
 export function ActivityModal({ activityId, onClose, onDelete }: Props) {
   return (
     <div
+      className="hra-modal-backdrop"
       style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)",
+        position: "fixed", inset: 0,
         display: "flex", alignItems: "center", justifyContent: "center",
         zIndex: 100, padding: "24px",
       }}
     >
-      <div style={{
-        background: "var(--bg-surface)", border: "1px solid var(--border)",
+      <div className="hra-bg-surface hra-border" style={{
         borderRadius: 16, width: "100%", maxWidth: 680,
         maxHeight: "90vh", overflowY: "auto",
         padding: "24px",

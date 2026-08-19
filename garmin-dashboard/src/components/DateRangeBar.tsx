@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
 import type { CompareRangeState } from "@/hooks/useCompareRange";
 import { DatePicker, Select, Switch } from "@/components/ui";
@@ -12,7 +13,7 @@ import { fmtDate } from "@/utils/fmt";
 type Props = DateRangeState & { compare?: CompareRangeState; savedRanges?: SavedDateRange[] };
 
 const NO_NAMED_RANGE = "";
-const orStyle = { color: "var(--text-muted)", fontSize: 12 };
+const orStyle = { fontSize: 12 };
 
 function savedRangeLabel(r: SavedDateRange): string {
   return `${r.name} (${fmtDate(r.from_date)} → ${fmtDate(r.to_date)})`;
@@ -34,24 +35,24 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
         {PRESETS.map(p => (
           <button
             key={p.label}
-            className={`hra-pill hra-nav-hover ${isActive(p.days) ? "hra-pill-active" : ""}`}
+            className={`hra-pill hra-nav-hover hra-dyn-bg hra-dyn-border hra-dyn-color ${isActive(p.days) ? "hra-pill-active" : ""}`}
             onClick={() => setPreset(p.days)}
             style={{
-              background:   isActive(p.days) ? undefined : "none",
-              border:       isActive(p.days) ? undefined : "1px solid var(--border)",
               borderRadius: 999,
               padding:      "3px 10px",
               fontSize:     12,
-              color:        isActive(p.days) ? undefined : "var(--text-secondary)",
               fontWeight:   isActive(p.days) ? 600 : 400,
-            }}
+              "--dyn-bg":     isActive(p.days) ? undefined : "none",
+              "--dyn-border": isActive(p.days) ? undefined : "var(--border)",
+              "--dyn-color":  isActive(p.days) ? undefined : "var(--text-secondary)",
+            } as CSSProperties}
           >
             {p.label}
           </button>
         ))}
-        <span style={{ color: "var(--text-muted)", fontSize: 12, margin: "0 4px" }}>or</span>
+        <span className="hra-text-muted" style={{ fontSize: 12, margin: "0 4px" }}>or</span>
         <DatePicker value={from} max={to} onChange={setFrom} />
-        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>→</span>
+        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
         <DatePicker value={to} min={from} onChange={setTo} />
       </div>
     );
@@ -92,8 +93,8 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           row at all and OverviewTab adds no comparison data anywhere
           (rings, sport trend charts, linked race). */}
       <div className="hra-row-between">
-        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Current</span>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+        <span className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600 }}>Current</span>
+        <label className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
           Enable comparison
           <Switch checked={compare.enabled} onCheckedChange={compare.setEnabled} />
         </label>
@@ -110,11 +111,11 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           triggerStyle={{ minWidth: 90 }}
           options={PRESETS.map(p => ({ value: String(p.days), label: p.label }))}
         />
-        <span style={orStyle}>or</span>
+        <span className="hra-text-muted" style={orStyle}>or</span>
         <DatePicker value={from} max={to} onChange={setFrom} />
-        <span style={orStyle}>→</span>
+        <span className="hra-text-muted" style={orStyle}>→</span>
         <DatePicker value={to} min={from} onChange={setTo} />
-        <span style={orStyle}>or</span>
+        <span className="hra-text-muted" style={orStyle}>or</span>
         <Select
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
           onValueChange={pickCurrent}
@@ -136,12 +137,12 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           ending before Current's own start are offered, and the dropdown's
           value is derived from compare.from/to, never separately stored. */}
       <div style={{ opacity: compare.enabled ? 1 : 0.4, pointerEvents: compare.enabled ? "auto" : "none" }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginTop: 12, marginBottom: 8 }}>Compared to</div>
+        <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8 }}>Compared to</div>
         <div className="hra-row-wrap">
           <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
-          <span style={orStyle}>→</span>
+          <span className="hra-text-muted" style={orStyle}>→</span>
           <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
-          <span style={orStyle}>or</span>
+          <span className="hra-text-muted" style={orStyle}>or</span>
           <Select
             value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}
             onValueChange={pickCompare}

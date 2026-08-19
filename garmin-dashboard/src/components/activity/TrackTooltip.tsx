@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { fmtKm } from "@/utils/fmt";
 import { fmtPauseDuration } from "@/domain/pauses";
 import {
@@ -25,14 +26,14 @@ export function TrackTooltip({ active, payload, xMode, metrics, speedMode }: {
   return (
     <div style={ttStyle.contentStyle}>
       <div style={{ padding: "6px 10px" }}>
-        <div style={{ color: "var(--text-muted)", marginBottom: 4 }}>
+        <div className="hra-text-muted" style={{ marginBottom: 4 }}>
           {xMode === "time" ? fmtElapsedClock(row.realX) : fmtKm(row.realX)}
         </div>
         {metrics.map(key => {
           const v = row[key];
           if (typeof v !== "number") return null;
           return (
-            <div key={key} style={{ color: METRIC_DEFS[key].color }}>
+            <div key={key} className="hra-dyn-color" style={{ "--dyn-color": METRIC_DEFS[key].color } as CSSProperties}>
               {key === "speed" ? (speedMode === "speed" ? "Speed" : "Pace") : METRIC_DEFS[key].label}: {fmtMetricValue(key, v, speedMode)} {metricUnit(key, speedMode)}
             </div>
           );

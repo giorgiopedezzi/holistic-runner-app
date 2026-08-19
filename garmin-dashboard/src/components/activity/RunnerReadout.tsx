@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useState } from "react";
+import { forwardRef, useImperativeHandle, useState, type CSSProperties } from "react";
 import { fmtKm } from "@/utils/fmt";
 import { fmtPauseDuration } from "@/domain/pauses";
 import {
@@ -77,7 +77,7 @@ export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>
           return (
             <span key={key} style={{ display: "contents" }}>
               <span className="hra-chart-tooltip-sep">·</span>
-              <span style={{ color: METRIC_DEFS[key].color, fontWeight: 600 }}>
+              <span className="hra-dyn-color" style={{ "--dyn-color": METRIC_DEFS[key].color, fontWeight: 600 } as CSSProperties}>
                 {label} {fmtMetricValue(key, v, speedMode)}{unit}
               </span>
             </span>

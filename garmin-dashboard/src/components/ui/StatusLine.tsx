@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 // "● connected" / "○ not connected" indicator with an optional manual
 // recheck button. Used for capability checks (device plugged in, auth token
 // valid) that are checked once on mount rather than polled in the
@@ -19,17 +21,17 @@ const STATUS_COLOR: Record<StatusLineProps["state"], string> = {
 export function StatusLine({ state, message, onRecheck }: StatusLineProps) {
   const checking = state === "checking";
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12, color: "var(--text-secondary)" }}>
-      <span style={{ color: STATUS_COLOR[state], fontSize: 10 }}>{checking ? "⏳" : "●"}</span>
+    <div className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12 }}>
+      <span className="hra-dyn-color" style={{ "--dyn-color": STATUS_COLOR[state], fontSize: 10 } as CSSProperties}>{checking ? "⏳" : "●"}</span>
       <span>{message}</span>
       {onRecheck && (
         <button
-          className="hra-nav-hover"
+          className="hra-nav-hover hra-text-muted"
           onClick={onRecheck}
           disabled={checking}
           title="Recheck"
           style={{
-            background: "none", border: "none", borderRadius: "var(--radius-sm)", color: "var(--text-muted)",
+            background: "none", border: "none", borderRadius: "var(--radius-sm)",
             cursor: checking ? "not-allowed" : "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1,
           }}
         >

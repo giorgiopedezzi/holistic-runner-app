@@ -20,13 +20,14 @@ export function Checkbox({ checked, onCheckedChange, disabled, color = "var(--ac
       checked={checked}
       onCheckedChange={v => onCheckedChange(v === true)}
       disabled={disabled}
+      className="hra-dyn-border hra-dyn-bg"
       style={{
         width: size,
         height: size,
         flexShrink: 0,
         borderRadius: 4,
-        border: `1px solid ${checked ? color : "var(--border-strong)"}`,
-        background: checked ? color : "transparent",
+        "--dyn-border": checked ? color : "var(--border-strong)",
+        "--dyn-bg": checked ? color : "transparent",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -34,7 +35,7 @@ export function Checkbox({ checked, onCheckedChange, disabled, color = "var(--ac
         opacity: disabled ? 0.4 : 1,
         transition: "background 0.15s, border-color 0.15s",
         ...style,
-      }}
+      } as CSSProperties}
     >
       <CheckboxPrimitive.Indicator style={{ display: "flex" }}>
         <Check size={Math.max(8, size - 4)} color="var(--bg)" strokeWidth={3} />

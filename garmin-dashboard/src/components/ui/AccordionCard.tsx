@@ -18,17 +18,17 @@ export function AccordionCard({ title, expanded, onToggle, children }: Accordion
   return (
     <div style={{ marginBottom: 16 }}>
       <button
-        className="card"
+        className="card hra-text-primary"
         onClick={onToggle}
         style={{
           display: "flex", alignItems: "center", justifyContent: "space-between",
           width: "100%", textAlign: "left", padding: "14px 18px",
           borderRadius: expanded ? "16px 16px 0 0" : "16px",
-          fontSize: 15, fontWeight: 600, color: "var(--text-primary)", cursor: "pointer",
+          fontSize: 15, fontWeight: 600, cursor: "pointer",
         }}
       >
         {title}
-        <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{expanded ? "▲" : "▼"}</span>
+        <span className="hra-text-muted" style={{ fontSize: 12 }}>{expanded ? "▲" : "▼"}</span>
       </button>
       {expanded && (
         <div className="card hra-card-joined-bottom" style={{ padding: "18px" }}>

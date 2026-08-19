@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Save } from "lucide-react";
 import { api } from "@/api/client";
 import { Select, Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
@@ -57,20 +57,20 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
         <PopoverTrigger
           disabled={!dirty}
           title={dirty ? "Save the selected activity type" : "No change to save"}
+          className="hra-border-strong hra-dyn-color"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             width: 28, height: 28, borderRadius: 6, background: "none",
-            border: "1px solid var(--border-strong)",
-            color: dirty ? "var(--accent)" : "var(--text-muted)",
+            "--dyn-color": dirty ? "var(--accent)" : "var(--text-muted)",
             cursor: dirty ? "pointer" : "default",
             opacity: dirty ? 1 : 0.5,
-          }}
+          } as CSSProperties}
         >
           <Save size={14} />
         </PopoverTrigger>
         <PopoverContent>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 200 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-secondary)" }}>
+            <span className="hra-text-secondary" style={{ fontSize: 12, fontWeight: 600 }}>
               Name this {types.find(t => t.id === selectedTypeId)?.name.toLowerCase() ?? "session"}
             </span>
             <input
@@ -79,15 +79,16 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
               onChange={e => setName(e.target.value)}
               placeholder="e.g. Berlin Marathon"
               autoFocus
+              className="hra-border-strong hra-bg-card hra-text-primary"
               style={{
                 fontSize: 13, padding: "6px 8px", borderRadius: 6,
-                border: "1px solid var(--border-strong)", background: "var(--bg-card)", color: "var(--text-primary)",
               }}
             />
-            {error && <span style={{ fontSize: 11, color: "var(--accent-red)" }}>{error}</span>}
+            {error && <span className="hra-text-danger" style={{ fontSize: 11 }}>{error}</span>}
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button onClick={() => setOpen(false)}
-                style={{ fontSize: 12, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "4px 12px", background: "none", color: "var(--text-secondary)", cursor: "pointer" }}>
+                className="hra-border-strong hra-text-secondary"
+                style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
                 Cancel
               </button>
               <button className="hra-btn" data-variant="cta" onClick={handleSave} disabled={saving}>

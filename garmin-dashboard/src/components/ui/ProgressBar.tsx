@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 // Determinate when total > 0 (fills to current/total); indeterminate
 // (animated stripe) when total is 0 — e.g. before a device enumeration
 // reports back how many files there are to sync.
@@ -14,18 +16,18 @@ export function ProgressBar({ label, current = 0, total = 0, accent = "var(--acc
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+      <div className="hra-text-secondary" style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 6 }}>
         <span>{label}</span>
         {determinate && <span>{current} / {total}</span>}
       </div>
-      <div style={{ position: "relative", overflow: "hidden", height: 6, borderRadius: 999, background: "var(--border)" }}>
+      <div className="hra-bg-border" style={{ position: "relative", overflow: "hidden", height: 6, borderRadius: 999 }}>
         {determinate ? (
-          <div style={{ height: "100%", width: `${pct}%`, background: accent, borderRadius: 999, transition: "width 0.2s ease" }} />
+          <div className="hra-dyn-bg" style={{ height: "100%", width: `${pct}%`, borderRadius: 999, transition: "width 0.2s ease", "--dyn-bg": accent } as CSSProperties} />
         ) : (
-          <div style={{
+          <div className="hra-dyn-bg" style={{
             position: "absolute", top: 0, bottom: 0, width: "40%", borderRadius: 999,
-            background: accent, animation: "progress-indeterminate 1.1s ease-in-out infinite",
-          }} />
+            "--dyn-bg": accent, animation: "progress-indeterminate 1.1s ease-in-out infinite",
+          } as CSSProperties} />
         )}
       </div>
     </div>

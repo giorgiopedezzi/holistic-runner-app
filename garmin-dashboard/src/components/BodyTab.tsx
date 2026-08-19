@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   AreaChart, Area, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -48,7 +48,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
   return (
     <div style={{ marginBottom: 24 }}>
       <div className="hra-row-between">
-        <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>{title}</div>
+        <div className="hra-text-secondary" style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>
         <div style={{ display: "flex", gap: 4 }}>
           <button className={tabBtnClass(view === "chart")} onClick={() => setView("chart")}>Chart</button>
           <button className={tabBtnClass(view === "table")} onClick={() => setView("table")}>Table</button>
@@ -79,6 +79,9 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
                   return `${sign}${v.toFixed(1)}${s?.unit ? ` ${s.unit}` : ""}`;
                 }}
               />
+              {/* wrapperStyle is a Recharts passthrough prop with no className
+                  equivalent — this can't move to a class, unlike every other
+                  style={{}} in this file. */}
               {series.length > 1 && <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-secondary)" }} />}
               {series.map(s => (
                 <Area key={s.key} dataKey={s.key} stroke={s.color} fill={`url(#bodyGrad-${s.key})`} strokeWidth={2} dot={false} name={s.label} connectNulls />
@@ -90,9 +93,9 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th style={{ textAlign: "left", padding: "6px 8px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-card)" }}>Date</th>
+                  <th className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "left", padding: "6px 8px", position: "sticky", top: 0 }}>Date</th>
                   {series.map(s => (
-                    <th key={s.key} style={{ textAlign: "right", padding: "6px 8px", color: "var(--text-muted)", borderBottom: "1px solid var(--border)", position: "sticky", top: 0, background: "var(--bg-card)" }}>
+                    <th key={s.key} className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "right", padding: "6px 8px", position: "sticky", top: 0 }}>
                       {s.label}{s.unit ? ` (${s.unit})` : ""}
                     </th>
                   ))}
@@ -101,11 +104,11 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
               <tbody>
                 {tableData.map((row, i) => (
                   <tr key={i}>
-                    <td style={{ padding: "5px 8px", color: "var(--text-secondary)", borderBottom: "1px solid var(--border)" }}>{fmtDate(row.date_only)}</td>
+                    <td className="hra-text-secondary hra-border-bottom" style={{ padding: "5px 8px" }}>{fmtDate(row.date_only)}</td>
                     {series.map(s => {
                       const v = row[s.key];
                       return (
-                        <td key={s.key} style={{ textAlign: "right", padding: "5px 8px", color: "var(--text-primary)", borderBottom: "1px solid var(--border)" }}>
+                        <td key={s.key} className="hra-text-primary hra-border-bottom" style={{ textAlign: "right", padding: "5px 8px" }}>
                           {typeof v === "number" ? v.toFixed(1) : "—"}
                         </td>
                       );
@@ -168,7 +171,7 @@ export function BodyTab({ from, to }: Props) {
   const displayList = list.map(convertRow);
 
   const checkbox = (label: string, checked: boolean, onChange: () => void, color: string) => (
-    <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: checked ? color : "var(--text-secondary)", cursor: "pointer" }}>
+    <label className="hra-dyn-color" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", "--dyn-color": checked ? color : "var(--text-secondary)" } as CSSProperties}>
       <Checkbox checked={checked} onCheckedChange={onChange} color={color} />
       {label}
     </label>
@@ -193,9 +196,9 @@ export function BodyTab({ from, to }: Props) {
 
       <SectionTitle>Body metrics — {from} to {to}</SectionTitle>
 
-      <div style={{
+      <div className="hra-border-strong" style={{
         display: "inline-flex", gap: 14, alignItems: "center", padding: "6px 14px",
-        borderRadius: 999, border: "1px solid var(--border-strong)", marginBottom: 16,
+        borderRadius: 999, marginBottom: 16,
       }}>
         {checkbox("Weight", showWeight, () => setShowWeight(v => !v), METRIC_DEFS.weight_kg.color)}
         {checkbox("Fat mass", showFatMass, () => setShowFatMass(v => !v), METRIC_DEFS.fat_mass_kg.color)}
@@ -222,14 +225,15 @@ export function BodyTab({ from, to }: Props) {
               disabled={!available}
               onClick={() => setActiveOthers(a => isActive ? a.filter(k => k !== key) : [...a, key])}
               title={available ? undefined : "No data for this metric in range"}
+              className="hra-dyn-border hra-dyn-bg hra-dyn-color"
               style={{
                 fontSize: 11, padding: "4px 10px", borderRadius: 999,
                 cursor: available ? "pointer" : "not-allowed",
                 opacity: available ? 1 : 0.4,
-                border: `1px solid ${isActive ? def.color : "var(--border-strong)"}`,
-                background: isActive ? `color-mix(in srgb, ${def.color} 13%, transparent)` : "transparent",
-                color: isActive ? def.color : "var(--text-secondary)",
-              }}
+                "--dyn-border": isActive ? def.color : "var(--border-strong)",
+                "--dyn-bg": isActive ? `color-mix(in srgb, ${def.color} 13%, transparent)` : "transparent",
+                "--dyn-color": isActive ? def.color : "var(--text-secondary)",
+              } as CSSProperties}
             >
               {def.label}
             </button>

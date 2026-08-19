@@ -48,7 +48,7 @@ export function UploadSection() {
   return (
     <Card style={{ marginBottom: 16 }}>
       <div className="hra-block-title" style={{ marginBottom: 4 }}>Sync Garmin activities</div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB.
         Connect the watch via USB first. Pulls every new file on the device — there's no date range to set here, since the device is diffed against what's already imported, not queried by date.
       </div>
@@ -81,12 +81,7 @@ export function UploadSection() {
       )}
 
       {msg && (
-        <div style={{
-          marginTop: 12, fontSize: 12, padding: "8px 12px", borderRadius: 6,
-          background: status === "error" ? "var(--bg-danger)" : "var(--surface-1)",
-          color: status === "error" ? "var(--accent-red)" : "var(--text-secondary)",
-          border: `1px solid ${status === "error" ? "var(--accent-red)" : "var(--border)"}44`,
-        }}>
+        <div className="hra-status-msg" data-status={status === "error" ? "error" : undefined} style={{ marginTop: 12 }}>
           {msg}
         </div>
       )}

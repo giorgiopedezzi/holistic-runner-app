@@ -30,15 +30,15 @@ export function TrashSection() {
       <div className="hra-row" style={{ gap: 8, marginBottom: 4 }}>
         <div className="hra-block-title">Trash</div>
         <button
-          className="hra-nav-hover"
+          className="hra-nav-hover hra-text-muted"
           onClick={() => { refreshActivities(); refreshMeasurements(); }}
           title="Refresh — e.g. after deleting something above"
-          style={{ background: "none", border: "none", borderRadius: "var(--radius-sm)", color: "var(--text-muted)", cursor: "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1 }}
+          style={{ background: "none", border: "none", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1 }}
         >
           ⟳
         </button>
       </div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
+      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 16 }}>
         Items deleted above land here first. Restore brings them straight back; emptying the trash permanently deletes
         them (their data is wiped to reclaim space, but enough is kept internally that a resync still won't reimport them).
       </div>

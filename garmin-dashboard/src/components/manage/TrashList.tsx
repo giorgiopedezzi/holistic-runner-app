@@ -43,20 +43,20 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
   return (
     <div style={{ marginBottom: 16 }}>
       <div className="hra-block-title" style={{ fontSize: 13, marginBottom: 8 }}>{title}</div>
-      {loading && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>}
+      {loading && <div className="hra-text-muted" style={{ fontSize: 12 }}>Loading…</div>}
       {error && <ErrorBanner message={error} />}
       {!loading && !error && items && items.length === 0 && (
-        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Trash is empty.</div>
+        <div className="hra-text-muted" style={{ fontSize: 12 }}>Trash is empty.</div>
       )}
       {!loading && !error && items && items.length > 0 && (
         <>
-          <div style={{ maxHeight: 200, overflow: "auto", border: "1px solid var(--border)", borderRadius: 6, padding: 8, marginBottom: 10 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", cursor: "pointer", marginBottom: 6, paddingBottom: 6, borderBottom: "1px solid var(--border)" }}>
+          <div className="hra-border" style={{ maxHeight: 200, overflow: "auto", borderRadius: 6, padding: 8, marginBottom: 10 }}>
+            <label className="hra-text-muted hra-border-bottom" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", marginBottom: 6, paddingBottom: 6 }}>
               <Checkbox checked={selected.size === items.length} onCheckedChange={toggleAll} />
               Select all ({items.length})
             </label>
             {items.map(item => (
-              <label key={item.id} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", padding: "3px 0" }}>
+              <label key={item.id} className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", padding: "3px 0" }}>
                 <Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggle(item.id)} />
                 {renderRow(item)}
               </label>
@@ -79,7 +79,7 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
               </button>
             ) : (
               <>
-                <span style={{ fontSize: 12, color: "var(--accent-red)" }}>Permanently delete {selected.size} item(s)? This can't be undone.</span>
+                <span className="hra-text-danger" style={{ fontSize: 12 }}>Permanently delete {selected.size} item(s)? This can't be undone.</span>
                 <button
                   className="hra-btn" data-variant="cta"
                   style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
@@ -88,7 +88,8 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
                   {busy ? "…" : "Confirm"}
                 </button>
                 <button onClick={() => setConfirmPurge(false)}
-                  style={{ background: "none", border: "1px solid var(--border-strong)", borderRadius: 6, padding: "5px 14px", fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
+                  className="hra-border-strong hra-text-secondary"
+                  style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }}>
                   Cancel
                 </button>
               </>

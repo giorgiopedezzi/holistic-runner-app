@@ -15,11 +15,11 @@ export function SpeedPaceStat({ avgSpeedMs, avgPaceMinKm }: { avgSpeedMs: number
       <div style={{ display: "flex", gap: 14 }}>
         <div>
           <div className="hra-stat-value">{avgPaceMinKm != null ? fmtPace(avgPaceMinKm) : "—"}</div>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{paceUnitLabel()}</div>
+          <div className="hra-text-secondary" style={{ fontSize: 11 }}>{paceUnitLabel()}</div>
         </div>
         <div>
           <div className="hra-stat-value">{fmtSpeed(avgSpeedMs)}</div>
-          <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{speedUnitLabel()}</div>
+          <div className="hra-text-secondary" style={{ fontSize: 11 }}>{speedUnitLabel()}</div>
         </div>
       </div>
     </Card>

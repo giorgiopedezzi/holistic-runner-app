@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { ReactNode, CSSProperties } from "react";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
@@ -254,12 +254,12 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   return (
     <div className="hra-overlap-card-enter" style={{ marginBottom: 12 }}>
       <ChartCard title={title} legend={compareEnabled && (
-        <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11, color: "var(--text-muted)" }}>
+        <div className="hra-text-muted" style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11 }}>
           <span className="hra-row-inline">
-            <span style={{ display: "inline-block", width: 14, borderTop: "2px solid var(--text-secondary)" }} /> Current
+            <span className="hra-legend-line-swatch" style={{ display: "inline-block", width: 14 }} /> Current
           </span>
           <span className="hra-row-inline">
-            <span style={{ display: "inline-block", width: 14, height: 8, background: "var(--data-pace)", opacity: 0.25, borderRadius: 2 }} /> Compare
+            <span className="hra-legend-bar-swatch" style={{ display: "inline-block", width: 14, height: 8, opacity: 0.25, borderRadius: 2 }} /> Compare
           </span>
         </div>
       )}>
@@ -445,19 +445,20 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
     <div style={{ marginBottom: 20 }}>
       <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
         <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        <span className="hra-text-muted" style={{ fontSize: 11 }}>
           {curPoints.length} current {noun}{compareEnabled ? ` · ${cmpPoints.length} compare ${noun}` : ""}
         </span>
         {countsDiffer && (
-          <div style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden", border: "1px solid var(--border-strong)" }}
+          <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
             title="The two periods have a different number of activities — pick how to line them up">
             {([["index", "Match order"], ["time", "Match by time"]] as const).map(([m, l]) => (
               <button key={m} onClick={() => setAlignMode(m)}
+                className="hra-dyn-bg hra-dyn-color"
                 style={{
                   fontSize: 10, padding: "3px 8px", border: "none", cursor: "pointer",
-                  background: alignMode === m ? "var(--bg-card)" : "transparent",
-                  color: alignMode === m ? "var(--text-primary)" : "var(--text-muted)",
-                }}>
+                  "--dyn-bg": alignMode === m ? "var(--bg-card)" : "transparent",
+                  "--dyn-color": alignMode === m ? "var(--text-primary)" : "var(--text-muted)",
+                } as CSSProperties}>
                 {l}
               </button>
             ))}
@@ -821,7 +822,7 @@ function PeriodHeroRing({
             comparisonText={ringComparison(calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
         </div>
         {linkedRace && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+          <div className="hra-border-top" style={{ marginTop: 16, paddingTop: 16 }}>
             {linkedRace}
           </div>
         )}
@@ -1049,15 +1050,15 @@ export function OverviewTab({ range, compareRange }: Props) {
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", fontSize: 14 }}
                 >
                   <Badge label={s.sport ?? "other"} color={SPORT_COLOR[s.sport ?? "other"] ?? "#888"} />
-                  <span style={{ flex: 1, color: "var(--text-primary)", fontWeight: 500 }}>
+                  <span className="hra-text-primary" style={{ flex: 1, fontWeight: 500 }}>
                     {fmtKm(s.total_km * 1000)}
                   </span>
-                  <span style={{ color: "var(--text-secondary)" }}>{s.total_activities} sessions</span>
+                  <span className="hra-text-secondary">{s.total_activities} sessions</span>
                   {s.avg_hr && (
-                    <span style={{ color: "var(--accent-red)", fontSize: 13 }}>♥ {s.avg_hr}</span>
+                    <span className="hra-text-danger" style={{ fontSize: 13 }}>♥ {s.avg_hr}</span>
                   )}
                   {s.avg_pace && (
-                    <span style={{ color: "var(--text-muted)", fontSize: 13 }}>{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
+                    <span className="hra-text-muted" style={{ fontSize: 13 }}>{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
                   )}
                 </Card>
               );

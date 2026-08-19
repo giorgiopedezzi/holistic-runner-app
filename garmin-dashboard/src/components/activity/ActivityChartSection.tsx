@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
   fmtMetricValue, axisDomainMinMax, xTickFormatter,
@@ -331,24 +331,25 @@ export function ActivityChartSection({
         <div style={{ display: "flex", gap: 4 }}>
           {(["distance", "time"] as XMode[]).map(m => (
             <button key={m} onClick={() => setXMode(m)}
+              className="hra-dyn-border hra-dyn-bg hra-dyn-color"
               style={{
                 fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
-                border: `1px solid ${xMode === m ? "var(--border-strong)" : "transparent"}`,
-                background: xMode === m ? "var(--bg-card)" : "transparent",
-                color: xMode === m ? "var(--text-primary)" : "var(--text-muted)",
-              }}>
+                "--dyn-border": xMode === m ? "var(--border-strong)" : "transparent",
+                "--dyn-bg": xMode === m ? "var(--bg-card)" : "transparent",
+                "--dyn-color": xMode === m ? "var(--text-primary)" : "var(--text-muted)",
+              } as CSSProperties}>
               {m === "distance" ? "Distance" : "Time"}
             </button>
           ))}
         </div>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)" }}>
+        <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
           Highlight pauses ≥
           <input type="number" min={5} step={5} value={pauseThreshold}
             onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
             style={{ width: 56, fontSize: 11, padding: "2px 6px" }} />
           sec
         </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--text-muted)", cursor: "pointer" }}
+        <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}
           title="Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings">
           <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
           Remove outliers
@@ -362,18 +363,19 @@ export function ActivityChartSection({
             clickable halves (not a separate label + switch) — the
             selected half reads brighter/lighter, the other dims. */}
         <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
-          <div style={{
+          <div className="hra-dyn-border" style={{
             display: "inline-flex", borderRadius: 999, overflow: "hidden",
-            border: `1px solid ${METRIC_DEFS.speed.color}`,
-          }}>
+            "--dyn-border": METRIC_DEFS.speed.color,
+          } as CSSProperties}>
             {(["speed", "pace"] as SpeedMode[]).map(m => (
               <button key={m} onClick={() => setSpeedMode(m)}
+                className="hra-dyn-bg hra-dyn-color"
                 style={{
                   fontSize: 11, padding: "4px 12px", border: "none", cursor: "pointer",
-                  background: speedMode === m ? `color-mix(in srgb, ${METRIC_DEFS.speed.color} 20%, transparent)` : "transparent",
-                  color: speedMode === m ? METRIC_DEFS.speed.color : "var(--text-secondary)",
+                  "--dyn-bg": speedMode === m ? `color-mix(in srgb, ${METRIC_DEFS.speed.color} 20%, transparent)` : "transparent",
+                  "--dyn-color": speedMode === m ? METRIC_DEFS.speed.color : "var(--text-secondary)",
                   fontWeight: speedMode === m ? 600 : 400,
-                }}>
+                } as CSSProperties}>
                 {m === "speed" ? `Speed (${speedUnitLabel()})` : "Pace (mm:ss)"}
               </button>
             ))}

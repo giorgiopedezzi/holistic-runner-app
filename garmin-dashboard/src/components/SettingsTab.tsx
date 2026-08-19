@@ -110,9 +110,9 @@ export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
           // literal computed here (correction pass).
           <button
             key={name}
-            className="hra-swatch hra-accent-swatch"
+            className="hra-swatch hra-accent-swatch hra-dyn-color"
             data-selected={selected}
-            style={{ "--swatch-color": def.hex, color: def.onAccent } as CSSProperties}
+            style={{ "--swatch-color": def.hex, "--dyn-color": def.onAccent } as CSSProperties}
             onClick={() => appearance.setAccentColor?.(name)}
             aria-pressed={selected}
             aria-label={def.label}
@@ -170,7 +170,7 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
         );
       })}
       {current === "auto" && appearance.resolvedUnitSystem && (
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+        <span className="hra-text-muted" style={{ fontSize: 11 }}>
           currently: {appearance.resolvedUnitSystem} (from your browser's locale — there's no direct way to read the OS's actual measurement-system setting)
         </span>
       )}
@@ -210,7 +210,7 @@ function SettingField({ label, current, value, onChange, min, step }: {
 }) {
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={{ display: "block", fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+      <label className="hra-text-secondary" style={{ display: "block", fontSize: 12, marginBottom: 6 }}>
         {label}
       </label>
       <div className="hra-row" style={{ gap: 10 }}>
@@ -220,8 +220,8 @@ function SettingField({ label, current, value, onChange, min, step }: {
           onChange={e => onChange(Number(e.target.value))}
           className="hra-input-narrow"
         />
-        <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          current: <strong style={{ color: "var(--text-secondary)" }}>{current}</strong>
+        <span className="hra-text-muted" style={{ fontSize: 11 }}>
+          current: <strong className="hra-text-secondary">{current}</strong>
         </span>
       </div>
     </div>
@@ -328,7 +328,7 @@ export function SettingsTab({ appearance }: Props) {
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {justSavedKey === cardKey && !dirty && <span style={{ fontSize: 12, color: "var(--accent-green)" }}>Saved</span>}
+        {justSavedKey === cardKey && !dirty && <span className="hra-text-success" style={{ fontSize: 12 }}>Saved</span>}
       </div>
     );
   }
@@ -346,11 +346,11 @@ export function SettingsTab({ appearance }: Props) {
           one group rather than two side-by-side halves. */}
       <AccordionCard title="Appearance" expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
         <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>Theme</div>
+          <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>Theme</div>
           <ThemePicker appearance={appearance} />
         </div>
         <div>
-          <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 10 }}>
+          <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
             Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors
           </div>
           <AccentPicker appearance={appearance} />
@@ -359,7 +359,7 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title="Date format" expanded={expanded === "dateFormat"} onToggle={() => toggle("dateFormat")}>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
+        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
           Applies to every date shown in the app. "Numeric" is dd/mm or mm/dd depending on region;
           "Literal" spells the month out. Overview &amp; Trends' chart axes always stay numeric (no
           room for a spelled-out month on a compact axis tick) but still follow the region here.
@@ -368,7 +368,7 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title="Units" expanded={expanded === "units"} onToggle={() => toggle("units")}>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
+        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
           Applies to distance, pace, speed, elevation and weight everywhere in the app. "Auto"
           guesses from your browser's language/region (e.g. a US locale defaults to imperial) —
           there's no direct way for a web page to read the OS's actual measurement-system setting,
@@ -378,7 +378,7 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title="Activity details" expanded={expanded === "activityDetails"} onToggle={() => toggle("activityDetails")}>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 12 }}>
+        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
           How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.
         </p>
         <div style={{ display: "flex", gap: 8 }}>
@@ -399,7 +399,7 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title="Overview & Trends" expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
+        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>
           Minimum activities needed before a sport's trend chart is shown (in "Single" mode), or
           before "Week"/"Month" grouping is offered — below this, a "too few activities" message is
           shown instead of a chart that would only have a couple of bars.
@@ -419,7 +419,7 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title="Outlier detection" expanded={expanded === "outliers"} onToggle={() => toggle("outliers")}>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)", marginTop: 0, marginBottom: 16 }}>
+        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>
           Used by the activity chart's "Remove outliers" checkbox. Two independent rules: an
           isolated-spike filter (a point is flagged only when it jumps away <em>and</em> back from
           its neighbors faster than the rate below, so a genuine sustained change like a real
@@ -449,7 +449,7 @@ export function SettingsTab({ appearance }: Props) {
             />
             <div style={{ marginBottom: 4 }} />
             <div style={{ marginBottom: 14 }}>
-              <label style={{ display: "block", fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
+              <label className="hra-text-secondary" style={{ display: "block", fontSize: 12, marginBottom: 6 }}>
                 Min speed to count as running (km/h)
               </label>
               <div className="hra-row" style={{ gap: 10 }}>
@@ -459,8 +459,8 @@ export function SettingsTab({ appearance }: Props) {
                   onChange={e => setDraft(d => d && { ...d, outlier_min_speed_kmh: Number(e.target.value) })}
                   className="hra-input-narrow"
                 />
-                <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
-                  {draft.outlier_min_speed_kmh > 0 ? `≈ ${fmtMinSecRaw(60 / draft.outlier_min_speed_kmh)} min/km` : "off"} · current: <strong style={{ color: "var(--text-secondary)" }}>{saved.outlier_min_speed_kmh}</strong>
+                <span className="hra-text-muted" style={{ fontSize: 11 }}>
+                  {draft.outlier_min_speed_kmh > 0 ? `≈ ${fmtMinSecRaw(60 / draft.outlier_min_speed_kmh)} min/km` : "off"} · current: <strong className="hra-text-secondary">{saved.outlier_min_speed_kmh}</strong>
                 </span>
               </div>
             </div>

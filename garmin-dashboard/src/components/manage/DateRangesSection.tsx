@@ -27,7 +27,6 @@ const firstColumnStyle: CSSProperties = { flex: "2 1 120px", minWidth: 0 };
 const nameInputStyle: CSSProperties = {
   ...firstColumnStyle,
   fontSize: 13, padding: "6px 8px", borderRadius: 6,
-  border: "1px solid var(--border-strong)", background: "var(--bg-card)", color: "var(--text-primary)",
 };
 const actionButtonStyle: CSSProperties = { flex: "0 0 auto", width: 100 };
 
@@ -168,7 +167,7 @@ export function DateRangesSection() {
   return (
     <Card style={{ marginBottom: 16 }}>
       <div className="hra-block-title" style={{ marginBottom: 4 }}>Named date ranges</div>
-      <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
+      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston
         Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only
         races that took place after the range's end date are selectable.
@@ -182,10 +181,11 @@ export function DateRangesSection() {
           onChange={e => setCreateName(e.target.value)}
           placeholder="New range name (e.g. Boston wk2)"
           title={createName}
+          className="hra-border-strong hra-bg-card hra-text-primary"
           style={nameInputStyle}
         />
         <DatePicker value={createFrom} onChange={setCreateFrom} max={createTo} />
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
+        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
         <DatePicker value={createTo} onChange={setCreateTo} min={createFrom} />
         <Select
           value={createRaceId}
@@ -216,7 +216,7 @@ export function DateRangesSection() {
           options={[{ value: NO_SELECTION, label: "— pick a range —" }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
         <DatePicker value={updateFrom} onChange={setUpdateFrom} max={updateTo} />
-        <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
+        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
         <DatePicker value={updateTo} onChange={setUpdateTo} min={updateFrom} />
         <Select
           value={updateRaceId}
@@ -249,7 +249,7 @@ export function DateRangesSection() {
         />
         {confirmingDelete ? (
           <>
-            <span style={{ fontSize: 12, color: "var(--accent-red)" }}>Delete this range?</span>
+            <span className="hra-text-danger" style={{ fontSize: 12 }}>Delete this range?</span>
             <button
               className="hra-btn" data-variant="cta"
               style={{ "--btn-color": "var(--accent-red)", ...actionButtonStyle } as CSSProperties}
@@ -258,7 +258,8 @@ export function DateRangesSection() {
               {deleting ? "…" : "Yes, delete"}
             </button>
             <button onClick={() => setConfirmingDelete(false)}
-              style={{ fontSize: 12, border: "1px solid var(--border-strong)", borderRadius: 6, padding: "6px 12px", background: "none", color: "var(--text-secondary)", cursor: "pointer" }}>
+              className="hra-border-strong hra-text-secondary"
+              style={{ fontSize: 12, borderRadius: 6, padding: "6px 12px", background: "none", cursor: "pointer" }}>
               Cancel
             </button>
           </>
@@ -275,15 +276,15 @@ export function DateRangesSection() {
       </div>
       {deleteError && <ErrorLine>{deleteError}</ErrorLine>}
 
-      {loading && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>}
-      {error   && <div style={{ fontSize: 12, color: "var(--accent-red)" }}>{error}</div>}
+      {loading && <div className="hra-text-muted" style={{ fontSize: 12 }}>Loading…</div>}
+      {error   && <div className="hra-text-danger" style={{ fontSize: 12 }}>{error}</div>}
     </Card>
   );
 }
 
 function ErrorLine({ children }: { children: string }) {
   return (
-    <div style={{ marginBottom: 12, fontSize: 12, padding: "8px 12px", borderRadius: 6, background: "var(--bg-danger)", color: "var(--accent-red)", border: "1px solid var(--accent-red)44" }}>
+    <div className="hra-status-msg" data-status="error" style={{ marginBottom: 12 }}>
       {children}
     </div>
   );
