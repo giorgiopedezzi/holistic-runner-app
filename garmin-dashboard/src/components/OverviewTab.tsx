@@ -166,9 +166,9 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain 
               // colored to match its series — instead of one long inline
               // line, or Recharts' default three separately-swatched rows.
               return (
-                <div className="hra-chart-tooltip" style={{ flexDirection: "column", alignItems: "flex-start", gap: 2 }}>
+                <div className="hra-chart-tooltip hra-col" style={{ gap: 2 }}>
                   <span className="hra-chart-tooltip-label">{label}</span>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div className="hra-row" style={{ gap: 6 }}>
                     {typeof kmVal === "number" && (
                       <span className="hra-chart-tooltip-km">{kmVal.toFixed(1)} {distanceUnit}</span>
                     )}
@@ -255,10 +255,10 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
     <div className="hra-overlap-card-enter" style={{ marginBottom: 12 }}>
       <ChartCard title={title} legend={compareEnabled && (
         <div style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11, color: "var(--text-muted)" }}>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span className="hra-row-inline">
             <span style={{ display: "inline-block", width: 14, borderTop: "2px solid var(--text-secondary)" }} /> Current
           </span>
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span className="hra-row-inline">
             <span style={{ display: "inline-block", width: 14, height: 8, background: "var(--data-pace)", opacity: 0.25, borderRadius: 2 }} /> Compare
           </span>
         </div>
@@ -292,14 +292,14 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
               // same convention as SportTrendChart's tooltip, rather than
               // one long inline line per side.
               const metricsRow = (km: number | null, pace: number | null, hr: number | null) => (
-                <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <div className="hra-row" style={{ gap: 6 }}>
                   {km != null && <span className="hra-chart-tooltip-km">{km.toFixed(1)} {distanceUnit}</span>}
                   {pace != null && <>{km != null && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-pace">pace {fmtMinSecRaw(pace)}{paceUnit}</span></>}
                   {hr != null && <>{(km != null || pace != null) && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-hr">HR {Math.round(hr)}</span></>}
                 </div>
               );
               return (
-                <div className="hra-chart-tooltip" style={{ flexDirection: "column", alignItems: "flex-start", gap: 6 }}>
+                <div className="hra-chart-tooltip hra-col" style={{ gap: 6 }}>
                   {p.currentLabel != null && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                       <span className="hra-chart-tooltip-label">{p.currentLabel}</span>
@@ -443,7 +443,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, flexWrap: "wrap" }}>
+      <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
         <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           {curPoints.length} current {noun}{compareEnabled ? ` · ${cmpPoints.length} compare ${noun}` : ""}
@@ -483,14 +483,18 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
         );
         // "Merged" = compareCard rendered as an absolutely-positioned overlay
-        // spanning its `position: relative` sibling wrapper 1:1 (`inset: 0`)
-        // — since currentChart alone defines that wrapper's height, this
-        // stacks compareCard exactly on top of currentChart with no dead
-        // space, standing in for a real overlap without measuring pixels.
-        const mergedPair = (
+        // (`.hra-merged`/`.hra-unmerge-down`, both `position:absolute;inset:0`)
+        // spanning its `position: relative` sibling wrapper 1:1 — since
+        // currentChart alone defines that wrapper's height, this stacks
+        // compareCard exactly on top of currentChart with no dead space,
+        // standing in for a real overlap without measuring pixels. Takes the
+        // overlay class as a param — o2d-slide reuses this same shape, just
+        // with `.hra-unmerge-down` (which starts from this identical
+        // footprint) instead of the static `.hra-merged`.
+        const mergedPair = (overlayClass = "hra-merged") => (
           <div style={{ position: "relative" }}>
             {currentChart}
-            {compareCard && <div className="hra-merged" style={{ position: "absolute", inset: 0 }}>{compareCard}</div>}
+            {compareCard && <div className={overlayClass}>{compareCard}</div>}
           </div>
         );
 
@@ -517,7 +521,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
           case "d2o-fade":
             return (
               <div className="hra-crossfade">
-                <div className="hra-crossfade-out">{mergedPair}</div>
+                <div className="hra-crossfade-out">{mergedPair()}</div>
                 <div className="hra-crossfade-in">{overlapChart}</div>
               </div>
             );
@@ -525,19 +529,14 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <div className="hra-crossfade">
                 <div className="hra-crossfade-out">{overlapChart}</div>
-                <div className="hra-crossfade-in">{mergedPair}</div>
+                <div className="hra-crossfade-in">{mergedPair()}</div>
               </div>
             );
           case "o2d-slide":
             // Compare card starts merged (matching o2d-fade's end state) and
             // slides down into its own slot — settling at "distinct" swaps
             // it back to normal in-flow positioning at the matching spot.
-            return (
-              <div style={{ position: "relative" }}>
-                {currentChart}
-                {compareCard && <div className="hra-unmerge-down" style={{ position: "absolute", inset: 0 }}>{compareCard}</div>}
-              </div>
-            );
+            return mergedPair("hra-unmerge-down");
         }
       })()}
     </div>
@@ -621,14 +620,13 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
         <SectionTitle>Distance & pace/HR trend</SectionTitle>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="hra-row" style={{ gap: 8 }}>
           {compareEnabled && (
-            <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 999, border: "1px solid var(--border)" }}>
+            <div className="hra-segmented-group">
               {(["overlap", "distinct"] as const).map(v => (
                 <button key={v}
-                  className={`hra-pill hra-nav-pill hra-nav-hover ${viewMode === v ? "hra-pill-active" : ""}`}
-                  onClick={() => setViewMode(v)}
-                  style={{ fontSize: 11, padding: "3px 10px" }}>
+                  className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${viewMode === v ? "hra-pill-active" : ""}`}
+                  onClick={() => setViewMode(v)}>
                   {v === "overlap" ? "Overlapping" : "Distinct"}
                 </button>
               ))}
@@ -639,15 +637,14 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
               buttons, so the group reads as one control. Inactive items are
               identical (no per-item border/background), only the active one
               gets the gradient pill; hover is the shared quiet bg-tint. */}
-          <div style={{ display: "flex", gap: 2, padding: 2, borderRadius: 999, border: "1px solid var(--border)" }}>
+          <div className="hra-segmented-group">
             {GROUP_MODES.map(m => (
               <button key={m}
-                className={`hra-pill hra-nav-pill hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
+                className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
                 onClick={() => setGroupMode(m)}
                 disabled={!modeEnabled[m]}
                 title={modeEnabled[m] ? undefined : `Needs at least ${minGroupSize} ${m}s in the selected range`}
                 style={{
-                  fontSize: 11, padding: "3px 10px",
                   cursor: modeEnabled[m] ? "pointer" : "not-allowed",
                   opacity: modeEnabled[m] ? 1 : 0.4,
                 }}>

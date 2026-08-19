@@ -119,7 +119,7 @@ export function ClassifySection() {
 
   return (
     <Card>
-      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>AI workout classification</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>AI workout classification</div>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
         Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata /
         Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine
@@ -127,7 +127,7 @@ export function ClassifySection() {
         both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
         <DatePicker value={from} onChange={setFrom} max={to} />
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
         <DatePicker value={to} onChange={setTo} min={from} />
@@ -197,7 +197,7 @@ export function ClassifySection() {
             </div>
           )}
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="hra-row-wrap">
             <div style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden", border: "1px solid var(--border-strong)" }}
               title="Classification method: a local Ollama model, or instant deterministic rules over the same pace-variance/split/pause stats (no LLM, works even if Ollama isn't running)">
               {(["ai", "statistical"] as const).map(m => (

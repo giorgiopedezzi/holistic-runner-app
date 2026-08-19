@@ -327,7 +327,7 @@ export function ActivityChartSection({
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="hra-control-row" style={{ gap: 16, marginBottom: 12 }}>
         <div style={{ display: "flex", gap: 4 }}>
           {(["distance", "time"] as XMode[]).map(m => (
             <button key={m} onClick={() => setXMode(m)}
@@ -361,7 +361,7 @@ export function ActivityChartSection({
             the optional metrics below). One pill, split into two
             clickable halves (not a separate label + switch) — the
             selected half reads brighter/lighter, the other dims. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+        <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
           <div style={{
             display: "inline-flex", borderRadius: 999, overflow: "hidden",
             border: `1px solid ${METRIC_DEFS.speed.color}`,

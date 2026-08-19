@@ -30,7 +30,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
   //    Overview & Trends, the only caller that passes `compare`. ──
   if (!compare) {
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div className="hra-row-wrap">
         {PRESETS.map(p => (
           <button
             key={p.label}
@@ -91,7 +91,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           the row's right end (not beside the title) — when off, no second
           row at all and OverviewTab adds no comparison data anywhere
           (rings, sport trend charts, linked race). */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+      <div className="hra-row-between">
         <span style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)" }}>Current</span>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
           Enable comparison
@@ -102,7 +102,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
       {/* One row: preset dropdown (was individual pills — a dropdown frees
           enough width for the named-range picker to fit on the same line),
           the manual date pickers, and the named-range picker. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div className="hra-row-wrap">
         <Select
           value={activePreset ? String(activePreset.days) : NO_NAMED_RANGE}
           onValueChange={v => setPreset(Number(v))}
@@ -137,7 +137,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           value is derived from compare.from/to, never separately stored. */}
       <div style={{ opacity: compare.enabled ? 1 : 0.4, pointerEvents: compare.enabled ? "auto" : "none" }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text-primary)", marginTop: 12, marginBottom: 8 }}>Compared to</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div className="hra-row-wrap">
           <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
           <span style={orStyle}>→</span>
           <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />

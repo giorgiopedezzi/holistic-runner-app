@@ -42,7 +42,7 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>{title}</div>
+      <div className="hra-block-title" style={{ fontSize: 13, marginBottom: 8 }}>{title}</div>
       {loading && <div style={{ fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>}
       {error && <ErrorBanner message={error} />}
       {!loading && !error && items && items.length === 0 && (
@@ -63,7 +63,7 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
             ))}
           </div>
 
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <div className="hra-row-wrap">
             <button className="hra-btn" data-variant="cta" onClick={doRestore} disabled={selected.size === 0 || busy}>
               Restore selected
             </button>

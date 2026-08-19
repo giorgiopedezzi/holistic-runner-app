@@ -72,7 +72,7 @@ export function DeleteSection() {
 
   return (
     <Card style={{ borderColor: "#e24b4a33" }}>
-      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>
         Delete data range <span style={{ fontSize: 11, fontWeight: 400, color: "var(--text-muted)" }}>· local database only</span>
       </div>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 16 }}>
@@ -81,7 +81,7 @@ export function DeleteSection() {
         account either way, and a resync won't bring a trashed (or permanently deleted) item back on its own.
       </div>
 
-      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="hra-control-row" style={{ gap: 16, marginBottom: 12 }}>
         <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-secondary)", cursor: "pointer" }}>
           <Checkbox checked={delActivities} onCheckedChange={setDelActivities} />
           Activities (Garmin + Strava)
@@ -98,7 +98,7 @@ export function DeleteSection() {
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
         <DatePicker value={from} onChange={setFrom} max={to} />
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
         <DatePicker value={to} onChange={setTo} min={from} />
@@ -158,7 +158,7 @@ export function DeleteSection() {
           Move to trash…
         </button>
       ) : (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <div className="hra-row-wrap">
           <span style={{ fontSize: 12, color: "var(--accent-red)" }}>
             Move to trash, {from} to {to}?
           </span>

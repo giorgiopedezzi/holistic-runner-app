@@ -27,8 +27,8 @@ export function TrashSection() {
 
   return (
     <Card>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <div style={{ fontSize: 14, fontWeight: 500 }}>Trash</div>
+      <div className="hra-row" style={{ gap: 8, marginBottom: 4 }}>
+        <div className="hra-block-title">Trash</div>
         <button
           className="hra-nav-hover"
           onClick={() => { refreshActivities(); refreshMeasurements(); }}

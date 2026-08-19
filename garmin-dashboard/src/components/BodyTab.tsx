@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
 import {
   AreaChart, Area, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -44,16 +43,15 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
   // Active/inactive visuals are .hra-pill-active/.hra-nav-pill (index.css) —
   // same classes the header nav tabs use — not a computed style object.
   const tabBtnClass = (isActive: boolean) =>
-    ["hra-pill", "hra-nav-pill", "hra-nav-hover", isActive ? "hra-pill-active" : ""].filter(Boolean).join(" ");
-  const tabBtnStyle: CSSProperties = { fontSize: 11, padding: "3px 10px" };
+    ["hra-pill", "hra-nav-pill", "hra-nav-pill--sm", "hra-nav-hover", isActive ? "hra-pill-active" : ""].filter(Boolean).join(" ");
 
   return (
     <div style={{ marginBottom: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+      <div className="hra-row-between">
         <div style={{ fontSize: 13, fontWeight: 500, color: "var(--text-secondary)" }}>{title}</div>
         <div style={{ display: "flex", gap: 4 }}>
-          <button className={tabBtnClass(view === "chart")} onClick={() => setView("chart")} style={tabBtnStyle}>Chart</button>
-          <button className={tabBtnClass(view === "table")} onClick={() => setView("table")} style={tabBtnStyle}>Table</button>
+          <button className={tabBtnClass(view === "chart")} onClick={() => setView("chart")}>Chart</button>
+          <button className={tabBtnClass(view === "table")} onClick={() => setView("table")}>Table</button>
         </div>
       </div>
 

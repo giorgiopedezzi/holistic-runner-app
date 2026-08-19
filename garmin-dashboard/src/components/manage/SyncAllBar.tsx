@@ -65,7 +65,7 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
     <Card style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 500 }}>Sync all</div>
+          <div className="hra-block-title">Sync all</div>
           <div style={{ fontSize: 12, color: "var(--text-secondary)" }}>
             Runs every sync below in one go — skips whichever source isn't ready (device unplugged, not logged in).
           </div>

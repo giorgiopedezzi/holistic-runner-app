@@ -188,7 +188,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
               Delete activity (locally)
             </button>
           ) : (
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div className="hra-row" style={{ gap: 6 }}>
               <span style={{ fontSize: 12, color: "var(--accent-red)" }}>Move to trash?</span>
               <button
                 className="hra-btn" data-variant="cta"

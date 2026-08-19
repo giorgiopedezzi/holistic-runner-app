@@ -35,7 +35,7 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
 
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 14, fontSize: 12, color: "var(--text-secondary)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <div className="hra-row" style={{ gap: 6 }}>
         <span>Per page</span>
         <Select
           value={String(perPage)}
@@ -46,10 +46,10 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
         <span style={{ color: "var(--text-muted)" }}>· {totalItems} total</span>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+      <div className="hra-row" style={{ gap: 4 }}>
         <button onClick={() => onPageChange(1)} disabled={page <= 1} style={btnStyle(page <= 1)}>«</button>
         <button onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btnStyle(page <= 1)}>‹</button>
-        <span style={{ display: "flex", alignItems: "center", gap: 6, margin: "0 6px" }}>
+        <span className="hra-row" style={{ gap: 6, margin: "0 6px" }}>
           Page
           <input
             type="number" min={1} max={totalPages} value={jumpTo}

@@ -50,7 +50,7 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, e
         <span style={{ color: "var(--text-muted)", fontSize: 11 }}>{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
       </button>
       {expanded && expandedContent && (
-        <div className="card" style={{ borderTop: "none", borderRadius: "0 0 16px 16px", padding: "16px 14px" }}>
+        <div className="card hra-card-joined-bottom" style={{ padding: "16px 14px" }}>
           {expandedContent}
         </div>
       )}

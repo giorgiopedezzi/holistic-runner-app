@@ -80,7 +80,7 @@ interface ChartPillLegendProps {
 
 export function ChartPillLegend({ items, onToggle }: ChartPillLegendProps) {
   return (
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+    <div className="hra-chip-row" style={{ gap: 6 }}>
       {items.map(item => (
         // --legend-color is the one per-series hook; every actual visual
         // (border/background/glow/dim-when-off) is owned by .hra-legend-chip

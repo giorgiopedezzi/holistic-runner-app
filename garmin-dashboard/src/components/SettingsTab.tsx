@@ -75,7 +75,7 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const hasExplicitChoice = current === "dark" || current === "light";
 
   return (
-    <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+    <div className="hra-chip-row" style={{ gap: 10 }}>
       {THEME_NAMES.map(t => (
         <ThemeSwatch
           key={t}
@@ -155,7 +155,7 @@ const UNIT_SYSTEM_OPTIONS: { value: StoredUnitSystem; label: string }[] = [
 export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.unit_system;
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+    <div className="hra-row-wrap">
       {UNIT_SYSTEM_OPTIONS.map(opt => {
         const selected = current === opt.value;
         return (
@@ -186,7 +186,7 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
 export function DateFormatPicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.date_format;
   return (
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+    <div className="hra-chip-row" style={{ gap: 8 }}>
       {DATE_FORMAT_OPTIONS.map(opt => {
         const selected = current === opt.value;
         return (
@@ -213,12 +213,12 @@ function SettingField({ label, current, value, onChange, min, step }: {
       <label style={{ display: "block", fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
         {label}
       </label>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="hra-row" style={{ gap: 10 }}>
         <input
           type="number" min={min} step={step}
           value={value}
           onChange={e => onChange(Number(e.target.value))}
-          style={{ width: 120, fontSize: 13, padding: "5px 8px" }}
+          className="hra-input-narrow"
         />
         <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
           current: <strong style={{ color: "var(--text-secondary)" }}>{current}</strong>
@@ -318,7 +318,7 @@ export function SettingsTab({ appearance }: Props) {
   function SaveBar({ cardKey, dirty, onSave }: { cardKey: SaveKey; dirty: boolean; onSave: () => void }) {
     const saving = savingKey === cardKey;
     return (
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+      <div className="hra-row" style={{ gap: 10, marginTop: 4 }}>
         <button
           className="hra-btn"
           data-variant="cta"
@@ -452,12 +452,12 @@ export function SettingsTab({ appearance }: Props) {
               <label style={{ display: "block", fontSize: 12, color: "var(--text-secondary)", marginBottom: 6 }}>
                 Min speed to count as running (km/h)
               </label>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div className="hra-row" style={{ gap: 10 }}>
                 <input
                   type="number" min={0} step={0.5}
                   value={draft.outlier_min_speed_kmh}
                   onChange={e => setDraft(d => d && { ...d, outlier_min_speed_kmh: Number(e.target.value) })}
-                  style={{ width: 120, fontSize: 13, padding: "5px 8px" }}
+                  className="hra-input-narrow"
                 />
                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
                   {draft.outlier_min_speed_kmh > 0 ? `≈ ${fmtMinSecRaw(60 / draft.outlier_min_speed_kmh)} min/km` : "off"} · current: <strong style={{ color: "var(--text-secondary)" }}>{saved.outlier_min_speed_kmh}</strong>

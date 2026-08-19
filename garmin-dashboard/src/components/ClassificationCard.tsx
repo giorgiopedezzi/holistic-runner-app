@@ -118,7 +118,7 @@ function MethodResultCard({
 
   return (
     <div style={{ flex: "1 1 240px", minWidth: 220, border: "1px solid var(--border)", borderRadius: 8, padding: 10 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+      <div className="hra-row" style={{ gap: 8 }}>
         <span style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>
           {methodLabel(method)}
         </span>
@@ -160,7 +160,7 @@ function MethodResultCard({
       {explanation && <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 6 }}>{explanation}</div>}
 
       {classification && !showCorrection && (
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+        <div className="hra-row" style={{ gap: 8, marginTop: 8 }}>
           <button onClick={handleApprove} title="Confirm this card's classification as the activity's answer"
             style={{
               fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
@@ -231,7 +231,7 @@ export function ClassificationCard({ activity, onUpdate }: { activity: Activity;
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+      <div className="hra-control-row" style={{ gap: 10, marginBottom: 10 }}>
         {status === "confirmed" && activity.final_classification ? (
           <span style={{
             display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
@@ -260,7 +260,7 @@ export function ClassificationCard({ activity, onUpdate }: { activity: Activity;
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      <div className="hra-chip-row" style={{ gap: 10 }}>
         <MethodResultCard activity={activity} method="ai" splitMeters={splitMeters} onUpdate={onUpdate} />
         <MethodResultCard activity={activity} method="statistical" splitMeters={splitMeters} onUpdate={onUpdate} />
       </div>

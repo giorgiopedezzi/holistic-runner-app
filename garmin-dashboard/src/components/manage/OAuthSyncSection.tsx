@@ -109,7 +109,7 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Sync {label} {noun}</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>Sync {label} {noun}</div>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
         {description}
       </div>
@@ -125,14 +125,14 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
         onRecheck={checkToken}
       />
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 12 }}>
+      <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
         <label style={{ fontSize: 12, color: "var(--text-muted)" }}>Date range:</label>
         <DatePicker value={from} onChange={onFromChange} max={to} />
         <span style={{ fontSize: 12, color: "var(--text-muted)" }}>→</span>
         <DatePicker value={to} onChange={onToChange} min={from} />
       </div>
 
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <div className="hra-row-wrap">
         <button
           className="hra-btn"
           data-variant="cta"

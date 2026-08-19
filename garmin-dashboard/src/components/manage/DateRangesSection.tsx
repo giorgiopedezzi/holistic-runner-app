@@ -167,7 +167,7 @@ export function DateRangesSection() {
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 14, fontWeight: 500, marginBottom: 4 }}>Named date ranges</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>Named date ranges</div>
       <div style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 12 }}>
         Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston
         Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only

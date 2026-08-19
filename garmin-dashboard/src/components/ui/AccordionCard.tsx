@@ -31,7 +31,7 @@ export function AccordionCard({ title, expanded, onToggle, children }: Accordion
         <span style={{ color: "var(--text-muted)", fontSize: 12 }}>{expanded ? "▲" : "▼"}</span>
       </button>
       {expanded && (
-        <div className="card" style={{ borderTop: "none", borderRadius: "0 0 16px 16px", padding: "18px" }}>
+        <div className="card hra-card-joined-bottom" style={{ padding: "18px" }}>
           {children}
         </div>
       )}

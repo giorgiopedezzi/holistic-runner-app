@@ -259,6 +259,25 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
 }
+/* Small-size .hra-nav-pill variant (Body tab's Chart/Table switch, Overview's
+   Overlap/Distinct and Single/Week/Month switches) — distinct from the
+   header nav tabs' own size (App.tsx), which stays inline because it's
+   genuinely dynamic (padding/font-weight both change with active state,
+   nothing fixed to name a class after). */
+.hra-nav-pill--sm {
+  font-size: 11px;
+  padding: 3px 10px;
+}
+/* Wrapper for a row of .hra-nav-pill--sm buttons acting as one segmented
+   control (Overview's Overlap/Distinct and Single/Week/Month switches) —
+   the bordered pill housing the group, not any one button's own look. */
+.hra-segmented-group {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
 .hra-pill-active {
   /* Monochromatic two-stop ramp (corrected 2026-08-17) — the second stop
      used to be a 55% mix toward the fixed --accent-glow cyan, which pulled
@@ -636,6 +655,31 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 
 /* ════════════════════════════════════════════════════════════════════════
+   Generic layout-row utilities (2026-08-20 inline-style sweep) — the same
+   flex-row/title shapes were being retyped as inline style={{}} objects
+   across ~15 files; these classes are that shared shape only. Anything that
+   genuinely varies per call site (gap, marginTop/marginBottom, padding)
+   stays inline as a plain structural value, per CLAUDE.md's "plain
+   structural layout... can stay inline" exemption — only the repeated,
+   fixed part moved here. ════════════════════════════════════════════════ */
+.hra-row          { display: flex; align-items: center; }
+.hra-row-inline    { display: inline-flex; align-items: center; gap: 4px; }
+.hra-row-wrap      { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.hra-control-row   { display: flex; align-items: center; flex-wrap: wrap; }
+.hra-row-between   { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.hra-col           { display: flex; flex-direction: column; align-items: flex-start; }
+.hra-chip-row      { display: flex; flex-wrap: wrap; }
+/* The bolded heading text atop a Manage-tab card ("Delete data range",
+   "Sync all", "Trash", ...) — marginBottom stays inline where a site needs
+   the gap to its body text (not every site does). */
+.hra-block-title   { font-size: 14px; font-weight: 500; }
+.hra-input-narrow  { width: 120px; font-size: 13px; padding: 5px 8px; }
+/* Bottom half of a card split by an expanded row (ActivityRow, AccordionCard)
+   — padding stays inline, it differs between the two callers. */
+.hra-card-joined-bottom { border-top: none; border-radius: 0 0 16px 16px; }
+.hra-stat-value    { font-size: 18px; font-weight: 600; line-height: 1.2; }
+
+/* ════════════════════════════════════════════════════════════════════════
    Overview + Settings correction pass (2026-08-16) — every theme-related
    visual (background/border/box-shadow/filter/gradient) these two tabs and
    the header use, moved out of component style={} objects per CLAUDE.md's
@@ -825,7 +869,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-crossfade-out { animation: hra-fade-out 1s ease-in-out forwards; }
 .hra-crossfade-in  { animation: hra-fade-in  1s ease-in-out forwards; }
 
-.hra-merged { inset: 0; }
+.hra-merged { position: absolute; inset: 0; }
 
 @keyframes hra-merge-up-move {
   from { transform: translateY(0); }
@@ -837,7 +881,9 @@ input:focus, select:focus { border-color: var(--accent); }
   from { transform: translateY(0); }
   to   { transform: translateY(calc(100% + 12px)); }
 }
-.hra-unmerge-down { animation: hra-unmerge-down-move 1s ease-in-out forwards; }
+/* position/inset here (not inline at the call site) — same "already merged"
+   footprint .hra-merged defines, since this phase starts from that state. */
+.hra-unmerge-down { position: absolute; inset: 0; animation: hra-unmerge-down-move 1s ease-in-out forwards; }
 
 /* Runner mouse-follow/autoplay readout (ActivityChartSection) — bare text,
    no chip/box (deliberately NOT `.hra-chart-tooltip` — a panel floating

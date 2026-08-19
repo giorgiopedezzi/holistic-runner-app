@@ -46,7 +46,7 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+    <div className="hra-row" style={{ gap: 6 }}>
       <Select
         value={String(selectedTypeId)}
         onValueChange={v => setSelectedTypeId(Number(v))}

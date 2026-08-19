@@ -14,11 +14,11 @@ export function SpeedPaceStat({ avgSpeedMs, avgPaceMinKm }: { avgSpeedMs: number
       <Label style={{ marginBottom: 6 }}>Avg speed / pace</Label>
       <div style={{ display: "flex", gap: 14 }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>{avgPaceMinKm != null ? fmtPace(avgPaceMinKm) : "—"}</div>
+          <div className="hra-stat-value">{avgPaceMinKm != null ? fmtPace(avgPaceMinKm) : "—"}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{paceUnitLabel()}</div>
         </div>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 600, lineHeight: 1.2 }}>{fmtSpeed(avgSpeedMs)}</div>
+          <div className="hra-stat-value">{fmtSpeed(avgSpeedMs)}</div>
           <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{speedUnitLabel()}</div>
         </div>
       </div>
