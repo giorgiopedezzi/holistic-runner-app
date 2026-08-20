@@ -3,6 +3,11 @@
 > Reference detail, loaded on demand. Rules that PREVENT a mistake live in `CLAUDE.md`;
 > this file DESCRIBES how the system works. Reachable from CLAUDE.md's routing table.
 
+**Machine-readable contract:** `garmin-stats/openapi.json` (served live at `GET /api/v1/openapi.json`,
+rendered at `GET /api/v1/docs`) is the source of truth for exact request/response schemas and status
+codes — this file is the human-readable index. The two must stay in sync (CLAUDE.md's routing-table
+rule); this table exists for quick lookup, not as a second contract.
+
 
 ### GET
 | Endpoint | Description |

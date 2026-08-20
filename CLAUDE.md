@@ -423,6 +423,13 @@ re-derive it from the source, and do not assume the summary above is complete.
 **Rule:** a section unreachable from this table is a section nobody will ever load. If you move
 something out of `CLAUDE.md`, it goes in `docs/` *and* gets a row here — or it does not move.
 
+**Any change to `garmin-stats/src/http/router.ts` (a new route, a changed method/path/response
+shape) must update `garmin-stats/openapi.json` in the same commit.** `openapi.json` is the
+machine-readable API contract (`rest-api-standards` §9); a stale spec "lies with authority" and is
+worse than none. This drifted once already (HRA-110 found `date-ranges`, `activity-types`,
+`locales`, `training-plans`/`planned-workouts` all missing) — treat drift as a bug, not a later
+cleanup task.
+
 ---
 
 ## Jira quick reference (project HRA)
