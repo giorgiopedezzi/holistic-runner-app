@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Card, Label } from "@/components/ui";
 import { fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
@@ -9,9 +10,10 @@ import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
 // values fit comfortably side by side without this card needing its own,
 // inconsistent smaller size).
 export function SpeedPaceStat({ avgSpeedMs, avgPaceMinKm }: { avgSpeedMs: number | null; avgPaceMinKm: number | null }) {
+  const { t } = useTranslation();
   return (
     <Card>
-      <Label style={{ marginBottom: 6 }}>Avg speed / pace</Label>
+      <Label style={{ marginBottom: 6 }}>{t("activity.stat.avgSpeedPace", "Avg speed / pace")}</Label>
       <div style={{ display: "flex", gap: 14 }}>
         <div>
           <div className="hra-stat-value">{avgPaceMinKm != null ? fmtPace(avgPaceMinKm) : "—"}</div>

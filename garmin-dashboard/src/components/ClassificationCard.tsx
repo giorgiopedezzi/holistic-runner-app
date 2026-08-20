@@ -7,11 +7,13 @@
  */
 import { useState, useEffect, useRef } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner } from "@/components/ui";
 import {
   type Activity, type ClassificationMethod, type CorrectionReason, type WorkoutClassification,
-  CORRECTION_REASONS, WORKOUT_CLASSIFICATIONS, classificationStatus,
+  CORRECTION_REASONS, WORKOUT_CLASSIFICATIONS, WORKOUT_CLASSIFICATION_KEY, classificationStatus,
 } from "@/types/api";
 
 // ── AI workout classifier card ────────────────────────────────────────────
@@ -29,7 +31,9 @@ function statusColor(status: ReturnType<typeof classificationStatus>): string {
   return "var(--text-muted)";
 }
 
-function methodLabel(m: ClassificationMethod): string { return m === "ai" ? "AI" : "Statistical"; }
+function methodLabel(m: ClassificationMethod, t: TFunction): string {
+  return m === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical");
+}
 
 // One method's independent classify/result/thumbs — two of these sit side
 // by side (see ClassificationCard below) so AI and Statistical can each be
@@ -44,6 +48,7 @@ function methodLabel(m: ClassificationMethod): string { return m === "ai" ? "AI"
 function MethodResultCard({
   activity, method, splitMeters, onUpdate,
 }: { activity: Activity; method: ClassificationMethod; splitMeters: number; onUpdate: (a: Activity) => void }) {
+  const { t } = useTranslation();
   const [classifying, setClassifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
@@ -84,7 +89,7 @@ function MethodResultCard({
       onUpdate(await api.garmin.classify(activity.id, splitMeters, method));
       setShowCorrection(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Classification failed");
+      setError(e instanceof Error ? e.message : t("activity.classify.classifyFailed", "Classification failed"));
     } finally {
       if (startedAtRef.current != null) setLastDurationSec((Date.now() - startedAtRef.current) / 1000);
       setClassifying(false);
@@ -96,7 +101,7 @@ function MethodResultCard({
     try {
       onUpdate(await api.garmin.feedback(activity.id, { feedback: "approved", source: method }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save feedback");
+      setError(e instanceof Error ? e.message : t("activity.classify.feedbackFailed", "Failed to save feedback"));
     }
   }
 
@@ -110,7 +115,7 @@ function MethodResultCard({
       setReason("");
       setCorrected("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save feedback");
+      setError(e instanceof Error ? e.message : t("activity.classify.feedbackFailed", "Failed to save feedback"));
     } finally {
       setSubmitting(false);
     }
@@ -120,7 +125,7 @@ function MethodResultCard({
     <div className="hra-border" style={{ flex: "1 1 240px", minWidth: 220, borderRadius: 8, padding: 10 }}>
       <div className="hra-row" style={{ gap: 8 }}>
         <span className="hra-text-secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-          {methodLabel(method)}
+          {methodLabel(method, t)}
         </span>
         <div style={{ flex: 1 }} />
         <button
@@ -129,15 +134,16 @@ function MethodResultCard({
           onClick={handleClassify}
           disabled={classifying}
           title={method === "ai"
-            ? "Runs a local Ollama model against this activity's pace/HR pattern (takes ~15-25s on CPU). Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending."
-            : "Applies deterministic rules to this activity's pace variance, splits, and pauses — instant, no Ollama needed. Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending."}
+            ? t("activity.classify.aiTooltip", "Runs a local Ollama model against this activity's pace/HR pattern (takes ~15-25s on CPU). Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending.")
+            : t("activity.classify.statisticalTooltip", "Applies deterministic rules to this activity's pace variance, splits, and pauses — instant, no Ollama needed. Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending.")}
         >
-          {classifying ? `Classifying… ${elapsedSec.toFixed(1)}s` : classification ? "Reclassify" : "Classify"}
+          {classifying ? t("activity.classify.classifyingProgress", `Classifying… ${elapsedSec.toFixed(1)}s`, { sec: elapsedSec.toFixed(1) })
+            : classification ? t("activity.classify.reclassify", "Reclassify") : t("activity.classify.classify", "Classify")}
         </button>
       </div>
       {!classifying && lastDurationSec != null && (
         <div className="hra-text-muted" style={{ fontSize: 10, textAlign: "right", marginTop: 2 }}>
-          took {lastDurationSec.toFixed(1)}s
+          {t("activity.classify.took", `took ${lastDurationSec.toFixed(1)}s`, { sec: lastDurationSec.toFixed(1) })}
         </div>
       )}
 
@@ -149,11 +155,11 @@ function MethodResultCard({
             "--dyn-color": isVerdictSource ? "var(--accent-green)" : "var(--text-primary)",
             letterSpacing: "0.04em", textTransform: "uppercase",
           } as CSSProperties}>
-            {classification}
-            {isVerdictSource && <span title="This card's result is the activity's confirmed classification">✓</span>}
+            {t(WORKOUT_CLASSIFICATION_KEY[classification as WorkoutClassification] ?? "unknown", classification)}
+            {isVerdictSource && <span title={t("activity.classify.verdictSourceTooltip", "This card's result is the activity's confirmed classification")}>✓</span>}
           </span>
         ) : (
-          <span className="hra-text-muted" style={{ fontSize: 12 }}>Not yet classified</span>
+          <span className="hra-text-muted" style={{ fontSize: 12 }}>{t("activity.classify.notYetClassified", "Not yet classified")}</span>
         )}
       </div>
 
@@ -161,7 +167,7 @@ function MethodResultCard({
 
       {classification && !showCorrection && (
         <div className="hra-row" style={{ gap: 8, marginTop: 8 }}>
-          <button onClick={handleApprove} title="Confirm this card's classification as the activity's answer"
+          <button onClick={handleApprove} title={t("activity.classify.approveTooltip", "Confirm this card's classification as the activity's answer")}
             className="hra-dyn-border hra-dyn-color"
             style={{
               fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
@@ -170,7 +176,7 @@ function MethodResultCard({
             } as CSSProperties}>
             👍
           </button>
-          <button onClick={() => setShowCorrection(true)} title="This card's classification is wrong"
+          <button onClick={() => setShowCorrection(true)} title={t("activity.classify.rejectTooltip", "This card's classification is wrong")}
             className="hra-dyn-border hra-dyn-color"
             style={{
               fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
@@ -183,7 +189,13 @@ function MethodResultCard({
       )}
       {isVerdictSource && activity.user_feedback === "rejected" && activity.final_classification && (
         <div className="hra-text-muted" style={{ fontSize: 11, marginTop: 6 }}>
-          Corrected to: {activity.final_classification}{activity.user_correction_reason ? ` (${activity.user_correction_reason})` : ""}
+          {(() => {
+            const classificationLabel = t(WORKOUT_CLASSIFICATION_KEY[activity.final_classification as WorkoutClassification] ?? "unknown", activity.final_classification);
+            const reasonSuffix = activity.user_correction_reason ? ` (${activity.user_correction_reason})` : "";
+            return t("activity.classify.correctedTo", `Corrected to: ${classificationLabel}${reasonSuffix}`, {
+              classification: classificationLabel, reason: reasonSuffix,
+            });
+          })()}
         </div>
       )}
 
@@ -193,26 +205,31 @@ function MethodResultCard({
               Radix Select can't be driven by the characterization test's
               fireEvent.change, and this Story's own AC requires the
               existing FE test suite to pass unmodified; see the In Review
-              comment for the tradeoff. */}
+              comment for the tradeoff. Option VALUES stay the raw English
+              constants either field is typed/persisted as — only the
+              displayed text (classification labels) goes through t();
+              CORRECTION_REASONS is explicitly out of this Story's scope
+              (backend-sourced free text per its own "Explicitly out of
+              scope" section), so its options are untranslated either way. */}
           <select value={reason} onChange={e => setReason(e.target.value as CorrectionReason)} style={{ fontSize: 12 }}>
-            <option value="">Why was this wrong?</option>
+            <option value="">{t("activity.classify.whyWrong", "Why was this wrong?")}</option>
             {CORRECTION_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
           <select value={corrected} onChange={e => setCorrected(e.target.value as WorkoutClassification)} style={{ fontSize: 12 }}>
-            <option value="">What was it actually?</option>
-            {WORKOUT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{c}</option>)}
+            <option value="">{t("activity.classify.whatWasIt", "What was it actually?")}</option>
+            {WORKOUT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{t(WORKOUT_CLASSIFICATION_KEY[c], c)}</option>)}
           </select>
           <button
             className="hra-btn" data-variant="cta"
             style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
             onClick={handleReject} disabled={!reason || !corrected || submitting}
           >
-            {submitting ? "…" : "Submit"}
+            {submitting ? "…" : t("common.submit", "Submit")}
           </button>
           <button onClick={() => setShowCorrection(false)}
             className="hra-border-strong hra-text-secondary"
             style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
-            Cancel
+            {t("common.cancel", "Cancel")}
           </button>
         </div>
       )}
@@ -228,6 +245,7 @@ function MethodResultCard({
 // not a per-card setting, since it's a single "how granular" preference the
 // user sets once before running either.
 export function ClassificationCard({ activity, onUpdate }: { activity: Activity; onUpdate: (a: Activity) => void }) {
+  const { t } = useTranslation();
   const [splitMeters, setSplitMeters] = useState(1000);
   const status = classificationStatus(activity);
   const color = statusColor(status);
@@ -240,16 +258,19 @@ export function ClassificationCard({ activity, onUpdate }: { activity: Activity;
             display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
             "--dyn-border": color, "--dyn-color": color, letterSpacing: "0.04em", textTransform: "uppercase",
           } as CSSProperties}>
-            Confirmed: {activity.final_classification}
+            {(() => {
+              const label = t(WORKOUT_CLASSIFICATION_KEY[activity.final_classification as WorkoutClassification] ?? "unknown", activity.final_classification);
+              return t("activity.classify.confirmedAs", `Confirmed: ${label}`, { classification: label });
+            })()}
           </span>
         ) : (
           <span className="hra-dyn-color" style={{ fontSize: 12, "--dyn-color": color, fontWeight: status === "pending" ? 600 : 400 } as CSSProperties}>
-            {status === "pending" ? "Pending review" : "Not yet classified"}
+            {status === "pending" ? t("activity.classify.pendingReview", "Pending review") : t("activity.classify.notYetClassified", "Not yet classified")}
           </span>
         )}
         <div style={{ flex: 1 }} />
         <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
-          title="Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out">
+          title={t("activity.classify.splitTooltip", "Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out")}>
           {([1000, 500] as const).map(m => (
             <button key={m} onClick={() => setSplitMeters(m)}
               className="hra-dyn-bg hra-dyn-color"
@@ -258,7 +279,7 @@ export function ClassificationCard({ activity, onUpdate }: { activity: Activity;
                 "--dyn-bg": splitMeters === m ? "var(--bg-card)" : "transparent",
                 "--dyn-color": splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
               } as CSSProperties}>
-              {m === 1000 ? "1km" : "0.5km"}
+              {m === 1000 ? t("activity.classify.split1km", "1km") : t("activity.classify.split05km", "0.5km")}
             </button>
           ))}
         </div>

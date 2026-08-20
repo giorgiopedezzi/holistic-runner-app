@@ -453,8 +453,8 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
         <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
         <span className="hra-text-muted" style={{ fontSize: 11 }}>
           {compareEnabled
-            ? t("overview.sportCounts.withCompare", "{{count}} current {{noun}} · {{compareCount}} compare {{noun}}", { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
-            : t("overview.sportCounts.base", "{{count}} current {{noun}}", { count: curPoints.length, noun: nounLabel })}
+            ? t("overview.sportCounts.withCompare", `${curPoints.length} current ${nounLabel} · ${cmpPoints.length} compare ${nounLabel}`, { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
+            : t("overview.sportCounts.base", `${curPoints.length} current ${nounLabel}`, { count: curPoints.length, noun: nounLabel })}
         </span>
         {countsDiffer && (
           <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
@@ -475,14 +475,14 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
       </div>
 
       {tooFew(activities) ? (
-        <Empty message={t("overview.tooFewCurrent", "Too few {{sport}} activities to determine a trend ({{count}} of {{min}} needed).", { sport, count: activities.length, min: minGroupSize })} />
+        <Empty message={t("overview.tooFewCurrent", `Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`, { sport, count: activities.length, min: minGroupSize })} />
       ) : (() => {
         const currentChart = (
           <SportTrendChart sport={sport} title={`${label} - current`} points={scaledCur}
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
         );
         const compareCard = !compareEnabled ? null : tooFew(compareActivities) ? (
-          <Empty message={t("overview.tooFewCompare", "Too few {{sport}} activities in the compare range to determine a trend ({{count}} of {{min}} needed).", { sport, count: compareActivities.length, min: minGroupSize })} />
+          <Empty message={t("overview.tooFewCompare", `Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`, { sport, count: compareActivities.length, min: minGroupSize })} />
         ) : (
           <SportTrendChart sport={sport} title={`${label} - comparison`} points={scaledCmp}
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
@@ -653,7 +653,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
                 className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
                 onClick={() => setGroupMode(m)}
                 disabled={!modeEnabled[m]}
-                title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", "Needs at least {{count}} {{mode}}s in the selected range", { count: minGroupSize, mode: m })}
+                title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}
                 style={{
                   cursor: modeEnabled[m] ? "pointer" : "not-allowed",
                   opacity: modeEnabled[m] ? 1 : 0.4,
@@ -780,7 +780,8 @@ function pctChange(current: number, previous: number | null): number | null {
 function ringComparison(current: number, previous: number | null, fmt: (v: number) => string): string | null {
   const pct = pctChange(current, previous);
   if (pct == null) return null;
-  return i18next.t("overview.ringCompare", "({{value}}, {{pct}})", { value: fmt(previous!), pct: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%` });
+  const value = fmt(previous!), pctStr = `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
+  return i18next.t("overview.ringCompare", `(${value}, ${pctStr})`, { value, pct: pctStr });
 }
 
 // Same comparison, as a full sentence for a native `title` tooltip (Total
@@ -920,7 +921,7 @@ export function OverviewTab({ range, compareRange }: Props) {
   const currentLabel = currentNamedRange ? currentNamedRange.name : `${fmtDate(from)} → ${fmtDate(to)}`;
   const compareLabel = compareNamedRange ? compareNamedRange.name : `${fmtDate(compareFrom)} → ${fmtDate(compareTo)}`;
   const summaryTitle = compareRange.enabled
-    ? t("overview.summaryTitleCompare", "SUMMARY - {{current}} vs {{compare}}", { current: currentLabel, compare: compareLabel })
+    ? t("overview.summaryTitleCompare", `SUMMARY - ${currentLabel} vs ${compareLabel}`, { current: currentLabel, compare: compareLabel })
     : t("overview.summaryTitle", "SUMMARY");
 
   const dateRangeBar = (
@@ -1076,7 +1077,7 @@ export function OverviewTab({ range, compareRange }: Props) {
                   <span className="hra-text-primary" style={{ flex: 1, fontWeight: 500 }}>
                     {fmtKm(s.total_km * 1000)}
                   </span>
-                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", "{{count}} sessions", { count: s.total_activities })}</span>
+                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", `${s.total_activities} sessions`, { count: s.total_activities })}</span>
                   {s.avg_hr && (
                     <span className="hra-text-danger" style={{ fontSize: 13 }}>♥ {s.avg_hr}</span>
                   )}

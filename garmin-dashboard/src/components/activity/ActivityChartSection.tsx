@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
   fmtMetricValue, axisDomainMinMax, xTickFormatter,
@@ -79,6 +80,7 @@ export function ActivityChartSection({
   activeMetrics, effectiveActive, availableMetrics, axisVisible, showCard,
   toggleMetric, toggleAxis, toggleCard,
 }: ActivityChartSectionProps) {
+  const { t } = useTranslation();
   // ── Mouse-follow runner (icon in its own row above the chart, readout
   // pinned below the chart's vertical center) ────────────────────────────
   // Both RunnerIcon and RunnerReadout hold their OWN local hover state,
@@ -338,21 +340,21 @@ export function ActivityChartSection({
                 "--dyn-bg": xMode === m ? "var(--bg-card)" : "transparent",
                 "--dyn-color": xMode === m ? "var(--text-primary)" : "var(--text-muted)",
               } as CSSProperties}>
-              {m === "distance" ? "Distance" : "Time"}
+              {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
             </button>
           ))}
         </div>
         <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-          Highlight pauses ≥
+          {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
           <input type="number" min={5} step={5} value={pauseThreshold}
             onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
             style={{ width: 56, fontSize: 11, padding: "2px 6px" }} />
           sec
         </label>
         <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}
-          title="Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings">
+          title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
           <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
-          Remove outliers
+          {t("activity.chart.removeOutliers", "Remove outliers")}
         </label>
       </div>
 
@@ -376,7 +378,9 @@ export function ActivityChartSection({
                   "--dyn-color": speedMode === m ? METRIC_DEFS.speed.color : "var(--text-secondary)",
                   fontWeight: speedMode === m ? 600 : 400,
                 } as CSSProperties}>
-                {m === "speed" ? `Speed (${speedUnitLabel()})` : "Pace (mm:ss)"}
+                {m === "speed"
+                  ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
+                  : t("activity.chart.paceUnit", "Pace (mm:ss)")}
               </button>
             ))}
           </div>
@@ -388,7 +392,7 @@ export function ActivityChartSection({
             <MetricRow
               key={key}
               mKey={key}
-              label={METRIC_DEFS[key].label}
+              label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
               state={{
                 active:    activeMetrics.includes(key),
                 available: availableMetrics[key],
@@ -530,8 +534,10 @@ export function ActivityChartSection({
         return (
           <div key={key} style={{ marginTop: 16 }}>
             <Label style={{ marginBottom: 4 }}>
-              {key === "speed" ? (speedMode === "speed" ? "Speed" : "Pace") : METRIC_DEFS[key].label}
-              {key === "heart_rate" && <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>flags show HR recovery across each pause</span>}
+              {key === "speed"
+                ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
+                : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+              {key === "heart_rate" && <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
             </Label>
             <ChartCard>
             <ResponsiveContainer width="100%" height={110}>

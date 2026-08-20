@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components/ui";
@@ -32,6 +33,7 @@ interface DetailBodyProps {
 // is what makes this render as a plain content block instead of a popup
 // with an × button.
 export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBodyProps) {
+  const { t } = useTranslation();
   const [activity, setActivity] = useState<Activity | null>(null);
   const [track,    setTrack]    = useState<TrackPoint[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -83,7 +85,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
       onDelete(activityId);
       onClose?.(); // popup variant only — accordion has nothing to "close"
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Delete failed");
+      setError(e instanceof Error ? e.message : t("activity.detail.deleteFailed", "Delete failed"));
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -173,7 +175,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           )}
           <span className="hra-text-secondary" style={{ fontSize: 13 }}>{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
-            <span className="hra-text-muted" style={{ fontSize: 11 }}>via {activity.source}</span>
+            <span className="hra-text-muted" style={{ fontSize: 11 }}>{t("activity.detail.viaSource", `via ${activity.source}`, { source: activity.source })}</span>
           )}
           <div style={{ flex: 1 }} />
           {activity && <ActivityTypePicker activity={activity} onUpdate={setActivity} />}
@@ -183,24 +185,24 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
               data-variant="cta"
               style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
               onClick={() => setConfirmDelete(true)}
-              title="Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own."
+              title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
             >
-              Delete activity (locally)
+              {t("activity.detail.deleteButton", "Delete activity (locally)")}
             </button>
           ) : (
             <div className="hra-row" style={{ gap: 6 }}>
-              <span className="hra-text-danger" style={{ fontSize: 12 }}>Move to trash?</span>
+              <span className="hra-text-danger" style={{ fontSize: 12 }}>{t("activity.detail.moveToTrash", "Move to trash?")}</span>
               <button
                 className="hra-btn" data-variant="cta"
                 style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
                 onClick={handleDelete} disabled={deleting}
               >
-                {deleting ? "…" : "Yes, delete"}
+                {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
               </button>
               <button onClick={() => setConfirmDelete(false)}
                 className="hra-border-strong hra-text-secondary"
                 style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
-                Cancel
+                {t("common.cancel", "Cancel")}
               </button>
             </div>
           )}
@@ -221,17 +223,17 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
             {activity.sport === "running" && <ClassificationCard activity={activity} onUpdate={setActivity} />}
 
             <StatGrid>
-              <Stat label="Distance"    value={fmtKm(activity.distance_m)} accent="var(--accent-green)" />
-              {activity.moving_time_sec != null && <Stat label="Moving time" value={fmtDuration(activity.moving_time_sec)} />}
-              <Stat label="Duration"    value={fmtDuration(activity.duration_sec)} />
-              {activity.calories != null && <Stat label="Calories" value={`${activity.calories} kcal`} />}
+              <Stat label={t("activity.stat.distance", "Distance")} value={fmtKm(activity.distance_m)} accent="var(--accent-green)" />
+              {activity.moving_time_sec != null && <Stat label={t("activity.stat.movingTime", "Moving time")} value={fmtDuration(activity.moving_time_sec)} />}
+              <Stat label={t("activity.stat.duration", "Duration")} value={fmtDuration(activity.duration_sec)} />
+              {activity.calories != null && <Stat label={t("activity.stat.calories", "Calories")} value={`${activity.calories} kcal`} />}
               {(activity.avg_pace_minkm != null || activity.avg_speed_ms != null) &&
                 <SpeedPaceStat avgSpeedMs={activity.avg_speed_ms} avgPaceMinKm={activity.avg_pace_minkm} />}
-              {activity.avg_cadence != null && <Stat label="Cadence" value={`${activity.avg_cadence} spm`} />}
-              {activity.avg_hr != null      && <Stat label="Avg HR"  value={`${activity.avg_hr} bpm`} accent="var(--accent-red)" />}
-              {activity.max_hr != null      && <Stat label="Max HR"  value={`${activity.max_hr} bpm`} />}
-              {activity.ascent_m != null    && <Stat label="Ascent"  value={fmtElevation(activity.ascent_m)} />}
-              {activity.descent_m != null   && <Stat label="Descent" value={fmtElevation(activity.descent_m)} />}
+              {activity.avg_cadence != null && <Stat label={t("activity.stat.cadence", "Cadence")} value={`${activity.avg_cadence} spm`} />}
+              {activity.avg_hr != null      && <Stat label={t("activity.stat.avgHr", "Avg HR")} value={`${activity.avg_hr} bpm`} accent="var(--accent-red)" />}
+              {activity.max_hr != null      && <Stat label={t("activity.stat.maxHr", "Max HR")} value={`${activity.max_hr} bpm`} />}
+              {activity.ascent_m != null    && <Stat label={t("activity.stat.ascent", "Ascent")} value={fmtElevation(activity.ascent_m)} />}
+              {activity.descent_m != null   && <Stat label={t("activity.stat.descent", "Descent")} value={fmtElevation(activity.descent_m)} />}
             </StatGrid>
 
             {track.length > 5 && (

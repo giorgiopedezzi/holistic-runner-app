@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import { api } from "@/api/client";
@@ -12,6 +13,7 @@ const PER_PAGE_OPTIONS = [10, 25, 50, 100];
 const DEFAULT_DETAIL_VIEW = "accordion";
 
 export function ActivitiesTab({ from, to }: Props) {
+  const { t } = useTranslation();
   const rangeQ = useQuery(() => api.garmin.range(), []);
   const { settings } = useSettings();
   const detailView = settings?.activity_detail_view ?? DEFAULT_DETAIL_VIEW;
@@ -42,7 +44,7 @@ export function ActivitiesTab({ from, to }: Props) {
 
   if (total === 0) {
     const range = rangeQ.state.status === "success" ? rangeQ.state.data : null;
-    return <RangeEmpty range={range} from={from} to={to} entityLabel="activities" />;
+    return <RangeEmpty range={range} from={from} to={to} entityLabel={t("common.entity.activities", "activities")} />;
   }
 
   const pageItems = state.data.data; // already the server-sliced page

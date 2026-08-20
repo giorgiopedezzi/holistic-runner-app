@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { fmtKm } from "@/utils/fmt";
 import { fmtPauseDuration } from "@/domain/pauses";
 import {
@@ -35,6 +36,7 @@ interface RunnerReadoutProps {
 export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>(function RunnerReadout(
   { xMode, metrics, speedMode, pauseHr }, ref,
 ) {
+  const { t } = useTranslation();
   const [row, setRow] = useState<ChartRow | null>(null);
 
   useImperativeHandle(ref, () => ({
@@ -48,14 +50,18 @@ export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>
   if (row.pauseDurationSec != null) {
     const { before, after } = pauseHr(row);
     const delta = before != null && after != null ? after - before : null;
+    const pauseDurationStr = fmtPauseDuration(row.pauseDurationSec);
     content = (
       <>
-        ⏸ Paused {fmtPauseDuration(row.pauseDurationSec)}
+        {t("activity.runner.paused", `⏸ Paused ${pauseDurationStr}`, { duration: pauseDurationStr })}
         {before != null && after != null && (
           <>
             <span className="hra-chart-tooltip-sep">·</span>
             <span className="hra-chart-tooltip-hr">
-              HR {Math.round(before)}→{Math.round(after)} ({delta! >= 0 ? "+" : ""}{Math.round(delta!)})
+              {(() => {
+                const b = Math.round(before), a = Math.round(after), d = `${delta! >= 0 ? "+" : ""}${Math.round(delta!)}`;
+                return t("activity.runner.hrRecovery", `HR ${b}→${a} (${d})`, { before: b, after: a, delta: d });
+              })()}
             </span>
           </>
         )}
@@ -72,7 +78,9 @@ export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>
         {metrics.map(key => {
           const v = row[key];
           if (typeof v !== "number") return null;
-          const label = key === "speed" ? (speedMode === "speed" ? "speed" : "pace") : METRIC_LABEL_SHORT[key];
+          const label = key === "speed"
+            ? (speedMode === "speed" ? t("activity.readout.speed", "speed") : t("activity.readout.pace", "pace"))
+            : t(`activity.metricShort.${key}`, METRIC_LABEL_SHORT[key]);
           const unit = key === "heart_rate" ? "" : ` ${metricUnit(key, speedMode)}`;
           return (
             <span key={key} style={{ display: "contents" }}>

@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Save } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Select, Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 import type { Activity, ActivityType } from "@/types/api";
@@ -11,6 +12,7 @@ import type { Activity, ActivityType } from "@/types/api";
 // race's name) before the PUT actually fires — see garmin-stats'
 // activities.controller.ts setType.
 export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity; onUpdate: (a: Activity) => void }) {
+  const { t } = useTranslation();
   const [types, setTypes] = useState<ActivityType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState(activity.activity_type_id);
   const [open, setOpen] = useState(false);
@@ -28,7 +30,7 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
 
   // Only types whose min_distance_m fits within this activity's actual
   // distance are offered — a 5K can't be tagged "Marathon".
-  const eligibleTypes = types.filter(t => t.min_distance_m <= (activity.distance_m ?? 0));
+  const eligibleTypes = types.filter(at => at.min_distance_m <= (activity.distance_m ?? 0));
   const dirty = selectedTypeId !== activity.activity_type_id;
 
   async function handleSave() {
@@ -39,7 +41,7 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
       setOpen(false);
       setName("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save activity type");
+      setError(e instanceof Error ? e.message : t("activity.typePicker.saveFailed", "Failed to save activity type"));
     } finally {
       setSaving(false);
     }
@@ -50,13 +52,13 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
       <Select
         value={String(selectedTypeId)}
         onValueChange={v => setSelectedTypeId(Number(v))}
-        options={eligibleTypes.map(t => ({ value: String(t.id), label: t.name }))}
-        placeholder="Type"
+        options={eligibleTypes.map(at => ({ value: String(at.id), label: at.name }))}
+        placeholder={t("activity.typePicker.typePlaceholder", "Type")}
       />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           disabled={!dirty}
-          title={dirty ? "Save the selected activity type" : "No change to save"}
+          title={dirty ? t("activity.typePicker.saveTooltip", "Save the selected activity type") : t("activity.typePicker.noChangeTooltip", "No change to save")}
           className="hra-border-strong hra-dyn-color"
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
@@ -71,13 +73,16 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
         <PopoverContent>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 200 }}>
             <span className="hra-text-secondary" style={{ fontSize: 12, fontWeight: 600 }}>
-              Name this {types.find(t => t.id === selectedTypeId)?.name.toLowerCase() ?? "session"}
+              {(() => {
+                const typeName = types.find(at => at.id === selectedTypeId)?.name.toLowerCase() ?? t("activity.typePicker.sessionFallback", "session");
+                return t("activity.typePicker.nameThis", `Name this ${typeName}`, { type: typeName });
+              })()}
             </span>
             <input
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              placeholder="e.g. Berlin Marathon"
+              placeholder={t("activity.typePicker.namePlaceholder", "e.g. Berlin Marathon")}
               autoFocus
               className="hra-border-strong hra-bg-card hra-text-primary"
               style={{
@@ -89,10 +94,10 @@ export function ActivityTypePicker({ activity, onUpdate }: { activity: Activity;
               <button onClick={() => setOpen(false)}
                 className="hra-border-strong hra-text-secondary"
                 style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
-                Cancel
+                {t("common.cancel", "Cancel")}
               </button>
               <button className="hra-btn" data-variant="cta" onClick={handleSave} disabled={saving}>
-                {saving ? "…" : "Save"}
+                {saving ? "…" : t("common.save", "Save")}
               </button>
             </div>
           </div>

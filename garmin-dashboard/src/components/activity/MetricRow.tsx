@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import type { MetricKey } from "@/domain/activity-chart";
 import { Checkbox } from "@/components/ui";
 import { METRIC_DEFS } from "./shared";
@@ -22,6 +23,7 @@ export type MetricRowField = "active" | "axis" | "card";
 export function MetricRow({ mKey, label, state, onToggle }: {
   mKey: MetricKey; label: string; state: MetricRowState; onToggle: (field: MetricRowField) => void;
 }) {
+  const { t } = useTranslation();
   const { active, available, axisOn, cardOn } = state;
   const color = METRIC_DEFS[mKey].color;
   return (
@@ -29,7 +31,7 @@ export function MetricRow({ mKey, label, state, onToggle }: {
       <button
         onClick={() => onToggle("active")}
         disabled={!available}
-        title={available ? undefined : "No data for this metric"}
+        title={available ? undefined : t("activity.metric.noData", "No data for this metric")}
         className="hra-dyn-border hra-dyn-bg hra-dyn-color"
         style={{
           fontSize: 11, padding: "4px 10px", borderRadius: 999, textAlign: "left",
@@ -45,10 +47,10 @@ export function MetricRow({ mKey, label, state, onToggle }: {
       {active && (
         <>
           <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
-            <Checkbox size={11} checked={axisOn} onCheckedChange={() => onToggle("axis")} /> Axis
+            <Checkbox size={11} checked={axisOn} onCheckedChange={() => onToggle("axis")} /> {t("activity.metric.axis", "Axis")}
           </label>
           <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
-            <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> Card
+            <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> {t("activity.metric.card", "Card")}
           </label>
         </>
       )}
