@@ -252,6 +252,25 @@
   "settings.outliers.minSpeedFieldLabel": "Min speed to count as running (km/h)",
   "settings.outliers.off": "off",
 
+  "app.serverConnected": "Server connected",
+  "app.serverOffline": "Server offline",
+  "app.serverUnreachable": "API server unreachable — run: cd garmin-stats && node src/server.ts",
+
+  "api.gatewayError": "Couldn't reach the API server ({{status}}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.",
+  "api.genericError": "API error {{status}}: {{path}}",
+  "api.networkError": "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted — the operation may still have finished, so wait a moment and try again.",
+
+  "common.noDataDefault": "No data in this range.",
+  "common.selectDate": "Select date",
+  "common.perPage": "Per page",
+  "common.totalCount": "· {{n}} total",
+  "common.pageLabel": "Page",
+  "common.ofTotalPages": "of {{n}}",
+  "common.rangeEmpty.noneYet": "No {{entity}} yet — sync some data from the Data & Sync tab.",
+  "common.rangeEmpty.notInRange": "No {{entity}} in the selected range ({{from}} to {{to}}). Data available from {{minDate}} to {{maxDate}}.",
+  "common.recheck": "Recheck",
+  "common.settingsLoadFailed": "Failed to load settings",
+
   "body.chart.chartView": "Chart",
   "body.chart.tableView": "Table",
   "body.chart.selectMetric": "Select at least one metric above to plot.",

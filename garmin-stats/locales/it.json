@@ -252,6 +252,25 @@
   "settings.outliers.minSpeedFieldLabel": "Velocità minima per contare come corsa (km/h)",
   "settings.outliers.off": "disattivato",
 
+  "app.serverConnected": "Server connesso",
+  "app.serverOffline": "Server offline",
+  "app.serverUnreachable": "Server API non raggiungibile — esegui: cd garmin-stats && node src/server.ts",
+
+  "api.gatewayError": "Impossibile raggiungere il server API ({{status}}). Potrebbe essere occupato, in riavvio, oppure una richiesta lunga (es. il classificatore IA) è scaduta — l'operazione potrebbe essersi comunque completata, attendi un momento e riprova.",
+  "api.genericError": "Errore API {{status}}: {{path}}",
+  "api.networkError": "Impossibile raggiungere il server API. Potrebbe essere spento, in riavvio, oppure una richiesta lunga è stata interrotta — l'operazione potrebbe essersi comunque completata, attendi un momento e riprova.",
+
+  "common.noDataDefault": "Nessun dato in questo periodo.",
+  "common.selectDate": "Seleziona data",
+  "common.perPage": "Per pagina",
+  "common.totalCount": "· {{n}} totali",
+  "common.pageLabel": "Pagina",
+  "common.ofTotalPages": "di {{n}}",
+  "common.rangeEmpty.noneYet": "Nessun/a {{entity}} ancora — sincronizza dei dati dalla scheda Dati e sincronizzazione.",
+  "common.rangeEmpty.notInRange": "Nessun/a {{entity}} nel periodo selezionato ({{from}} - {{to}}). Dati disponibili da {{minDate}} a {{maxDate}}.",
+  "common.recheck": "Riverifica",
+  "common.settingsLoadFailed": "Caricamento impostazioni non riuscito",
+
   "body.chart.chartView": "Grafico",
   "body.chart.tableView": "Tabella",
   "body.chart.selectMetric": "Seleziona almeno una metrica sopra per visualizzarla.",

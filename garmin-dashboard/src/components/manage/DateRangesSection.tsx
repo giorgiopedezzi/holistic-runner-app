@@ -79,7 +79,13 @@ export function DateRangesSection() {
       .finally(() => setLoading(false));
   }
 
-  useEffect(refresh, [t]);
+  // Run once on mount. NOT [t] — react-i18next's `t` identity churns across
+  // renders more than expected in some test-mount scenarios, and refresh()
+  // isn't memoized, so depending on `t` here risks a setLoading-triggered
+  // re-render -> new `t` -> refire loop (observed and fixed as a real hang
+  // elsewhere, useSettings.tsx's fetchSettings — see that file's comment).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(refresh, []);
 
   // Only races that took place strictly after the row's own `to` are
   // linkable — matches the server-side rule in date-ranges.controller.ts.

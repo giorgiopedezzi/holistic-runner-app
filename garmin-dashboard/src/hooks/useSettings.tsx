@@ -1,5 +1,6 @@
-import { createContext, use, useCallback, useEffect, useState } from "react";
+import { createContext, use, useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import type { Settings } from "@/types/api";
 
@@ -25,6 +26,15 @@ function useSettingsFetch(active: boolean): SettingsContextValue {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading,  setLoading]  = useState(active);
   const [error,    setError]    = useState<string | null>(null);
+  // Read via a ref, not a useCallback dependency — react-i18next's `t`
+  // identity churns across renders more than expected here (observed:
+  // putting it in fetchSettings' deps re-triggered the effect below in a
+  // loop that hung a test). A ref sidesteps that entirely: fetchSettings
+  // stays referentially stable (deps: [active] only), while still reading
+  // whatever `t` most recently resolved to when the catch actually runs.
+  const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const fetchSettings = useCallback(() => {
     if (!active) return;
@@ -32,7 +42,7 @@ function useSettingsFetch(active: boolean): SettingsContextValue {
     setError(null);
     api.settings.get()
       .then(setSettings)
-      .catch(e => setError(e instanceof Error ? e.message : "Failed to load settings"))
+      .catch(e => setError(e instanceof Error ? e.message : tRef.current("common.settingsLoadFailed", "Failed to load settings")))
       .finally(() => setLoading(false));
   }, [active]);
 

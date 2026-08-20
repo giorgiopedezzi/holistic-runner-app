@@ -87,7 +87,7 @@ function AppShell() {
               <span
                 className="hra-status-dot"
                 data-online={online}
-                title={online ? "Server connected" : "Server offline"}
+                title={online ? t("app.serverConnected", "Server connected") : t("app.serverOffline", "Server offline")}
               />
             )}
 
@@ -123,7 +123,7 @@ function AppShell() {
 
         {online === false && (
           <div style={{ marginBottom: 20 }}>
-            <ErrorBanner message="API server unreachable — run: cd garmin-stats && node src/server.ts" />
+            <ErrorBanner message={t("app.serverUnreachable", "API server unreachable — run: cd garmin-stats && node src/server.ts")} />
           </div>
         )}
 

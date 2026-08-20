@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { Select } from "./Select";
 
 // Classical pagination: per-page selector, first/prev/next/last arrows, and
@@ -17,6 +18,7 @@ interface PaginationProps {
 }
 
 export function Pagination({ page, totalPages, onPageChange, perPage, perPageOptions, onPerPageChange, totalItems }: PaginationProps) {
+  const { t } = useTranslation();
   const [jumpTo, setJumpTo] = useState(String(page));
   useEffect(() => setJumpTo(String(page)), [page]);
 
@@ -36,21 +38,21 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
   return (
     <div className="hra-text-secondary" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 14, fontSize: 12 }}>
       <div className="hra-row" style={{ gap: 6 }}>
-        <span>Per page</span>
+        <span>{t("common.perPage", "Per page")}</span>
         <Select
           value={String(perPage)}
           onValueChange={v => onPerPageChange(Number(v))}
           options={perPageOptions.map(n => ({ value: String(n), label: String(n) }))}
           triggerStyle={{ fontSize: 12, padding: "3px 8px" }}
         />
-        <span className="hra-text-muted">· {totalItems} total</span>
+        <span className="hra-text-muted">{t("common.totalCount", `· ${totalItems} total`, { n: totalItems })}</span>
       </div>
 
       <div className="hra-row" style={{ gap: 4 }}>
         <button className={btnClass} onClick={() => onPageChange(1)} disabled={page <= 1} style={btnStyle(page <= 1)}>«</button>
         <button className={btnClass} onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btnStyle(page <= 1)}>‹</button>
         <span className="hra-row" style={{ gap: 6, margin: "0 6px" }}>
-          Page
+          {t("common.pageLabel", "Page")}
           <input
             type="number" min={1} max={totalPages} value={jumpTo}
             onChange={e => setJumpTo(e.target.value)}
@@ -58,7 +60,7 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
             onKeyDown={e => e.key === "Enter" && commitJump()}
             style={{ width: 48, fontSize: 12, padding: "3px 6px", textAlign: "center" }}
           />
-          of {totalPages}
+          {t("common.ofTotalPages", `of ${totalPages}`, { n: totalPages })}
         </span>
         <button className={btnClass} onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>›</button>
         <button className={btnClass} onClick={() => onPageChange(totalPages)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>»</button>

@@ -37,12 +37,28 @@ export class ApiError extends Error {
 //   bare status code.
 // - our own 4xx/5xx: surface the API's RFC 7807 problem+json message (HRA-37) —
 //   prefer `detail` (occurrence-specific), fall back to `title`, then the code.
+// i18next.t() is reached via a dynamic import, not a static one — a static
+// `import i18next from "@/i18n"` here creates a real circular dependency
+// (i18n.ts's resourcesToBackend loader itself calls api.locales.get(),
+// defined in this file) that broke useAppearance's matchMedia-mock test
+// with a hang, apparently from the two modules' evaluation order rather
+// than anything both files' *code* does wrong. A dynamic import resolves
+// after both modules have already finished loading (this only ever runs
+// once an actual request is in flight, long after app startup), sidestepping
+// the ordering problem entirely — verified fixed, 133/133 tests pass.
+async function translate(key: string, defaultValue: string, options?: Record<string, unknown>): Promise<string> {
+  const { default: i18next } = await import("@/i18n");
+  return i18next.t(key, defaultValue, options);
+}
+
 async function buildApiError(res: Response, path: string): Promise<ApiError> {
   if (res.status === 502 || res.status === 503 || res.status === 504) {
-    return new ApiError(res.status, `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`);
+    return new ApiError(res.status, await translate("api.gatewayError",
+      `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`,
+      { status: res.status }));
   }
   const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
-  const message = problem?.detail ?? problem?.title ?? `API error ${res.status}: ${path}`;
+  const message = problem?.detail ?? problem?.title ?? await translate("api.genericError", `API error ${res.status}: ${path}`, { status: res.status, path });
   return new ApiError(res.status, message);
 }
 
@@ -58,7 +74,7 @@ async function request<T>(path: string, method = "GET", params?: Record<string, 
   } catch {
     // fetch() rejects only on a network-level failure (server down, connection
     // reset) — never on an HTTP error status. Give the same human message.
-    throw new ApiError(0, "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted — the operation may still have finished, so wait a moment and try again.");
+    throw new ApiError(0, await translate("api.networkError", "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted — the operation may still have finished, so wait a moment and try again."));
   }
   // 204 means "query succeeded, no body". Retained as a general safeguard,
   // though as of HRA-32 no read endpoint returns it (correlation now returns a

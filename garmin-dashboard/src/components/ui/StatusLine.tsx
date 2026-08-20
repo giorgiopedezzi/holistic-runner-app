@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 
 // "● connected" / "○ not connected" indicator with an optional manual
 // recheck button. Used for capability checks (device plugged in, auth token
@@ -19,6 +20,7 @@ const STATUS_COLOR: Record<StatusLineProps["state"], string> = {
 };
 
 export function StatusLine({ state, message, onRecheck }: StatusLineProps) {
+  const { t } = useTranslation();
   const checking = state === "checking";
   return (
     <div className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12 }}>
@@ -29,7 +31,7 @@ export function StatusLine({ state, message, onRecheck }: StatusLineProps) {
           className="hra-nav-hover hra-text-muted"
           onClick={onRecheck}
           disabled={checking}
-          title="Recheck"
+          title={t("common.recheck", "Recheck")}
           style={{
             background: "none", border: "none", borderRadius: "var(--radius-sm)",
             cursor: checking ? "not-allowed" : "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1,

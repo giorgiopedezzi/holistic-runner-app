@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { Popover, PopoverTrigger, PopoverContent } from "./Popover";
 import { Calendar } from "./Calendar";
@@ -29,6 +30,7 @@ function toIso(d: Date): string {
 // <input type="date" value min max onChange>, same value/onChange contract
 // so every call site's own state and side effects are unchanged.
 export function DatePicker({ value, onChange, min, max }: DatePickerProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const selected = parseIso(value);
   const minDate = parseIso(min);
@@ -41,7 +43,7 @@ export function DatePicker({ value, onChange, min, max }: DatePickerProps) {
         {/* fmtDate (utils/fmt.ts) — the single locale-aware date formatter
             every displayed date in the app now goes through, not a local
             copy of this same Intl.DateTimeFormat call. */}
-        {value ? fmtDate(value) : "Select date"}
+        {value ? fmtDate(value) : t("common.selectDate", "Select date")}
       </PopoverTrigger>
       <PopoverContent>
         <Calendar

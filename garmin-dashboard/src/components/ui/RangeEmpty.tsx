@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import type { DateRange } from "@/types/api";
 import { Empty } from "./Empty";
 import { fmtDate } from "@/utils/fmt";
@@ -16,10 +17,13 @@ interface RangeEmptyProps {
 }
 
 export function RangeEmpty({ range, from, to, entityLabel }: RangeEmptyProps) {
+  const { t } = useTranslation();
   if (!range || !range.min_date || !range.max_date) {
-    return <Empty message={`No ${entityLabel} yet — sync some data from the Data & Sync tab.`} />;
+    return <Empty message={t("common.rangeEmpty.noneYet", `No ${entityLabel} yet — sync some data from the Data & Sync tab.`, { entity: entityLabel })} />;
   }
   return (
-    <Empty message={`No ${entityLabel} in the selected range (${fmtDate(from)} to ${fmtDate(to)}). Data available from ${fmtDate(range.min_date)} to ${fmtDate(range.max_date)}.`} />
+    <Empty message={t("common.rangeEmpty.notInRange",
+      `No ${entityLabel} in the selected range (${fmtDate(from)} to ${fmtDate(to)}). Data available from ${fmtDate(range.min_date)} to ${fmtDate(range.max_date)}.`,
+      { entity: entityLabel, from: fmtDate(from), to: fmtDate(to), minDate: fmtDate(range.min_date), maxDate: fmtDate(range.max_date) })} />
   );
 }
