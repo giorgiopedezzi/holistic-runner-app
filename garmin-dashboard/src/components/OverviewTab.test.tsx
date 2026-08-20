@@ -38,7 +38,7 @@ describe("OverviewTab", () => {
       "GET /api/v1/settings": settings(),
       "GET /api/v1/date-ranges": paginated([]),
     });
-    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} />);
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
 
     expect(await screen.findByText("Total")).toBeInTheDocument();
     expect(screen.getByText("Running")).toBeInTheDocument();
@@ -54,7 +54,7 @@ describe("OverviewTab", () => {
       "GET /api/v1/settings": settings(),
       "GET /api/v1/date-ranges": paginated([]),
     });
-    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} />);
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
 
     expect(await screen.findByText(/No activities in the selected range/i)).toBeInTheDocument();
   });
@@ -67,7 +67,7 @@ describe("OverviewTab", () => {
       "GET /api/v1/settings": settings(),
       "GET /api/v1/date-ranges": paginated([]),
     });
-    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} />);
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
 
     expect(await screen.findByText("summary blew up")).toBeInTheDocument();
   });

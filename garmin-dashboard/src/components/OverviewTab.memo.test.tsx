@@ -43,7 +43,7 @@ describe("TrendsBySport sport-grouping memoization", () => {
       "GET /api/v1/date-ranges": paginated([]),
     });
 
-    render(<OverviewTab range={fakeRange("2026-07-01", "2026-08-01")} compareRange={fakeCompareRange("2026-06-01", "2026-06-30")} />);
+    render(<OverviewTab range={fakeRange("2026-07-01", "2026-08-01")} compareRange={fakeCompareRange("2026-06-01", "2026-06-30")} savedRanges={[]} />);
 
     expect(await screen.findByText("Distance & pace/HR trend")).toBeInTheDocument();
     await waitFor(() => expect(spy).toHaveBeenCalled());

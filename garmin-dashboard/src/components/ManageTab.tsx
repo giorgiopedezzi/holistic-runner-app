@@ -7,10 +7,10 @@
  * Withings/Strava unified into one OAuthSyncSection (HRA-73).
  */
 
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SectionTitle } from "@/components/ui";
-import { isoToday, isoAgo } from "@/utils/date";
+import { useDateRange } from "@/hooks/useDateRange";
+import type { SavedDateRange } from "@/types/api";
 import { SyncAllBar } from "@/components/manage/SyncAllBar";
 import { UploadSection } from "@/components/manage/UploadSection";
 import { OAuthSyncSection } from "@/components/manage/OAuthSyncSection";
@@ -20,20 +20,24 @@ import { ClassifySection } from "@/components/manage/ClassifySection";
 import { DeleteSection } from "@/components/manage/DeleteSection";
 import { TrashSection } from "@/components/manage/TrashSection";
 
-export function ManageTab() {
+interface Props {
+  // Same list App.tsx shares with Activities/Body's bar and Overview & Trends
+  // — feeds the named-range dropdown on each provider's DateRangeBar below.
+  savedRanges: SavedDateRange[];
+}
+
+export function ManageTab({ savedRanges }: Props) {
   const { t } = useTranslation();
-  const [withingsFrom, setWithingsFrom] = useState(isoAgo(30));
-  const [withingsTo,   setWithingsTo]   = useState(isoToday());
-  const [stravaFrom,   setStravaFrom]   = useState(isoAgo(30));
-  const [stravaTo,     setStravaTo]     = useState(isoToday());
+  const withingsRange = useDateRange(30);
+  const stravaRange = useDateRange(30);
 
   return (
     <>
       <SectionTitle>{t("manage.syncSectionTitle", "Sync")}</SectionTitle>
-      <SyncAllBar withingsFrom={withingsFrom} withingsTo={withingsTo} stravaFrom={stravaFrom} stravaTo={stravaTo} />
+      <SyncAllBar withingsFrom={withingsRange.from} withingsTo={withingsRange.to} stravaFrom={stravaRange.from} stravaTo={stravaRange.to} />
       <UploadSection />
-      <OAuthSyncSection provider={WITHINGS_PROVIDER} from={withingsFrom} to={withingsTo} onFromChange={setWithingsFrom} onToChange={setWithingsTo} />
-      <OAuthSyncSection provider={STRAVA_PROVIDER} from={stravaFrom} to={stravaTo} onFromChange={setStravaFrom} onToChange={setStravaTo} />
+      <OAuthSyncSection provider={WITHINGS_PROVIDER} range={withingsRange} savedRanges={savedRanges} />
+      <OAuthSyncSection provider={STRAVA_PROVIDER} range={stravaRange} savedRanges={savedRanges} />
 
       <SectionTitle>{t("manage.dateRangesSectionTitle", "Named date ranges")}</SectionTitle>
       <DateRangesSection />

@@ -1,5 +1,6 @@
 import { getUnitSystem, kmToMi, mToFt, kgToLb, paceKmToMi, kmhToMph } from "./units";
 import { getDateFormatSystem, dateFormatRegion } from "./dateFormat";
+import i18next from "@/i18n";
 import type { DateFormat } from "@/types/api";
 
 // Pace is passed in as minutes-per-km (this app's internal/backend unit,
@@ -90,15 +91,50 @@ export function fmtMinSecRaw(value: number): string {
 // possibly-ambiguous OS default (dd/mm vs mm/dd reads differently depending
 // on the reader's own locale; "23 Mar 2026" has no such ambiguity). Locales
 // are pinned to en-GB/en-US per format (not `undefined`/runtime-locale) so
-// the four options render EXACTLY as documented — DATE_FORMAT_OPTIONS'
-// `example` strings in types/api.ts — regardless of the browser's own
-// language.
+// day/month order, separators and punctuation render EXACTLY as documented —
+// DATE_FORMAT_OPTIONS' `example` strings in types/api.ts — regardless of the
+// browser's own language.
 const DATE_FORMATTERS: Record<DateFormat, Intl.DateTimeFormat> = {
   numeric_uk: new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit", year: "numeric" }),
   numeric_us: new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "2-digit", year: "numeric" }),
   literal_uk: new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short",  year: "numeric" }),
   literal_us: new Intl.DateTimeFormat("en-US", { day: "2-digit", month: "short",  year: "numeric" }),
 };
+
+// Numeric styles never spell out a month name, so they're locale-independent
+// and untouched by the app language. Literal styles do spell it out — "Mar"
+// reads as an English word to an Italian/French/etc. user, so once the
+// language selector (HRA-104+) exists it should follow it. Only the month
+// token is swapped: day/year digits and the uk/us order+punctuation stay
+// pinned to DATE_FORMATTERS above, via formatToParts so nothing but that one
+// token changes.
+function localizedMonthShort(date: Date, language: string): string {
+  return new Intl.DateTimeFormat(language, { month: "short" }).format(date);
+}
+
+function fmtLiteralDate(date: Date, format: "literal_uk" | "literal_us"): string {
+  // i18next.language is exactly one of LANGUAGE_NAMES (types/api.ts) — set by
+  // detectLanguageFromLocale() at init and by useAppearance.ts's
+  // changeLanguage() calls thereafter.
+  const language = i18next.language || "en";
+  // Japanese has no "day month year" sentence grammar to slot a swapped-in
+  // month into — its date order is always year→month→day, each suffixed
+  // with its own counter (年/月/日), and Intl's short Japanese month is
+  // itself "8月" (digit + counter), not a word. Forcing it into the uk/us
+  // day-month-year skeleton below produces a broken hybrid — e.g.
+  // "23 8月 2026" — where a Western day number sits next to a token that
+  // itself starts with a different digit, reading as if the month were
+  // reported twice. Use Intl's own native Japanese date grammar instead,
+  // rather than swapping a token into a skeleton that assumes Latin-style
+  // month words.
+  if (language === "ja") {
+    return new Intl.DateTimeFormat("ja", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+  }
+  const month = localizedMonthShort(date, language);
+  return DATE_FORMATTERS[format].formatToParts(date)
+    .map(part => (part.type === "month" ? month : part.value))
+    .join("");
+}
 
 // Overview & Trends' chart axis labels: always numeric (no spelled-out month
 // — a compact tick has no room for one), but still uk/dd-first or us/mm-first
@@ -123,7 +159,11 @@ function parseIsoDateLocal(iso: string): Date | null {
 export function fmtDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const date = parseIsoDateLocal(iso);
-  return date ? DATE_FORMATTERS[getDateFormatSystem()].format(date) : iso;
+  if (!date) return iso;
+  const format = getDateFormatSystem();
+  return format === "literal_uk" || format === "literal_us"
+    ? fmtLiteralDate(date, format)
+    : DATE_FORMATTERS[format].format(date);
 }
 
 // Numeric-only "dd/mm" or "mm/dd" (no year) — see NUMERIC_CHART_FORMATTERS

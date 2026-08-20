@@ -18,7 +18,7 @@ import {
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { ActivityRow } from "@/components/activity/ActivityRow";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
-import { SPORT_COLOR, type Activity } from "@/types/api";
+import { SPORT_COLOR, type Activity, type SavedDateRange } from "@/types/api";
 import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw, fmtDate } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
 import {
@@ -36,6 +36,11 @@ interface Props {
   // here any more.
   range: DateRangeState;
   compareRange: CompareRangeState;
+  // Fetched once at the App shell level (not remounted per tab switch, so
+  // one fetch for the whole session) and passed down here instead of this
+  // tab fetching its own copy — same list DateRangeBar now shares with
+  // Activities/Body's bar and Manage's sync sections.
+  savedRanges: SavedDateRange[];
 }
 
 // ── Distance/pace/HR trend, one chart per sport ─────────────────────────────
@@ -869,7 +874,7 @@ function prevSportStats(prevActs: Activity[]) {
   };
 }
 
-export function OverviewTab({ range, compareRange }: Props) {
+export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   const { t } = useTranslation();
   const { from, to } = range;
   // The "compare to" range — powers every "vs previous period" comparison on
@@ -889,10 +894,8 @@ export function OverviewTab({ range, compareRange }: Props) {
     () => compareRange.enabled ? api.garmin.activities(compareFrom, compareTo) : Promise.resolve([]),
     [compareFrom, compareTo, compareRange.enabled],
   );
-  // Feeds DateRangeBar's two named-range dropdowns AND this tab's own
-  // "compare-to is a linked race" detection below — one fetch, shared.
-  const savedRangesQ = useQuery(() => api.dateRanges.list(), []);
-  const savedRanges = savedRangesQ.state.status === "success" ? savedRangesQ.state.data : [];
+  // savedRanges (prop) feeds DateRangeBar's two named-range dropdowns AND
+  // this tab's own "compare-to is a linked race" detection below.
   const { settings } = useSettings();
   const detailView = settings?.activity_detail_view ?? "accordion";
 

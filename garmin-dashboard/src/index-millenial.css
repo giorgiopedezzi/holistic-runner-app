@@ -1,0 +1,53 @@
+/* ══ PACK: MILLENNIAL (dark+light) ══ append to END of index.css */
+:root, :root[data-theme="dark"] {
+  --bg: #1c1915; --bg-surface: #24201a; --bg-card: #2a251e;
+  --bg-danger: #e07a5f26;
+  --border: #3b352b; --border-strong: #514939;
+  --text-primary: #f0eae0; --text-secondary: #b6ac9c; --text-muted: #8f8677;
+  --accent: #8aa892 !important; --on-accent: #223028 !important;
+  --accent-green: #85a68d; --accent-blue: #8aa7bd; --accent-red: #e08a6d; --accent-orange: #d9a066;
+  --data-pace: #8fb39a; --data-hr: #e08a6d; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
+  --data-fat: #d9a066; --data-muscle: #8fb39a;
+  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 24px;
+  --ambient-accent-mix: 10%; --ambient-dark-mix: 34%; --card-accent-mix: 8%; --card-dark-mix: 12%;
+  --card-shadow: 0 12px 32px -18px rgba(0,0,0,.55);
+  --card-shadow-hover: 0 18px 42px -18px rgba(0,0,0,.65);
+  --pop-shadow: 0 12px 28px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  --bg: #faf6f0; --bg-surface: #fffdf9; --bg-card: #fffdf9;
+  --bg-danger: #e07a5f1a;
+  --border: #e9e1d5; --border-strong: #d8ccba;
+  --text-primary: #33302b; --text-secondary: #6e675c; --text-muted: #948b7d;
+  --accent: #8aa892 !important; --on-accent: #223028 !important;
+  --accent-green: #7d9b84; --accent-blue: #8aa7bd; --accent-red: #e07a5f; --accent-orange: #d9a066;
+  --data-pace: #6f8f79; --data-hr: #e07a5f; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
+  --data-fat: #d9a066; --data-muscle: #6f8f79;
+  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 24px;
+  --ambient-accent-mix: 10%; --ambient-dark-mix: 5%; --card-accent-mix: 7%; --card-dark-mix: 4%;
+  --card-shadow: 0 12px 32px -18px rgba(96,78,56,.25);
+  --card-shadow-hover: 0 18px 42px -18px rgba(96,78,56,.32);
+  --pop-shadow: 0 12px 28px rgba(96,78,56,.18);
+  color-scheme: light;
+}
+.card { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--card-shadow); }
+.card:hover { box-shadow: var(--card-shadow-hover); }
+.hra-hero-tint { background: radial-gradient(140% 140% at 0% 0%,
+  color-mix(in srgb, var(--accent) 14%, var(--bg-card)) 0%, var(--bg-card) 100%); }
+.hra-hero-ring-glow { filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent)); }
+.hra-trend-line-pace, .hra-trend-line-hr { filter: none; }
+.hra-pill-active { background: linear-gradient(135deg, var(--accent),
+  color-mix(in srgb, var(--accent) 78%, white)); box-shadow: none; }
+.hra-pill-active:hover { box-shadow: none; }
+.hra-lift:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
+.hra-btn:hover { box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--btn-glow, var(--accent)) 40%, transparent); }
+.hra-swatch:hover { transform: scale(1.06); box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--swatch-color) 45%, transparent); }
+.hra-toggle-pill:hover, .hra-date-trigger:hover, .hra-date-trigger[data-state="open"],
+.hra-select-trigger:hover, .hra-select-trigger[data-state="open"] { box-shadow: 0 6px 16px -8px rgba(0,0,0,.25); }
+.hra-legend-chip[data-active="true"], .hra-theme-swatch-pill { box-shadow: none; }
+:focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+.hra-nav-hover:not(.hra-pill-active):hover { border-color: var(--border-strong) !important; }
+.hra-header { background: color-mix(in srgb, var(--bg-surface) 92%, transparent); }
+.hra-popover-content, .hra-select-content, .hra-tooltip::after { box-shadow: var(--pop-shadow); }
+:root[data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,253,249,.9); }

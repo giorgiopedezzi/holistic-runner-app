@@ -42,8 +42,15 @@ export function DatePicker({ value, onChange, min, max }: DatePickerProps) {
         <CalendarIcon size={13} />
         {/* fmtDate (utils/fmt.ts) — the single locale-aware date formatter
             every displayed date in the app now goes through, not a local
-            copy of this same Intl.DateTimeFormat call. */}
-        {value ? fmtDate(value) : t("common.selectDate", "Select date")}
+            copy of this same Intl.DateTimeFormat call. Wrapped so a longer
+            rendering (a literal-style month name in some languages, e.g.
+            French "août" vs "Aug", or Japanese's wider glyphs) ellipsizes
+            inside .hra-date-trigger's fixed width (index.css) instead of
+            growing the button — DateRangeBar.tsx's Current/Compare rows
+            depend on every date field being the same width to stay aligned
+            column-for-column regardless of which date/format/language is
+            showing. */}
+        <span className="hra-date-trigger-text">{value ? fmtDate(value) : t("common.selectDate", "Select date")}</span>
       </PopoverTrigger>
       <PopoverContent>
         <Calendar

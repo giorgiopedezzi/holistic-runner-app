@@ -590,19 +590,7 @@ input:focus, select:focus { border-color: var(--accent); }
   /* Reduced control height (header row 2, correction pass) — was 6px 10px;
      DateRangeBar's only call site is the header now. */
   padding: 4px 10px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
-  /* Fixed, not content-sized — DateRangeBar's Current/Compare rows each
-     render their own #from/#to pickers with independently-selected dates,
-     so a content-driven width drifts the two rows' columns apart the
-     instant the two sides' text lengths differ (a 1-vs-2-digit day is
-     already padded via DATE_FORMATTERS' day:"2-digit", but the literal
-     style's month name length still varies by language — "Aug" vs French
-     "août" vs Japanese's wider glyphs). Sized for the longest case
-     (Japanese literal, "2026年8月23日") with headroom; .hra-date-trigger-text
-     ellipsizes if a future language ever exceeds it.
-  */
-  width: 128px;
 }
-.hra-date-trigger-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .hra-date-trigger:hover { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 .hra-date-trigger[data-state="open"] { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 
@@ -1092,57 +1080,3 @@ input:focus, select:focus { border-color: var(--accent); }
   font-size: 11px; padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
-
-/* ══ PACK: MINIMAL (dark+light) ══ append to END of index.css */
-:root, :root[data-theme="dark"] {
-  --bg: #101013; --bg-surface: #151518; --bg-card: #18181b;
-  --bg-danger: #d23f3e14;
-  --border: #26262a; --border-strong: #3b3b40;
-  --text-primary: #ececec; --text-secondary: #a5a5a5; --text-muted: #7d7d7d;
-  --accent: #9db3c8 ; --on-accent: #10161c;
-  --accent-green: #8aa892; --accent-blue: #8aa7bd; --accent-red: #c97a74; --accent-orange: #c9a27a;
-  --data-pace: #d5dce4; --data-hr: #76889a; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
-  --data-fat: #c9a27a; --data-muscle: #8aa892;
-  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px;
-  --ambient-accent-mix: 0%; --ambient-dark-mix: 0%; --card-accent-mix: 0%; --card-dark-mix: 0%;
-  --card-shadow: none; --card-shadow-hover: none; --pop-shadow: 0 4px 12px rgba(0,0,0,.5);
-  color-scheme: dark;
-}
-:root[data-theme="light"] {
-  --bg: #ffffff; --bg-surface: #ffffff; --bg-card: #ffffff;
-  --bg-danger: #d23f3e10;
-  --border: #e7e7e7; --border-strong: #c9c9c9;
-  --text-primary: #161616; --text-secondary: #5c5c5c; --text-muted: #8f8f8f;
-  --accent: #64748b ; --on-accent: #ffffff;
-  --accent-green: #708c7d; --accent-blue: #728698; --accent-red: #bf6058; --accent-orange: #b08968;
-  --data-pace: #3f4a56; --data-hr: #9aa5b1; --data-elev: #728698; --data-weight: #728698;
-  --data-fat: #b08968; --data-muscle: #708c7d;
-  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px;
-  --ambient-accent-mix: 0%; --ambient-dark-mix: 0%; --card-accent-mix: 0%; --card-dark-mix: 0%;
-  --card-shadow: none; --card-shadow-hover: none; --pop-shadow: 0 4px 12px rgba(0,0,0,.08);
-  color-scheme: light;
-}
-.card, .hra-hero-tint, .hra-chrome-preview { background: var(--bg-card); }
-.card { border: 1px solid var(--border); box-shadow: none; }
-.card:hover { box-shadow: none; }
-.hra-hero-ring-glow, .hra-trend-line-pace, .hra-trend-line-hr { filter: none; }
-.hra-lift:hover, .hra-lift:active { transform: none; box-shadow: none; }
-.hra-btn:hover, .hra-swatch:hover, .hra-toggle-pill:hover,
-.hra-date-trigger:hover, .hra-date-trigger[data-state="open"],
-.hra-select-trigger:hover, .hra-select-trigger[data-state="open"],
-.hra-legend-chip[data-active="true"], .hra-theme-swatch-pill { box-shadow: none; }
-.hra-swatch:hover { transform: none; }
-:focus-visible { outline: 1px solid var(--accent); box-shadow: none; }
-.hra-nav-hover:not(.hra-pill-active):hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border-color: var(--border-strong); }
-.hra-header { background: var(--bg-surface); backdrop-filter: none; -webkit-backdrop-filter: none;
-  border-bottom: 1px solid var(--border); }
-.hra-sticky-summary { background: var(--bg); }
-.hra-popover-content, .hra-select-content, .hra-tooltip::after { box-shadow: var(--pop-shadow); }
-.hra-kpi-value, .hra-brand { font-weight: 600; }
-.hra-label { letter-spacing: 0.08em; }
-/* inverted-chip active pill: black-on-white / white-on-black */
-:root[data-theme="light"] .hra-pill-active { background: #161616; color: #ffffff; box-shadow: none; }
-:root[data-theme="dark"]  .hra-pill-active { background: #ececec; color: #111111; box-shadow: none; }
-.hra-pill-active:hover { box-shadow: none; }
-:root[data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,255,255,.9); }

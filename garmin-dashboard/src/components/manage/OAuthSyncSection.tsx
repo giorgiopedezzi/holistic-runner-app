@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { Card, StatusLine, DatePicker } from "@/components/ui";
+import { Card, StatusLine } from "@/components/ui";
+import { DateRangeBar } from "@/components/DateRangeBar";
+import type { DateRangeState } from "@/hooks/useDateRange";
 import type { SyncResult } from "@/api/client";
+import type { SavedDateRange } from "@/types/api";
 import { fmtExpiry } from "./shared";
 
 // ── OAuth sync section ───────────────────────────────────────────────────
@@ -27,13 +30,12 @@ export interface OAuthProvider {
 
 interface OAuthSyncSectionProps {
   provider: OAuthProvider;
-  from: string;
-  to: string;
-  onFromChange: (v: string) => void;
-  onToChange: (v: string) => void;
+  range: DateRangeState;
+  savedRanges: SavedDateRange[];
 }
 
-export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange }: OAuthSyncSectionProps) {
+export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSectionProps) {
+  const { from, to } = range;
   const { t } = useTranslation();
   const { id, label, noun: nounRaw, description: descriptionRaw, api } = provider;
   const noun = t(`manage.oauth.${id}.noun`, nounRaw);
@@ -132,11 +134,8 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
         onRecheck={checkToken}
       />
 
-      <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
-        <label className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.oauth.dateRangeLabel", "Date range:")}</label>
-        <DatePicker value={from} onChange={onFromChange} max={to} />
-        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
-        <DatePicker value={to} onChange={onToChange} min={from} />
+      <div style={{ marginBottom: 12 }}>
+        <DateRangeBar {...range} savedRanges={savedRanges} />
       </div>
 
       <div className="hra-row-wrap">

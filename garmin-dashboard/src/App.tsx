@@ -4,6 +4,8 @@ import "@/i18n";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
 import { useAppearance } from "@/hooks/useAppearance";
+import { useQuery } from "@/hooks/useQuery";
+import { api } from "@/api/client";
 import { SettingsProvider } from "@/hooks/useSettings";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { OverviewTab }  from "@/components/OverviewTab";
@@ -51,6 +53,13 @@ function AppShell() {
   // tab === "overview" below; the hook itself is cheap to keep alive
   // regardless of which tab is active.
   const compareRange = useCompareRange(range.from, range.to);
+  // Named-range dropdown (DateRangeBar) — fetched once here, at the shell
+  // level, so it's available to Activities/Body's bar below without each
+  // tab fetching its own copy. AppShell itself never unmounts, unlike a
+  // per-tab component, so this is a single fetch for the whole session
+  // rather than a refetch on every tab switch.
+  const savedRangesQ = useQuery(() => api.dateRanges.list(), []);
+  const savedRanges = savedRangesQ.state.status === "success" ? savedRangesQ.state.data : [];
   const appearance = useAppearance();
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabId>("overview");
@@ -134,16 +143,16 @@ function AppShell() {
             duplicate bar. */}
         {showDateRange && tab !== "overview" && (
           <div style={{ marginBottom: 20 }}>
-            <DateRangeBar {...range} />
+            <DateRangeBar {...range} savedRanges={savedRanges} />
           </div>
         )}
 
         {tab === "overview"   && (
-          <OverviewTab range={range} compareRange={compareRange} />
+          <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
         )}
         {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
         {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
-        {tab === "manage"     && <ManageTab />}
+        {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
         {tab === "settings"   && <SettingsTab appearance={appearance} />}
       </main>
     </div>

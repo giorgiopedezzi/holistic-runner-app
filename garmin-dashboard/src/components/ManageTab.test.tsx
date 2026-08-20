@@ -33,7 +33,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe("ManageTab — Strava OAuth section", () => {
   it("shows a not-connected state with a login button when there is no token", async () => {
     installFetch(mountRoutes({ "GET /api/v1/strava/status": stravaStatus({ present: false, valid: false }) }));
-    render(<ManageTab />);
+    render(<ManageTab savedRanges={[]} />);
 
     expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Login to Strava" })).toBeInTheDocument();
@@ -43,7 +43,7 @@ describe("ManageTab — Strava OAuth section", () => {
     installFetch(mountRoutes({
       "GET /api/v1/strava/status": stravaStatus({ present: true, valid: true }),
     }));
-    render(<ManageTab />);
+    render(<ManageTab savedRanges={[]} />);
 
     expect(await screen.findByText(/^Connected/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Re-login" })).toBeInTheDocument();
