@@ -419,6 +419,7 @@ re-derive it from the source, and do not assume the summary above is complete.
 | Garmin MTP sync, Withings OAuth, Strava sync, FIT cross-validation | `docs/ingestion.md` |
 | Any React component, chart, theme, units, CSS tokens | `docs/frontend.md` |
 | Workout classification (Ollama + statistical) | `docs/classifier.md` |
+| RunPlan DSL v1 parser (training-plan text format, pace scoping) | `docs/runplan-dsl.md` |
 
 **Rule:** a section unreachable from this table is a section nobody will ever load. If you move
 something out of `CLAUDE.md`, it goes in `docs/` *and* gets a row here — or it does not move.
