@@ -1,4 +1,5 @@
 import { useState, type CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AreaChart, Area, Bar,
   XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
@@ -38,6 +39,7 @@ interface MetricChartCardProps {
 }
 
 function MetricChartCard({ title, chartData, tableData, series, deltaMode, emptyMessage }: MetricChartCardProps) {
+  const { t } = useTranslation();
   const [view, setView] = useState<"chart" | "table">("chart");
 
   // Active/inactive visuals are .hra-pill-active/.hra-nav-pill (index.css) —
@@ -50,14 +52,14 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
       <div className="hra-row-between">
         <div className="hra-text-secondary" style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>
         <div style={{ display: "flex", gap: 4 }}>
-          <button className={tabBtnClass(view === "chart")} onClick={() => setView("chart")}>Chart</button>
-          <button className={tabBtnClass(view === "table")} onClick={() => setView("table")}>Table</button>
+          <button className={tabBtnClass(view === "chart")} onClick={() => setView("chart")}>{t("body.chart.chartView", "Chart")}</button>
+          <button className={tabBtnClass(view === "table")} onClick={() => setView("table")}>{t("body.chart.tableView", "Table")}</button>
         </div>
       </div>
 
       <ChartCard>
         {series.length === 0 ? (
-          <Empty message={emptyMessage ?? "Select at least one metric above to plot."} />
+          <Empty message={emptyMessage ?? t("body.chart.selectMetric", "Select at least one metric above to plot.")} />
         ) : view === "chart" ? (
           <ResponsiveContainer width="100%" height={200}>
             <AreaChart data={chartData}>
@@ -93,7 +95,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr>
-                  <th className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "left", padding: "6px 8px", position: "sticky", top: 0 }}>Date</th>
+                  <th className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "left", padding: "6px 8px", position: "sticky", top: 0 }}>{t("body.chart.dateColumn", "Date")}</th>
                   {series.map(s => (
                     <th key={s.key} className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "right", padding: "6px 8px", position: "sticky", top: 0 }}>
                       {s.label}{s.unit ? ` (${s.unit})` : ""}
@@ -125,6 +127,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
 }
 
 export function BodyTab({ from, to }: Props) {
+  const { t } = useTranslation();
   const listQ        = useQuery(() => api.body.list(from, to),        [from, to]);
   const correlationQ = useQuery(() => api.body.correlation(from, to), [from, to]);
   const rangeQ       = useQuery(() => api.body.range(),               []);
@@ -147,7 +150,7 @@ export function BodyTab({ from, to }: Props) {
 
   if (list.length === 0) {
     const range = rangeQ.state.status === "success" ? rangeQ.state.data : null;
-    return <RangeEmpty range={range} from={from} to={to} entityLabel="body measurements" />;
+    return <RangeEmpty range={range} from={from} to={to} entityLabel={t("common.entity.bodyMeasurements", "body measurements")} />;
   }
 
   // latest measurement
@@ -162,7 +165,7 @@ export function BodyTab({ from, to }: Props) {
     ...(showFatMass ? (["fat_mass_kg"] as const) : []),
     ...(showMuscleMass ? (["muscle_mass_kg"] as const) : []),
   ];
-  const primarySeries: Series[] = primaryKeys.map(k => ({ key: k, ...METRIC_DEFS[k], unit: metricUnit(k) }));
+  const primarySeries: Series[] = primaryKeys.map(k => ({ key: k, ...METRIC_DEFS[k], label: t(`body.metric.${k}`, METRIC_DEFS[k].label), unit: metricUnit(k) }));
   // Delta computed in kg first (computeKgDelta works from the raw list),
   // converted to lb only at the end — kgToLb is a pure linear scale (no
   // offset), so converting the delta directly is equivalent to converting
@@ -179,39 +182,39 @@ export function BodyTab({ from, to }: Props) {
 
   return (
     <>
-      <SectionTitle>Latest measurement — {fmtDate(latest.date_only)}</SectionTitle>
+      <SectionTitle>{t("body.latestMeasurementTitle", `Latest measurement — ${fmtDate(latest.date_only)}`, { date: fmtDate(latest.date_only) })}</SectionTitle>
       <StatGrid>
-        <Stat label="Weight"       value={fmtWeight(latest.weight_kg)} accent="var(--data-weight)" />
-        {latest.fat_ratio      && <Stat label="Body fat"    value={fmtPercent(latest.fat_ratio)} />}
-        {latest.muscle_mass_kg && <Stat label="Muscle mass" value={fmtWeight(latest.muscle_mass_kg)} accent="var(--accent-green)" />}
-        {latest.bmi            && <Stat label="BMI"         value={latest.bmi.toFixed(1)} />}
+        <Stat label={t("body.stat.weight", "Weight")} value={fmtWeight(latest.weight_kg)} accent="var(--data-weight)" />
+        {latest.fat_ratio      && <Stat label={t("body.stat.bodyFat", "Body fat")} value={fmtPercent(latest.fat_ratio)} />}
+        {latest.muscle_mass_kg && <Stat label={t("body.stat.muscleMass", "Muscle mass")} value={fmtWeight(latest.muscle_mass_kg)} accent="var(--accent-green)" />}
+        {latest.bmi            && <Stat label={t("body.stat.bmi", "BMI")} value={latest.bmi.toFixed(1)} />}
         {weightDelta !== null  && (
           <Stat
-            label="Change in period"
+            label={t("body.stat.changeInPeriod", "Change in period")}
             value={`${weightDelta > 0 ? "+" : ""}${(getUnitSystem() === "imperial" ? kgToLb(weightDelta) : weightDelta).toFixed(1)} ${weightUnitLabel()}`}
             accent={weightDelta <= 0 ? "var(--accent-green)" : "var(--accent-red)"}
           />
         )}
       </StatGrid>
 
-      <SectionTitle>Body metrics — {from} to {to}</SectionTitle>
+      <SectionTitle>{t("body.metricsSectionTitle", `Body metrics — ${from} to ${to}`, { from, to })}</SectionTitle>
 
       <div className="hra-border-strong" style={{
         display: "inline-flex", gap: 14, alignItems: "center", padding: "6px 14px",
         borderRadius: 999, marginBottom: 16,
       }}>
-        {checkbox("Weight", showWeight, () => setShowWeight(v => !v), METRIC_DEFS.weight_kg.color)}
-        {checkbox("Fat mass", showFatMass, () => setShowFatMass(v => !v), METRIC_DEFS.fat_mass_kg.color)}
-        {checkbox("Muscle mass", showMuscleMass, () => setShowMuscleMass(v => !v), METRIC_DEFS.muscle_mass_kg.color)}
+        {checkbox(t("body.metric.weight_kg", METRIC_DEFS.weight_kg.label), showWeight, () => setShowWeight(v => !v), METRIC_DEFS.weight_kg.color)}
+        {checkbox(t("body.metric.fat_mass_kg", METRIC_DEFS.fat_mass_kg.label), showFatMass, () => setShowFatMass(v => !v), METRIC_DEFS.fat_mass_kg.color)}
+        {checkbox(t("body.metric.muscle_mass_kg", METRIC_DEFS.muscle_mass_kg.label), showMuscleMass, () => setShowMuscleMass(v => !v), METRIC_DEFS.muscle_mass_kg.color)}
       </div>
 
       <MetricChartCard
-        title={`Weight, fat mass & muscle mass — change since start of range (${weightUnitLabel()})`}
+        title={t("body.primaryChartTitle", `Weight, fat mass & muscle mass — change since start of range (${weightUnitLabel()})`, { unit: weightUnitLabel() })}
         chartData={primaryChartData}
         tableData={displayList}
         series={primarySeries}
         deltaMode
-        emptyMessage="Check at least one metric above to plot."
+        emptyMessage={t("body.chart.checkMetric", "Check at least one metric above to plot.")}
       />
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
@@ -224,7 +227,7 @@ export function BodyTab({ from, to }: Props) {
               key={key}
               disabled={!available}
               onClick={() => setActiveOthers(a => isActive ? a.filter(k => k !== key) : [...a, key])}
-              title={available ? undefined : "No data for this metric in range"}
+              title={available ? undefined : t("body.chart.noDataInRange", "No data for this metric in range")}
               className="hra-dyn-border hra-dyn-bg hra-dyn-color"
               style={{
                 fontSize: 11, padding: "4px 10px", borderRadius: 999,
@@ -235,7 +238,7 @@ export function BodyTab({ from, to }: Props) {
                 "--dyn-color": isActive ? def.color : "var(--text-secondary)",
               } as CSSProperties}
             >
-              {def.label}
+              {t(`body.metric.${key}`, def.label)}
             </button>
           );
         })}
@@ -243,20 +246,21 @@ export function BodyTab({ from, to }: Props) {
 
       {activeOthers.map(key => {
         const unit = metricUnit(key);
+        const label = t(`body.metric.${key}`, METRIC_DEFS[key].label);
         return (
           <MetricChartCard
             key={key}
-            title={`${METRIC_DEFS[key].label}${unit ? ` (${unit})` : ""}`}
+            title={unit ? `${label} (${unit})` : label}
             chartData={displayList}
             tableData={displayList}
-            series={[{ key, ...METRIC_DEFS[key], unit }]}
+            series={[{ key, ...METRIC_DEFS[key], label, unit }]}
           />
         );
       })}
 
-      <SectionTitle>Running {distanceUnitLabel()} vs weight (weekly)</SectionTitle>
+      <SectionTitle>{t("body.correlationSectionTitle", `Running ${distanceUnitLabel()} vs weight (weekly)`, { unit: distanceUnitLabel() })}</SectionTitle>
       {!correlation || correlation.length === 0 ? (
-        <Empty message="No overlapping activity/body data for correlation in this range." />
+        <Empty message={t("body.correlationEmpty", "No overlapping activity/body data for correlation in this range.")} />
       ) : (
         <ChartCard>
           <ResponsiveContainer width="100%" height={180}>
@@ -271,8 +275,8 @@ export function BodyTab({ from, to }: Props) {
               <YAxis yAxisId="kg"  tick={axisStyle} tickLine={false} axisLine={false} width={40} orientation="right" domain={["auto","auto"]} />
               <Tooltip {...tooltipStyle} />
               <Legend wrapperStyle={{ fontSize: 12, color: "var(--text-secondary)" }} />
-              <Bar    yAxisId="km" dataKey="km"         fill="var(--accent-green)"  radius={chartBarRadius} name={`${distanceUnitLabel()} run`} barSize={14} />
-              <Line   yAxisId="kg" dataKey="avg_weight" stroke="var(--data-weight)" strokeWidth={2} dot={false} name={`avg weight ${weightUnitLabel()}`} />
+              <Bar    yAxisId="km" dataKey="km"         fill="var(--accent-green)"  radius={chartBarRadius} name={t("body.correlation.distanceLegend", `${distanceUnitLabel()} run`, { unit: distanceUnitLabel() })} barSize={14} />
+              <Line   yAxisId="kg" dataKey="avg_weight" stroke="var(--data-weight)" strokeWidth={2} dot={false} name={t("body.correlation.weightLegend", `avg weight ${weightUnitLabel()}`, { unit: weightUnitLabel() })} />
             </ComposedChart>
           </ResponsiveContainer>
         </ChartCard>
