@@ -1,8 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode, CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
+import i18next from "@/i18n";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import type { DateRangeState } from "@/hooks/useDateRange";
@@ -114,6 +116,7 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain 
   points: { label: string; totalKm: number; avgPace: number | null; avgHr: number | null }[];
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
 }) {
+  const { t } = useTranslation();
   const isSwimming = sport === "swimming";
   const imperial = getUnitSystem() === "imperial";
   const paceUnit = isSwimming ? "/100m" : (imperial ? "/mi" : "/km");
@@ -173,10 +176,10 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain 
                       <span className="hra-chart-tooltip-km">{kmVal.toFixed(1)} {distanceUnit}</span>
                     )}
                     {typeof paceVal === "number" && (
-                      <>{typeof kmVal === "number" && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-pace">pace {fmtMinSecRaw(paceVal)}{paceUnit}</span></>
+                      <>{typeof kmVal === "number" && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-pace">{t("overview.chartTooltip.pace", "pace")} {fmtMinSecRaw(paceVal)}{paceUnit}</span></>
                     )}
                     {typeof hrVal === "number" && (
-                      <>{(typeof kmVal === "number" || typeof paceVal === "number") && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-hr">HR {Math.round(hrVal)}</span></>
+                      <>{(typeof kmVal === "number" || typeof paceVal === "number") && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-hr">{t("overview.chartTooltip.hr", "HR")} {Math.round(hrVal)}</span></>
                     )}
                   </div>
                 </div>
@@ -242,6 +245,7 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   sport: string; title: string; points: OverlapPoint[]; compareEnabled: boolean;
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
 }) {
+  const { t } = useTranslation();
   const isSwimming = sport === "swimming";
   const imperial = getUnitSystem() === "imperial";
   const paceUnit = isSwimming ? "/100m" : (imperial ? "/mi" : "/km");
@@ -256,10 +260,10 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
       <ChartCard title={title} legend={compareEnabled && (
         <div className="hra-text-muted" style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11 }}>
           <span className="hra-row-inline">
-            <span className="hra-legend-line-swatch" style={{ display: "inline-block", width: 14 }} /> Current
+            <span className="hra-legend-line-swatch" style={{ display: "inline-block", width: 14 }} /> {t("overview.legend.current", "Current")}
           </span>
           <span className="hra-row-inline">
-            <span className="hra-legend-bar-swatch" style={{ display: "inline-block", width: 14, height: 8, opacity: 0.25, borderRadius: 2 }} /> Compare
+            <span className="hra-legend-bar-swatch" style={{ display: "inline-block", width: 14, height: 8, opacity: 0.25, borderRadius: 2 }} /> {t("overview.legend.compare", "Compare")}
           </span>
         </div>
       )}>
@@ -294,8 +298,8 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
               const metricsRow = (km: number | null, pace: number | null, hr: number | null) => (
                 <div className="hra-row" style={{ gap: 6 }}>
                   {km != null && <span className="hra-chart-tooltip-km">{km.toFixed(1)} {distanceUnit}</span>}
-                  {pace != null && <>{km != null && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-pace">pace {fmtMinSecRaw(pace)}{paceUnit}</span></>}
-                  {hr != null && <>{(km != null || pace != null) && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-hr">HR {Math.round(hr)}</span></>}
+                  {pace != null && <>{km != null && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-pace">{t("overview.chartTooltip.pace", "pace")} {fmtMinSecRaw(pace)}{paceUnit}</span></>}
+                  {hr != null && <>{(km != null || pace != null) && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-hr">{t("overview.chartTooltip.hr", "HR")} {Math.round(hr)}</span></>}
                 </div>
               );
               return (
@@ -360,8 +364,10 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   sport: string; activities: Activity[]; compareActivities: Activity[]; mode: GroupMode; minGroupSize: number;
   compareEnabled: boolean; from: string; compareFrom: string; viewMode: TrendViewMode;
 }) {
+  const { t } = useTranslation();
   const label = sport.charAt(0).toUpperCase() + sport.slice(1);
   const noun = mode === "single" ? "activities" : mode === "week" ? "weeks" : "months";
+  const nounLabel = t(`overview.noun.${mode}`, noun);
 
   // Same "too few activities for single mode" rule as before — Week/Month
   // never trip it (their own too-sparse case is gated at the shared
@@ -446,11 +452,13 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
       <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
         <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
         <span className="hra-text-muted" style={{ fontSize: 11 }}>
-          {curPoints.length} current {noun}{compareEnabled ? ` · ${cmpPoints.length} compare ${noun}` : ""}
+          {compareEnabled
+            ? t("overview.sportCounts.withCompare", "{{count}} current {{noun}} · {{compareCount}} compare {{noun}}", { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
+            : t("overview.sportCounts.base", "{{count}} current {{noun}}", { count: curPoints.length, noun: nounLabel })}
         </span>
         {countsDiffer && (
           <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
-            title="The two periods have a different number of activities — pick how to line them up">
+            title={t("overview.alignTooltip", "The two periods have a different number of activities — pick how to line them up")}>
             {([["index", "Match order"], ["time", "Match by time"]] as const).map(([m, l]) => (
               <button key={m} onClick={() => setAlignMode(m)}
                 className="hra-dyn-bg hra-dyn-color"
@@ -459,7 +467,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
                   "--dyn-bg": alignMode === m ? "var(--bg-card)" : "transparent",
                   "--dyn-color": alignMode === m ? "var(--text-primary)" : "var(--text-muted)",
                 } as CSSProperties}>
-                {l}
+                {t(`overview.align.${m}`, l)}
               </button>
             ))}
           </div>
@@ -467,14 +475,14 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
       </div>
 
       {tooFew(activities) ? (
-        <Empty message={`Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`} />
+        <Empty message={t("overview.tooFewCurrent", "Too few {{sport}} activities to determine a trend ({{count}} of {{min}} needed).", { sport, count: activities.length, min: minGroupSize })} />
       ) : (() => {
         const currentChart = (
           <SportTrendChart sport={sport} title={`${label} - current`} points={scaledCur}
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
         );
         const compareCard = !compareEnabled ? null : tooFew(compareActivities) ? (
-          <Empty message={`Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`} />
+          <Empty message={t("overview.tooFewCompare", "Too few {{sport}} activities in the compare range to determine a trend ({{count}} of {{min}} needed).", { sport, count: compareActivities.length, min: minGroupSize })} />
         ) : (
           <SportTrendChart sport={sport} title={`${label} - comparison`} points={scaledCmp}
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
@@ -557,6 +565,7 @@ const DEFAULT_MIN_TREND_GROUP_SIZE = 5;
 interface TrendsProps { from: string; to: string; compareFrom: string; compareTo: string; compareEnabled: boolean; }
 
 function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: TrendsProps) {
+  const { t } = useTranslation();
   const { state } = useQuery(() => api.garmin.activities(from, to), [from, to]);
   // Same shape/pattern as the current-period query above — comparison
   // activities for the trend charts. compareFrom/compareTo already carry
@@ -620,7 +629,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-        <SectionTitle>Distance & pace/HR trend</SectionTitle>
+        <SectionTitle>{t("overview.trendSectionTitle", "Distance & pace/HR trend")}</SectionTitle>
         <div className="hra-row" style={{ gap: 8 }}>
           {compareEnabled && (
             <div className="hra-segmented-group">
@@ -628,7 +637,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
                 <button key={v}
                   className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${viewMode === v ? "hra-pill-active" : ""}`}
                   onClick={() => setViewMode(v)}>
-                  {v === "overlap" ? "Overlapping" : "Distinct"}
+                  {v === "overlap" ? t("overview.view.overlap", "Overlapping") : t("overview.view.distinct", "Distinct")}
                 </button>
               ))}
             </div>
@@ -644,12 +653,12 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
                 className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
                 onClick={() => setGroupMode(m)}
                 disabled={!modeEnabled[m]}
-                title={modeEnabled[m] ? undefined : `Needs at least ${minGroupSize} ${m}s in the selected range`}
+                title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", "Needs at least {{count}} {{mode}}s in the selected range", { count: minGroupSize, mode: m })}
                 style={{
                   cursor: modeEnabled[m] ? "pointer" : "not-allowed",
                   opacity: modeEnabled[m] ? 1 : 0.4,
                 }}>
-                {GROUP_LABEL[m]}
+                {t(`overview.group.${m}`, GROUP_LABEL[m])}
               </button>
             ))}
           </div>
@@ -763,19 +772,29 @@ function pctChange(current: number, previous: number | null): number | null {
   return ((current - previous) / previous) * 100;
 }
 
-// "(previous value, ±N%)" for a ring's small comparison line.
+// "(previous value, ±N%)" for a ring's small comparison line. Module-level
+// (not a component), so it goes through the i18next singleton directly
+// rather than the useTranslation() hook — always called synchronously from
+// PeriodHeroRing/OverviewTab's own render body, both of which already
+// subscribe to language changes via their own t(), so this stays reactive.
 function ringComparison(current: number, previous: number | null, fmt: (v: number) => string): string | null {
   const pct = pctChange(current, previous);
   if (pct == null) return null;
-  return `(${fmt(previous!)}, ${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)`;
+  return i18next.t("overview.ringCompare", "({{value}}, {{pct}})", { value: fmt(previous!), pct: `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%` });
 }
 
 // Same comparison, as a full sentence for a native `title` tooltip (Total
 // StatGrid, By-sport rows) rather than a ring's compact bracketed line.
-function comparisonTooltip(current: number, previous: number | null, fmt: (v: number) => string): string | undefined {
+// `prefix` defaults to "vs previous period: " — the By-sport rows override it
+// ("sessions: "/"HR: "/"pace: ") by passing their own translated prefix
+// directly, rather than the old `.replace("vs previous period: ", ...)`
+// post-processing, which only ever matched the literal English string and
+// would silently no-op once this output is localized.
+function comparisonTooltip(current: number, previous: number | null, fmt: (v: number) => string, prefix?: string): string | undefined {
   const pct = pctChange(current, previous);
   if (pct == null) return undefined;
-  return `vs previous period: ${fmt(previous!)} (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)`;
+  const p = prefix ?? i18next.t("overview.compareTooltip.defaultPrefix", "vs previous period: ");
+  return `${p}${fmt(previous!)} (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)`;
 }
 
 function PeriodHeroRing({
@@ -796,6 +815,7 @@ function PeriodHeroRing({
   // Activities tab renders, incl. its expand/click behavior.
   linkedRace: ReactNode | null;
 }) {
+  const { t } = useTranslation();
   const distance = splitUnit(fmtKm(km * 1000));
   return (
     <>
@@ -812,13 +832,13 @@ function PeriodHeroRing({
             inline (comparisonText, the small bracketed line under the
             center value), so a hover tooltip would just repeat it. */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 20 }}>
-          <DualRingGauge id="acts" current={activities} previous={prevActivities} centerValue={String(activities)} unitLabel="ACTIVITIES"
+          <DualRingGauge id="acts" current={activities} previous={prevActivities} centerValue={String(activities)} unitLabel={t("overview.unit.activities", "ACTIVITIES")}
             comparisonText={ringComparison(activities, prevActivities, v => String(v))} />
-          <DualRingGauge id="dist" current={km} previous={prevKm} centerValue={distance.main} unitLabel={distance.unit ?? "KM"}
+          <DualRingGauge id="dist" current={km} previous={prevKm} centerValue={distance.main} unitLabel={distance.unit ?? t("overview.unit.km", "KM")}
             comparisonText={ringComparison(km, prevKm, v => fmtKm(v * 1000))} />
-          <DualRingGauge id="time" current={hours} previous={prevHours} centerValue={hours.toFixed(1)} unitLabel="HOURS"
+          <DualRingGauge id="time" current={hours} previous={prevHours} centerValue={hours.toFixed(1)} unitLabel={t("overview.unit.hours", "HOURS")}
             comparisonText={ringComparison(hours, prevHours, v => `${v.toFixed(1)} h`)} />
-          <DualRingGauge id="cal" current={calories} previous={prevCalories} centerValue={String(Math.round(calories))} unitLabel="CALORIES"
+          <DualRingGauge id="cal" current={calories} previous={prevCalories} centerValue={String(Math.round(calories))} unitLabel={t("overview.unit.calories", "CALORIES")}
             comparisonText={ringComparison(calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
         </div>
         {linkedRace && (
@@ -849,6 +869,7 @@ function prevSportStats(prevActs: Activity[]) {
 }
 
 export function OverviewTab({ range, compareRange }: Props) {
+  const { t } = useTranslation();
   const { from, to } = range;
   // The "compare to" range — powers every "vs previous period" comparison on
   // this tab (hero rings, Total tooltips, By-sport tooltips, AND each sport's
@@ -898,7 +919,9 @@ export function OverviewTab({ range, compareRange }: Props) {
   const currentNamedRange = savedRanges.find(r => r.from_date === from && r.to_date === to);
   const currentLabel = currentNamedRange ? currentNamedRange.name : `${fmtDate(from)} → ${fmtDate(to)}`;
   const compareLabel = compareNamedRange ? compareNamedRange.name : `${fmtDate(compareFrom)} → ${fmtDate(compareTo)}`;
-  const summaryTitle = compareRange.enabled ? `SUMMARY - ${currentLabel} vs ${compareLabel}` : "SUMMARY";
+  const summaryTitle = compareRange.enabled
+    ? t("overview.summaryTitleCompare", "SUMMARY - {{current}} vs {{compare}}", { current: currentLabel, compare: compareLabel })
+    : t("overview.summaryTitle", "SUMMARY");
 
   const dateRangeBar = (
     <div style={{ marginBottom: 20 }}>
@@ -923,7 +946,7 @@ export function OverviewTab({ range, compareRange }: Props) {
     return (
       <>
         <div className="hra-sticky-summary">{dateRangeBar}</div>
-        <RangeEmpty range={rangeMinMax} from={from} to={to} entityLabel="activities" />
+        <RangeEmpty range={rangeMinMax} from={from} to={to} entityLabel={t("common.entity.activities", "activities")} />
       </>
     );
   }
@@ -983,19 +1006,19 @@ export function OverviewTab({ range, compareRange }: Props) {
         />
       </div>
 
-      <SectionTitle>Total</SectionTitle>
+      <SectionTitle>{t("overview.totalSectionTitle", "Total")}</SectionTitle>
       <StatGrid>
-        <Stat label="Activities" value={totals.acts} tooltip={comparisonTooltip(totals.acts, prevActs, v => String(v))} />
-        <Stat label="Distance"   value={fmtKm(totals.km * 1000)} accent="var(--accent-green)"
+        <Stat label={t("overview.stat.activities", "Activities")} value={totals.acts} tooltip={comparisonTooltip(totals.acts, prevActs, v => String(v))} />
+        <Stat label={t("overview.stat.distance", "Distance")} value={fmtKm(totals.km * 1000)} accent="var(--accent-green)"
           tooltip={comparisonTooltip(totals.km, prevKm, v => fmtKm(v * 1000))} />
-        <Stat label="Time"       value={`${totals.hours.toFixed(1)} h`}
+        <Stat label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
           tooltip={comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`)} />
         {totals.calories > 0 && (
-          <Stat label="Calories" value={`${totals.calories.toLocaleString()} kcal`}
+          <Stat label={t("overview.stat.calories", "Calories")} value={`${totals.calories.toLocaleString()} kcal`}
             tooltip={comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
         )}
         {totals.ascent > 0 && (
-          <Stat label="Elevation gain" value={fmtElevation(totals.ascent)}
+          <Stat label={t("overview.stat.elevationGain", "Elevation gain")} value={fmtElevation(totals.ascent)}
             tooltip={comparisonTooltip(totals.ascent, prevAscent, v => fmtElevation(v))} />
         )}
       </StatGrid>
@@ -1004,22 +1027,22 @@ export function OverviewTab({ range, compareRange }: Props) {
         const prevRun = prevSportStats(prevBySport.get(run.sport ?? "other") ?? []);
         return (
           <>
-            <SectionTitle>Running</SectionTitle>
+            <SectionTitle>{t("overview.runningSectionTitle", "Running")}</SectionTitle>
             <StatGrid>
-              <Stat label="Sessions" value={run.total_activities}
+              <Stat label={t("overview.stat.sessions", "Sessions")} value={run.total_activities}
                 tooltip={comparisonTooltip(run.total_activities, prevRun.sessions || null, v => String(v))} />
-              <Stat label="Distance" value={fmtKm(run.total_km * 1000)} accent="var(--accent-green)"
+              <Stat label={t("overview.stat.distance", "Distance")} value={fmtKm(run.total_km * 1000)} accent="var(--accent-green)"
                 tooltip={comparisonTooltip(run.total_km, prevRun.km || null, v => fmtKm(v * 1000))} />
               {run.avg_hr && (
-                <Stat label="Avg HR" value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
+                <Stat label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
                   tooltip={comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`)} />
               )}
               {run.avg_pace && (
-                <Stat label="Avg pace" value={fmtPace(run.avg_pace)} sub={paceUnitLabel()}
+                <Stat label={t("overview.stat.avgPace", "Avg pace")} value={fmtPace(run.avg_pace)} sub={paceUnitLabel()}
                   tooltip={comparisonTooltip(run.avg_pace, prevRun.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`)} />
               )}
               {run.total_ascent && (
-                <Stat label="Elevation" value={fmtElevation(run.total_ascent)}
+                <Stat label={t("overview.stat.elevation", "Elevation")} value={fmtElevation(run.total_ascent)}
                   tooltip={comparisonTooltip(run.total_ascent, prevRun.ascent, v => fmtElevation(v))} />
               )}
             </StatGrid>
@@ -1029,7 +1052,7 @@ export function OverviewTab({ range, compareRange }: Props) {
 
       {sports.length > 1 && (
         <>
-          <SectionTitle>By sport</SectionTitle>
+          <SectionTitle>{t("overview.bySportSectionTitle", "By sport")}</SectionTitle>
           <div style={{ display: "grid", gap: 8 }}>
             {sports.map(s => {
               const prevSport = prevSportStats(prevBySport.get(s.sport ?? "other") ?? []);
@@ -1039,9 +1062,9 @@ export function OverviewTab({ range, compareRange }: Props) {
               // StatGrid's cards do.
               const tooltip = [
                 comparisonTooltip(s.total_km, prevSport.km || null, v => fmtKm(v * 1000)),
-                comparisonTooltip(s.total_activities, prevSport.sessions || null, v => String(v))?.replace("vs previous period: ", "sessions: "),
-                s.avg_hr != null ? comparisonTooltip(s.avg_hr, prevSport.avgHr, v => `${Math.round(v)} bpm`)?.replace("vs previous period: ", "HR: ") : undefined,
-                s.avg_pace != null ? comparisonTooltip(s.avg_pace, prevSport.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`)?.replace("vs previous period: ", "pace: ") : undefined,
+                comparisonTooltip(s.total_activities, prevSport.sessions || null, v => String(v), t("overview.compareTooltip.sessionsPrefix", "sessions: ")),
+                s.avg_hr != null ? comparisonTooltip(s.avg_hr, prevSport.avgHr, v => `${Math.round(v)} bpm`, t("overview.compareTooltip.hrPrefix", "HR: ")) : undefined,
+                s.avg_pace != null ? comparisonTooltip(s.avg_pace, prevSport.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`, t("overview.compareTooltip.pacePrefix", "pace: ")) : undefined,
               ].filter(Boolean).join(" · ") || undefined;
               return (
                 <Card
@@ -1053,7 +1076,7 @@ export function OverviewTab({ range, compareRange }: Props) {
                   <span className="hra-text-primary" style={{ flex: 1, fontWeight: 500 }}>
                     {fmtKm(s.total_km * 1000)}
                   </span>
-                  <span className="hra-text-secondary">{s.total_activities} sessions</span>
+                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", "{{count}} sessions", { count: s.total_activities })}</span>
                   {s.avg_hr && (
                     <span className="hra-text-danger" style={{ fontSize: 13 }}>♥ {s.avg_hr}</span>
                   )}

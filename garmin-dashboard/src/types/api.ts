@@ -292,6 +292,21 @@ export const WORKOUT_CLASSIFICATIONS = [
 ] as const;
 export type WorkoutClassification = typeof WORKOUT_CLASSIFICATIONS[number];
 
+// Display-only i18n key per classification (HRA-105) — the stored/compared
+// value above is the wire format (persisted, matched against ai_classification/
+// statistical_classification/final_classification) and stays untouched; only
+// what's rendered on screen goes through t(WORKOUT_CLASSIFICATION_KEY[c], c),
+// same "value stays stable, label goes through a lookup" pattern as
+// components/activity/shared.ts's METRIC_DEFS.
+export const WORKOUT_CLASSIFICATION_KEY: Record<WorkoutClassification, string> = {
+  "Recovery Run":                    "classification.recoveryRun",
+  "Long Session":                    "classification.longSession",
+  "Repeats/Intervals":               "classification.repeatsIntervals",
+  "Progressive Run":                 "classification.progressiveRun",
+  "Fartlek":                         "classification.fartlek",
+  "Tapasciata / Light Maintenance":  "classification.tapasciata",
+};
+
 // Also duplicated in garmin-stats' server.ts (CORRECTION_REASONS).
 export const CORRECTION_REASONS = [
   "Warmup/cooldown skewed data",
