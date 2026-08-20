@@ -15,15 +15,16 @@ import i18next, { type CallbackError } from "i18next";
 import { initReactI18next } from "react-i18next";
 import resourcesToBackend from "i18next-resources-to-backend";
 import { api } from "@/api/client";
-import type { Language } from "@/types/api";
+import { LANGUAGE_NAMES, type Language } from "@/types/api";
 
 // There is no direct browser API for "the user's app language" — same
 // locale-region heuristic idiom as utils/units.ts's detectUnitSystemFromLocale
-// and utils/locale.ts's calendar-locale resolution. Only 'en'/'it' are
+// and utils/locale.ts's calendar-locale resolution. Only LANGUAGE_NAMES are
 // supported (garmin-stats/locales/), so anything else falls back to 'en'.
 export function detectLanguageFromLocale(): Language {
   try {
-    return navigator.language.slice(0, 2).toLowerCase() === "it" ? "it" : "en";
+    const code = navigator.language.slice(0, 2).toLowerCase();
+    return (LANGUAGE_NAMES as string[]).includes(code) ? (code as Language) : "en";
   } catch {
     return "en";
   }

@@ -838,6 +838,11 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-lang-item:hover { background: var(--bg-surface); }
 .hra-lang-item[data-selected="true"] { color: var(--accent); }
+.hra-flag-icon {
+  display: inline-flex; flex-shrink: 0; border-radius: 2px; overflow: hidden;
+  line-height: 0;
+}
+.hra-flag-icon svg { display: block; }
 /* Manage tab's subtle red tint while inactive (a destructive-adjacent
    section) — a data attribute instead of the inline conditional color the
    nav used to compute per render. */

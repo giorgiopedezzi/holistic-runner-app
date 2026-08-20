@@ -31,7 +31,7 @@ const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
 // 'auto' resolves from the browser's navigator.language at render time
 // (garmin-dashboard's i18n.ts) — same writable-'auto' idiom as unit_system,
 // unlike theme. 'en'/'it' are the two bundles under garmin-stats/locales/.
-const LANGUAGES = ["auto", "en", "it"];
+const LANGUAGES = ["auto", "en", "it", "fr", "de", "es", "ja"];
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };

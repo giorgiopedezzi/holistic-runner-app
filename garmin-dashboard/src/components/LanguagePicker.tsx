@@ -13,10 +13,15 @@ import { LANGUAGE_NAMES, type Language } from "@/types/api";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { detectLanguageFromLocale } from "@/i18n";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/Popover";
+import { FlagIcon } from "@/components/ui/FlagIcon";
 
-const LANGUAGE_META: Record<Language, { flag: string; label: string }> = {
-  en: { flag: "🇬🇧", label: "EN" },
-  it: { flag: "🇮🇹", label: "IT" },
+const LANGUAGE_META: Record<Language, { label: string }> = {
+  en: { label: "en" },
+  it: { label: "it" },
+  fr: { label: "fr" },
+  de: { label: "de" },
+  es: { label: "es" },
+  ja: { label: "ja" },
 };
 
 export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
@@ -35,7 +40,7 @@ export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button className="hra-date-trigger" aria-label={t("common.changeLanguage", "Change language")}>
-          <span aria-hidden="true">{meta.flag}</span>
+          <FlagIcon code={current} />
           <span>{meta.label}</span>
         </button>
       </PopoverTrigger>
@@ -51,7 +56,7 @@ export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
                 data-selected={selected}
                 onClick={() => { appearance.setLanguage?.(code); setOpen(false); }}
               >
-                <span aria-hidden="true">{opt.flag}</span>
+                <FlagIcon code={code} />
                 <span>{opt.label}</span>
               </button>
             );

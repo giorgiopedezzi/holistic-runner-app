@@ -12,9 +12,9 @@ import path from "path";
 import type { AppContext, Handler } from "../http/context.ts";
 import { notFound } from "../http/problem.ts";
 
-// The two bundles under garmin-stats/locales/ — kept in sync with
+// The bundles under garmin-stats/locales/ — kept in sync with
 // settings.controller.ts's LANGUAGES (minus 'auto', which never names a file).
-const SUPPORTED_LANGUAGES = ["en", "it"];
+const SUPPORTED_LANGUAGES = ["en", "it", "fr", "de", "es", "ja"];
 
 export function createLocalesController(ctx: AppContext) {
   const localesDir = path.resolve(ctx.scriptsDir, "..", "locales");

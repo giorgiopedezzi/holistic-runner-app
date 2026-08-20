@@ -238,8 +238,8 @@ export const DATE_FORMAT_NAMES: DateFormat[] = DATE_FORMAT_OPTIONS.map(o => o.va
 // adds 'auto' — valid to persist, resolved via navigator.language at render
 // time (see i18n.ts's detectLanguageFromLocale) rather than applied directly,
 // same 'auto' pattern as StoredUnitSystem above.
-export type Language = "en" | "it";
-export const LANGUAGE_NAMES: Language[] = ["en", "it"];
+export type Language = "en" | "it" | "fr" | "de" | "es" | "ja";
+export const LANGUAGE_NAMES: Language[] = ["en", "it", "fr", "de", "es", "ja"];
 export type StoredLanguage = Language | "auto";
 
 export interface Settings {
