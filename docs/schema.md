@@ -60,6 +60,42 @@ round trip. `GET /api/v1/activities/races` (all activities with `activity_type_i
 no date filter) feeds the "link a race" dropdown on the save form; the frontend filters that list to
 `date_only > to` client-side as the form's `to` date changes.
 
+### `plan_templates` / `plan_instances` / `plan_instance_days`
+Persistence for the RunPlan DSL v1 (`docs/runplan-dsl.md`, HRA-111/HRA-112). A **template** is a
+reusable, parsed-but-**unresolved** plan (pace stays symbolic — an anchor name, not a number —
+until instantiated); an **instance** is one concrete, resolved application of a template to a
+specific race.
+
+`plan_templates`: `id`, `name`, `dsl_source` (TEXT, the original DSL text — kept so a structural
+edit can be re-parsed later), `parsed_plan` (TEXT, JSON-serialized pre-resolution `RunPlan` from
+`domain/runplan/parser.ts`), `event` (from `PlanMetadata.event`), `created_at`. A template can only
+be saved if its DSL both parses (`ParseResult.ok`) **and** is fully valid (`RunPlan.valid`,
+HRA-111's bottom-up validity model) — `POST`/`PUT` reject with 422 otherwise, walking the whole
+section→week→day tree to report every broken day's own errors (not just plan-level ones, which
+HRA-111's `RunPlan.errors` doesn't include by design).
+
+`plan_instances`: `id`, `template_id` (FK to `plan_templates(id)`, **ON DELETE CASCADE**),
+`start_date` (the instantiation-time plan start), `pace_overrides` (nullable TEXT, JSON-serialized
+`PacePolicy` — kept for provenance: what was actually overridden to produce this instance),
+`target_activity_id` (nullable FK to `activities(id)` — the race this instance targets, validated
+**exactly** like `date_ranges.activity_id` above: race-typed, `date_only` strictly after the
+instance's last resolved day), `created_at`.
+
+`plan_instance_days`: one row per resolved day, `instance_id` FK to `plan_instances(id)` **ON
+DELETE CASCADE**. Columns: `id`, `section_name`, `week_number`, `date` (concrete `YYYY-MM-DD`,
+derived per the week-date rule below), `day`, `suffix`, `category`, `workout_type`, `segments`
+(TEXT, JSON-serialized `ResolvedSegment[]` from `domain/runplan/instantiate.ts` — preserves every
+segment on a multi-segment day and the DSL's real segment shapes, continuous/interval/progression/
+rest_block, each carrying resolved `*_sec_per_km` pace values instead of symbolic anchors —
+deliberately **not** flattened to one distance/pace pair per day), `activity_target`,
+`activity_description`, `notes`, `needs_review` (0/1 — a day is flagged if it already was at parse
+time, or if any of its resolved intensities failed to resolve against the overridden policy).
+
+**Week-date derivation rule** (confirmed at Refinement for HRA-112): `week.start_date =
+instantiation_start_date + (week.number - 1) × 7 days`, **unless** that week already carries an
+explicit `WEEK ... START <date>` in the template's own DSL source, in which case the explicit date
+wins. Implemented in `domain/runplan/instantiate.ts`'s `instantiatePlan()`.
+
 ## Soft delete & trash
 `activities` and `body_measurements` both have `deleted_at` (TEXT, nullable) and `purged` (INTEGER, default 0). Three states per row:
 - **Active** — `deleted_at IS NULL`. Shows up everywhere normally; every read query in `server.ts` (`activities`, `activityById`, `summary`, `weekly`, `monthly`, `range`, `countInRange`, and the `body_*`/`correlation` equivalents) filters `deleted_at IS NULL`.

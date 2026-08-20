@@ -97,7 +97,10 @@ function parseIntensity(token: string, offsetUnit: OffsetUnit): Intensity | null
   return null;
 }
 
-function parsePaceValue(token: string, offsetUnit: OffsetUnit): AbsolutePace | OffsetPace | null {
+// Exported for HRA-112's plan-template instantiate endpoint — a pace-override
+// value in a request body ("6:40/mi", "RG+10s/km") uses the exact same
+// grammar as a PACE line's right-hand side.
+export function parsePaceValue(token: string, offsetUnit: OffsetUnit): AbsolutePace | OffsetPace | null {
   const intensity = parseIntensity(token, offsetUnit);
   if (!intensity || intensity.kind === "anchor") return null;
   return intensity.kind === "absolute"

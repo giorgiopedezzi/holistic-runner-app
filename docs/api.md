@@ -39,6 +39,9 @@ rule); this table exists for quick lookup, not as a second contract.
 | `/api/v1/activities/races` | Race-type activities (`activity_type_id != 1`), full history, `{id,date_only,activity_type_id,activity_name,distance_m}` — feeds the "link a race" dropdown on the date-ranges save form |
 | `/api/v1/date-ranges` | Saved named date ranges (paginated envelope), newest first — each row `LEFT JOIN`s its linked race activity's display fields (`race_date_only`/`race_activity_name`/`race_distance_m`/`race_activity_type_id`, all `NULL` if unlinked). See `docs/schema.md`'s `date_ranges` section |
 | `/api/v1/locales/:lang` | Translation bundle for `:lang` (`en` or `it`) — flat key→string JSON, read live off `garmin-stats/locales/<lang>.json`, no envelope. `:lang` is whitelisted before touching the filesystem; `problem+json` 404 for an unsupported or missing language |
+| `/api/v1/plan-templates` | Saved training-plan templates (paginated envelope), newest first. See `docs/schema.md`'s `plan_templates` section (HRA-112) |
+| `/api/v1/plan-templates/:id` | Single plan template |
+| `/api/v1/plan-instances/:id` | A resolved instance of a template — the instantiate response's own `Location` target — plus its `days` (all `plan_instance_days` rows, each with `segments` as JSON) |
 
 ### DELETE
 Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they don't `DELETE` rows.
@@ -60,6 +63,7 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/v1/settings/language` | Body `{language}`, must be one of `'auto' | 'en' | 'it'` (422 otherwise). `'auto'` resolves from the browser's `navigator.language` at render time (garmin-dashboard's `i18n.ts`), same idiom as `unit_system`'s `'auto'`. Same immediate-apply pattern as theme/units/detail-view/date-format |
 | `/api/v1/activities/:id/type` | Body `{activity_type_id, name?}` — full replacement of the activity's type/name sub-resource. 422 if the type is unknown or the activity's `distance_m` is shorter than the type's `min_distance_m`; 404 if the activity doesn't exist |
 | `/api/v1/date-ranges/:id` | Body `{name, from, to, activity_id?}` — full replacement, incl. renaming (the Data & Sync tab's "Update" row). Same validation as `POST /api/v1/date-ranges` below, except the duplicate-name check excludes the row's own id (so re-saving under its current name doesn't 409 itself). 404 if the row doesn't exist |
+| `/api/v1/plan-templates/:id` | Body `{name, dsl_source}` — full replacement; `dsl_source` is re-parsed from scratch (same validation as `POST /api/v1/plan-templates` below). 404 if the template doesn't exist |
 
 ### POST
 | Endpoint | Description |
@@ -71,8 +75,11 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/activities/restore`, `/api/activities/purge` | Body `{ids: number[]}` (400 if empty/non-integers). Restore clears `deleted_at`; purge wipes the row's heavy data and sets `purged=1` — see "Soft delete & trash". Looped single-row prepared statements inside one transaction, not a dynamic `IN (...)` clause, so every bound value stays a real parameter |
 | `/api/body/restore`, `/api/body/purge` | Same shape/semantics as the activities pair, for `body_measurements` |
 | `/api/v1/date-ranges` | Body `{name, from, to, activity_id?}`. `name` must be unique (409 otherwise); `from`/`to` are `YYYY-MM-DD` with `from <= to`; `activity_id`, if given, must be a race-type activity (`activity_type_id != 1`) whose `date_only` is strictly after `to` (422 otherwise). Returns 201 + `Location` + the created row (with the joined race fields) |
+| `/api/v1/plan-templates` | Body `{name, dsl_source}`. `dsl_source` is parsed via `domain/runplan/parser.ts`; 422 (with a per-day `errors` list) unless the DSL both parses **and** is fully valid — a template with any hard error can't be saved. Returns 201 + `Location` + the created row |
+| `/api/v1/plan-templates/:id/instantiate` | Body `{start_date, pace_overrides?, target_activity_id?}`. `start_date` required (`YYYY-MM-DD`); `pace_overrides` is `{anchor: "pace string"}` using the same grammar as a `PACE` line's right-hand side (e.g. `{"RG": "6:40/mi"}`), 422 on an unparseable value; `target_activity_id`, if given, validated like `date_ranges.activity_id` but against the *resolved plan's last day* (422 otherwise, checked **before** any write, so a rejected instantiate leaves no orphaned rows). Returns 201 + `Location` (`/api/v1/plan-instances/:id`) + the created instance with its resolved `days` |
 
-### DELETE (date ranges — hard delete, not soft)
+### DELETE (date ranges / plan templates — hard delete, not soft)
 | Endpoint | Description |
 |---|---|
 | `/api/v1/date-ranges/:id` | Deletes a saved date range permanently (204). Unlike activities/body measurements, saved ranges have no trash — they're just a recall label, not synced data |
+| `/api/v1/plan-templates/:id` | Deletes a plan template permanently (204) — `ON DELETE CASCADE` also removes every instance (and each instance's days) derived from it. No trash, same reasoning as date ranges |

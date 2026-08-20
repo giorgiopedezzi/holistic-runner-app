@@ -20,11 +20,14 @@ import { createBodyRepo } from "./repositories/body.repo.ts";
 import { createSettingsRepo } from "./repositories/settings.repo.ts";
 import { createDateRangesRepo } from "./repositories/date-ranges.repo.ts";
 import { createActivityTypesRepo } from "./repositories/activity-types.repo.ts";
+import { createPlanTemplatesRepo } from "./repositories/plan-templates.repo.ts";
+import { createPlanInstancesRepo } from "./repositories/plan-instances.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
 import { createSyncService } from "./services/sync.service.ts";
 import { createDeviceService } from "./services/device.service.ts";
+import { createPlanInstancesService } from "./services/plan-instances.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -46,6 +49,8 @@ const bodyRepo       = createBodyRepo(db);
 const settingsRepo   = createSettingsRepo(db);
 const dateRangesRepo = createDateRangesRepo(db);
 const activityTypesRepo = createActivityTypesRepo(db);
+const planTemplatesRepo = createPlanTemplatesRepo(db);
+const planInstancesRepo = createPlanInstancesRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -53,6 +58,7 @@ const bodyService           = createBodyService(db, bodyRepo);
 const classificationService = createClassificationService(activitiesRepo);
 const syncService           = createSyncService(__dirname);
 const deviceService   = createDeviceService(__dirname);
+const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
 
 // ── always-on Withings OAuth callback server (port 3002) ─────────────────────
 startWithingsCallbackServer(config, db);
@@ -64,10 +70,13 @@ const server = http.createServer(createApiHandler({
   backgroundsDir,
   config,
   db,
-  repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo, activityTypes: activityTypesRepo },
+  repos: {
+    activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
+    activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
+  },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
-    sync: syncService, device: deviceService,
+    sync: syncService, device: deviceService, planInstances: planInstancesService,
   },
 }));
 

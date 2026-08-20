@@ -17,7 +17,7 @@
     { "name": "integrations", "description": "Device presence + Withings/Strava OAuth" },
     { "name": "date-ranges", "description": "Saved named date ranges, optionally linked to the race a training block led up to" },
     { "name": "activity-types", "description": "The fixed Training/Race lookup used to tag an activity" },
-    { "name": "training-plans", "description": "Structured training plans + their planned workouts (HRA-109)" },
+    { "name": "plan-templates", "description": "Reusable RunPlan DSL v1 templates + resolved instances (HRA-111/HRA-112)" },
     { "name": "locales", "description": "i18n translation bundles" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
@@ -258,36 +258,46 @@
           "distance_m": { "type": ["number", "null"] }
         }
       },
-      "TrainingPlan": {
+      "PlanTemplate": {
         "type": "object",
-        "description": "A named training-plan block over a date range (HRA-109).",
+        "description": "A reusable RunPlan DSL v1 template (HRA-111/HRA-112) — parsed but pace-unresolved; see docs/runplan-dsl.md.",
         "properties": {
-          "id": { "type": "integer" }, "name": { "type": "string" }, "sport": { "type": "string" },
-          "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" },
-          "target_activity_id": { "type": ["integer", "null"], "description": "The race this block builds toward; same validation as date_ranges.activity_id." },
-          "created_at": { "type": "string" }
+          "id": { "type": "integer" }, "name": { "type": "string" },
+          "dsl_source": { "type": "string", "description": "The original DSL text." },
+          "parsed_plan": { "type": "string", "description": "JSON-serialized, pre-resolution RunPlan." },
+          "event": { "type": ["string", "null"] }, "created_at": { "type": "string" }
         }
       },
-      "PlannedWorkoutStep": {
+      "ResolvedSegment": {
         "type": "object",
-        "description": "A single-level (non-recursive) repeat-block entry, e.g. 6x400m @ 4:00/km.",
+        "description": "One resolved workout segment (continuous/interval/progression/rest_block) — same shape as domain/runplan's WorkoutSegment, with intensities replaced by resolved *_sec_per_km pace numbers.",
         "properties": {
-          "repeatCount": { "type": "integer", "minimum": 1 },
-          "distanceM": { "type": "number", "exclusiveMinimum": 0 },
-          "durationSec": { "type": "number", "exclusiveMinimum": 0 },
-          "targetPaceMinKm": { "type": "number", "exclusiveMinimum": 0 }
+          "type": { "type": "string", "enum": ["continuous", "interval", "progression", "rest_block"] }
         }
       },
-      "PlannedWorkout": {
+      "PlanInstanceDay": {
         "type": "object",
-        "description": "One planned session within a training plan.",
+        "description": "One resolved day of a plan instance.",
         "properties": {
-          "id": { "type": "integer" }, "plan_id": { "type": "integer" }, "date": { "type": "string", "format": "date" },
-          "workout_type": { "type": "string", "description": "One of the AI classifier's six categories, plus Rest/Race.", "examples": ["Recovery Run", "Long Session", "Repeats/Intervals", "Progressive Run", "Fartlek", "Tapasciata / Light Maintenance", "Rest", "Race"] },
-          "distance_m": { "type": ["number", "null"] }, "duration_sec": { "type": ["number", "null"] },
-          "target_pace_minkm": { "type": ["number", "null"] },
-          "steps": { "type": ["array", "null"], "items": { "$ref": "#/components/schemas/PlannedWorkoutStep" }, "description": "Present for structured interval sessions; null for a simple single-target session or Rest." },
-          "created_at": { "type": "string" }
+          "id": { "type": "integer" }, "instance_id": { "type": "integer" },
+          "section_name": { "type": "string" }, "week_number": { "type": "integer" },
+          "date": { "type": "string", "format": "date" }, "day": { "type": "integer" },
+          "suffix": { "type": ["string", "null"] }, "category": { "type": ["string", "null"] },
+          "workout_type": { "type": "string", "enum": ["run", "rest", "todo", "cross", "strength"] },
+          "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ResolvedSegment" } },
+          "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] },
+          "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] }
+        }
+      },
+      "PlanInstance": {
+        "type": "object",
+        "description": "One resolved instantiation of a plan template for a specific race.",
+        "properties": {
+          "id": { "type": "integer" }, "template_id": { "type": "integer" },
+          "start_date": { "type": "string", "format": "date" },
+          "pace_overrides": { "type": ["string", "null"], "description": "JSON-serialized PacePolicy overrides applied at instantiation." },
+          "target_activity_id": { "type": ["integer", "null"] }, "created_at": { "type": "string" },
+          "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDay" } }
         }
       }
     }
@@ -507,42 +517,36 @@
     "/api/v1/activity-types": {
       "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
     },
-    "/api/v1/training-plans": {
-      "get": { "tags": ["training-plans"], "summary": "List training plans, newest start_date first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Training plans.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/TrainingPlan" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
+    "/api/v1/plan-templates": {
+      "get": { "tags": ["plan-templates"], "summary": "List plan templates, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Plan templates.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanTemplate" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "post": {
-        "tags": ["training-plans"], "summary": "Create a training plan",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "sport", "start_date", "end_date"], "properties": { "name": { "type": "string" }, "sport": { "type": "string" }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
-        "responses": { "201": { "description": "The created plan.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "tags": ["plan-templates"], "summary": "Save a template, parsing and validating its DSL source",
+        "description": "Rejects (422) unless the DSL both parses and is fully valid (HRA-111's bottom-up validity model) — a template with any hard error (e.g. an interval missing rest) can't be saved. The 422 body's errors[] lists every broken day.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "dsl_source"], "properties": { "name": { "type": "string" }, "dsl_source": { "type": "string" } } } } } },
+        "responses": { "201": { "description": "The created template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
-    "/api/v1/training-plans/{id}": {
-      "get": { "tags": ["training-plans"], "summary": "Get one training plan", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The plan.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+    "/api/v1/plan-templates/{id}": {
+      "get": { "tags": ["plan-templates"], "summary": "Get one plan template", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "put": {
-        "tags": ["training-plans"], "summary": "Replace a training plan",
+        "tags": ["plan-templates"], "summary": "Replace a plan template (re-parses dsl_source from scratch)",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "sport", "start_date", "end_date"], "properties": { "name": { "type": "string" }, "sport": { "type": "string" }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
-        "responses": { "200": { "description": "The updated plan.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "dsl_source"], "properties": { "name": { "type": "string" }, "dsl_source": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       },
-      "delete": { "tags": ["training-plans"], "summary": "Delete a training plan (ON DELETE CASCADE removes its planned workouts, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "delete": { "tags": ["plan-templates"], "summary": "Delete a plan template (ON DELETE CASCADE removes every derived instance, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
-    "/api/v1/training-plans/{id}/workouts": {
-      "get": { "tags": ["training-plans"], "summary": "List planned workouts for a plan, ascending by date", "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Planned workouts.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlannedWorkout" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } }, "404": { "$ref": "#/components/responses/NotFound" } },
+    "/api/v1/plan-templates/{id}/instantiate": {
       "post": {
-        "tags": ["training-plans"], "summary": "Create a planned workout under a plan",
+        "tags": ["plan-templates"], "summary": "Resolve a template for one race: override pace anchors + a start date, persist the result",
+        "description": "target_activity_id (if given) is validated like date_ranges.activity_id, but against the resolved plan's last day — checked fully before any write, so a rejected request leaves no orphaned rows.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date", "workout_type"], "properties": { "date": { "type": "string", "format": "date" }, "workout_type": { "type": "string" }, "distance_m": { "type": "number" }, "duration_sec": { "type": "number" }, "target_pace_minkm": { "type": "number" }, "steps": { "type": "array", "items": { "$ref": "#/components/schemas/PlannedWorkoutStep" } } } } } } },
-        "responses": { "201": { "description": "The created workout.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlannedWorkout" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["start_date"], "properties": { "start_date": { "type": "string", "format": "date" }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "anchor -> pace value string, same grammar as a PACE line's right-hand side, e.g. {\"RG\": \"6:40/mi\"}." }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
+        "responses": { "201": { "description": "The created instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
-    "/api/v1/planned-workouts/{id}": {
-      "get": { "tags": ["training-plans"], "summary": "Get one planned workout", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The workout.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlannedWorkout" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
-      "put": {
-        "tags": ["training-plans"], "summary": "Replace a planned workout (plan_id is immutable, not part of the body)",
-        "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date", "workout_type"], "properties": { "date": { "type": "string", "format": "date" }, "workout_type": { "type": "string" }, "distance_m": { "type": "number" }, "duration_sec": { "type": "number" }, "target_pace_minkm": { "type": "number" }, "steps": { "type": "array", "items": { "$ref": "#/components/schemas/PlannedWorkoutStep" } } } } } } },
-        "responses": { "200": { "description": "The updated workout.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlannedWorkout" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
-      },
-      "delete": { "tags": ["training-plans"], "summary": "Delete a single planned workout", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    "/api/v1/plan-instances/{id}": {
+      "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/api/v1/locales/{lang}": {
       "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }

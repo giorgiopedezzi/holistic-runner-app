@@ -20,6 +20,7 @@ import { createDocsController } from "../controllers/docs.controller.ts";
 import { createLocalesController } from "../controllers/locales.controller.ts";
 import { createDateRangesController } from "../controllers/date-ranges.controller.ts";
 import { createActivityTypesController } from "../controllers/activity-types.controller.ts";
+import { createPlanTemplatesController } from "../controllers/plan-templates.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -31,6 +32,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const docs         = createDocsController(ctx);
   const dateRanges   = createDateRangesController(ctx);
   const activityTypes = createActivityTypesController(ctx);
+  const planTemplates = createPlanTemplatesController(ctx);
   const locales      = createLocalesController(ctx);
   const { port } = ctx;
 
@@ -75,6 +77,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements/correlation")         return await body.correlation(req, res, url);
         if (route === "/api/v1/date-ranges")               return await dateRanges.list(req, res, url);
         if (route === "/api/v1/activity-types")            return await activityTypes.list(req, res, url);
+        if (route === "/api/v1/plan-templates")             return await planTemplates.list(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))    return await planTemplates.getById(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))    return await planTemplates.instanceById(req, res, url);
         if (/^\/api\/v1\/locales\/[^/]+$/.test(route))     return await locales.get(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
@@ -85,6 +90,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
         if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.remove(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.remove(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL
@@ -106,6 +112,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/language")        return await settings.updateLanguage(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);
       }
 
       if (req.method === "POST") {
@@ -119,6 +126,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements/restore" || route === "/api/v1/body-measurements/purge") return await body.restorePurge(req, res, url);
         if (route === "/api/v1/settings/background/upload") return await settings.uploadBackground(req, res, url);
         if (route === "/api/v1/date-ranges")               return await dateRanges.create(req, res, url);
+        if (route === "/api/v1/plan-templates")             return await planTemplates.create(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await planTemplates.instantiate(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);

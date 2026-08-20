@@ -234,9 +234,65 @@ export function initSchema(db: DatabaseSync): void {
       created_at  TEXT    DEFAULT (datetime('now'))
     );
 
+    -- A reusable training-plan template (HRA-112): the RunPlan DSL v1 source
+    -- text plus its parsed-but-UNRESOLVED RunPlan (domain/runplan/parser.ts) —
+    -- pace stays symbolic (an anchor name, not a number) until instantiation,
+    -- which is exactly what makes a template reusable across races: reuse
+    -- means overriding a few top-level pace anchors + a start date, not
+    -- re-authoring or re-parsing the DSL text. dsl_source is kept alongside
+    -- parsed_plan so a structural edit (weeks/days/sections) can be re-parsed
+    -- later without losing the original authoring text.
+    CREATE TABLE IF NOT EXISTS plan_templates (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT    NOT NULL,
+      dsl_source  TEXT    NOT NULL,
+      parsed_plan TEXT    NOT NULL,
+      event       TEXT,
+      created_at  TEXT    DEFAULT (datetime('now'))
+    );
+
+    -- One instantiation of a template for a specific race: the pace/date
+    -- overrides applied, and (optionally) the race this instance targets —
+    -- same FK/validation pattern as date_ranges.activity_id (race-typed,
+    -- dated strictly after the plan's last resolved day).
+    CREATE TABLE IF NOT EXISTS plan_instances (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      template_id        INTEGER NOT NULL REFERENCES plan_templates(id) ON DELETE CASCADE,
+      start_date         TEXT    NOT NULL,
+      pace_overrides     TEXT,
+      target_activity_id INTEGER REFERENCES activities(id),
+      created_at         TEXT    DEFAULT (datetime('now'))
+    );
+
+    -- One row per resolved day of an instance — concrete date + concrete
+    -- per-segment paces (domain/runplan/instantiate.ts's ResolvedDay).
+    -- segments is JSON, preserving the DSL's real segment shapes
+    -- (continuous/interval/progression/rest_block) and every segment on a
+    -- multi-segment day — deliberately NOT flattened to one distance/pace
+    -- pair per day (the mistake the rejected HRA-109 design made).
+    CREATE TABLE IF NOT EXISTS plan_instance_days (
+      id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+      instance_id           INTEGER NOT NULL REFERENCES plan_instances(id) ON DELETE CASCADE,
+      section_name          TEXT    NOT NULL,
+      week_number           INTEGER NOT NULL,
+      date                  TEXT    NOT NULL,
+      day                   INTEGER NOT NULL,
+      suffix                TEXT,
+      category              TEXT,
+      workout_type          TEXT    NOT NULL,
+      segments              TEXT    NOT NULL,
+      activity_target       TEXT,
+      activity_description  TEXT,
+      notes                 TEXT,
+      needs_review          INTEGER NOT NULL DEFAULT 0
+    );
+
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
     CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
     CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
+    CREATE INDEX IF NOT EXISTS idx_plan_instances_template  ON plan_instances(template_id);
+    CREATE INDEX IF NOT EXISTS idx_plan_instance_days_inst  ON plan_instance_days(instance_id);
+    CREATE INDEX IF NOT EXISTS idx_plan_instance_days_date  ON plan_instance_days(date);
   `);
 
   // Ensure the single settings row exists — CREATE TABLE IF NOT EXISTS above
@@ -480,6 +536,46 @@ export interface RaceRow {
   activity_type_id: number;
   activity_name: string | null;
   distance_m: number | null;
+}
+
+export interface PlanTemplateRow {
+  id: number;
+  name: string;
+  dsl_source: string;
+  // JSON-serialized, pre-resolution RunPlan (domain/runplan/types.ts) — pace
+  // stays symbolic until an instance is created from this template.
+  parsed_plan: string;
+  event: string | null;
+  created_at: string;
+}
+
+export interface PlanInstanceRow {
+  id: number;
+  template_id: number;
+  start_date: string;
+  // JSON-serialized PacePolicy overrides applied at instantiation, kept for
+  // provenance (what was actually overridden to produce this instance).
+  pace_overrides: string | null;
+  target_activity_id: number | null;
+  created_at: string;
+}
+
+export interface PlanInstanceDayRow {
+  id: number;
+  instance_id: number;
+  section_name: string;
+  week_number: number;
+  date: string;
+  day: number;
+  suffix: string | null;
+  category: string | null;
+  workout_type: string;
+  // JSON-serialized ResolvedSegment[] (domain/runplan/instantiate.ts).
+  segments: string;
+  activity_target: string | null;
+  activity_description: string | null;
+  notes: string | null;
+  needs_review: number;
 }
 
 export interface WithingsTokenRow {

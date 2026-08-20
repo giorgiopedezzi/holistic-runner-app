@@ -22,11 +22,14 @@ import { createBodyRepo } from "../../src/repositories/body.repo.ts";
 import { createSettingsRepo } from "../../src/repositories/settings.repo.ts";
 import { createDateRangesRepo } from "../../src/repositories/date-ranges.repo.ts";
 import { createActivityTypesRepo } from "../../src/repositories/activity-types.repo.ts";
+import { createPlanTemplatesRepo } from "../../src/repositories/plan-templates.repo.ts";
+import { createPlanInstancesRepo } from "../../src/repositories/plan-instances.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
 import { createSyncService } from "../../src/services/sync.service.ts";
 import { createDeviceService } from "../../src/services/device.service.ts";
+import { createPlanInstancesService } from "../../src/services/plan-instances.service.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
 const SRC_DIR = fileURLToPath(new URL("../../src", import.meta.url));
@@ -51,6 +54,8 @@ export async function startTestServer(opts: { seed?: boolean } = {}): Promise<Te
   const settingsRepo = createSettingsRepo(db);
   const dateRangesRepo = createDateRangesRepo(db);
   const activityTypesRepo = createActivityTypesRepo(db);
+  const planTemplatesRepo = createPlanTemplatesRepo(db);
+  const planInstancesRepo = createPlanInstancesRepo(db);
 
   const handler = createApiHandler({
     port: 0,
@@ -58,13 +63,17 @@ export async function startTestServer(opts: { seed?: boolean } = {}): Promise<Te
     backgroundsDir,
     config: loadConfig(),
     db,
-    repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo, activityTypes: activityTypesRepo },
+    repos: {
+      activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
+      activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
+    },
     services: {
       activities: createActivitiesService(db, activitiesRepo),
       body: createBodyService(db, bodyRepo),
       classification: createClassificationService(activitiesRepo),
       sync: createSyncService(SRC_DIR),
       device: createDeviceService(SRC_DIR),
+      planInstances: createPlanInstancesService(db, planInstancesRepo),
     },
   });
 
