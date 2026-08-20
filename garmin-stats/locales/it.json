@@ -270,6 +270,7 @@
   "common.rangeEmpty.notInRange": "Nessun/a {{entity}} nel periodo selezionato ({{from}} - {{to}}). Dati disponibili da {{minDate}} a {{maxDate}}.",
   "common.recheck": "Riverifica",
   "common.settingsLoadFailed": "Caricamento impostazioni non riuscito",
+  "common.changeLanguage": "Cambia lingua",
 
   "body.chart.chartView": "Grafico",
   "body.chart.tableView": "Tabella",

@@ -270,6 +270,7 @@
   "common.rangeEmpty.notInRange": "No {{entity}} in the selected range ({{from}} to {{to}}). Data available from {{minDate}} to {{maxDate}}.",
   "common.recheck": "Recheck",
   "common.settingsLoadFailed": "Failed to load settings",
+  "common.changeLanguage": "Change language",
 
   "body.chart.chartView": "Chart",
   "body.chart.tableView": "Table",

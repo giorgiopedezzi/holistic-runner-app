@@ -8,6 +8,7 @@
  * setting and applies it immediately via i18next.
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { LANGUAGE_NAMES, type Language } from "@/types/api";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { detectLanguageFromLocale } from "@/i18n";
@@ -19,6 +20,7 @@ const LANGUAGE_META: Record<Language, { flag: string; label: string }> = {
 };
 
 export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
+  const { t } = useTranslation();
   // Falls back to the browser-detected default while settings haven't
   // resolved yet (appearance.resolvedLanguage is null on cold load) — same
   // detection i18n.ts uses for its own synchronous initial language.
@@ -32,7 +34,7 @@ export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <button className="hra-date-trigger" aria-label="Change language">
+        <button className="hra-date-trigger" aria-label={t("common.changeLanguage", "Change language")}>
           <span aria-hidden="true">{meta.flag}</span>
           <span>{meta.label}</span>
         </button>
