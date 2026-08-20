@@ -6,6 +6,18 @@
   "nav.settings": "Impostazioni",
 
   "common.entity.activities": "attività",
+  "common.preset.7": "7g",
+  "common.preset.30": "30g",
+  "common.preset.90": "90g",
+  "common.preset.365": "1a",
+  "common.preset.9999": "Tutto",
+
+  "dateRange.current": "Attuale",
+  "dateRange.enableComparison": "Abilita confronto",
+  "dateRange.customRange": "Intervallo personalizzato",
+  "dateRange.pickNamedRange": "Scegli un intervallo salvato…",
+  "dateRange.noneOption": "— nessuno —",
+  "dateRange.comparedTo": "Confrontato con",
 
   "overview.chartTooltip.pace": "ritmo",
   "overview.chartTooltip.hr": "FC",

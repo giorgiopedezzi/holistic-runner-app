@@ -6,6 +6,18 @@
   "nav.settings": "Settings",
 
   "common.entity.activities": "activities",
+  "common.preset.7": "7d",
+  "common.preset.30": "30d",
+  "common.preset.90": "90d",
+  "common.preset.365": "1y",
+  "common.preset.9999": "All",
+
+  "dateRange.current": "Current",
+  "dateRange.enableComparison": "Enable comparison",
+  "dateRange.customRange": "Custom range",
+  "dateRange.pickNamedRange": "Pick a named date range…",
+  "dateRange.noneOption": "— none —",
+  "dateRange.comparedTo": "Compared to",
 
   "overview.chartTooltip.pace": "pace",
   "overview.chartTooltip.hr": "HR",

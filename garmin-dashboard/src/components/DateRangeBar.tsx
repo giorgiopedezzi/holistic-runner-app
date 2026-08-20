@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
 import type { CompareRangeState } from "@/hooks/useCompareRange";
 import { DatePicker, Select, Switch } from "@/components/ui";
@@ -20,6 +21,7 @@ function savedRangeLabel(r: SavedDateRange): string {
 }
 
 export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, savedRanges = [] }: Props) {
+  const { t } = useTranslation();
   function isActive(days: number) {
     const target = days >= 9999 ? "2000-01-01"
       : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -47,7 +49,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
               "--dyn-color":  isActive(p.days) ? undefined : "var(--text-secondary)",
             } as CSSProperties}
           >
-            {p.label}
+            {t(`common.preset.${p.days}`, p.label)}
           </button>
         ))}
         <span className="hra-text-muted" style={{ fontSize: 12, margin: "0 4px" }}>or</span>
@@ -93,9 +95,9 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           row at all and OverviewTab adds no comparison data anywhere
           (rings, sport trend charts, linked race). */}
       <div className="hra-row-between">
-        <span className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600 }}>Current</span>
+        <span className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600 }}>{t("dateRange.current", "Current")}</span>
         <label className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
-          Enable comparison
+          {t("dateRange.enableComparison", "Enable comparison")}
           <Switch checked={compare.enabled} onCheckedChange={compare.setEnabled} />
         </label>
       </div>
@@ -107,9 +109,9 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
         <Select
           value={activePreset ? String(activePreset.days) : NO_NAMED_RANGE}
           onValueChange={v => setPreset(Number(v))}
-          placeholder="Custom range"
+          placeholder={t("dateRange.customRange", "Custom range")}
           triggerStyle={{ minWidth: 90 }}
-          options={PRESETS.map(p => ({ value: String(p.days), label: p.label }))}
+          options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
         <span className="hra-text-muted" style={orStyle}>or</span>
         <DatePicker value={from} max={to} onChange={setFrom} />
@@ -119,10 +121,10 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
         <Select
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
           onValueChange={pickCurrent}
-          placeholder="Pick a named date range…"
+          placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
           triggerStyle={{ flex: "1 1 220px", minWidth: 0 }}
           options={[
-            { value: NO_NAMED_RANGE, label: "— none —" },
+            { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
             ...savedRanges.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
           ]}
         />
@@ -137,7 +139,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           ending before Current's own start are offered, and the dropdown's
           value is derived from compare.from/to, never separately stored. */}
       <div style={{ opacity: compare.enabled ? 1 : 0.4, pointerEvents: compare.enabled ? "auto" : "none" }}>
-        <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8 }}>Compared to</div>
+        <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8 }}>{t("dateRange.comparedTo", "Compared to")}</div>
         <div className="hra-row-wrap">
           <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
           <span className="hra-text-muted" style={orStyle}>→</span>
@@ -146,10 +148,10 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           <Select
             value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}
             onValueChange={pickCompare}
-            placeholder="Pick a named date range…"
+            placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
             triggerStyle={{ flex: "1 1 220px", minWidth: 0 }}
             options={[
-              { value: NO_NAMED_RANGE, label: "— none —" },
+              { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
               ...eligibleForCompare.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
             ]}
           />
