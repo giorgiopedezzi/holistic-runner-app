@@ -342,6 +342,39 @@ each round. Naming rule from the Epic HRA-52 reorg: **module = noun**, **command
   would silently break unit propagation with no test or type error to catch it. See Epic **HRA-65**,
   which forbids exactly this "optimisation" for the same reason.
 - **No `localStorage`** or browser storage APIs
+- **⚠️ No hardcoded user-facing text in components — every label, tooltip, placeholder, button,
+  empty-state, and error message goes through i18next's `t()`.** This includes JSX text, `title=`/
+  `placeholder=`/`aria-label=` attributes, and string fallbacks in `catch` blocks — not just the
+  obvious cases. TypeScript does not catch a raw literal here; nothing does until someone runs the
+  Italian locale and finds English. (HRA-105 was a full-app retrofit for exactly this reason — an
+  `xhigh` Story auditing and fixing ~370 sites that had accumulated as hardcoded strings. Don't
+  reopen that hole.)
+  - **Mechanics**: `t("namespace.key", "English default text", { var: value })`. Keys live in
+    `garmin-stats/locales/en.json` / `it.json` (flat dotted keys, e.g. `"overview.stat.distance"` —
+    not nested objects), and **both files must carry the exact same key set** — add a key to one,
+    add it to the other in the same edit, every time.
+  - **⚠️ Never put `{{var}}` placeholders inside the `defaultValue` (2nd) argument.**
+    `react-i18next`'s `useTranslation()` returns a stub `t` (`notReadyT`) whenever the locale bundle
+    hasn't finished loading — real in production for a brief window on first paint, and *permanent*
+    in tests (the mocked fetch never resolves, so the namespace never becomes "ready"). That stub
+    returns `defaultValue` **verbatim, without interpolating it** — so `t("k", "Hi {{name}}", {name})`
+    silently renders the literal text `"Hi {{name}}"`. Always pass an already-substituted JS template
+    literal as `defaultValue` instead (`` t("k", `Hi ${name}`, {name}) ``) — correct for the not-ready
+    stub, and the `options` object is still needed for once the real translation loads and interpolates
+    its own `{{var}}` placeholders from the JSON.
+  - **Never put `t` itself in a `useCallback`/`useEffect` dependency array.** Its identity is not
+    reliably stable across every render/mount scenario (contrary to what its internal
+    snapshot-memoization suggests from source) — doing so can retrigger a fetch-on-mount effect in a
+    loop. If a callback closes over `t` and must stay referentially stable, read it via a ref
+    (`const tRef = useRef(t); tRef.current = t;` then call `tRef.current(...)`) instead of listing
+    `t` as a dependency.
+  - **Exempt** (deliberately, not by oversight): numeric/date/unit formatting already governed by
+    `utils/fmt.ts`/`dateFormat.ts`/`units.ts`; bare unit abbreviations (`bpm`, `kcal`, `kg`, `%`,
+    etc. — identical across `en`/`it`); brand/product names used alone (`Garmin`, `Strava`,
+    `Withings`, `Garmin Stats`); backend-sourced free text (activity names, race names, correction
+    reasons — user data, never translated). **Sport enum values are still untranslated** (a known,
+    documented gap from HRA-105 — rendered in too many different textual forms across ~9 files to be
+    a like-for-like swap; candidate for its own Story).
 
 ---
 
