@@ -14,6 +14,8 @@ import type { BodyRepo } from "../repositories/body.repo.ts";
 import type { SettingsRepo } from "../repositories/settings.repo.ts";
 import type { DateRangesRepo } from "../repositories/date-ranges.repo.ts";
 import type { ActivityTypesRepo } from "../repositories/activity-types.repo.ts";
+import type { TrainingPlansRepo } from "../repositories/training-plans.repo.ts";
+import type { PlannedWorkoutsRepo } from "../repositories/planned-workouts.repo.ts";
 import type { ActivitiesService } from "../services/activities.service.ts";
 import type { BodyService } from "../services/body.service.ts";
 import type { ClassificationService } from "../services/classification.service.ts";
@@ -26,7 +28,10 @@ export interface AppContext {
   backgroundsDir: string;
   config: Config;
   db: DatabaseSync;
-  repos: { activities: ActivitiesRepo; body: BodyRepo; settings: SettingsRepo; dateRanges: DateRangesRepo; activityTypes: ActivityTypesRepo };
+  repos: {
+    activities: ActivitiesRepo; body: BodyRepo; settings: SettingsRepo; dateRanges: DateRangesRepo;
+    activityTypes: ActivityTypesRepo; trainingPlans: TrainingPlansRepo; plannedWorkouts: PlannedWorkoutsRepo;
+  };
   services: {
     activities: ActivitiesService;
     body: BodyService;

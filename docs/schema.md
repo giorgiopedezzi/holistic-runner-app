@@ -60,6 +60,34 @@ round trip. `GET /api/v1/activities/races` (all activities with `activity_type_i
 no date filter) feeds the "link a race" dropdown on the save form; the frontend filters that list to
 `date_only > to` client-side as the form's `to` date changes.
 
+### `training_plans` / `planned_workouts`
+A structured training-plan representation (HRA-109) — schema-first, not a parsed text DSL (see
+HRA-108's analysis, kept in Jira, for why: no parser needed, stays queryable in SQL for a future
+planned-vs-actual comparison, fits this backend's zero-runtime-dependency constraint).
+
+`training_plans` is the header row for a named block over a date range: `id`, `name`, `sport`
+(free-text, same convention as `activities.sport`), `start_date`/`end_date` (`YYYY-MM-DD`),
+`target_activity_id` (nullable FK to `activities(id)` — **the race this block builds toward**,
+validated exactly like `date_ranges.activity_id` above: must be a race-type activity
+(`activity_type_id != 1`) dated strictly *after* `end_date`), `created_at`.
+
+`planned_workouts` is one row per planned session, `plan_id` FK to `training_plans(id)` **ON DELETE
+CASCADE** (deleting a plan deletes its sessions). Columns: `id`, `plan_id`, `date`, `workout_type`
+(constrained app-side to the AI classifier's six existing running categories —
+`WORKOUT_CLASSIFICATIONS` in `integrations/ollama.ts`, see `docs/classifier.md` — plus
+`Rest`/`Race`; reusing that vocabulary instead of a parallel one is what would let a future
+planned-vs-actual comparison cross-reference the classifier's own output), `distance_m` /
+`duration_sec` / `target_pace_minkm` (nullable, for a simple single-target session), `steps`
+(nullable JSON `TEXT` column — a **single-level, non-recursive** repeat-block array, e.g.
+`[{"repeatCount":6,"distanceM":400,"targetPaceMinKm":4.0},{"distanceM":200,"targetPaceMinKm":7.0}]`
+for "6x400m @ 4:00/km with 200m jog recovery" — see `PlannedWorkoutStep` in `db.ts`), `created_at`.
+A session sets either the simple single-target fields or `steps`, never needs both (a `Rest` day
+sets neither).
+
+**Explicitly out of scope for HRA-109** (left for later Stories): planned-vs-actual
+comparison/matching against `activities`; any UI (calendar/authoring view); non-running sports'
+`workout_type` vocabulary; nested/recursive repeat blocks.
+
 ## Soft delete & trash
 `activities` and `body_measurements` both have `deleted_at` (TEXT, nullable) and `purged` (INTEGER, default 0). Three states per row:
 - **Active** — `deleted_at IS NULL`. Shows up everywhere normally; every read query in `server.ts` (`activities`, `activityById`, `summary`, `weekly`, `monthly`, `range`, `countInRange`, and the `body_*`/`correlation` equivalents) filters `deleted_at IS NULL`.

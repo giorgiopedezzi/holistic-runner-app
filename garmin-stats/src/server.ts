@@ -20,6 +20,8 @@ import { createBodyRepo } from "./repositories/body.repo.ts";
 import { createSettingsRepo } from "./repositories/settings.repo.ts";
 import { createDateRangesRepo } from "./repositories/date-ranges.repo.ts";
 import { createActivityTypesRepo } from "./repositories/activity-types.repo.ts";
+import { createTrainingPlansRepo } from "./repositories/training-plans.repo.ts";
+import { createPlannedWorkoutsRepo } from "./repositories/planned-workouts.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -46,6 +48,8 @@ const bodyRepo       = createBodyRepo(db);
 const settingsRepo   = createSettingsRepo(db);
 const dateRangesRepo = createDateRangesRepo(db);
 const activityTypesRepo = createActivityTypesRepo(db);
+const trainingPlansRepo = createTrainingPlansRepo(db);
+const plannedWorkoutsRepo = createPlannedWorkoutsRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -64,7 +68,10 @@ const server = http.createServer(createApiHandler({
   backgroundsDir,
   config,
   db,
-  repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo, activityTypes: activityTypesRepo },
+  repos: {
+    activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
+    activityTypes: activityTypesRepo, trainingPlans: trainingPlansRepo, plannedWorkouts: plannedWorkoutsRepo,
+  },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
     sync: syncService, device: deviceService,

@@ -234,9 +234,51 @@ export function initSchema(db: DatabaseSync): void {
       created_at  TEXT    DEFAULT (datetime('now'))
     );
 
+    -- A structured training plan (HRA-109): a named block of planned sessions
+    -- over a date range, e.g. an 18-week marathon build. Schema-first, not a
+    -- parsed text DSL — see HRA-108's analysis (kept in Jira) for why: no
+    -- parser needed, stays queryable in SQL for a future planned-vs-actual
+    -- comparison, and fits this backend's zero-runtime-dependency constraint.
+    -- target_activity_id models exactly the same "race this block builds
+    -- toward" relationship date_ranges.activity_id already has, validated the
+    -- same way app-side (race-typed, dated strictly after end_date).
+    CREATE TABLE IF NOT EXISTS training_plans (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      name               TEXT    NOT NULL,
+      sport              TEXT    NOT NULL,
+      start_date         TEXT    NOT NULL,
+      end_date           TEXT    NOT NULL,
+      target_activity_id INTEGER REFERENCES activities(id),
+      created_at         TEXT    DEFAULT (datetime('now'))
+    );
+
+    -- One row per planned session. workout_type is constrained app-side to
+    -- the classifier's six existing running categories (WORKOUT_CLASSIFICATIONS
+    -- in integrations/ollama.ts) plus 'Rest'/'Race' — reusing that vocabulary
+    -- instead of inventing a parallel one is what lets a future planned-vs-
+    -- actual comparison cross-reference the classifier's own output. Simple
+    -- sessions set distance_m/duration_sec/target_pace_minkm directly; interval
+    -- sessions instead set steps (JSON TEXT, a single-level/non-recursive
+    -- repeat-block array — see PlannedWorkoutStep below). Both may be NULL
+    -- (e.g. a Rest day has neither).
+    CREATE TABLE IF NOT EXISTS planned_workouts (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id           INTEGER NOT NULL REFERENCES training_plans(id) ON DELETE CASCADE,
+      date              TEXT    NOT NULL,
+      workout_type      TEXT    NOT NULL,
+      distance_m        REAL,
+      duration_sec      REAL,
+      target_pace_minkm REAL,
+      steps             TEXT,
+      created_at        TEXT    DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
     CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
     CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
+    CREATE INDEX IF NOT EXISTS idx_training_plans_dates    ON training_plans(start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_planned_workouts_plan   ON planned_workouts(plan_id);
+    CREATE INDEX IF NOT EXISTS idx_planned_workouts_date   ON planned_workouts(date);
   `);
 
   // Ensure the single settings row exists — CREATE TABLE IF NOT EXISTS above
@@ -480,6 +522,51 @@ export interface RaceRow {
   activity_type_id: number;
   activity_name: string | null;
   distance_m: number | null;
+}
+
+export interface TrainingPlanRow {
+  id: number;
+  name: string;
+  sport: string;
+  start_date: string;
+  end_date: string;
+  // The race this block builds toward — same relationship/validation as
+  // date_ranges.activity_id (race-typed, dated strictly after end_date).
+  target_activity_id: number | null;
+  created_at: string;
+}
+
+// A single-level (non-recursive) repeat block for an interval session, e.g.
+// "6x400m @ 4:00/km" is { repeatCount: 6, distanceM: 400, targetPaceMinKm: 4.0 }.
+// No nested repeats-within-repeats — see HRA-108's analysis for why one level
+// is enough for this app's scope.
+export interface PlannedWorkoutStep {
+  repeatCount?: number;
+  distanceM?: number;
+  durationSec?: number;
+  targetPaceMinKm?: number;
+}
+
+export interface PlannedWorkoutRow {
+  id: number;
+  plan_id: number;
+  date: string;
+  // Constrained app-side (controllers/planned-workouts.controller.ts) to the
+  // classifier's six categories (integrations/ollama.ts's WORKOUT_CLASSIFICATIONS)
+  // plus 'Rest'/'Race'.
+  workout_type: string;
+  // Simple single-target session (either or both may be set). NULL for a
+  // structured interval session, which sets `steps` instead, and for Rest.
+  distance_m: number | null;
+  duration_sec: number | null;
+  target_pace_minkm: number | null;
+  // JSON-encoded PlannedWorkoutStep[] (NULL for a simple/single-target
+  // session). Stored as TEXT — node:sqlite has no native JSON column type,
+  // and this app has no JSON-column precedent to follow, so plain
+  // JSON.stringify/parse at the repo boundary matches how every other typed
+  // field here is a flat SQL column.
+  steps: string | null;
+  created_at: string;
 }
 
 export interface WithingsTokenRow {

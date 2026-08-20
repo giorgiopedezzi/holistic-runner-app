@@ -22,6 +22,8 @@ import { createBodyRepo } from "../../src/repositories/body.repo.ts";
 import { createSettingsRepo } from "../../src/repositories/settings.repo.ts";
 import { createDateRangesRepo } from "../../src/repositories/date-ranges.repo.ts";
 import { createActivityTypesRepo } from "../../src/repositories/activity-types.repo.ts";
+import { createTrainingPlansRepo } from "../../src/repositories/training-plans.repo.ts";
+import { createPlannedWorkoutsRepo } from "../../src/repositories/planned-workouts.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
@@ -51,6 +53,8 @@ export async function startTestServer(opts: { seed?: boolean } = {}): Promise<Te
   const settingsRepo = createSettingsRepo(db);
   const dateRangesRepo = createDateRangesRepo(db);
   const activityTypesRepo = createActivityTypesRepo(db);
+  const trainingPlansRepo = createTrainingPlansRepo(db);
+  const plannedWorkoutsRepo = createPlannedWorkoutsRepo(db);
 
   const handler = createApiHandler({
     port: 0,
@@ -58,7 +62,10 @@ export async function startTestServer(opts: { seed?: boolean } = {}): Promise<Te
     backgroundsDir,
     config: loadConfig(),
     db,
-    repos: { activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo, activityTypes: activityTypesRepo },
+    repos: {
+      activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
+      activityTypes: activityTypesRepo, trainingPlans: trainingPlansRepo, plannedWorkouts: plannedWorkoutsRepo,
+    },
     services: {
       activities: createActivitiesService(db, activitiesRepo),
       body: createBodyService(db, bodyRepo),

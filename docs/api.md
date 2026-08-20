@@ -33,6 +33,10 @@
 | `/api/v1/activity-types` | The fixed `activity_types` lookup (Training, Race 5km, Race 10km, Half-Marathon, Marathon), each with `min_distance_m` |
 | `/api/v1/activities/races` | Race-type activities (`activity_type_id != 1`), full history, `{id,date_only,activity_type_id,activity_name,distance_m}` — feeds the "link a race" dropdown on the date-ranges save form |
 | `/api/v1/date-ranges` | Saved named date ranges (paginated envelope), newest first — each row `LEFT JOIN`s its linked race activity's display fields (`race_date_only`/`race_activity_name`/`race_distance_m`/`race_activity_type_id`, all `NULL` if unlinked). See `docs/schema.md`'s `date_ranges` section |
+| `/api/v1/training-plans` | Saved training plans (paginated envelope), newest `start_date` first. See `docs/schema.md`'s `training_plans` / `planned_workouts` section (HRA-109) |
+| `/api/v1/training-plans/:id` | Single training plan |
+| `/api/v1/training-plans/:id/workouts` | Planned workouts for one plan (paginated envelope), ascending by `date`. 404 if the plan doesn't exist |
+| `/api/v1/planned-workouts/:id` | Single planned workout — a top-level path (not nested a 3rd level under `/training-plans/:id/workouts/:id`, per rest-api-standards §1's ≤2-levels rule) |
 | `/api/v1/locales/:lang` | Translation bundle for `:lang` (`en` or `it`) — flat key→string JSON, read live off `garmin-stats/locales/<lang>.json`, no envelope. `:lang` is whitelisted before touching the filesystem; `problem+json` 404 for an unsupported or missing language |
 
 ### DELETE
@@ -55,6 +59,8 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/v1/settings/language` | Body `{language}`, must be one of `'auto' | 'en' | 'it'` (422 otherwise). `'auto'` resolves from the browser's `navigator.language` at render time (garmin-dashboard's `i18n.ts`), same idiom as `unit_system`'s `'auto'`. Same immediate-apply pattern as theme/units/detail-view/date-format |
 | `/api/v1/activities/:id/type` | Body `{activity_type_id, name?}` — full replacement of the activity's type/name sub-resource. 422 if the type is unknown or the activity's `distance_m` is shorter than the type's `min_distance_m`; 404 if the activity doesn't exist |
 | `/api/v1/date-ranges/:id` | Body `{name, from, to, activity_id?}` — full replacement, incl. renaming (the Data & Sync tab's "Update" row). Same validation as `POST /api/v1/date-ranges` below, except the duplicate-name check excludes the row's own id (so re-saving under its current name doesn't 409 itself). 404 if the row doesn't exist |
+| `/api/v1/training-plans/:id` | Body `{name, sport, start_date, end_date, target_activity_id?}` — full replacement. `target_activity_id` validated like `date_ranges`' `activity_id` (race-type, dated strictly after `end_date`). 404 if the plan doesn't exist |
+| `/api/v1/planned-workouts/:id` | Body `{date, workout_type, distance_m?, duration_sec?, target_pace_minkm?, steps?}` — full replacement; `plan_id` is immutable (not part of the body). `workout_type` must be one of the AI classifier's six categories plus `Rest`/`Race` (422 otherwise); `steps`, if present, must be an array of `{repeatCount?, distanceM?, durationSec?, targetPaceMinKm?}` where each entry sets `distanceM` or `durationSec` (422 otherwise). 404 if the workout doesn't exist |
 
 ### POST
 | Endpoint | Description |
@@ -66,8 +72,12 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/activities/restore`, `/api/activities/purge` | Body `{ids: number[]}` (400 if empty/non-integers). Restore clears `deleted_at`; purge wipes the row's heavy data and sets `purged=1` — see "Soft delete & trash". Looped single-row prepared statements inside one transaction, not a dynamic `IN (...)` clause, so every bound value stays a real parameter |
 | `/api/body/restore`, `/api/body/purge` | Same shape/semantics as the activities pair, for `body_measurements` |
 | `/api/v1/date-ranges` | Body `{name, from, to, activity_id?}`. `name` must be unique (409 otherwise); `from`/`to` are `YYYY-MM-DD` with `from <= to`; `activity_id`, if given, must be a race-type activity (`activity_type_id != 1`) whose `date_only` is strictly after `to` (422 otherwise). Returns 201 + `Location` + the created row (with the joined race fields) |
+| `/api/v1/training-plans` | Body `{name, sport, start_date, end_date, target_activity_id?}`. `start_date <= end_date`; `target_activity_id` validated like `date_ranges`' `activity_id` (422 otherwise). Returns 201 + `Location` + the created row |
+| `/api/v1/training-plans/:id/workouts` | Body `{date, workout_type, distance_m?, duration_sec?, target_pace_minkm?, steps?}` — same validation as the `PUT /api/v1/planned-workouts/:id` body. 404 if the plan doesn't exist. Returns 201 + `Location` + the created row |
 
-### DELETE (date ranges — hard delete, not soft)
+### DELETE (date ranges / training plans — hard delete, not soft)
 | Endpoint | Description |
 |---|---|
 | `/api/v1/date-ranges/:id` | Deletes a saved date range permanently (204). Unlike activities/body measurements, saved ranges have no trash — they're just a recall label, not synced data |
+| `/api/v1/training-plans/:id` | Deletes a training plan permanently (204) — `ON DELETE CASCADE` also removes its planned workouts. No trash, same reasoning as date ranges |
+| `/api/v1/planned-workouts/:id` | Deletes a single planned workout permanently (204) |
