@@ -8,6 +8,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { SectionTitle } from "@/components/ui";
 import { isoToday, isoAgo } from "@/utils/date";
 import { SyncAllBar } from "@/components/manage/SyncAllBar";
@@ -20,6 +21,7 @@ import { DeleteSection } from "@/components/manage/DeleteSection";
 import { TrashSection } from "@/components/manage/TrashSection";
 
 export function ManageTab() {
+  const { t } = useTranslation();
   const [withingsFrom, setWithingsFrom] = useState(isoAgo(30));
   const [withingsTo,   setWithingsTo]   = useState(isoToday());
   const [stravaFrom,   setStravaFrom]   = useState(isoAgo(30));
@@ -27,22 +29,22 @@ export function ManageTab() {
 
   return (
     <>
-      <SectionTitle>Sync</SectionTitle>
+      <SectionTitle>{t("manage.syncSectionTitle", "Sync")}</SectionTitle>
       <SyncAllBar withingsFrom={withingsFrom} withingsTo={withingsTo} stravaFrom={stravaFrom} stravaTo={stravaTo} />
       <UploadSection />
       <OAuthSyncSection provider={WITHINGS_PROVIDER} from={withingsFrom} to={withingsTo} onFromChange={setWithingsFrom} onToChange={setWithingsTo} />
       <OAuthSyncSection provider={STRAVA_PROVIDER} from={stravaFrom} to={stravaTo} onFromChange={setStravaFrom} onToChange={setStravaTo} />
 
-      <SectionTitle>Named date ranges</SectionTitle>
+      <SectionTitle>{t("manage.dateRangesSectionTitle", "Named date ranges")}</SectionTitle>
       <DateRangesSection />
 
-      <SectionTitle>AI workout classification</SectionTitle>
+      <SectionTitle>{t("manage.classifySectionTitle", "AI workout classification")}</SectionTitle>
       <ClassifySection />
 
-      <SectionTitle>Delete — local database only</SectionTitle>
+      <SectionTitle>{t("manage.deleteSectionTitle", "Delete — local database only")}</SectionTitle>
       <DeleteSection />
 
-      <SectionTitle>Trash</SectionTitle>
+      <SectionTitle>{t("manage.trashSectionTitle", "Trash")}</SectionTitle>
       <TrashSection />
     </>
   );

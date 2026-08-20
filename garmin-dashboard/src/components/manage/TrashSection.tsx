@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card } from "@/components/ui";
 import type { TrashedActivity, TrashedBodyMeasurement } from "@/types/api";
@@ -6,6 +7,7 @@ import { fmtKm, fmtWeight, fmtDate } from "@/utils/fmt";
 import { TrashList } from "./TrashList";
 
 export function TrashSection() {
+  const { t } = useTranslation();
   const [activities, setActivities] = useState<TrashedActivity[] | null>(null);
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
@@ -16,35 +18,38 @@ export function TrashSection() {
 
   function refreshActivities() {
     setActivitiesLoading(true);
-    api.garmin.trash().then(setActivities).catch(e => setActivitiesError(e instanceof Error ? e.message : "Failed to load trash")).finally(() => setActivitiesLoading(false));
+    api.garmin.trash().then(setActivities).catch(e => setActivitiesError(e instanceof Error ? e.message : t("manage.trash.loadFailed", "Failed to load trash"))).finally(() => setActivitiesLoading(false));
   }
   function refreshMeasurements() {
     setMeasurementsLoading(true);
-    api.body.trash().then(setMeasurements).catch(e => setMeasurementsError(e instanceof Error ? e.message : "Failed to load trash")).finally(() => setMeasurementsLoading(false));
+    api.body.trash().then(setMeasurements).catch(e => setMeasurementsError(e instanceof Error ? e.message : t("manage.trash.loadFailed", "Failed to load trash"))).finally(() => setMeasurementsLoading(false));
   }
 
+  // Run once on mount — both functions close over `t` (react-i18next's
+  // translate function, referentially stable) alongside their own stable
+  // state setters, not over anything that should re-trigger this fetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refreshActivities(); refreshMeasurements(); }, []);
 
   return (
     <Card>
       <div className="hra-row" style={{ gap: 8, marginBottom: 4 }}>
-        <div className="hra-block-title">Trash</div>
+        <div className="hra-block-title">{t("manage.trash.title", "Trash")}</div>
         <button
           className="hra-nav-hover hra-text-muted"
           onClick={() => { refreshActivities(); refreshMeasurements(); }}
-          title="Refresh — e.g. after deleting something above"
+          title={t("manage.trash.refreshTooltip", "Refresh — e.g. after deleting something above")}
           style={{ background: "none", border: "none", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1 }}
         >
           ⟳
         </button>
       </div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 16 }}>
-        Items deleted above land here first. Restore brings them straight back; emptying the trash permanently deletes
-        them (their data is wiped to reclaim space, but enough is kept internally that a resync still won't reimport them).
+        {t("manage.trash.description", "Items deleted above land here first. Restore brings them straight back; emptying the trash permanently deletes them (their data is wiped to reclaim space, but enough is kept internally that a resync still won't reimport them).")}
       </div>
 
       <TrashList
-        title={`Activities (${activities?.length ?? "…"})`}
+        title={t("manage.trash.activitiesTitle", `Activities (${activities?.length ?? "…"})`, { n: activities?.length ?? "…" })}
         items={activities}
         loading={activitiesLoading}
         error={activitiesError}
@@ -53,7 +58,7 @@ export function TrashSection() {
         onPurge={async ids => { await api.garmin.purge(ids); refreshActivities(); }}
       />
       <TrashList
-        title={`Withings measurements (${measurements?.length ?? "…"})`}
+        title={t("manage.trash.measurementsTitle", `Withings measurements (${measurements?.length ?? "…"})`, { n: measurements?.length ?? "…" })}
         items={measurements}
         loading={measurementsLoading}
         error={measurementsError}

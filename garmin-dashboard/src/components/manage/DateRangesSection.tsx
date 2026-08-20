@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, Select, DatePicker } from "@/components/ui";
 import type { RaceActivity, SavedDateRange } from "@/types/api";
@@ -42,6 +43,7 @@ interface LoadedRange { id: number; name: string; from: string; to: string; race
 // separate read-only list any more — each row's own dropdown is the one
 // place a saved range is looked up by name.
 export function DateRangesSection() {
+  const { t } = useTranslation();
   const [ranges, setRanges] = useState<SavedDateRange[] | null>(null);
   const [races,  setRaces]  = useState<RaceActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,11 +75,11 @@ export function DateRangesSection() {
     setLoading(true);
     Promise.all([api.dateRanges.list(), api.garmin.races()])
       .then(([r, rc]) => { setRanges(r); setRaces(rc); })
-      .catch(e => setError(e instanceof Error ? e.message : "Failed to load date ranges"))
+      .catch(e => setError(e instanceof Error ? e.message : t("manage.dateRanges.loadFailed", "Failed to load date ranges")))
       .finally(() => setLoading(false));
   }
 
-  useEffect(refresh, []);
+  useEffect(refresh, [t]);
 
   // Only races that took place strictly after the row's own `to` are
   // linkable — matches the server-side rule in date-ranges.controller.ts.
@@ -100,7 +102,7 @@ export function DateRangesSection() {
       setCreateRaceId(NO_RACE);
       refresh();
     } catch (e) {
-      setCreateError(e instanceof Error ? e.message : "Failed to save date range");
+      setCreateError(e instanceof Error ? e.message : t("manage.dateRanges.createFailed", "Failed to save date range"));
     } finally {
       setCreating(false);
     }
@@ -138,7 +140,7 @@ export function DateRangesSection() {
       resetUpdateRow();
       refresh();
     } catch (e) {
-      setUpdateError(e instanceof Error ? e.message : "Failed to update date range");
+      setUpdateError(e instanceof Error ? e.message : t("manage.dateRanges.updateFailed", "Failed to update date range"));
     } finally {
       setUpdating(false);
     }
@@ -156,7 +158,7 @@ export function DateRangesSection() {
       if (loaded?.id === id) resetUpdateRow();
       refresh();
     } catch (e) {
-      setDeleteError(e instanceof Error ? e.message : "Failed to delete date range");
+      setDeleteError(e instanceof Error ? e.message : t("manage.dateRanges.deleteFailed", "Failed to delete date range"));
     } finally {
       setDeleting(false);
     }
@@ -166,11 +168,9 @@ export function DateRangesSection() {
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>Named date ranges</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.dateRanges.title", "Named date ranges")}</div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
-        Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston
-        Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only
-        races that took place after the range's end date are selectable.
+        {t("manage.dateRanges.description", "Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only races that took place after the range's end date are selectable.")}
       </div>
 
       {/* ── Create ── */}
@@ -179,7 +179,7 @@ export function DateRangesSection() {
           type="text"
           value={createName}
           onChange={e => setCreateName(e.target.value)}
-          placeholder="New range name (e.g. Boston wk2)"
+          placeholder={t("manage.dateRanges.namePlaceholder", "New range name (e.g. Boston wk2)")}
           title={createName}
           className="hra-border-strong hra-bg-card hra-text-primary"
           style={nameInputStyle}
@@ -190,9 +190,9 @@ export function DateRangesSection() {
         <Select
           value={createRaceId}
           onValueChange={setCreateRaceId}
-          placeholder="Link a race (optional)"
+          placeholder={t("manage.dateRanges.linkRacePlaceholder", "Link a race (optional)")}
           triggerStyle={{ flex: "1.5 1 100px", minWidth: 0 }}
-          options={[{ value: NO_RACE, label: "No race" }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: raceLabel(r) }))]}
+          options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: raceLabel(r) }))]}
         />
         <button
           className="hra-btn"
@@ -201,7 +201,7 @@ export function DateRangesSection() {
           onClick={handleCreate}
           disabled={!canCreate}
         >
-          {creating ? "Saving…" : "Create"}
+          {creating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.create", "Create")}
         </button>
       </div>
       {createError && <ErrorLine>{createError}</ErrorLine>}
@@ -211,9 +211,9 @@ export function DateRangesSection() {
         <Select
           value={loaded != null ? String(loaded.id) : NO_SELECTION}
           onValueChange={handlePickExisting}
-          placeholder="Pick a saved range to edit…"
+          placeholder={t("manage.dateRanges.pickToEdit", "Pick a saved range to edit…")}
           triggerStyle={firstColumnStyle}
-          options={[{ value: NO_SELECTION, label: "— pick a range —" }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
+          options={[{ value: NO_SELECTION, label: t("manage.dateRanges.pickRangeOption", "— pick a range —") }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
         <DatePicker value={updateFrom} onChange={setUpdateFrom} max={updateTo} />
         <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
@@ -221,9 +221,9 @@ export function DateRangesSection() {
         <Select
           value={updateRaceId}
           onValueChange={setUpdateRaceId}
-          placeholder="Link a race (optional)"
+          placeholder={t("manage.dateRanges.linkRacePlaceholder", "Link a race (optional)")}
           triggerStyle={{ flex: "1.5 1 100px", minWidth: 0 }}
-          options={[{ value: NO_RACE, label: "No race" }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: raceLabel(r) }))]}
+          options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: raceLabel(r) }))]}
         />
         <button
           className="hra-btn"
@@ -231,9 +231,9 @@ export function DateRangesSection() {
           style={{ "--btn-color": "var(--accent-green)", ...actionButtonStyle } as CSSProperties}
           onClick={handleUpdate}
           disabled={!canUpdate}
-          title={loaded == null ? "Pick a saved range above first" : undefined}
+          title={loaded == null ? t("manage.dateRanges.pickFirstTooltip", "Pick a saved range above first") : undefined}
         >
-          {updating ? "Saving…" : "Update"}
+          {updating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.update", "Update")}
         </button>
       </div>
       {updateError && <ErrorLine>{updateError}</ErrorLine>}
@@ -243,24 +243,24 @@ export function DateRangesSection() {
         <Select
           value={deleteId}
           onValueChange={v => { setDeleteId(v); setConfirmingDelete(false); }}
-          placeholder="Pick a saved range to delete…"
+          placeholder={t("manage.dateRanges.pickToDelete", "Pick a saved range to delete…")}
           triggerStyle={firstColumnStyle}
-          options={[{ value: NO_SELECTION, label: "— pick a range —" }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
+          options={[{ value: NO_SELECTION, label: t("manage.dateRanges.pickRangeOption", "— pick a range —") }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
         {confirmingDelete ? (
           <>
-            <span className="hra-text-danger" style={{ fontSize: 12 }}>Delete this range?</span>
+            <span className="hra-text-danger" style={{ fontSize: 12 }}>{t("manage.dateRanges.confirmDeleteQuestion", "Delete this range?")}</span>
             <button
               className="hra-btn" data-variant="cta"
               style={{ "--btn-color": "var(--accent-red)", ...actionButtonStyle } as CSSProperties}
               onClick={handleDelete} disabled={deleting}
             >
-              {deleting ? "…" : "Yes, delete"}
+              {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
             </button>
             <button onClick={() => setConfirmingDelete(false)}
               className="hra-border-strong hra-text-secondary"
               style={{ fontSize: 12, borderRadius: 6, padding: "6px 12px", background: "none", cursor: "pointer" }}>
-              Cancel
+              {t("common.cancel", "Cancel")}
             </button>
           </>
         ) : (
@@ -270,13 +270,13 @@ export function DateRangesSection() {
             onClick={() => setConfirmingDelete(true)}
             disabled={deleteId === NO_SELECTION}
           >
-            Delete
+            {t("common.delete", "Delete")}
           </button>
         )}
       </div>
       {deleteError && <ErrorLine>{deleteError}</ErrorLine>}
 
-      {loading && <div className="hra-text-muted" style={{ fontSize: 12 }}>Loading…</div>}
+      {loading && <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>}
       {error   && <div className="hra-text-danger" style={{ fontSize: 12 }}>{error}</div>}
     </Card>
   );

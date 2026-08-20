@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, LoadingSpinner, ProgressBar, Checkbox, DatePicker } from "@/components/ui";
-import type { Activity, ClassificationMethod } from "@/types/api";
-import { classificationStatus } from "@/types/api";
+import type { Activity, ClassificationMethod, WorkoutClassification } from "@/types/api";
+import { classificationStatus, WORKOUT_CLASSIFICATION_KEY } from "@/types/api";
 import { fmtKm, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 
@@ -16,6 +17,7 @@ import { isoToday, isoAgo } from "@/utils/date";
 // (see server.ts's note on why there's no bulk classify route). Confirm is
 // fast/DB-only, so it does use the real bulk endpoint.
 export function ClassifySection() {
+  const { t } = useTranslation();
   const [from, setFrom] = useState(isoAgo(30));
   const [to,   setTo]   = useState(isoToday());
   const [activities, setActivities] = useState<Activity[] | null>(null);
@@ -44,7 +46,7 @@ export function ClassifySection() {
       // Scoped to running only — the six categories are running-specific
       // terminology, classifying e.g. a bike ride wouldn't be meaningful.
       .then(all => setActivities(all.filter(a => a.sport === "running")))
-      .catch(e => setLoadError(e instanceof Error ? e.message : "Failed to load activities"))
+      .catch(e => setLoadError(e instanceof Error ? e.message : t("manage.classify.loadFailed", "Failed to load activities")))
       .finally(() => setLoading(false));
   }
   // Same fetch as load(), but never toggles `loading` — load() gates the
@@ -56,7 +58,7 @@ export function ClassifySection() {
   function refresh() {
     api.garmin.activities(from, to)
       .then(all => setActivities(all.filter(a => a.sport === "running")))
-      .catch(e => setActionError(e instanceof Error ? e.message : "Failed to refresh"));
+      .catch(e => setActionError(e instanceof Error ? e.message : t("manage.classify.refreshFailed", "Failed to refresh")));
   }
   useEffect(() => { load(); }, [from, to]);
   useEffect(() => setSelected(new Set()), [activities]);
@@ -83,11 +85,14 @@ export function ClassifySection() {
       try {
         updateOne(ids[i], await api.garmin.classify(ids[i], splitMeters, method));
       } catch (e) {
-        errors.push(`#${ids[i]}: ${e instanceof Error ? e.message : "failed"}`);
+        errors.push(`#${ids[i]}: ${e instanceof Error ? e.message : t("manage.classify.itemFailed", "failed")}`);
       }
       setProgress({ current: i + 1, total: ids.length });
     }
-    if (errors.length) setActionError(errors.slice(0, 3).join("; ") + (errors.length > 3 ? ` (+${errors.length - 3} more)` : ""));
+    if (errors.length) {
+      const extra = errors.length > 3 ? t("manage.classify.moreErrors", ` (+${errors.length - 3} more)`, { count: errors.length - 3 }) : "";
+      setActionError(errors.slice(0, 3).join("; ") + extra);
+    }
     setProgress(null);
     setBusy(false);
   }
@@ -104,7 +109,7 @@ export function ClassifySection() {
       setJustConfirmed(new Set(ids));
       justConfirmedTimer.current = setTimeout(() => setJustConfirmed(new Set()), 3000);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : "Confirm failed");
+      setActionError(e instanceof Error ? e.message : t("manage.classify.confirmFailed", "Confirm failed"));
     }
     setBusy(false);
   }
@@ -119,12 +124,9 @@ export function ClassifySection() {
 
   return (
     <Card>
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>AI workout classification</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.classify.title", "AI workout classification")}</div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
-        Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata /
-        Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine
-        either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare
-        both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.
+        {t("manage.classify.description", "Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata / Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.")}
       </div>
 
       <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
@@ -139,12 +141,12 @@ export function ClassifySection() {
       {!loading && !loadError && activities && (
         <>
           {activities.length === 0 ? (
-            <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>No running activities in this range.</div>
+            <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>{t("manage.classify.noActivities", "No running activities in this range.")}</div>
           ) : (
             <div className="hra-border" style={{ maxHeight: 240, overflow: "auto", borderRadius: 6, padding: 8, marginBottom: 10 }}>
               <label className="hra-text-muted hra-border-bottom" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", marginBottom: 6, paddingBottom: 6 }}>
                 <Checkbox checked={selected.size === activities.length} onCheckedChange={toggleAll} />
-                Select all ({activities.length})
+                {t("manage.classify.selectAll", `Select all (${activities.length})`, { count: activities.length })}
               </label>
               {activities.map(a => {
                 const status = classificationStatus(a);
@@ -169,9 +171,14 @@ export function ClassifySection() {
                     </span>
                   );
                 };
+                const classificationLabel = (c: string) => t(WORKOUT_CLASSIFICATION_KEY[c as WorkoutClassification] ?? "unknown", c);
                 const resultPills = [
-                  a.ai_classification && pill(`AI: ${a.ai_classification}`, "ai", status === "confirmed" && a.classification_method === "ai"),
-                  a.statistical_classification && pill(`Stats: ${a.statistical_classification}`, "stats", status === "confirmed" && a.classification_method === "statistical"),
+                  a.ai_classification && pill(
+                    t("manage.classify.aiPill", `AI: ${classificationLabel(a.ai_classification)}`, { classification: classificationLabel(a.ai_classification) }),
+                    "ai", status === "confirmed" && a.classification_method === "ai"),
+                  a.statistical_classification && pill(
+                    t("manage.classify.statsPill", `Stats: ${classificationLabel(a.statistical_classification)}`, { classification: classificationLabel(a.statistical_classification) }),
+                    "stats", status === "confirmed" && a.classification_method === "statistical"),
                 ].filter((x): x is React.ReactElement => Boolean(x));
                 return (
                   <label key={a.id} className="hra-text-secondary hra-dyn-bg" style={{
@@ -189,7 +196,7 @@ export function ClassifySection() {
                     <span style={{ minWidth: 86 }}>{fmtDate(a.date_only)}</span>
                     <span style={{ minWidth: 60 }}>{fmtKm(a.distance_m)}</span>
                     {resultPills.length > 0 ? resultPills : (
-                      <span className="hra-text-muted" style={{ fontSize: 10 }}>unclassified</span>
+                      <span className="hra-text-muted" style={{ fontSize: 10 }}>{t("manage.classify.unclassified", "unclassified")}</span>
                     )}
                   </label>
                 );
@@ -199,7 +206,7 @@ export function ClassifySection() {
 
           <div className="hra-row-wrap">
             <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
-              title="Classification method: a local Ollama model, or instant deterministic rules over the same pace-variance/split/pause stats (no LLM, works even if Ollama isn't running)">
+              title={t("manage.classify.methodTooltip", "Classification method: a local Ollama model, or instant deterministic rules over the same pace-variance/split/pause stats (no LLM, works even if Ollama isn't running)")}>
               {(["ai", "statistical"] as const).map(m => (
                 <button key={m} onClick={() => setMethod(m)}
                   className="hra-dyn-bg hra-dyn-color"
@@ -208,12 +215,12 @@ export function ClassifySection() {
                     "--dyn-bg": method === m ? "var(--bg-card)" : "transparent",
                     "--dyn-color": method === m ? "var(--text-primary)" : "var(--text-muted)",
                   } as CSSProperties}>
-                  {m === "ai" ? "AI" : "Statistical"}
+                  {m === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical")}
                 </button>
               ))}
             </div>
             <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
-              title="Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out">
+              title={t("activity.classify.splitTooltip", "Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out")}>
               {([1000, 500] as const).map(m => (
                 <button key={m} onClick={() => setSplitMeters(m)}
                   className="hra-dyn-bg hra-dyn-color"
@@ -222,26 +229,32 @@ export function ClassifySection() {
                     "--dyn-bg": splitMeters === m ? "var(--bg-card)" : "transparent",
                     "--dyn-color": splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
                   } as CSSProperties}>
-                  {m === 1000 ? "1km" : "0.5km"}
+                  {m === 1000 ? t("activity.classify.split1km", "1km") : t("activity.classify.split05km", "0.5km")}
                 </button>
               ))}
             </div>
             <button className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy}>
-              Classify / Reclassify selected
+              {t("manage.classify.classifySelected", "Classify / Reclassify selected")}
             </button>
             <button
               className="hra-btn" data-variant="cta"
               style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
               onClick={confirmSelected} disabled={!canConfirm || busy}
-              title={`Bulk-approves the ${(method === "ai" ? "AI" : "Statistical")} classification for already-classified selected activities, no reason needed — same as thumbs-up per activity`}
+              title={(() => {
+                const methodLabel = method === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical");
+                return t("manage.classify.confirmTooltip", `Bulk-approves the ${methodLabel} classification for already-classified selected activities, no reason needed — same as thumbs-up per activity`, { method: methodLabel });
+              })()}
             >
-              Confirm selected ({(method === "ai" ? "AI" : "Statistical")})
+              {(() => {
+                const methodLabel = method === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical");
+                return t("manage.classify.confirmSelected", `Confirm selected (${methodLabel})`, { method: methodLabel });
+              })()}
             </button>
           </div>
 
           {progress && (
             <div style={{ marginTop: 10 }}>
-              <ProgressBar label={`Classifying ${progress.current}/${progress.total}…`} current={progress.current} total={progress.total} accent="var(--accent)" />
+              <ProgressBar label={t("manage.classify.classifyingProgress", `Classifying ${progress.current}/${progress.total}…`, { current: progress.current, total: progress.total })} current={progress.current} total={progress.total} accent="var(--accent)" />
             </div>
           )}
           {actionError && <div style={{ marginTop: 10 }}><ErrorBanner message={actionError} /></div>}

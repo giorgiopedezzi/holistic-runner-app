@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ProgressBar, StatusLine } from "@/components/ui";
 import type { DeviceStatus } from "@/types/api";
@@ -8,6 +9,7 @@ import type { SyncProgress } from "./shared";
 
 // ── Upload section (Garmin) ─────────────────────────────────────────────
 export function UploadSection() {
+  const { t } = useTranslation();
   const [status,   setStatus]   = useState<"idle"|"running"|"done"|"error">("idle");
   const [msg,      setMsg]      = useState("");
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -35,10 +37,11 @@ export function UploadSection() {
     setProgress(null);
     try {
       const result = await runGarminSync(setProgress);
-      setMsg(`Done — ${result.imported} imported, ${result.skipped} skipped, ${result.errors} errors.`);
+      setMsg(t("manage.sync.doneMessage", `Done — ${result.imported} imported, ${result.skipped} skipped, ${result.errors} errors.`,
+        { imported: result.imported, skipped: result.skipped, errors: result.errors }));
       setStatus("done");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Sync failed");
+      setMsg(e instanceof Error ? e.message : t("manage.sync.syncFailed", "Sync failed"));
       setStatus("error");
     } finally {
       setProgress(null);
@@ -47,15 +50,16 @@ export function UploadSection() {
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>Sync Garmin activities</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.upload.title", "Sync Garmin activities")}</div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
-        Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB.
-        Connect the watch via USB first. Pulls every new file on the device — there's no date range to set here, since the device is diffed against what's already imported, not queried by date.
+        {t("manage.upload.description", "Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB. Connect the watch via USB first. Pulls every new file on the device — there's no date range to set here, since the device is diffed against what's already imported, not queried by date.")}
       </div>
 
       <StatusLine
         state={checkingDevice ? "checking" : device?.connected ? "ok" : "warn"}
-        message={checkingDevice ? "Checking device…" : device?.connected ? `${device.name ?? "Device"} connected` : deviceStatusMessage(device)}
+        message={checkingDevice ? t("manage.upload.checkingDevice", "Checking device…")
+          : device?.connected ? t("manage.upload.deviceConnected", `${device.name ?? t("manage.upload.deviceFallbackName", "Device")} connected`, { name: device.name ?? t("manage.upload.deviceFallbackName", "Device") })
+          : deviceStatusMessage(device)}
         onRecheck={checkDevice}
       />
 
@@ -65,15 +69,17 @@ export function UploadSection() {
         style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
         onClick={triggerSync}
         disabled={!canSync}
-        title={!canSync && status !== "running" ? "Connect the watch first" : undefined}
+        title={!canSync && status !== "running" ? t("manage.upload.connectWatchFirst", "Connect the watch first") : undefined}
       >
-        {status === "running" ? "Syncing…" : "↓ Sync from device"}
+        {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.upload.syncButton", "↓ Sync from device")}
       </button>
 
       {status === "running" && (
         <div style={{ marginTop: 14 }}>
           <ProgressBar
-            label={progress ? `${PHASE_LABEL[progress.phase]}${progress.label ? ` — ${progress.label}` : ""}` : "Checking device for new files…"}
+            label={progress
+              ? `${t(`manage.upload.phase.${progress.phase}`, PHASE_LABEL[progress.phase])}${progress.label ? ` — ${progress.label}` : ""}`
+              : t("manage.upload.checkingFiles", "Checking device for new files…")}
             current={progress?.current}
             total={progress?.total}
           />

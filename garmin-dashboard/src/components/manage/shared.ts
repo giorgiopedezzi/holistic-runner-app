@@ -1,3 +1,4 @@
+import i18next from "@/i18n";
 import type { SyncResult } from "@/api/client";
 import type { DeviceStatus } from "@/types/api";
 
@@ -48,20 +49,23 @@ export async function runGarminSync(onProgress?: (p: SyncProgress) => void): Pro
 
 export function deviceStatusMessage(device: DeviceStatus | null): string {
   switch (device?.reason) {
-    case "device_not_found":          return "Device not found — plug in via USB";
+    case "device_not_found":          return i18next.t("manage.upload.deviceNotFound", "Device not found — plug in via USB");
     case "storage_not_found":
     case "garmin_folder_not_found":
-    case "activity_folder_not_found": return "Device connected, but its Activity folder isn't accessible";
-    case "timeout":                   return "Device check timed out — try again";
+    case "activity_folder_not_found": return i18next.t("manage.upload.activityFolderInaccessible", "Device connected, but its Activity folder isn't accessible");
+    case "timeout":                   return i18next.t("manage.upload.deviceCheckTimeout", "Device check timed out — try again");
     case "powershell_error":
-    case "parse_error":               return "Couldn't check device status";
-    default:                          return "Device not found — plug in via USB";
+    case "parse_error":               return i18next.t("manage.upload.deviceCheckFailed", "Couldn't check device status");
+    default:                          return i18next.t("manage.upload.deviceNotFound", "Device not found — plug in via USB");
   }
 }
 
+// "soon"/"in " are translated prose; the numeral+unit-letter suffix (h/d)
+// stays a literal abbreviation — same "unit abbreviations don't translate"
+// policy as bpm/kcal/spm elsewhere in this app.
 export function fmtExpiry(unixSeconds: number): string {
   const diffH = (unixSeconds - Date.now() / 1000) / 3600;
-  if (diffH <= 0) return "soon";
-  if (diffH < 24) return `in ${Math.max(1, Math.round(diffH))}h`;
-  return `in ${Math.round(diffH / 24)}d`;
+  if (diffH <= 0) return i18next.t("manage.oauth.expirySoon", "soon");
+  if (diffH < 24) return i18next.t("manage.oauth.expiryIn", `in ${Math.max(1, Math.round(diffH))}h`, { value: `${Math.max(1, Math.round(diffH))}h` });
+  return i18next.t("manage.oauth.expiryIn", `in ${Math.round(diffH / 24)}d`, { value: `${Math.round(diffH / 24)}d` });
 }

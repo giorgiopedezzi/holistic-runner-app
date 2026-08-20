@@ -1,5 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { api } from "@/api/client";
 import { Card } from "@/components/ui";
 import { runGarminSync } from "./shared";
@@ -10,7 +12,29 @@ interface SyncAllBarProps {
   stravaFrom:   string; stravaTo:   string;
 }
 
+// Shared per-source result/skip/failure lines (Garmin/Withings/Strava all
+// use the same three sentence shapes) — the source name is interpolated raw
+// (a brand name, never translated) into an otherwise-translated sentence.
+function pushSyncing(t: TFunction, push: (s: string) => void, source: string) {
+  push(t("manage.syncAll.syncing", `Syncing ${source}…`, { source }));
+}
+function pushResult(t: TFunction, push: (s: string) => void, source: string, r: { imported: number; skipped: number; errors: number }) {
+  push(t("manage.syncAll.resultLine", `${source}: ${r.imported} imported, ${r.skipped} skipped, ${r.errors} errors.`,
+    { source, imported: r.imported, skipped: r.skipped, errors: r.errors }));
+}
+function pushSkipped(t: TFunction, push: (s: string) => void, source: string, reasonKey: "device" | "login") {
+  const reason = reasonKey === "device"
+    ? t("manage.syncAll.skipReasonDevice", "device not connected")
+    : t("manage.syncAll.skipReasonLogin", "not logged in");
+  push(t("manage.syncAll.skipped", `${source}: skipped — ${reason}.`, { source, reason }));
+}
+function pushFailed(t: TFunction, push: (s: string) => void, source: string, e: unknown) {
+  const msg = e instanceof Error ? e.message : t("manage.syncAll.genericError", "sync error");
+  push(t("manage.syncAll.failed", `${source}: failed — ${msg}`, { source, msg }));
+}
+
 export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: SyncAllBarProps) {
+  const { t } = useTranslation();
   const [status, setStatus] = useState<"idle" | "running" | "done">("idle");
   const [log, setLog] = useState<string[]>([]);
 
@@ -22,40 +46,40 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
     try {
       const device = await api.garmin.deviceStatus();
       if (device.connected) {
-        push("Syncing Garmin…");
+        pushSyncing(t, push, "Garmin");
         const r = await runGarminSync();
-        push(`Garmin: ${r.imported} imported, ${r.skipped} skipped, ${r.errors} errors.`);
+        pushResult(t, push, "Garmin", r);
       } else {
-        push("Garmin: skipped — device not connected.");
+        pushSkipped(t, push, "Garmin", "device");
       }
     } catch (e) {
-      push(`Garmin: failed — ${e instanceof Error ? e.message : "sync error"}`);
+      pushFailed(t, push, "Garmin", e);
     }
 
     try {
       const token = await api.body.tokenStatus();
       if (token.present && token.valid) {
-        push("Syncing Withings…");
+        pushSyncing(t, push, "Withings");
         const r = await api.body.sync(withingsFrom, withingsTo);
-        push(`Withings: ${r.imported} imported, ${r.skipped} skipped, ${r.errors} errors.`);
+        pushResult(t, push, "Withings", r);
       } else {
-        push("Withings: skipped — not logged in.");
+        pushSkipped(t, push, "Withings", "login");
       }
     } catch (e) {
-      push(`Withings: failed — ${e instanceof Error ? e.message : "sync error"}`);
+      pushFailed(t, push, "Withings", e);
     }
 
     try {
       const token = await api.strava.tokenStatus();
       if (token.present && token.valid) {
-        push("Syncing Strava…");
+        pushSyncing(t, push, "Strava");
         const r = await api.strava.sync(stravaFrom, stravaTo);
-        push(`Strava: ${r.imported} imported, ${r.skipped} skipped, ${r.errors} errors.`);
+        pushResult(t, push, "Strava", r);
       } else {
-        push("Strava: skipped — not logged in.");
+        pushSkipped(t, push, "Strava", "login");
       }
     } catch (e) {
-      push(`Strava: failed — ${e instanceof Error ? e.message : "sync error"}`);
+      pushFailed(t, push, "Strava", e);
     }
 
     setStatus("done");
@@ -65,9 +89,9 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
     <Card style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div className="hra-block-title">Sync all</div>
+          <div className="hra-block-title">{t("manage.syncAll.title", "Sync all")}</div>
           <div className="hra-text-secondary" style={{ fontSize: 12 }}>
-            Runs every sync below in one go — skips whichever source isn't ready (device unplugged, not logged in).
+            {t("manage.syncAll.description", "Runs every sync below in one go — skips whichever source isn't ready (device unplugged, not logged in).")}
           </div>
         </div>
         <button
@@ -77,7 +101,7 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
           disabled={status === "running"}
           style={{ "--btn-color": "var(--accent-green)", whiteSpace: "nowrap" } as CSSProperties}
         >
-          {status === "running" ? "Syncing…" : "⚡ Sync all"}
+          {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.syncAll.button", "⚡ Sync all")}
         </button>
       </div>
       {log.length > 0 && (

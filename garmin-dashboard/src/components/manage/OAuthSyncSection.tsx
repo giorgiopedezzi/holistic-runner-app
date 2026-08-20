@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties } from "react";
+import { useTranslation } from "react-i18next";
 import { Card, StatusLine, DatePicker } from "@/components/ui";
 import type { SyncResult } from "@/api/client";
 import { fmtExpiry } from "./shared";
@@ -33,7 +34,10 @@ interface OAuthSyncSectionProps {
 }
 
 export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange }: OAuthSyncSectionProps) {
-  const { id, label, noun, description, api } = provider;
+  const { t } = useTranslation();
+  const { id, label, noun: nounRaw, description: descriptionRaw, api } = provider;
+  const noun = t(`manage.oauth.${id}.noun`, nounRaw);
+  const description = t(`manage.oauth.${id}.description`, descriptionRaw);
 
   const [status, setStatus] = useState<"idle"|"running"|"done"|"error">("idle");
   const [msg,    setMsg]    = useState("");
@@ -63,7 +67,7 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
       const { url } = await api.loginUrl();
       const popup = window.open(url, `${id}-login`, "width=480,height=720");
       if (!popup) {
-        setMsg("Your browser blocked the popup — allow popups for this site and try again.");
+        setMsg(t("manage.oauth.popupBlocked", "Your browser blocked the popup — allow popups for this site and try again."));
         setLoggingIn(false);
         return;
       }
@@ -86,20 +90,21 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
         })();
       }, 1500);
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Could not start login");
+      setMsg(e instanceof Error ? e.message : t("manage.oauth.loginStartFailed", "Could not start login"));
       setLoggingIn(false);
     }
   }
 
   async function triggerSync() {
     setStatus("running");
-    setMsg(`Fetching ${noun} from ${label}…`);
+    setMsg(t("manage.oauth.fetching", `Fetching ${noun} from ${label}…`, { noun, label }));
     try {
       const data = await api.sync(from, to);
-      setMsg(`Done — ${data.imported} imported, ${data.skipped} skipped, ${data.errors} errors.`);
+      setMsg(t("manage.sync.doneMessage", `Done — ${data.imported} imported, ${data.skipped} skipped, ${data.errors} errors.`,
+        { imported: data.imported, skipped: data.skipped, errors: data.errors }));
       setStatus("done");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Sync failed");
+      setMsg(e instanceof Error ? e.message : t("manage.sync.syncFailed", "Sync failed"));
       setStatus("error");
     }
   }
@@ -109,7 +114,7 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
 
   return (
     <Card style={{ marginBottom: 16 }}>
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>Sync {label} {noun}</div>
+      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.oauth.syncTitle", `Sync ${label} ${noun}`, { label, noun })}</div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         {description}
       </div>
@@ -117,16 +122,18 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
       <StatusLine
         state={checkingToken ? "checking" : connected ? "ok" : token?.present ? "error" : "warn"}
         message={
-          checkingToken ? "Checking token…"
-          : connected   ? `Connected${token?.expiresAt ? ` · expires ${fmtExpiry(token.expiresAt)}` : ""}`
-          : token?.present ? `${label} session expired — please log in again`
-          : `Not connected to ${label}`
+          checkingToken ? t("manage.oauth.checkingToken", "Checking token…")
+          : connected   ? (token?.expiresAt
+              ? t("manage.oauth.connectedWithExpiry", `Connected · expires ${fmtExpiry(token.expiresAt)}`, { expiry: fmtExpiry(token.expiresAt) })
+              : t("manage.oauth.connected", "Connected"))
+          : token?.present ? t("manage.oauth.sessionExpired", `${label} session expired — please log in again`, { label })
+          : t("manage.oauth.notConnected", `Not connected to ${label}`, { label })
         }
         onRecheck={checkToken}
       />
 
       <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
-        <label className="hra-text-muted" style={{ fontSize: 12 }}>Date range:</label>
+        <label className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.oauth.dateRangeLabel", "Date range:")}</label>
         <DatePicker value={from} onChange={onFromChange} max={to} />
         <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
         <DatePicker value={to} onChange={onToChange} min={from} />
@@ -139,7 +146,9 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
           onClick={login}
           disabled={loggingIn}
         >
-          {loggingIn ? "Waiting for login…" : connected ? "Re-login" : `Login to ${label}`}
+          {loggingIn ? t("manage.oauth.waitingForLogin", "Waiting for login…")
+            : connected ? t("manage.oauth.reLogin", "Re-login")
+            : t("manage.oauth.loginTo", `Login to ${label}`, { label })}
         </button>
 
         <button
@@ -148,9 +157,9 @@ export function OAuthSyncSection({ provider, from, to, onFromChange, onToChange 
           style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
           onClick={triggerSync}
           disabled={!canSync}
-          title={!canSync && status !== "running" ? `Log in to ${label} first` : undefined}
+          title={!canSync && status !== "running" ? t("manage.oauth.loginFirstTooltip", `Log in to ${label} first`, { label }) : undefined}
         >
-          {status === "running" ? "Syncing…" : `↓ Sync from ${label}`}
+          {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.oauth.syncFromButton", `↓ Sync from ${label}`, { label })}
         </button>
       </div>
 
