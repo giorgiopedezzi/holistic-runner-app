@@ -15,6 +15,10 @@
     { "name": "settings", "description": "Settings + appearance (theme, background, units)" },
     { "name": "sync", "description": "Trigger data syncs (Garmin stream, Withings, Strava)" },
     { "name": "integrations", "description": "Device presence + Withings/Strava OAuth" },
+    { "name": "date-ranges", "description": "Saved named date ranges, optionally linked to the race a training block led up to" },
+    { "name": "activity-types", "description": "The fixed Training/Race lookup used to tag an activity" },
+    { "name": "training-plans", "description": "Structured training plans + their planned workouts (HRA-109)" },
+    { "name": "locales", "description": "i18n translation bundles" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
@@ -28,6 +32,7 @@
     "responses": {
       "BadRequest": { "description": "Malformed request (e.g. body is not valid JSON).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "NotFound": { "description": "Resource not found.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Conflict": { "description": "A conflicting resource already exists (e.g. duplicate name).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "Unprocessable": { "description": "Request parsed but failed a validation rule.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "PayloadTooLarge": { "description": "Request body exceeds the size limit.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "ServerError": { "description": "Unexpected server error (generic; never leaks internals).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
@@ -92,7 +97,9 @@
           "user_feedback": { "type": ["string", "null"], "enum": ["approved", "rejected", null] },
           "user_correction_reason": { "type": ["string", "null"] },
           "final_classification": { "type": ["string", "null"] },
-          "classification_method": { "type": ["string", "null"], "enum": ["ai", "statistical", null] }
+          "classification_method": { "type": ["string", "null"], "enum": ["ai", "statistical", null] },
+          "activity_type_id": { "type": "integer", "description": "FK to activity_types; defaults to 1 (Training)." },
+          "activity_name": { "type": ["string", "null"], "description": "Free-text label, e.g. a race's name." }
         }
       },
       "TrackPoint": {
@@ -199,7 +206,10 @@
           "background_value": { "type": ["string", "null"] },
           "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] },
           "min_trend_group_size": { "type": "integer" },
-          "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] }
+          "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] },
+          "accent_color": { "type": "string", "enum": ["teal", "violet", "magenta", "amber", "sky", "lime"] },
+          "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
+          "language": { "type": "string", "enum": ["auto", "en", "it"] }
         }
       },
       "SyncResult": {
@@ -221,7 +231,65 @@
           "name": { "type": "string" }
         }
       },
-      "LoginUrl": { "type": "object", "properties": { "url": { "type": "string", "format": "uri" } } }
+      "LoginUrl": { "type": "object", "properties": { "url": { "type": "string", "format": "uri" } } },
+      "DateRangeEntry": {
+        "type": "object",
+        "description": "A saved named date range, optionally linked to the race it led up to.",
+        "properties": {
+          "id": { "type": "integer" }, "name": { "type": "string" },
+          "from_date": { "type": "string", "format": "date" }, "to_date": { "type": "string", "format": "date" },
+          "activity_id": { "type": ["integer", "null"] }, "created_at": { "type": "string" },
+          "race_date_only": { "type": ["string", "null"], "format": "date" },
+          "race_activity_name": { "type": ["string", "null"] },
+          "race_distance_m": { "type": ["number", "null"] },
+          "race_activity_type_id": { "type": ["integer", "null"] }
+        }
+      },
+      "ActivityType": {
+        "type": "object",
+        "properties": { "id": { "type": "integer" }, "name": { "type": "string" }, "min_distance_m": { "type": "number" } }
+      },
+      "RaceActivity": {
+        "type": "object",
+        "description": "A race-type activity, as offered by the 'link a race' dropdown.",
+        "properties": {
+          "id": { "type": "integer" }, "date_only": { "type": "string", "format": "date" },
+          "activity_type_id": { "type": "integer" }, "activity_name": { "type": ["string", "null"] },
+          "distance_m": { "type": ["number", "null"] }
+        }
+      },
+      "TrainingPlan": {
+        "type": "object",
+        "description": "A named training-plan block over a date range (HRA-109).",
+        "properties": {
+          "id": { "type": "integer" }, "name": { "type": "string" }, "sport": { "type": "string" },
+          "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" },
+          "target_activity_id": { "type": ["integer", "null"], "description": "The race this block builds toward; same validation as date_ranges.activity_id." },
+          "created_at": { "type": "string" }
+        }
+      },
+      "PlannedWorkoutStep": {
+        "type": "object",
+        "description": "A single-level (non-recursive) repeat-block entry, e.g. 6x400m @ 4:00/km.",
+        "properties": {
+          "repeatCount": { "type": "integer", "minimum": 1 },
+          "distanceM": { "type": "number", "exclusiveMinimum": 0 },
+          "durationSec": { "type": "number", "exclusiveMinimum": 0 },
+          "targetPaceMinKm": { "type": "number", "exclusiveMinimum": 0 }
+        }
+      },
+      "PlannedWorkout": {
+        "type": "object",
+        "description": "One planned session within a training plan.",
+        "properties": {
+          "id": { "type": "integer" }, "plan_id": { "type": "integer" }, "date": { "type": "string", "format": "date" },
+          "workout_type": { "type": "string", "description": "One of the AI classifier's six categories, plus Rest/Race.", "examples": ["Recovery Run", "Long Session", "Repeats/Intervals", "Progressive Run", "Fartlek", "Tapasciata / Light Maintenance", "Rest", "Race"] },
+          "distance_m": { "type": ["number", "null"] }, "duration_sec": { "type": ["number", "null"] },
+          "target_pace_minkm": { "type": ["number", "null"] },
+          "steps": { "type": ["array", "null"], "items": { "$ref": "#/components/schemas/PlannedWorkoutStep" }, "description": "Present for structured interval sessions; null for a simple single-target session or Rest." },
+          "created_at": { "type": "string" }
+        }
+      }
     }
   },
   "paths": {
@@ -246,6 +314,9 @@
     "/api/v1/activities/trash": {
       "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
+    "/api/v1/activities/races": {
+      "get": { "tags": ["activities"], "summary": "Race-type activities (full history), for the 'link a race' dropdown", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Race activities.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/RaceActivity" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
+    },
     "/api/v1/activities/{id}": {
       "get": {
         "tags": ["activities"], "summary": "Get one activity",
@@ -264,6 +335,14 @@
     },
     "/api/v1/activities/{id}/track": {
       "get": { "tags": ["activities"], "summary": "Track points for one activity", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "Track points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TrackPoint" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+    },
+    "/api/v1/activities/{id}/type": {
+      "put": {
+        "tags": ["activities"], "summary": "Set an activity's type + optional name (replace sub-resource)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_type_id"], "properties": { "activity_type_id": { "type": "integer" }, "name": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
     },
     "/api/v1/activities/{id}/classify": {
       "post": {
@@ -361,6 +440,15 @@
     "/api/v1/settings/detail-view": {
       "put": { "tags": ["settings"], "summary": "Set activity detail view (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
+    "/api/v1/settings/accent": {
+      "put": { "tags": ["settings"], "summary": "Set the accent color (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["accent_color"], "properties": { "accent_color": { "type": "string", "enum": ["teal", "violet", "magenta", "amber", "sky", "lime"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+    },
+    "/api/v1/settings/date-format": {
+      "put": { "tags": ["settings"], "summary": "Set the date display format (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date_format"], "properties": { "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+    },
+    "/api/v1/settings/language": {
+      "put": { "tags": ["settings"], "summary": "Set the UI language (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["language"], "properties": { "language": { "type": "string", "enum": ["auto", "en", "it"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+    },
     "/api/v1/settings/background-image": {
       "get": { "tags": ["settings"], "summary": "Stream the current custom background image", "responses": { "200": { "description": "The image bytes.", "content": { "image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
@@ -398,6 +486,66 @@
     },
     "/api/v1/strava/callback": {
       "get": { "tags": ["integrations"], "summary": "Strava OAuth redirect target", "description": "Handled on the main port (3001). Returns an HTML page.", "parameters": [ { "name": "code", "in": "query", "schema": { "type": "string" } }, { "name": "state", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "HTML result page.", "content": { "text/html": {} } } } }
+    },
+    "/api/v1/date-ranges": {
+      "get": { "tags": ["date-ranges"], "summary": "List saved date ranges, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Date ranges.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/DateRangeEntry" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
+      "post": {
+        "tags": ["date-ranges"], "summary": "Save a named date range, optionally linked to a race",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "from", "to"], "properties": { "name": { "type": "string" }, "from": { "type": "string", "format": "date" }, "to": { "type": "string", "format": "date" }, "activity_id": { "type": ["integer", "null"] } } } } } },
+        "responses": { "201": { "description": "The created date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeEntry" } } } }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
+    "/api/v1/date-ranges/{id}": {
+      "put": {
+        "tags": ["date-ranges"], "summary": "Replace a saved date range (incl. renaming)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "from", "to"], "properties": { "name": { "type": "string" }, "from": { "type": "string", "format": "date" }, "to": { "type": "string", "format": "date" }, "activity_id": { "type": ["integer", "null"] } } } } } },
+        "responses": { "200": { "description": "The updated date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeEntry" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      },
+      "delete": { "tags": ["date-ranges"], "summary": "Permanently delete a saved date range (no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/activity-types": {
+      "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
+    },
+    "/api/v1/training-plans": {
+      "get": { "tags": ["training-plans"], "summary": "List training plans, newest start_date first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Training plans.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/TrainingPlan" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
+      "post": {
+        "tags": ["training-plans"], "summary": "Create a training plan",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "sport", "start_date", "end_date"], "properties": { "name": { "type": "string" }, "sport": { "type": "string" }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
+        "responses": { "201": { "description": "The created plan.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
+    "/api/v1/training-plans/{id}": {
+      "get": { "tags": ["training-plans"], "summary": "Get one training plan", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The plan.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "put": {
+        "tags": ["training-plans"], "summary": "Replace a training plan",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "sport", "start_date", "end_date"], "properties": { "name": { "type": "string" }, "sport": { "type": "string" }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
+        "responses": { "200": { "description": "The updated plan.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TrainingPlan" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      },
+      "delete": { "tags": ["training-plans"], "summary": "Delete a training plan (ON DELETE CASCADE removes its planned workouts, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/training-plans/{id}/workouts": {
+      "get": { "tags": ["training-plans"], "summary": "List planned workouts for a plan, ascending by date", "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Planned workouts.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlannedWorkout" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } }, "404": { "$ref": "#/components/responses/NotFound" } },
+      "post": {
+        "tags": ["training-plans"], "summary": "Create a planned workout under a plan",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date", "workout_type"], "properties": { "date": { "type": "string", "format": "date" }, "workout_type": { "type": "string" }, "distance_m": { "type": "number" }, "duration_sec": { "type": "number" }, "target_pace_minkm": { "type": "number" }, "steps": { "type": "array", "items": { "$ref": "#/components/schemas/PlannedWorkoutStep" } } } } } } },
+        "responses": { "201": { "description": "The created workout.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlannedWorkout" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
+    "/api/v1/planned-workouts/{id}": {
+      "get": { "tags": ["training-plans"], "summary": "Get one planned workout", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The workout.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlannedWorkout" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "put": {
+        "tags": ["training-plans"], "summary": "Replace a planned workout (plan_id is immutable, not part of the body)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date", "workout_type"], "properties": { "date": { "type": "string", "format": "date" }, "workout_type": { "type": "string" }, "distance_m": { "type": "number" }, "duration_sec": { "type": "number" }, "target_pace_minkm": { "type": "number" }, "steps": { "type": "array", "items": { "$ref": "#/components/schemas/PlannedWorkoutStep" } } } } } } },
+        "responses": { "200": { "description": "The updated workout.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlannedWorkout" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      },
+      "delete": { "tags": ["training-plans"], "summary": "Delete a single planned workout", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/locales/{lang}": {
+      "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/api/v1/docs": {
       "get": { "tags": ["docs"], "summary": "Rendered API documentation (self-contained HTML)", "responses": { "200": { "description": "Docs page.", "content": { "text/html": {} } } } }
