@@ -98,6 +98,20 @@ export interface SavedDateRange {
   race_activity_type_id:  number | null;
 }
 
+// A saved RunPlan DSL v1 template (HRA-111/HRA-112, amended HRA-113) — mirrors
+// garmin-stats/src/db.ts's PlanTemplateRow. parsed_plan is JSON-serialized, not
+// parsed here — the domain shape it deserializes to lives in types/runplan.ts
+// (RunPlan), consumed via domain/runplan-aggregate.ts's builders (HRA-116).
+export interface PlanTemplate {
+  id:           number;
+  name:         string;
+  dsl_source:   string;
+  parsed_plan:  string;
+  event:        string | null;
+  approved_at:  string | null;
+  created_at:   string;
+}
+
 export interface SportSummary {
   sport:              string;
   total_activities:   number;

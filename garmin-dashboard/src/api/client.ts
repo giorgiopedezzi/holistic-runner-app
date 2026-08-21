@@ -9,8 +9,9 @@ import type {
   DeviceStatus, WithingsStatus, StravaStatus, Settings, Theme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
-  ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated,
+  ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
 } from "@/types/api";
+import type { ParseWarning, RunPlan } from "@/types/runplan";
 
 // Sentinel "give me everything" limit for consumers that need the full set
 // (charts, previews, bulk actions) rather than a page — see HRA-38. The server
@@ -216,5 +217,15 @@ export const api = {
     // preset switch) so the browser can't serve a stale cached image after
     // the user picks a different one.
     backgroundImageUrl: (backgroundValue: string) => `${BASE}/api/v1/settings/background-image?v=${encodeURIComponent(backgroundValue)}`,
+  },
+  planTemplates: {
+    list:   async () => (await request<Paginated<PlanTemplate>>("/api/v1/plan-templates", "GET", { limit: ALL })).data,
+    // Parse-only preview, never persists (HRA-113) — what the create/edit
+    // flow calls on every "Generate"/"Refresh preview" click.
+    generate: (dsl_source: string) => request<{ plan: RunPlan; warnings: ParseWarning[] }>("/api/v1/plan-templates/generate", "POST", undefined, { dsl_source }),
+    create: (name: string, dsl_source: string) => request<PlanTemplate>("/api/v1/plan-templates", "POST", undefined, { name, dsl_source }),
+    update: (id: number, name: string, dsl_source: string) => request<PlanTemplate>(`/api/v1/plan-templates/${id}`, "PUT", undefined, { name, dsl_source }),
+    approve: (id: number) => request<PlanTemplate>(`/api/v1/plan-templates/${id}/approve`, "POST"),
+    remove: (id: number) => request<null>(`/api/v1/plan-templates/${id}`, "DELETE"),
   },
 };

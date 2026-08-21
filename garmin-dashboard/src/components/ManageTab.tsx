@@ -19,6 +19,7 @@ import { DateRangesSection } from "@/components/manage/DateRangesSection";
 import { ClassifySection } from "@/components/manage/ClassifySection";
 import { DeleteSection } from "@/components/manage/DeleteSection";
 import { TrashSection } from "@/components/manage/TrashSection";
+import { PlanTemplatesSection } from "@/components/manage/PlanTemplatesSection";
 
 interface Props {
   // Same list App.tsx shares with Activities/Body's bar and Overview & Trends
@@ -41,6 +42,9 @@ export function ManageTab({ savedRanges }: Props) {
 
       <SectionTitle>{t("manage.dateRangesSectionTitle", "Named date ranges")}</SectionTitle>
       <DateRangesSection />
+
+      <SectionTitle>{t("manage.planTemplatesSectionTitle", "Training-plan templates")}</SectionTitle>
+      <PlanTemplatesSection />
 
       <SectionTitle>{t("manage.classifySectionTitle", "AI workout classification")}</SectionTitle>
       <ClassifySection />

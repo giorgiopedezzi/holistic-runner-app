@@ -104,3 +104,26 @@ export interface ResolvedDay {
   notes?: string;
   needs_review: boolean;
 }
+
+export type EventType = "5k" | "10k" | "half" | "marathon" | "ultra" | "custom";
+export type OffsetUnit = "s/km" | "s/mi";
+export type DisplayUnit = "km" | "mi";
+
+// The whole-document shape POST /api/v1/plan-templates/generate returns as
+// `plan` (HRA-117 — the create/edit flow's preview + re-parse-on-edit call).
+export interface PlanMetadata {
+  name?: string;
+  event?: EventType;
+  distance_m?: number;
+  goal_time_sec?: number;
+  start_date?: string;
+  unit: DisplayUnit;
+  offset_unit: OffsetUnit;
+  default_rest: RestType;
+  pace_policy: PacePolicy;
+}
+
+export interface RunPlan {
+  metadata: PlanMetadata;
+  sections: Section[];
+}
