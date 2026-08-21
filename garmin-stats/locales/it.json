@@ -214,6 +214,11 @@
   "settings.accent.sky": "Azzurro",
   "settings.accent.lime": "Lime",
 
+  "settings.stylePack.boomer": "Boomer",
+  "settings.stylePack.genz": "GenZ",
+  "settings.stylePack.millennial": "Millennial",
+  "settings.stylePack.minimal": "Minimal",
+
   "settings.units.auto": "Automatico",
   "settings.units.metric": "Metrico (km, kg)",
   "settings.units.imperial": "Imperiale (mi, lb)",
@@ -235,6 +240,7 @@
   "settings.appearance.previewActivePill": "Pillola attiva",
   "settings.appearance.previewLink": "Link",
   "settings.appearance.previewFocusRing": "Anello di focus",
+  "settings.appearance.stylePackDescription": "Pacchetto di stile — una palette completa (sfondo, bordi, raggio, ombre), indipendente da tema e accento",
 
   "settings.activityDetails.title": "Dettagli attività",
   "settings.activityDetails.description": "Come si apre il dettaglio cliccando un'attività nella scheda Attività — espansione in linea nell'elenco, oppure apertura come popup.",

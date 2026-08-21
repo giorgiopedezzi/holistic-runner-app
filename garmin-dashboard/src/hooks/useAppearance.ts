@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage } from "@/types/api";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, StylePack } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { setDateFormatSystem } from "@/utils/dateFormat";
 import { ACCENT_PALETTE } from "@/utils/accent";
@@ -43,6 +43,11 @@ function resolveLanguage(stored: StoredLanguage): Language {
 // correction's) but nothing here reads them anymore.
 function applyToDocument(settings: Settings) {
   document.documentElement.setAttribute("data-theme", resolveTheme(settings.theme));
+  // HRA-119: full-palette style pack, compounded with data-theme above (see
+  // index.css's :root[data-style-pack="…"][data-theme="…"] blocks). No
+  // resolution needed — style_pack has no 'auto' concept, always a concrete
+  // value once the settings row loads (defaults to 'boomer' server-side).
+  document.documentElement.setAttribute("data-style-pack", settings.style_pack);
 
   const accent = ACCENT_PALETTE[settings.accent_color];
   document.documentElement.style.setProperty("--accent", accent.hex);
@@ -88,6 +93,10 @@ export interface AppearanceActions {
   // StoredLanguage — the header picker (HRA-104) only ever offers 'en'/'it',
   // never 'auto' as a selectable option.
   setLanguage?:     (language: Language) => Promise<void>;
+  // Optional for the same reason setAccentColor/setDateFormat/setLanguage
+  // are — keeps the pre-existing hand-written AppearanceApi stub
+  // (SettingsTab.pickers.test.tsx) valid without modification.
+  setStylePack?:    (pack: StylePack) => Promise<void>;
 }
 export interface AppearanceMeta {
   resolvedTheme:       Theme | null;
@@ -170,6 +179,11 @@ export function useAppearance(): AppearanceApi {
     void i18next.changeLanguage(language);
   }, [update]);
 
+  const setStylePack = useCallback(async (pack: StylePack) => {
+    const updated = await api.settings.setStylePack(pack);
+    update(updated);
+  }, [update]);
+
   return {
     settings,
     setTheme,
@@ -177,6 +191,7 @@ export function useAppearance(): AppearanceApi {
     setAccentColor,
     setDateFormat,
     setLanguage,
+    setStylePack,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
     resolvedLanguage: settings ? resolveLanguage(settings.language) : null,

@@ -1093,13 +1093,154 @@ input:focus, select:focus { border-color: var(--accent); }
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
-/* ══ PACK: MINIMAL (dark+light) ══ append to END of index.css */
-:root, :root[data-theme="dark"] {
+/* ══════════════════════════════════════════════════════════════════════════
+   STYLE PACKS (HRA-119) — GenZ / Millennial / Minimal. "Boomer" is this
+   file's own base palette above (the pre-existing :root/[data-theme] blocks)
+   and the default style_pack value — nothing below applies unless a user
+   explicitly picks a different pack, matching useAppearance.ts's
+   data-style-pack attribute.
+
+   Every rule below — both the :root variable blocks AND the structural
+   overrides (.card, .hra-pill-active, :focus-visible, etc.) — is scoped
+   under :root[data-style-pack="<pack>"], compounded with the existing
+   data-theme attribute for the two per-pack variable blocks. This is the
+   fix for two problems the original (unscoped, !important-laden) source
+   files had:
+     1. An unscoped .card{...} etc. would apply to EVERY pack once merged
+        into one stylesheet, not just its own — silently corrupting every
+        other pack's (and Boomer's) look.
+     2. --accent/--on-accent no longer carry !important (the original files
+        forced them to win over ANY rule, including the inline style
+        useAppearance.ts's setAccentColor() applies per HRA-95 — the one
+        case !important beats even an inline style — which made the accent
+        picker silently inert under every non-Boomer pack). Proper scoping
+        (an attribute-qualified selector) already gives these rules more
+        specificity than Boomer's own bare :root block without needing
+        !important, and — critically — a normal-weight rule still loses to
+        setAccentColor()'s inline --accent/--on-accent, restoring the
+        picker's effect under every pack, exactly like Boomer.
+   The two `!important`s that remain (both packs' `.hra-nav-hover:hover`
+   border-color) are unrelated to that bug — overriding a same-specificity
+   hover rule elsewhere — and were left untouched; only --accent/--on-accent
+   were ever the diagnosed problem. */
+
+/* ── PACK: GENZ ─────────────────────────────────────────────────────────── */
+:root[data-style-pack="genz"][data-theme="dark"] {
+  --bg: #150f1e; --bg-surface: #1d1529; --bg-card: #221a30;
+  --bg-danger: #ff2e9a22;
+  --border: #3d2f57; --border-strong: #6a55a0;
+  --text-primary: #f5f2ff; --text-secondary: #c0b6e6; --text-muted: #948bc0;
+  --accent: #ccff00; --on-accent: #000000;
+  --accent-green: #3dff88; --accent-blue: #22d3ee; --accent-red: #ff2e9a; --accent-orange: #ffb02e;
+  --data-pace: #3dff88; --data-hr: #ff2e9a; --data-elev: #22d3ee; --data-weight: #22d3ee;
+  --data-fat: #ffb02e; --data-muscle: #3dff88;
+  --accent-strong: #ff2e9a; --accent-light: #22d3ee;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+  --ambient-accent-mix: 14%; --ambient-dark-mix: 40%; --card-accent-mix: 10%; --card-dark-mix: 30%;
+  --card-shadow: 5px 5px 0 #000; --card-shadow-hover: 7px 7px 0 #000; --pop-shadow: 5px 5px 0 #000;
+  color-scheme: dark;
+}
+:root[data-style-pack="genz"][data-theme="light"] {
+  --bg: #f6f1e7; --bg-surface: #fbf8ef; --bg-card: #fffdf6;
+  --bg-danger: #e5148c1a;
+  --border: #141414; --border-strong: #000000;
+  --text-primary: #141414; --text-secondary: #44403a; --text-muted: #6f6a60;
+  --accent: #ff2e9a; --on-accent: #000000;
+  --accent-green: #00a870; --accent-blue: #6b4de6; --accent-red: #e5148c; --accent-orange: #ff8a00;
+  --data-pace: #00a870; --data-hr: #e5148c; --data-elev: #6b4de6; --data-weight: #6b4de6;
+  --data-fat: #ff8a00; --data-muscle: #00a870;
+  --accent-strong: #7c3aed; --accent-light: #22d3ee;
+  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
+  --ambient-accent-mix: 14%; --ambient-dark-mix: 0%; --card-accent-mix: 6%; --card-dark-mix: 0%;
+  --card-shadow: 5px 5px 0 #000; --card-shadow-hover: 7px 7px 0 #000; --pop-shadow: 5px 5px 0 #000;
+  color-scheme: light;
+}
+:root[data-style-pack="genz"] body::after { content: ""; position: fixed; inset: 0; z-index: 2000; pointer-events: none; opacity: .06;
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>"); }
+:root[data-style-pack="genz"] input, :root[data-style-pack="genz"] select, :root[data-style-pack="genz"] .hra-date-trigger,
+:root[data-style-pack="genz"] .hra-select-trigger, :root[data-style-pack="genz"] .hra-toggle-pill, :root[data-style-pack="genz"] .hra-switch,
+:root[data-style-pack="genz"] .hra-segmented-group { border-width: 2px; }
+:root[data-style-pack="genz"] .card { background: var(--bg-card); border: 2px solid var(--border-strong); box-shadow: var(--card-shadow); }
+:root[data-style-pack="genz"] .card:hover { box-shadow: var(--card-shadow-hover); transform: translate(-1px,-1px); }
+:root[data-style-pack="genz"] .hra-pill-active { background: var(--accent); border: 2px solid #000; color: #000; box-shadow: 3px 3px 0 #000; }
+:root[data-style-pack="genz"] .hra-pill-active:hover { box-shadow: 4px 4px 0 #000; }
+:root[data-style-pack="genz"] .hra-lift:hover { transform: translate(-2px,-2px); box-shadow: var(--card-shadow-hover); }
+:root[data-style-pack="genz"] .hra-lift:active { transform: none; box-shadow: 2px 2px 0 #000; }
+:root[data-style-pack="genz"] .hra-btn:hover, :root[data-style-pack="genz"] .hra-swatch:hover, :root[data-style-pack="genz"] .hra-toggle-pill:hover,
+:root[data-style-pack="genz"] .hra-date-trigger:hover, :root[data-style-pack="genz"] .hra-date-trigger[data-state="open"],
+:root[data-style-pack="genz"] .hra-select-trigger:hover, :root[data-style-pack="genz"] .hra-select-trigger[data-state="open"] { box-shadow: 3px 3px 0 #000; }
+:root[data-style-pack="genz"] .hra-legend-chip[data-active="true"], :root[data-style-pack="genz"] .hra-theme-swatch-pill { box-shadow: 2px 2px 0 #000; }
+:root[data-style-pack="genz"] .hra-hero-ring-glow { filter: drop-shadow(0 0 10px color-mix(in srgb, #ff2e9a 70%, transparent))
+  drop-shadow(0 0 22px color-mix(in srgb, #22d3ee 55%, transparent)); }
+:root[data-style-pack="genz"] .hra-trend-line-pace { filter: drop-shadow(0 0 4px var(--data-pace)); }
+:root[data-style-pack="genz"] .hra-trend-line-hr { filter: drop-shadow(0 0 4px var(--data-hr)); }
+:root[data-style-pack="genz"] :focus-visible { box-shadow: 3px 3px 0 #000; }
+:root[data-style-pack="genz"] .hra-header { border-bottom: 2px solid var(--border-strong); }
+:root[data-style-pack="genz"] .hra-popover-content, :root[data-style-pack="genz"] .hra-select-content { box-shadow: var(--pop-shadow); }
+:root[data-style-pack="genz"][data-theme="dark"] body::before { background: radial-gradient(130% 130% at 0% 0%,
+  color-mix(in srgb, #8b5cf6 24%, var(--bg)) 0%, var(--bg) 45%, #0a0712 100%); }
+
+/* ── PACK: MILLENNIAL ───────────────────────────────────────────────────── */
+:root[data-style-pack="millennial"][data-theme="dark"] {
+  --bg: #1c1915; --bg-surface: #24201a; --bg-card: #2a251e;
+  --bg-danger: #e07a5f26;
+  --border: #3b352b; --border-strong: #514939;
+  --text-primary: #f0eae0; --text-secondary: #b6ac9c; --text-muted: #948b7d;
+  --accent: #8aa892; --on-accent: #223028;
+  --accent-green: #85a68d; --accent-blue: #8aa7bd; --accent-red: #e08a6d; --accent-orange: #d9a066;
+  --data-pace: #8fb39a; --data-hr: #e08a6d; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
+  --data-fat: #d9a066; --data-muscle: #8fb39a;
+  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 24px;
+  --ambient-accent-mix: 10%; --ambient-dark-mix: 34%; --card-accent-mix: 8%; --card-dark-mix: 12%;
+  --card-shadow: 0 12px 32px -18px rgba(0,0,0,.55);
+  --card-shadow-hover: 0 18px 42px -18px rgba(0,0,0,.65);
+  --pop-shadow: 0 12px 28px rgba(0,0,0,.5);
+  color-scheme: dark;
+}
+:root[data-style-pack="millennial"][data-theme="light"] {
+  --bg: #faf6f0; --bg-surface: #fffdf9; --bg-card: #fffdf9;
+  --bg-danger: #e07a5f1a;
+  --border: #e9e1d5; --border-strong: #d8ccba;
+  --text-primary: #33302b; --text-secondary: #6e675c; --text-muted: #7d7467;
+  --accent: #8aa892; --on-accent: #223028;
+  --accent-green: #7d9b84; --accent-blue: #8aa7bd; --accent-red: #e07a5f; --accent-orange: #d9a066;
+  --data-pace: #6f8f79; --data-hr: #e07a5f; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
+  --data-fat: #d9a066; --data-muscle: #6f8f79;
+  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 24px;
+  --ambient-accent-mix: 10%; --ambient-dark-mix: 5%; --card-accent-mix: 7%; --card-dark-mix: 4%;
+  --card-shadow: 0 12px 32px -18px rgba(96,78,56,.25);
+  --card-shadow-hover: 0 18px 42px -18px rgba(96,78,56,.32);
+  --pop-shadow: 0 12px 28px rgba(96,78,56,.18);
+  color-scheme: light;
+}
+:root[data-style-pack="millennial"] .card { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--card-shadow); }
+:root[data-style-pack="millennial"] .card:hover { box-shadow: var(--card-shadow-hover); }
+:root[data-style-pack="millennial"] .hra-hero-tint { background: radial-gradient(140% 140% at 0% 0%,
+  color-mix(in srgb, var(--accent) 14%, var(--bg-card)) 0%, var(--bg-card) 100%); }
+:root[data-style-pack="millennial"] .hra-hero-ring-glow { filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent)); }
+:root[data-style-pack="millennial"] .hra-trend-line-pace, :root[data-style-pack="millennial"] .hra-trend-line-hr { filter: none; }
+:root[data-style-pack="millennial"] .hra-pill-active { background: linear-gradient(135deg, var(--accent),
+  color-mix(in srgb, var(--accent) 78%, white)); box-shadow: none; }
+:root[data-style-pack="millennial"] .hra-pill-active:hover { box-shadow: none; }
+:root[data-style-pack="millennial"] .hra-lift:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
+:root[data-style-pack="millennial"] .hra-btn:hover { box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--btn-glow, var(--accent)) 40%, transparent); }
+:root[data-style-pack="millennial"] .hra-swatch:hover { transform: scale(1.06); box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--swatch-color) 45%, transparent); }
+:root[data-style-pack="millennial"] .hra-toggle-pill:hover, :root[data-style-pack="millennial"] .hra-date-trigger:hover, :root[data-style-pack="millennial"] .hra-date-trigger[data-state="open"],
+:root[data-style-pack="millennial"] .hra-select-trigger:hover, :root[data-style-pack="millennial"] .hra-select-trigger[data-state="open"] { box-shadow: 0 6px 16px -8px rgba(0,0,0,.25); }
+:root[data-style-pack="millennial"] .hra-legend-chip[data-active="true"], :root[data-style-pack="millennial"] .hra-theme-swatch-pill { box-shadow: none; }
+:root[data-style-pack="millennial"] :focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+:root[data-style-pack="millennial"] .hra-nav-hover:not(.hra-pill-active):hover { border-color: var(--border-strong) !important; }
+:root[data-style-pack="millennial"] .hra-header { background: color-mix(in srgb, var(--bg-surface) 92%, transparent); }
+:root[data-style-pack="millennial"] .hra-popover-content, :root[data-style-pack="millennial"] .hra-select-content, :root[data-style-pack="millennial"] .hra-tooltip::after { box-shadow: var(--pop-shadow); }
+:root[data-style-pack="millennial"][data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,253,249,.9); }
+
+/* ── PACK: MINIMAL ──────────────────────────────────────────────────────── */
+:root[data-style-pack="minimal"][data-theme="dark"] {
   --bg: #101013; --bg-surface: #151518; --bg-card: #18181b;
   --bg-danger: #d23f3e14;
   --border: #26262a; --border-strong: #3b3b40;
-  --text-primary: #ececec; --text-secondary: #a5a5a5; --text-muted: #7d7d7d;
-  --accent: #9db3c8 ; --on-accent: #10161c;
+  --text-primary: #ececec; --text-secondary: #a5a5a5; --text-muted: #818181;
+  --accent: #9db3c8; --on-accent: #10161c;
   --accent-green: #8aa892; --accent-blue: #8aa7bd; --accent-red: #c97a74; --accent-orange: #c9a27a;
   --data-pace: #d5dce4; --data-hr: #76889a; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
   --data-fat: #c9a27a; --data-muscle: #8aa892;
@@ -1108,12 +1249,12 @@ input:focus, select:focus { border-color: var(--accent); }
   --card-shadow: none; --card-shadow-hover: none; --pop-shadow: 0 4px 12px rgba(0,0,0,.5);
   color-scheme: dark;
 }
-:root[data-theme="light"] {
+:root[data-style-pack="minimal"][data-theme="light"] {
   --bg: #ffffff; --bg-surface: #ffffff; --bg-card: #ffffff;
   --bg-danger: #d23f3e10;
   --border: #e7e7e7; --border-strong: #c9c9c9;
-  --text-primary: #161616; --text-secondary: #5c5c5c; --text-muted: #8f8f8f;
-  --accent: #64748b ; --on-accent: #ffffff;
+  --text-primary: #161616; --text-secondary: #5c5c5c; --text-muted: #767676;
+  --accent: #64748b; --on-accent: #ffffff;
   --accent-green: #708c7d; --accent-blue: #728698; --accent-red: #bf6058; --accent-orange: #b08968;
   --data-pace: #3f4a56; --data-hr: #9aa5b1; --data-elev: #728698; --data-weight: #728698;
   --data-fat: #b08968; --data-muscle: #708c7d;
@@ -1122,27 +1263,27 @@ input:focus, select:focus { border-color: var(--accent); }
   --card-shadow: none; --card-shadow-hover: none; --pop-shadow: 0 4px 12px rgba(0,0,0,.08);
   color-scheme: light;
 }
-.card, .hra-hero-tint, .hra-chrome-preview { background: var(--bg-card); }
-.card { border: 1px solid var(--border); box-shadow: none; }
-.card:hover { box-shadow: none; }
-.hra-hero-ring-glow, .hra-trend-line-pace, .hra-trend-line-hr { filter: none; }
-.hra-lift:hover, .hra-lift:active { transform: none; box-shadow: none; }
-.hra-btn:hover, .hra-swatch:hover, .hra-toggle-pill:hover,
-.hra-date-trigger:hover, .hra-date-trigger[data-state="open"],
-.hra-select-trigger:hover, .hra-select-trigger[data-state="open"],
-.hra-legend-chip[data-active="true"], .hra-theme-swatch-pill { box-shadow: none; }
-.hra-swatch:hover { transform: none; }
-:focus-visible { outline: 1px solid var(--accent); box-shadow: none; }
-.hra-nav-hover:not(.hra-pill-active):hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border-color: var(--border-strong); }
-.hra-header { background: var(--bg-surface); backdrop-filter: none; -webkit-backdrop-filter: none;
+:root[data-style-pack="minimal"] .card, :root[data-style-pack="minimal"] .hra-hero-tint, :root[data-style-pack="minimal"] .hra-chrome-preview { background: var(--bg-card); }
+:root[data-style-pack="minimal"] .card { border: 1px solid var(--border); box-shadow: none; }
+:root[data-style-pack="minimal"] .card:hover { box-shadow: none; }
+:root[data-style-pack="minimal"] .hra-hero-ring-glow, :root[data-style-pack="minimal"] .hra-trend-line-pace, :root[data-style-pack="minimal"] .hra-trend-line-hr { filter: none; }
+:root[data-style-pack="minimal"] .hra-lift:hover, :root[data-style-pack="minimal"] .hra-lift:active { transform: none; box-shadow: none; }
+:root[data-style-pack="minimal"] .hra-btn:hover, :root[data-style-pack="minimal"] .hra-swatch:hover, :root[data-style-pack="minimal"] .hra-toggle-pill:hover,
+:root[data-style-pack="minimal"] .hra-date-trigger:hover, :root[data-style-pack="minimal"] .hra-date-trigger[data-state="open"],
+:root[data-style-pack="minimal"] .hra-select-trigger:hover, :root[data-style-pack="minimal"] .hra-select-trigger[data-state="open"],
+:root[data-style-pack="minimal"] .hra-legend-chip[data-active="true"], :root[data-style-pack="minimal"] .hra-theme-swatch-pill { box-shadow: none; }
+:root[data-style-pack="minimal"] .hra-swatch:hover { transform: none; }
+:root[data-style-pack="minimal"] :focus-visible { outline: 1px solid var(--accent); box-shadow: none; }
+:root[data-style-pack="minimal"] .hra-nav-hover:not(.hra-pill-active):hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border-color: var(--border-strong) !important; }
+:root[data-style-pack="minimal"] .hra-header { background: var(--bg-surface); backdrop-filter: none; -webkit-backdrop-filter: none;
   border-bottom: 1px solid var(--border); }
-.hra-sticky-summary { background: var(--bg); }
-.hra-popover-content, .hra-select-content, .hra-tooltip::after { box-shadow: var(--pop-shadow); }
-.hra-kpi-value, .hra-brand { font-weight: 600; }
-.hra-label { letter-spacing: 0.08em; }
-/* inverted-chip active pill: black-on-white / white-on-black */
-:root[data-theme="light"] .hra-pill-active { background: #161616; color: #ffffff; box-shadow: none; }
-:root[data-theme="dark"]  .hra-pill-active { background: #ececec; color: #111111; box-shadow: none; }
-.hra-pill-active:hover { box-shadow: none; }
+:root[data-style-pack="minimal"] .hra-sticky-summary { background: var(--bg); }
+:root[data-style-pack="minimal"] .hra-popover-content, :root[data-style-pack="minimal"] .hra-select-content, :root[data-style-pack="minimal"] .hra-tooltip::after { box-shadow: var(--pop-shadow); }
+:root[data-style-pack="minimal"] .hra-kpi-value, :root[data-style-pack="minimal"] .hra-brand { font-weight: 600; }
+:root[data-style-pack="minimal"] .hra-label { letter-spacing: 0.08em; }
+:root[data-style-pack="minimal"][data-theme="light"] .hra-pill-active { background: #161616; color: #ffffff; box-shadow: none; }
+:root[data-style-pack="minimal"][data-theme="dark"]  .hra-pill-active { background: #ececec; color: #111111; box-shadow: none; }
+:root[data-style-pack="minimal"] .hra-pill-active:hover { box-shadow: none; }
+:root[data-style-pack="minimal"][data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,255,255,.9); }
 :root[data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,255,255,.9); }

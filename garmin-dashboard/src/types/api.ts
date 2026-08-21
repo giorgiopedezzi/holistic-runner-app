@@ -293,6 +293,15 @@ export type Language = "en" | "it" | "fr" | "de" | "es" | "ja";
 export const LANGUAGE_NAMES: Language[] = ["en", "it", "fr", "de", "es", "ja"];
 export type StoredLanguage = Language | "auto";
 
+// Full-palette "style pack" (HRA-119) — orthogonal to Theme (dark/light) and
+// AccentColor (the 6 curated hues) above: a whole different set of --bg/
+// --border/--radius/--card-shadow/etc. tokens, applied via a data-style-pack
+// attribute (index.css), compounded with the existing data-theme attribute.
+// 'boomer' is today's existing palette and the default, so existing installs
+// see no visual change until a user explicitly picks a different pack.
+export type StylePack = "boomer" | "genz" | "millennial" | "minimal";
+export const STYLE_PACK_NAMES: StylePack[] = ["boomer", "genz", "millennial", "minimal"];
+
 export interface Settings {
   outlier_speed_delta_per_sec:   number;
   outlier_cadence_delta_per_sec: number;
@@ -308,6 +317,7 @@ export interface Settings {
   accent_color: AccentColor;
   date_format: DateFormat;
   language: StoredLanguage;
+  style_pack: StylePack;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

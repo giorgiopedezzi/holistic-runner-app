@@ -214,6 +214,11 @@
   "settings.accent.sky": "Sky",
   "settings.accent.lime": "Lime",
 
+  "settings.stylePack.boomer": "Boomer",
+  "settings.stylePack.genz": "GenZ",
+  "settings.stylePack.millennial": "Millennial",
+  "settings.stylePack.minimal": "Minimal",
+
   "settings.units.auto": "Auto",
   "settings.units.metric": "Metric (km, kg)",
   "settings.units.imperial": "Imperial (mi, lb)",
@@ -235,6 +240,7 @@
   "settings.appearance.previewActivePill": "Active pill",
   "settings.appearance.previewLink": "Link",
   "settings.appearance.previewFocusRing": "Focus ring",
+  "settings.appearance.stylePackDescription": "Style pack — a full palette (background, borders, radius, shadows), independent of theme and accent",
 
   "settings.activityDetails.title": "Activity details",
   "settings.activityDetails.description": "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.",

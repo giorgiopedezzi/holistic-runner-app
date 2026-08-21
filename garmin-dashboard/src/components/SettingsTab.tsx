@@ -12,8 +12,8 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
-import type { Settings, Theme, StoredUnitSystem, AccentColor } from "@/types/api";
-import { THEME_NAMES, ACCENT_COLOR_NAMES, DATE_FORMAT_OPTIONS } from "@/types/api";
+import type { Settings, Theme, StoredUnitSystem, AccentColor, StylePack } from "@/types/api";
+import { THEME_NAMES, ACCENT_COLOR_NAMES, DATE_FORMAT_OPTIONS, STYLE_PACK_NAMES } from "@/types/api";
 import { ACCENT_PALETTE } from "@/utils/accent";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
@@ -126,6 +126,39 @@ export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// Style pack labels only — same "label here, colors in CSS" split ThemePicker
+// documents above.
+const STYLE_PACK_LABEL: Record<StylePack, string> = {
+  boomer: "Boomer",
+  genz: "GenZ",
+  millennial: "Millennial",
+  minimal: "Minimal",
+};
+
+// Style pack picker (HRA-119): a full-palette choice orthogonal to Theme and
+// Accent above — toggle-pill row, same simple pattern UnitsPicker/
+// DateFormatPicker already use (a full swatch-preview mechanism like
+// ThemePicker's would need a data-style-pack-preview variant of every pack's
+// tokens, out of scope for this Story).
+export function StylePackPicker({ appearance }: { appearance: AppearanceApi }) {
+  const { t } = useTranslation();
+  const current = appearance.settings?.style_pack;
+  return (
+    <div className="hra-chip-row" style={{ gap: 8 }}>
+      {STYLE_PACK_NAMES.map(pack => (
+        <button
+          key={pack}
+          className="hra-toggle-pill"
+          data-active={current === pack}
+          onClick={() => appearance.setStylePack?.(pack)}
+        >
+          {t(`settings.stylePack.${pack}`, STYLE_PACK_LABEL[pack])}
+        </button>
+      ))}
     </div>
   );
 }
@@ -363,6 +396,12 @@ export function SettingsTab({ appearance }: Props) {
             {t("settings.appearance.accentDescription", "Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors")}
           </div>
           <AccentPicker appearance={appearance} />
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
+            {t("settings.appearance.stylePackDescription", "Style pack — a full palette (background, borders, radius, shadows), independent of theme and accent")}
+          </div>
+          <StylePackPicker appearance={appearance} />
         </div>
         <ChromePreviewStrip />
       </AccordionCard>

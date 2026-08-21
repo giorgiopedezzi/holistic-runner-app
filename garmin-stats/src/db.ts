@@ -200,6 +200,13 @@ export function initSchema(db: DatabaseSync): void {
       -- 'auto' idiom as unit_system above — plus the two concrete supported
       -- codes ('en'/'it'). Independent of date_format/unit_system.
       language                      TEXT NOT NULL DEFAULT 'auto',
+      -- HRA-119: full-palette "style pack" — orthogonal to theme (dark/light)
+      -- and accent_color (the 6 curated hues). 'boomer' is today's existing
+      -- palette (index.css's own base block) and the default, so existing
+      -- installs see no visual change until a user explicitly picks a
+      -- different pack. Applied via a data-style-pack attribute (index.css),
+      -- compounded with data-theme — see docs/frontend.md's Appearance section.
+      style_pack                    TEXT NOT NULL DEFAULT 'boomer',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
@@ -467,6 +474,9 @@ export function initSchema(db: DatabaseSync): void {
   if (!settingsCols.some(c => c.name === "language")) {
     db.exec("ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto'");
   }
+  if (!settingsCols.some(c => c.name === "style_pack")) {
+    db.exec("ALTER TABLE settings ADD COLUMN style_pack TEXT NOT NULL DEFAULT 'boomer'");
+  }
 
   // HRA-113: approval gate columns, added after plan_templates/plan_instances
   // already existed (HRA-112). First migration either table has needed.
@@ -672,6 +682,7 @@ export interface SettingsRow {
   accent_color: string;
   date_format: string;
   language: string;
+  style_pack: string;
 }
 
 // ── Typed param builders ──────────────────────────────────────────────────

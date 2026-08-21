@@ -32,6 +32,10 @@ const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
 // (garmin-dashboard's i18n.ts) — same writable-'auto' idiom as unit_system,
 // unlike theme. 'en'/'it' are the two bundles under garmin-stats/locales/.
 const LANGUAGES = ["auto", "en", "it", "fr", "de", "es", "ja"];
+// Full-palette style pack (HRA-119) — orthogonal to theme/accent_color.
+// 'boomer' is today's existing palette and the default. See db.ts's
+// style_pack column comment and docs/frontend.md's Appearance section.
+const STYLE_PACKS = ["boomer", "genz", "millennial", "minimal"];
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };
@@ -143,6 +147,15 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
+  const updateStylePack: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    if (!body.style_pack || !STYLE_PACKS.includes(body.style_pack)) {
+      throw unprocessable(`style_pack must be one of: ${STYLE_PACKS.join(", ")}`);
+    }
+    repo.updateStylePack({ $style_pack: body.style_pack });
+    return send(res, repo.get());
+  };
+
   const backgroundImage: Handler = (_req, res) => {
     const row = repo.get() as unknown as SettingsRow;
     if (row.background_kind !== "custom" || !row.background_value) throw notFound("No custom background set.");
@@ -177,5 +190,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updateStylePack, backgroundImage, uploadBackground };
 }

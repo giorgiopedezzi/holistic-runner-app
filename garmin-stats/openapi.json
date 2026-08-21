@@ -209,7 +209,8 @@
           "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] },
           "accent_color": { "type": "string", "enum": ["teal", "violet", "magenta", "amber", "sky", "lime"] },
           "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
-          "language": { "type": "string", "enum": ["auto", "en", "it"] }
+          "language": { "type": "string", "enum": ["auto", "en", "it"] },
+          "style_pack": { "type": "string", "enum": ["boomer", "genz", "millennial", "minimal"], "description": "Full-palette choice, orthogonal to theme/accent_color (HRA-119). 'boomer' is today's existing palette and the default." }
         }
       },
       "SyncResult": {
@@ -489,6 +490,14 @@
     },
     "/api/v1/settings/language": {
       "put": { "tags": ["settings"], "summary": "Set the UI language (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["language"], "properties": { "language": { "type": "string", "enum": ["auto", "en", "it"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+    },
+    "/api/v1/settings/style-pack": {
+      "put": {
+        "tags": ["settings"], "summary": "Set the style pack (replace singleton, HRA-119)",
+        "description": "Full-palette choice, orthogonal to theme/accent_color. 'boomer' is today's existing palette and the default.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["style_pack"], "properties": { "style_pack": { "type": "string", "enum": ["boomer", "genz", "millennial", "minimal"] } } } } } },
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
     },
     "/api/v1/settings/background-image": {
       "get": { "tags": ["settings"], "summary": "Stream the current custom background image", "responses": { "200": { "description": "The image bytes.", "content": { "image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }

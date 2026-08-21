@@ -10,7 +10,7 @@ import type {
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
-  PlanInstance, PlanInstanceWithDays,
+  PlanInstance, PlanInstanceWithDays, StylePack,
 } from "@/types/api";
 import type { ParseWarning, RunPlan } from "@/types/runplan";
 
@@ -202,6 +202,7 @@ export const api = {
     setAccentColor: (accent: AccentColor) => request<Settings>("/api/v1/settings/accent", "PUT", undefined, { accent_color: accent }),
     setDateFormat: (format: DateFormat) => request<Settings>("/api/v1/settings/date-format", "PUT", undefined, { date_format: format }),
     setLanguage: (language: StoredLanguage) => request<Settings>("/api/v1/settings/language", "PUT", undefined, { language }),
+    setStylePack: (stylePack: StylePack) => request<Settings>("/api/v1/settings/style-pack", "PUT", undefined, { style_pack: stylePack }),
     // Not routed through request() — this sends the raw file bytes as the
     // body (Content-Type = the file's own mime type), not a JSON payload.
     uploadBackground: async (file: File): Promise<Settings> => {
