@@ -333,6 +333,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
       const ctx: DayParseContext = {
         unit: overriddenPlan.metadata.unit, offset_unit: overriddenPlan.metadata.offset_unit,
         default_rest: overriddenPlan.metadata.default_rest, pacePolicy: policy,
+        // An instance's pace must actually resolve — no TBD leniency here,
+        // unlike template parsing (parser.ts's parseRunPlanDSL).
+        allowUnboundPace: false,
       };
       const parsedDay = parseDayEntry(d.dsl, ctx);
       if (parsedDay.needs_review) {

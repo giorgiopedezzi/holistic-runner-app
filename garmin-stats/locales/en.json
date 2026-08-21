@@ -400,6 +400,7 @@
   "runplan.accordion.notePlaceholder": "Optional note",
   "runplan.accordion.dslLabel": "Workout (DSL)",
   "runplan.accordion.needsReview": "This day needs review before it can be saved.",
+  "runplan.accordion.needsReviewBadge": "Needs review",
 
   "manage.planTemplatesSectionTitle": "Training-plan templates",
   "manage.planTemplates.title": "Training-plan templates",

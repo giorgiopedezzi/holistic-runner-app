@@ -7,7 +7,7 @@ import type { Intensity, PacePolicy, RunPlan, Section, Week } from "./types.ts";
 
 export type PaceResolutionResult =
   | { ok: true; pace_sec_per_km: number }
-  | { ok: false; error: string };
+  | { ok: false; error: string; deliberatelyUnbound?: boolean };
 
 // Shallow merge by anchor name — child scopes override parent scopes.
 export function getEffectivePacePolicy(plan: RunPlan, section: Section, week: Week): PacePolicy {
@@ -32,6 +32,12 @@ function resolveAnchor(anchor: string, policy: PacePolicy, visited: Set<string>)
   }
   if (value.kind === "absolute") {
     return { ok: true, pace_sec_per_km: value.pace_sec_per_km };
+  }
+  if (value.kind === "unbound") {
+    return {
+      ok: false, deliberatelyUnbound: true,
+      error: `Pace anchor "${anchor}" is marked TBD — provide a value when instantiating.`,
+    };
   }
   const base = resolveAnchor(value.anchor, policy, new Set(visited).add(anchor));
   if (!base.ok) return base;

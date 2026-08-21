@@ -10,7 +10,7 @@ export type RestType = "stand" | "walk" | "jog";
 export type EventType = "5k" | "10k" | "half" | "marathon" | "ultra" | "custom";
 
 export type PacePolicy = Record<string, PaceValue>;
-export type PaceValue = AbsolutePace | OffsetPace;
+export type PaceValue = AbsolutePace | OffsetPace | UnboundPace;
 
 export interface AbsolutePace {
   kind: "absolute";
@@ -21,6 +21,18 @@ export interface OffsetPace {
   kind: "offset";
   anchor: string;
   offset_sec_per_km: number;
+}
+
+// `PACE <ANCHOR>=TBD` — a deliberate placeholder: the anchor is real and
+// referenced by the plan, but its value isn't decided yet. Template-level
+// parsing (parseRunPlanDSL) treats a day whose only unresolved intensities
+// trace back to an unbound anchor as NOT needing review (the whole point of
+// a template is some anchors stay symbolic until instantiation) — but the
+// instance day-edit path (DayParseContext.allowUnboundPace: false) does NOT
+// get this leniency, since a real instance's pace must actually resolve.
+// See pace.ts's PaceResolutionResult.deliberatelyUnbound.
+export interface UnboundPace {
+  kind: "unbound";
 }
 
 // unknown (HRA-113): a literal `?` placeholder, or any token the parser
@@ -212,4 +224,9 @@ export interface DayParseContext {
   offset_unit: OffsetUnit;
   default_rest: RestType;
   pacePolicy: PacePolicy;
+  // true (template full-parse, parseRunPlanDSL): an intensity whose only
+  // resolution failure traces back to a deliberately-unbound (TBD) anchor
+  // does NOT produce a day warning. false (instance day-edit,
+  // updateInstance): no leniency — a real instance's pace must resolve.
+  allowUnboundPace: boolean;
 }

@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 
 interface AccordionCardProps {
-  title: string;
+  // Usually a plain string; a ReactNode is accepted too so a caller can pack
+  // a compact always-visible summary/icons alongside the label itself
+  // (TrainingPlanAccordion.tsx, HRA-118 follow-up) without a second prop.
+  title: ReactNode;
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;

@@ -400,6 +400,7 @@
   "runplan.accordion.notePlaceholder": "Nota opzionale",
   "runplan.accordion.dslLabel": "Allenamento (DSL)",
   "runplan.accordion.needsReview": "Questo giorno richiede una revisione prima di poter essere salvato.",
+  "runplan.accordion.needsReviewBadge": "Richiede revisione",
 
   "manage.planTemplatesSectionTitle": "Modelli di piano di allenamento",
   "manage.planTemplates.title": "Modelli di piano di allenamento",

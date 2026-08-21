@@ -11,7 +11,7 @@
 import type {
   AbsolutePace, AnchorIntensity, DayEntry, DayParseContext, DisplayUnit, EventType,
   Intensity, IntervalSegment, OffsetIntensity, OffsetPace, OffsetUnit, PacePolicy, ParseWarning,
-  ProgressionSegment, RestBlockSegment, RestSpec, RestType, RunPlan, Section, Target, Week,
+  ProgressionSegment, RestBlockSegment, RestSpec, RestType, RunPlan, Section, Target, UnboundPace, Week,
   WorkoutSegment,
 } from "./types.ts";
 import { getEffectivePacePolicy, resolveIntensityToPace, detectCircularPaceRefs } from "./pace.ts";
@@ -28,12 +28,15 @@ const DISTANCE_RE = /^(\d+(?:\.\d+)?)(m|km|mi)$/;
 const DURATION_RE = /^(\d+(?:\.\d+)?)(s|sec|min|h)$/;
 const APOSTROPHE_MIN_RE = /^(\d+(?:\.\d+)?)'$/;
 const ABS_PACE_RE = /^(\d+):(\d{2})\/(km|mi)$/;
+// A deliberate "not decided yet" placeholder for a PACE line's value (or a
+// pace_overrides entry) — see types.ts's UnboundPace.
+const TBD_RE = /^TBD$/i;
 const OFFSET_RE = /^([A-Za-z0-9_]+)([+-])(\d+(?:\.\d+)?)(s\/km|s\/mi)?$/;
 const ANCHOR_RE = /^[A-Za-z0-9_]+$/;
 
 const PLAN_RE = /^PLAN$/;
 const NAME_RE = /^NAME\s+(.+)$/;
-const EVENT_RE = /^EVENT\s+(\S+)$/i;
+const EVENT_RE = /^(?:EVENT|EVENT_TYPE)\s+(\S+)$/i;
 const DISTANCE_META_RE = /^DISTANCE\s+(\S+)$/;
 const GOAL_RE = /^GOAL\s+(\d{2}):(\d{2}):(\d{2})$/;
 const START_RE = /^START\s+(\d{4}-\d{2}-\d{2})$/;
@@ -120,7 +123,8 @@ function parseIntensity(token: string, offsetUnit: OffsetUnit): Intensity {
 // its "can fail" contract (null) — pace_overrides is a REST request parameter,
 // not DSL prose, so rejecting a genuinely invalid override at the API
 // boundary is still correct (rest-api-standards, not the DSL leniency rule).
-export function parsePaceValue(token: string, offsetUnit: OffsetUnit): AbsolutePace | OffsetPace | null {
+export function parsePaceValue(token: string, offsetUnit: OffsetUnit): AbsolutePace | OffsetPace | UnboundPace | null {
+  if (TBD_RE.test(token)) return { kind: "unbound" };
   const intensity = parseIntensity(token, offsetUnit);
   if (intensity.kind === "anchor" || intensity.kind === "unknown") return null;
   return intensity.kind === "absolute"
@@ -311,7 +315,12 @@ export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
       : [];
     for (const intensity of intensities) {
       if (intensity.kind === "absolute" || intensity.kind === "unknown") continue;
-      if (!resolveIntensityToPace(intensity, ctx.pacePolicy).ok) {
+      const result = resolveIntensityToPace(intensity, ctx.pacePolicy);
+      // A deliberately-unbound (TBD) anchor doesn't warn during template
+      // parsing (ctx.allowUnboundPace) — the whole point of a template is
+      // that some anchors stay symbolic until instantiation. The instance
+      // day-edit path (allowUnboundPace: false) gets no such leniency.
+      if (!result.ok && !(ctx.allowUnboundPace && result.deliberatelyUnbound)) {
         const anchor = (intensity as AnchorIntensity | OffsetIntensity).anchor;
         warn(`Pace anchor "${anchor}" could not be resolved against the effective pace policy.`);
       }
@@ -429,6 +438,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       const ctx: DayParseContext = {
         unit: plan.metadata.unit, offset_unit: plan.metadata.offset_unit, default_rest: plan.metadata.default_rest,
         pacePolicy: getEffectivePacePolicy(plan, currentSection!, currentWeek),
+        allowUnboundPace: true,
       };
       const day = parseDayEntry(text, ctx);
       day.warnings = day.warnings.map(w => ({ ...w, line: n }));

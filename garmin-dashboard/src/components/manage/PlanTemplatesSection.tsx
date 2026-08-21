@@ -8,7 +8,7 @@
  * dsl_source patching on edit (domain/runplan-patch.ts), save, approve,
  * delete.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge } from "@/components/ui";
@@ -48,6 +48,12 @@ export function PlanTemplatesSection() {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Tracks the dslSource the accordion's *current* preview was generated
+  // from — lets the debounced auto-regenerate effect below know whether
+  // there's actually anything new to preview, without re-triggering itself
+  // off its own setEditor call (which doesn't change dslSource).
+  const lastGeneratedRef = useRef<string | null>(null);
+
   function refreshList() {
     return api.planTemplates.list().then(setTemplates).catch(e => setListError(e instanceof Error ? e.message : t("manage.planTemplates.loadFailed", "Failed to load templates")));
   }
@@ -57,6 +63,7 @@ export function PlanTemplatesSection() {
   function resetEditorState() {
     setEditingId(null); setSavedDslSource(null); setName(""); setEditor(EMPTY_EDITOR);
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
+    lastGeneratedRef.current = null;
   }
 
   function startCreate() {
@@ -84,6 +91,7 @@ export function PlanTemplatesSection() {
     setGenLoading(true); setGenError(null); setPatchError(null);
     try {
       const { plan, warnings } = await api.planTemplates.generate(dslSource);
+      lastGeneratedRef.current = dslSource;
       setPlanWarnings(warnings);
       setEditor({ dslSource, sections: plan.sections.map(s => buildTemplateSectionView(s, plan.metadata.pace_policy)) });
     } catch (e) {
@@ -91,6 +99,24 @@ export function PlanTemplatesSection() {
     }
     setGenLoading(false);
   }
+
+  // Auto-regenerate the preview a beat after any edit — editing a Section/
+  // Week/Day field, pasting fresh text, or uploading a file all change
+  // editor.dslSource without themselves calling generate() (see each edit
+  // handler below, and onFileUpload/the raw textarea's onChange). Without
+  // this, the accordion's totals/warnings and Save's real enabled state
+  // stay stale until the user notices and clicks "Generate / refresh
+  // preview" themselves — debounced (not per-keystroke) to avoid a request
+  // per character typed, per the same reasoning HRA-117 documented for not
+  // auto-generating originally; the manual button stays available for an
+  // instant refresh.
+  useEffect(() => {
+    if (mode !== "editor") return;
+    if (editor.dslSource.trim() === "") return;
+    if (editor.dslSource === lastGeneratedRef.current) return;
+    const timer = setTimeout(() => { runGenerate(editor.dslSource); }, 700);
+    return () => clearTimeout(timer);
+  }, [editor.dslSource, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function onSectionEdit(sectionIndex: number, patch: { name?: string; notes?: string }) {
     setPatchError(null);

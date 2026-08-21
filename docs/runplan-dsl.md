@@ -30,11 +30,17 @@ it — see `docs/schema.md`'s `plan_templates`/`plan_instances`/`plan_instance_d
 
 ## Grammar (line-based)
 A document is `PLAN`, then metadata lines (`NAME`/`EVENT`/`DISTANCE`/`GOAL`/`START`/`UNIT`/
-`OFFSET_UNIT`/`DEFAULT_REST`/`PACE`, only valid before the first `SECTION`/`WEEK`/`DAY` line),
+`OFFSET_UNIT`/`DEFAULT_REST`/`PACE`, only valid before the first `SECTION`/`WEEK`/`DAY` line;
+`EVENT_TYPE` is accepted as an alias for `EVENT` — same grammar, same recognized values below),
 then `SECTION "<name>" WEEKS <spec>` blocks (a default `{name:"Plan", week_spec:"*"}` section is
 created if none is declared), each containing `WEEK <n> [START <date>]` blocks, each containing
 `D<1-7><suffix?> [tag]?: <workout>` lines. Trailing `# note` is captured on `SECTION`/`WEEK`/`DAY`
 lines; full-line `#...` comments and blank lines are ignored everywhere.
+
+**`EVENT`/`EVENT_TYPE <value>`** recognizes `5k`/`10k`/`half`/`marathon`/`ultra` (case-insensitive) —
+anything else is still accepted but stored as `custom` with a `ParseWarning`, which matters at
+instantiate time: `ultra`/`custom` have no standard distance, so converting a `goal_time` into the
+`RG` anchor then requires an explicit `distance_m` (see `docs/schema.md`'s instantiate section).
 
 A day's workout is one of `REST`, `TODO` (→ `needs_review:true`), `CROSS [<target>] <description>`,
 `STRENGTH [<target>] <description>`, or one or more `;`-separated segments:
@@ -70,6 +76,21 @@ specific `ParseWarning` naming what was unclear (`"Work target is unspecified or
 back to the same `{kind:"unknown", raw: token}` shape as an explicit `?` — the placeholder isn't
 special-cased in the grammar, it's just a token that fails every specific pattern the same way
 garbage input does.
+
+**The `TBD` pace placeholder (follow-up to HRA-118):** `PACE <ANCHOR>=TBD` (case-insensitive) marks
+an anchor as a deliberate, not-yet-decided value — distinct from the `?` placeholder above, and with
+different save-gate behavior. A day whose only unresolved intensities trace back to a `TBD` anchor
+does **not** produce a `ParseWarning` during **template** parsing (`parseRunPlanDSL`/`generate`/save)
+— the whole anchor-based-templating idea is that some paces stay symbolic until instantiation, so
+leaving one as `TBD` shouldn't block saving or approving the template. This leniency is
+template-parsing-only (`DayParseContext.allowUnboundPace: true`): the **instance** day-edit path
+(`PUT /api/v1/plan-instances/:id`, HRA-115) parses with `allowUnboundPace: false` and gets no such
+pass — a real instance's pace must actually resolve, so a day still referencing an unbound `TBD`
+anchor there is rejected exactly like any other unresolved anchor. An offset anchor chained to a
+`TBD` base (`PACE FL=RG+45s/km` where `RG=TBD`) inherits the same leniency transitively. Instantiating
+a template with a `TBD` anchor and never supplying it via `pace_overrides`/`goal_time` produces
+instance days flagged `needs_review:true` — the deferred requirement surfaces at instantiate time,
+not template-save time, which is the whole point.
 
 ## Pace scoping (Plan → Section → Week)
 `PACE <ANCHOR>=<value>` lines are scoped by where they appear (§18): before any `SECTION`/`WEEK` →

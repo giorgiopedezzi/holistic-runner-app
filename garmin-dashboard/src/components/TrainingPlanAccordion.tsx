@@ -1,5 +1,5 @@
 /**
- * TrainingPlanAccordion.tsx (HRA-116)
+ * TrainingPlanAccordion.tsx (HRA-116, follow-up UX pass)
  * Shared Section -> Week -> Day review/edit UI for the training-plan DSL
  * (docs/runplan-dsl.md) — built once so the template card (HRA-117) and the
  * instance card (HRA-118) don't each duplicate this nesting and its
@@ -7,6 +7,14 @@
  * `SectionView[]` (domain/runplan-aggregate.ts's builders) and edit
  * callbacks as props; it never calls generate/save/approve/delete/
  * instantiate itself — that's the two card Stories.
+ *
+ * Title-bar summary (follow-up): the computed totals, a note tooltip icon
+ * (if a note exists), and a warning badge (if any descendant day needs
+ * review) all render in the ALWAYS-VISIBLE title row, not just when
+ * expanded — so reviewing a plan only requires opening an accordion level
+ * when you actually want to edit it. Week/Section "has warnings" is
+ * derived by walking children (any day -> any week -> any section), never
+ * stored, matching docs/runplan-dsl.md's own documented rule for this.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -30,24 +38,68 @@ interface TrainingPlanAccordionProps {
   readOnlySectionWeek?: boolean;
 }
 
+type Translate = (key: string, def: string, opts?: Record<string, unknown>) => string;
+
 const inputClass = "hra-border-strong hra-bg-card hra-text-primary";
 
-function fmtDistance(distance: DistanceTotal, t: (key: string, def: string, opts?: Record<string, unknown>) => string): string {
+function fmtDistance(distance: DistanceTotal, t: Translate): string {
   const km = (distance.meters / 1000).toFixed(1);
   return distance.approximate
     ? t("runplan.accordion.distanceApprox", `~${km} km`, { km })
     : t("runplan.accordion.distance", `${km} km`, { km });
 }
 
-function TotalsLine({ totals }: { totals: AggregateTotals }) {
-  const { t } = useTranslation();
+// Same figures TotalsLine used to render only inside the expanded body —
+// now joined into one compact string for the always-visible title row.
+function compactTotals(totals: AggregateTotals, t: Translate): string {
+  return [
+    t("runplan.accordion.totalDays", `${totals.totalDays} days`, { n: totals.totalDays }),
+    t("runplan.accordion.activeDays", `${totals.activeDays} active`, { n: totals.activeDays }),
+    t("runplan.accordion.runningDays", `${totals.runningDays} running`, { n: totals.runningDays }),
+    t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays }),
+    fmtDistance(totals.distance, t),
+  ].join(" · ");
+}
+
+function weekHasWarnings(week: WeekView): boolean {
+  return week.days.some(d => d.needs_review);
+}
+function sectionHasWarnings(section: SectionView): boolean {
+  return section.weeks.some(weekHasWarnings);
+}
+
+function WarningBadge({ t }: { t: Translate }) {
   return (
-    <div className="hra-text-secondary" style={{ fontSize: 12, display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <span>{t("runplan.accordion.totalDays", `${totals.totalDays} days`, { n: totals.totalDays })}</span>
-      <span>{t("runplan.accordion.activeDays", `${totals.activeDays} active`, { n: totals.activeDays })}</span>
-      <span>{t("runplan.accordion.runningDays", `${totals.runningDays} running`, { n: totals.runningDays })}</span>
-      <span>{t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays })}</span>
-      <span>{fmtDistance(totals.distance, t)}</span>
+    <span className="hra-text-danger" style={{ fontSize: 12 }} title={t("runplan.accordion.needsReviewBadge", "Needs review")}>
+      ⚠
+    </span>
+  );
+}
+
+function NoteIcon({ note }: { note?: string }) {
+  if (!note) return null;
+  return (
+    <span className="hra-tooltip hra-text-muted" data-tooltip={note} style={{ fontSize: 12, cursor: "help" }}>
+      ⓘ
+    </span>
+  );
+}
+
+// The shared title-row shape every level uses: a truncating label on the
+// left, a compact summary + optional warning/note icons on the right —
+// both inside AccordionCard's own title slot, so it's visible whether the
+// level is expanded or not.
+function TitleRow({ label, summary, hasWarning, note, t }: {
+  label: string; summary?: string; hasWarning?: boolean; note?: string; t: Translate;
+}) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flex: 1, gap: 10, minWidth: 0 }}>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
+      <span className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400, flexShrink: 0 }}>
+        {summary}
+        {hasWarning && <WarningBadge t={t} />}
+        <NoteIcon note={note} />
+      </span>
     </div>
   );
 }
@@ -60,10 +112,14 @@ function DayEditor({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const title = `D${day.day}${day.suffix ?? ""}${day.needs_review ? " ⚠" : ""}`;
-
+  // day.dsl is already the whole raw line ("D3: 5km @ RG") — using it
+  // directly as the label (ellipsis-truncated by TitleRow) reports the
+  // actual workout at a glance, instead of a redundant bare "D3".
   return (
-    <AccordionCard title={title} expanded={expanded} onToggle={() => setExpanded(v => !v)}>
+    <AccordionCard
+      title={<TitleRow label={day.dsl} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
+      expanded={expanded} onToggle={() => setExpanded(v => !v)}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         <label className="hra-text-secondary" style={{ fontSize: 12 }}>
           {t("runplan.accordion.dslLabel", "Workout (DSL)")}
@@ -85,9 +141,6 @@ function DayEditor({
             style={{ width: "100%", marginTop: 4, padding: 6 }}
           />
         </label>
-        <div className="hra-text-secondary" style={{ fontSize: 12 }}>
-          {fmtDistance(day.distance, t)}
-        </div>
         {day.needs_review && day.warnings.length > 0 && (
           <ul className="hra-text-danger" style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
             {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
@@ -113,14 +166,15 @@ function WeekEditor({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const label = t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number });
 
   return (
-    <AccordionCard title={t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number })} expanded={expanded} onToggle={() => setExpanded(v => !v)}>
+    <AccordionCard
+      title={<TitleRow label={label} summary={compactTotals(week.totals, t)} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
+      expanded={expanded} onToggle={() => setExpanded(v => !v)}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <TotalsLine totals={week.totals} />
-        {readOnlySectionWeek ? (
-          week.notes && <div className="hra-text-secondary" style={{ fontSize: 12 }}>{week.notes}</div>
-        ) : (
+        {!readOnlySectionWeek && (
           <label className="hra-text-secondary" style={{ fontSize: 12 }}>
             {t("runplan.accordion.noteLabel", "Note")}
             <input
@@ -163,16 +217,16 @@ function SectionEditor({
   const displayName = isDefaultSection ? ownerName : section.name;
 
   return (
-    <AccordionCard title={displayName} expanded={expanded} onToggle={() => setExpanded(v => !v)}>
+    <AccordionCard
+      title={<TitleRow label={displayName} summary={compactTotals(section.totals, t)} hasWarning={sectionHasWarnings(section)} note={isDefaultSection ? undefined : section.notes} t={t} />}
+      expanded={expanded} onToggle={() => setExpanded(v => !v)}
+    >
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        <TotalsLine totals={section.totals} />
         {isDefaultSection ? (
           <div className="hra-text-muted" style={{ fontSize: 12 }}>
             {t("runplan.accordion.defaultSectionName", `Name follows the plan's own name — ${ownerName}`, { name: ownerName })}
           </div>
-        ) : readOnlySectionWeek ? (
-          <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600 }}>{section.name}</div>
-        ) : (
+        ) : !readOnlySectionWeek && (
           <label className="hra-text-secondary" style={{ fontSize: 12 }}>
             {t("runplan.accordion.sectionNameLabel", "Section name")}
             <input
@@ -183,9 +237,7 @@ function SectionEditor({
             />
           </label>
         )}
-        {readOnlySectionWeek ? (
-          section.notes && <div className="hra-text-secondary" style={{ fontSize: 12 }}>{section.notes}</div>
-        ) : (
+        {!isDefaultSection && !readOnlySectionWeek && (
           <label className="hra-text-secondary" style={{ fontSize: 12 }}>
             {t("runplan.accordion.noteLabel", "Note")}
             <input

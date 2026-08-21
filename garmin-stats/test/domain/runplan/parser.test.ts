@@ -357,6 +357,7 @@ test("Italian fixture: week 4 — week override RG=4:12/km -> FL=4:57/km, STRIDE
 
 const dayCtx: DayParseContext = {
   unit: "km", offset_unit: "s/km", default_rest: "jog", pacePolicy: { RG: { kind: "absolute", pace_sec_per_km: 256 } },
+  allowUnboundPace: true,
 };
 
 test("interval with distance rest + intensity parses", () => {
@@ -696,6 +697,47 @@ D1: REST
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("unreachable");
   assert.ok(result.warnings.some(w => w.message.toLowerCase().includes("circular")));
+});
+
+test("EVENT_TYPE is accepted as an alias for EVENT", () => {
+  const plan = mustParse("PLAN\nEVENT_TYPE marathon\nWEEK 1\nD1: REST\n");
+  assert.equal(plan.metadata.event, "marathon");
+});
+
+test("PACE <ANCHOR>=TBD marks the anchor deliberately unbound: no plan-level warning, and a day using it does NOT need review during template parsing", () => {
+  const result = parseRunPlanDSL(`PLAN
+PACE RG=TBD
+WEEK 1
+D1: 5km @ RG
+`);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.equal(result.warnings.length, 0);
+  const day = result.plan.sections[0].weeks[0].days[0];
+  assert.equal(day.needs_review, false);
+  assert.equal(day.warnings.length, 0);
+});
+
+test("TBD does not suppress the warning outside template parsing (allowUnboundPace: false, the instance day-edit path)", () => {
+  const day = parseDayEntry("D1: 5km @ RG", {
+    unit: "km", offset_unit: "s/km", default_rest: "jog",
+    pacePolicy: { RG: { kind: "unbound" } }, allowUnboundPace: false,
+  });
+  assert.equal(day.needs_review, true);
+  assert.ok(day.warnings.some(w => w.message.includes("RG") && w.message.toLowerCase().includes("resolved")));
+});
+
+test("an offset anchor chained to a TBD base anchor is also treated as deliberately unbound during template parsing", () => {
+  const result = parseRunPlanDSL(`PLAN
+PACE RG=TBD
+PACE FL=RG+45s/km
+WEEK 1
+D1: 5km @ FL
+`);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  const day = result.plan.sections[0].weeks[0].days[0];
+  assert.equal(day.needs_review, false);
 });
 
 // ── HRA-113: `?` placeholder, optional CROSS/STRENGTH target ──────────────

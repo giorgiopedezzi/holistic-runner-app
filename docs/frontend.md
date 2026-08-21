@@ -239,7 +239,8 @@ The correlation chart below it is untouched and still uses a dual y-axis (km/kg)
   - **Ellipsis + tooltip for long names/dropdown items**: `Select`'s trigger and each `SelectPrimitive.Item` both carry a native `title` (the full label) plus `overflow:hidden;text-overflow:ellipsis` (`index.css`'s `.hra-select-item`).
 - **`PlanTemplatesSection`** (`components/manage/PlanTemplatesSection.tsx`, HRA-117): the training-plan template CRUD card, rendered just above "AI workout classification". Two modes, `list`/`editor` (own local state, not a route):
   - **List**: `api.planTemplates.list()`, one row per template (`name`, `event`, an approved/not-approved `Badge`), `Edit` and `Delete` (confirm step naming the instance cascade, same UX pattern as the Delete card) per row, a `New template` button.
-  - **Editor** (create or edit an existing row): a plain name input + a DSL-text `<textarea>`, an `.txt`/`.csv` file-upload button (`file.text()`, dropped into the same textarea state — **no separate parsing path**, confirmed by the Story: a `.csv` is handled byte-identically to pasted text), a `Generate / refresh preview` button (`api.planTemplates.generate`), Save, Approve, Cancel. Opening an **existing** template auto-generates once on load (one network call) so the accordion appears immediately; a **new** template requires the explicit Generate click first (there's nothing to preview before that). Editing a field does **not** auto-regenerate on every keystroke — a deliberate choice to avoid a request-per-keystroke storm; the accordion's preview only refreshes when the button is clicked again.
+  - **Editor** (create or edit an existing row): a plain name input + a DSL-text `<textarea>`, an `.txt`/`.csv` file-upload button (`file.text()`, dropped into the same textarea state — **no separate parsing path**, confirmed by the Story: a `.csv` is handled byte-identically to pasted text), a `Generate / refresh preview` button (`api.planTemplates.generate`), Save, Approve, Cancel. Opening an **existing** template auto-generates once on load (one network call) so the accordion appears immediately; a **new** template requires the explicit Generate click first (there's nothing to preview before that).
+  - **Debounced auto-regenerate (follow-up fix)**: editing a Section/Week/Day field, pasting fresh text, or uploading a file all change `editor.dslSource` without calling `generate()` themselves — originally this left the accordion's totals/warnings, and therefore `Save`'s real enabled state, stale until the user noticed and clicked "Generate / refresh preview" again (reported: "when I correct a dsl, plan is not updated, no button enabled"). Fixed with a `useEffect` keyed on `editor.dslSource` that calls `runGenerate` ~700ms after the last change — long enough to avoid a request per keystroke (the original concern the no-auto-regenerate note used to describe here), short enough to feel automatic. A `lastGeneratedRef` tracks which `dslSource` the current preview reflects, so the effect no-ops once a generate (manual or debounced) has already caught up, rather than looping on its own `setEditor` call. The manual button is unchanged, for an instant refresh without waiting.
   - **Save is disabled** unless the template has been generated at least once, carries zero outstanding warnings anywhere in the tree (plan-scoped `warnings` from `generate`'s response, or any day's own `needs_review` — `hasOutstandingWarnings()`), and has a non-blank name — mirroring the backend's own zero-warning gate. **Approve is disabled** unless the template is already saved (`editingId` set) **and** the current `dslSource` still matches the last-saved one (no unsaved local edits) **and** zero warnings — matching the backend clearing `approved_at` on every `PUT`.
   - **Content-anchored `dsl_source` patching** (`domain/runplan-patch.ts`) is what makes "editing a field in the accordion, then Save" only touch that one line rather than regenerating the whole document: `serializeSectionHeader`/`serializeWeekHeader` rebuild a `SECTION`/`WEEK` header line from the node's own *current* `raw_dsl` (re-deriving the untouched `WEEKS` spec / week number / `START` date via small regexes mirroring the backend parser's own `SECTION_RE`/`WEEK_RE` — no separate `week_spec`/`start_date` fields needed on `SectionView`/`WeekView` for this), preserving whichever of name/notes wasn't the one just edited; `recomposeDayLine` treats a Day's `dsl` and `notes` fields as two facets of **one** line (`DayEntry.raw_dsl` already includes any trailing `# note`) — a `dsl` edit replaces the whole line outright, a `notes`-only edit re-composes onto the current line's own main clause via `splitNote`, so the two inputs never fight each other. `replaceSpan` then does the actual substitution, content-anchored (finds the *exact* old text) and refusing to guess when it's missing or appears more than once — same "no blind line-number mutation" discipline CLAUDE.md already requires for file edits, applied one level down at the DSL-text level. Each of `PlanTemplatesSection`'s three edit handlers (`onSectionEdit`/`onWeekEdit`/`onDayEdit`) both patches `dslSource` **and** updates the just-edited node's own `raw_dsl`/`dsl` field in the local `SectionView[]` mirror in the same state update, so a second edit to the same field chains correctly off the *previous* edit's own output rather than a now-stale original — verified in `runplan-patch.test.ts`'s multi-section/week/day fixture (a chained name-then-note edit on one `SECTION` line touches only that line, nothing else in the document, and the intermediate step's own output — not the original text — is what the second edit targets).
   - **The implicit default section's name is never patched** — `onSectionEdit` no-ops when `section.raw_dsl === ""` (mirrors the accordion's own read-only treatment of that case, HRA-116) — there is no real header line to rewrite yet.
@@ -526,10 +527,41 @@ patch) would be misleading before HRA-115's "add a new `SECTION` line" editor ex
 — `ownerName` is never written into `section.name`; the builder's own `name` field stays whatever the
 parser produced (`"Plan"`), untouched, and the substitution happens at render time in the component.
 
-**Warnings/`needs_review` (AC4)**: shown inline inside each Day's own panel — the day's
-`ParseWarning[]` list line-by-line when non-empty; a plain "needs review" message when
-`needs_review` is true but the (instance-mode) day carries no structured warnings at all (instance
-rows only ever have the 0/1 flag, never a warnings array).
+**Warnings/`needs_review` (AC4)**: the *detailed* per-warning message list still only renders inside
+each Day's own expanded panel — the day's `ParseWarning[]` list line-by-line when non-empty, a plain
+"needs review" message when `needs_review` is true but the (instance-mode) day carries no structured
+warnings at all (instance rows only ever have the 0/1 flag, never a warnings array).
+
+**Title-bar summary, note tooltip, warning roll-up (follow-up pass, post-HRA-118)**: every level's
+`AccordionCard` `title` is now a `TitleRow` — a small flex component (`AccordionCard.title` was
+widened from `string` to `ReactNode` to allow this; every other existing caller, e.g.
+`SettingsTab.tsx`'s cards, still just passes a string, which remains valid) carrying the label on the
+left and, always visible regardless of expand state, a right-aligned cluster of: the level's own
+computed totals (`compactTotals()` — the same figures the body's old `TotalsLine` showed, now joined
+into one string and moved into the title; the separate body-level totals block was removed as
+redundant once the title always shows it), a **⚠ warning badge** when any descendant day needs
+review, and an **ⓘ note icon** (this app's existing generic `.hra-tooltip`/`data-tooltip` hover
+pattern, `index.css`, previously only used on `Card`) when a note exists. The intent: reviewing a
+plan's state — is anything flagged, is there a note worth reading — no longer requires expanding
+anything; expanding is now only for the two things you can't get from the collapsed title: reading
+the day's full warning list, or actually editing a field.
+
+- **Warning roll-up is derived, never stored** (`weekHasWarnings(week) = week.days.some(d =>
+  d.needs_review)`, `sectionHasWarnings(section) = section.weeks.some(weekHasWarnings)`) — matches
+  `docs/runplan-dsl.md`'s own documented rule for this exact concept ("Week/section 'has warnings' is
+  always derived by walking children… never stored"). A day flagged in week 2 shows the ⚠ badge on
+  that Week's title **and** the owning Section's title, not just the Day's.
+- **The now-redundant read-only note text blocks were removed** from Week/Section's expanded body
+  (previously shown only for instance mode, since template mode already had an editable input) — the
+  title's ⓘ tooltip covers the "glance at the note" need for both modes now; the editable Note
+  `<input>` still lives in the body for template mode, since the tooltip is read-only by nature.
+- **The default section's note is never shown via the tooltip** (`note={isDefaultSection ? undefined
+  : section.notes}`) — consistent with that section having no real header line to hold a note against
+  in the first place.
+- **A Day's title label is its `dsl` text itself, not a bare `"D3"`** (reported: "the day summary must
+  report the DSL too") — `day.dsl` is already the whole raw line (`"D3: 5km @ RG"`, `DayEntry.raw_dsl`
+  carries the full original text including the `D`-prefix), so a separate label would only have been
+  redundant; `TitleRow`'s existing ellipsis truncation handles a long workout line gracefully.
 
 **i18n**: every label goes through `t()` (`runplan.accordion.*` keys, `garmin-stats/locales/en.json`/
 `it.json`). ⚠️ Every dynamic label's `defaultValue` is a pre-substituted JS template literal, never a

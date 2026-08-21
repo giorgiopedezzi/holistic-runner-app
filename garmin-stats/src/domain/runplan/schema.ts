@@ -20,7 +20,10 @@ export const offsetPaceSchema = z.object({
   anchor: z.string(),
   offset_sec_per_km: z.number(),
 });
-export const paceValueSchema = z.discriminatedUnion("kind", [absolutePaceSchema, offsetPaceSchema]);
+// PACE <ANCHOR>=TBD — a deliberate placeholder, no numeric value (see
+// types.ts's UnboundPace).
+export const unboundPaceSchema = z.object({ kind: z.literal("unbound") });
+export const paceValueSchema = z.discriminatedUnion("kind", [absolutePaceSchema, offsetPaceSchema, unboundPaceSchema]);
 export const pacePolicySchema = z.record(z.string(), paceValueSchema);
 
 export const anchorIntensitySchema = z.object({ kind: z.literal("anchor"), anchor: z.string(), raw: z.string() });
