@@ -8,7 +8,7 @@
  */
 import type { DatabaseSync } from "node:sqlite";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
-import type { PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
+import type { PlanInstanceDayInput, PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
 import { instantiatePlan, type InstantiateOptions } from "../domain/runplan/instantiate.ts";
 import type { RunPlan } from "../domain/runplan/types.ts";
 
@@ -51,7 +51,30 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     }
   }
 
-  return { instantiate };
+  // Full replacement of an instance's resolved days (HRA-113 PUT
+  // /api/v1/plan-instances/:id). Never touches or re-instantiates the source
+  // template — an instance is an independent artifact once created, and is
+  // allowed to diverge from what the template would currently produce
+  // (docs/runplan-dsl-future-notes.md §7). Clearing approved_at is part of
+  // the same transaction: an edit that fails must not leave a cleared
+  // approval with stale days, or vice versa.
+  function updateDays(instanceId: number, days: Omit<PlanInstanceDayInput, "instance_id">[]): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
+    db.exec("BEGIN");
+    try {
+      instances.deleteDaysByInstance(instanceId);
+      for (const day of days) {
+        instances.createDay({ ...day, instance_id: instanceId });
+      }
+      instances.clearApproval(instanceId);
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    return { instance: instances.instanceById(instanceId)!, days: instances.daysByInstance(instanceId) };
+  }
+
+  return { instantiate, updateDays };
 }
 
 export type PlanInstancesService = ReturnType<typeof createPlanInstancesService>;

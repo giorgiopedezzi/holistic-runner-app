@@ -68,18 +68,49 @@ specific race.
 
 `plan_templates`: `id`, `name`, `dsl_source` (TEXT, the original DSL text — kept so a structural
 edit can be re-parsed later), `parsed_plan` (TEXT, JSON-serialized pre-resolution `RunPlan` from
-`domain/runplan/parser.ts`), `event` (from `PlanMetadata.event`), `created_at`. A template can only
-be saved if its DSL both parses (`ParseResult.ok`) **and** is fully valid (`RunPlan.valid`,
-HRA-111's bottom-up validity model) — `POST`/`PUT` reject with 422 otherwise, walking the whole
-section→week→day tree to report every broken day's own errors (not just plan-level ones, which
-HRA-111's `RunPlan.errors` doesn't include by design).
+`domain/runplan/parser.ts`), `event` (from `PlanMetadata.event`), `approved_at` (nullable TEXT —
+HRA-113 gate 2, see below), `created_at`. A template can only be saved if its DSL parses
+(`ParseResult.ok`) **and** has zero outstanding warnings anywhere in the tree (HRA-113 — replaces
+HRA-111's bottom-up `valid`/`errors` model, which no longer exists: nothing the parser encounters is
+a hard error anymore) — `POST`/`PUT` reject with 422 otherwise, walking the whole section→week→day
+tree to report every flagged day's own warnings plus any plan-scoped ones (unrecognized lines,
+circular pace refs).
+
+**Two independent save gates (HRA-113):** **gate 1** (automatic) is the zero-warning check above —
+it governs whether `POST`/`PUT` succeed at all. **Gate 2** (`approved_at`, deliberate) is a
+separate, human-triggered sign-off via `POST /api/v1/plan-templates/:id/approve` — `NULL` means not
+approved. **Any subsequent `PUT`, even one that still results in zero warnings, clears `approved_at`
+back to `NULL`** (handled inside the repo's `UPDATE` statement) — approval means "a human signed off
+on this exact saved state," not "this happens to currently parse cleanly." A separate
+`POST /api/v1/plan-templates/generate` endpoint runs the same parse (returning the `RunPlan` with
+its per-day warnings) without persisting anything — what a review UI calls on every edit before the
+user is ready to save.
 
 `plan_instances`: `id`, `template_id` (FK to `plan_templates(id)`, **ON DELETE CASCADE**),
 `start_date` (the instantiation-time plan start), `pace_overrides` (nullable TEXT, JSON-serialized
 `PacePolicy` — kept for provenance: what was actually overridden to produce this instance),
 `target_activity_id` (nullable FK to `activities(id)` — the race this instance targets, validated
 **exactly** like `date_ranges.activity_id` above: race-typed, `date_only` strictly after the
-instance's last resolved day), `created_at`.
+instance's last resolved day), `approved_at` (nullable TEXT, same gate-2 semantics as
+`plan_templates.approved_at` — set via `POST /api/v1/plan-instances/:id/approve`, cleared by any
+subsequent `PUT /api/v1/plan-instances/:id`), `created_at`.
+
+**Instantiation-time pace input (HRA-113):** the instantiate call accepts pace anchors two ways —
+`pace_overrides` (explicit `PacePolicy`-shaped values, as before) or a `goal_time` (`HH:MM:SS`),
+converted to the `RG` anchor via `goal_time_sec / (distance_m / 1000)`. The distance used is, in
+order: an explicit `distance_m` on the instantiate call, then the template's own `DISTANCE`
+metadata, then the event's fixed standard distance (5k/10k/half/marathon, mirroring
+`activity_types.min_distance_m`'s seed values). `ultra`/`custom` events have no standard distance,
+so a `goal_time` for those events requires an explicit `distance_m` on the instantiate call — a 422
+otherwise. Supplying both `goal_time` and an explicit `RG` in `pace_overrides` is rejected as
+ambiguous.
+
+**Editing an instance (HRA-113):** `PUT /api/v1/plan-instances/:id` replaces the instance's resolved
+days wholesale (structured JSON body, `{days: [...]}` — an instance holds concrete `ResolvedDay`
+data, not DSL text, so there's nothing to re-parse). Gated the same way as a template save: any
+submitted day with `needs_review: true` is rejected with 422. Editing an instance **never** touches
+or re-instantiates its source template — an instance is an independent artifact once created, and is
+allowed to diverge from what the template would currently produce.
 
 `plan_instance_days`: one row per resolved day, `instance_id` FK to `plan_instances(id)` **ON
 DELETE CASCADE**. Columns: `id`, `section_name`, `week_number`, `date` (concrete `YYYY-MM-DD`,

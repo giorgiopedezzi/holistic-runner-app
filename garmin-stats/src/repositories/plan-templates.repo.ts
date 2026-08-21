@@ -6,17 +6,19 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PlanTemplateRow } from "../db.ts";
 
-const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, created_at FROM plan_templates";
+const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, approved_at, created_at FROM plan_templates";
 
-export type PlanTemplateInput = Omit<PlanTemplateRow, "id" | "created_at">;
+export type PlanTemplateInput = Omit<PlanTemplateRow, "id" | "created_at" | "approved_at">;
 
 export function createPlanTemplatesRepo(db: DatabaseSync) {
   const listAll   = db.prepare(`SELECT ${SELECT_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
   const countAll  = db.prepare("SELECT COUNT(*) AS count FROM plan_templates");
   const findById  = db.prepare(`SELECT ${SELECT_FIELDS} WHERE id = ?`);
   const insert    = db.prepare("INSERT INTO plan_templates (name, dsl_source, parsed_plan, event) VALUES ($name, $dsl_source, $parsed_plan, $event)");
-  const update    = db.prepare("UPDATE plan_templates SET name = $name, dsl_source = $dsl_source, parsed_plan = $parsed_plan, event = $event WHERE id = $id");
+  // approved_at is always cleared on update (HRA-113 gate 2: any edit revokes approval).
+  const update    = db.prepare("UPDATE plan_templates SET name = $name, dsl_source = $dsl_source, parsed_plan = $parsed_plan, event = $event, approved_at = NULL WHERE id = $id");
   const deleteById = db.prepare("DELETE FROM plan_templates WHERE id = ?");
+  const approveStmt = db.prepare("UPDATE plan_templates SET approved_at = datetime('now') WHERE id = ?");
 
   return {
     listPage: (limit: number, offset: number): PlanTemplateRow[] => listAll.all(limit, offset) as unknown as PlanTemplateRow[],
@@ -28,6 +30,10 @@ export function createPlanTemplatesRepo(db: DatabaseSync) {
     },
     update:   (id: number, p: PlanTemplateInput): PlanTemplateRow => {
       update.run({ $id: id, $name: p.name, $dsl_source: p.dsl_source, $parsed_plan: p.parsed_plan, $event: p.event });
+      return findById.get(id) as unknown as PlanTemplateRow;
+    },
+    approve:  (id: number): PlanTemplateRow => {
+      approveStmt.run(id);
       return findById.get(id) as unknown as PlanTemplateRow;
     },
     // ON DELETE CASCADE (plan_instances.template_id) removes derived instances too.

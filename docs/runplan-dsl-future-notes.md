@@ -1,13 +1,14 @@
-# RunPlan DSL — future direction notes (NOT implemented)
+# RunPlan DSL — future direction notes
 
-> **Status: discussion notes only.** Nothing in this file is built. It exists so a future session
-> can pick up where this one left off, without re-deriving the reasoning. `docs/runplan-dsl.md`
-> documents what's actually shipped (HRA-111/HRA-112) — read that first for current behavior; this
-> file is the parking lot for what comes next. More notes are expected — the user said "I
-> elaborated another strategy" and hadn't shared it yet when this file was written. Append to this
-> file rather than replacing it.
+> **Status: HRA-113 shipped most of this.** §1, §2, §3 (generate/save/approve, text-based editing),
+> §4, and the goal↔RG-conversion half of §6 are now implemented — see `docs/runplan-dsl.md` for
+> current behavior and `docs/schema.md`/`docs/api.md` for the persisted shape. Each section below is
+> marked **[RESOLVED — HRA-113]** or **[STILL OPEN]** accordingly; resolved sections are kept
+> (not deleted) as the record of *why*, per this file's original purpose — `git log`/Jira already
+> have the *what*. §5 (AI transcription) and the `plan_instances.name`/`event` half of §6 are still
+> open — not part of HRA-113's slice. Append future notes rather than replacing this file.
 
-## 1. Never a hard parse error — always a warning
+## 1. Never a hard parse error — always a warning [RESOLVED — HRA-113]
 
 Reverses HRA-111's mandatory-interval-rest amendment (currently `IntervalSegment.rest` is
 *required*, and a missing `r:` clause is a hard `ParseError`, making the day `valid:false`).
@@ -22,7 +23,7 @@ empty/default plan shell), or does some absolute floor remain below which there'
 plan object to build? HRA-111 §15 currently reserves `ok:false` for exactly those two cases. Needs
 an explicit decision before this is implemented — don't assume either answer.
 
-## 2. Two separate gates, confirmed — save (automatic) and approval (deliberate, revocable)
+## 2. Two separate gates, confirmed — save (automatic) and approval (deliberate, revocable) [RESOLVED — HRA-113]
 
 **Gate 1 — save, automatic/mechanical:** zero warnings is the precondition to save at all — enables
 the UI's Save button, and gates the HTTP 200 response on `POST`/`PUT`. Replaces HRA-112's current
@@ -43,7 +44,11 @@ HRA-111 triggers — empty input, or missing `PLAN` header as the first line. No
 the *day/segment*-level hard errors (e.g. missing interval rest) move to warnings under §1; the
 document-level "is there even a shell to build" check is unchanged.
 
-## 3. Any day is editable pre-approval, not just flagged ones
+## 3. Any day is editable pre-approval, not just flagged ones [RESOLVED — HRA-113, backend surface only]
+
+**Shipped:** `POST /api/v1/plan-templates/generate` (parse-only preview) and the zero-warning save
+gate. **Not shipped by HRA-113 (explicitly out of scope):** the accordion review UI itself, and the
+"validate on the fly" nice-to-have — both still require the not-yet-built editor.
 
 The human review pass (accordion UI, still not built — HRA-111 was only made *consistent* with it)
 must let the user amend **any** day, whether `needs_review` is set on it or not — not just the days
@@ -73,7 +78,7 @@ noted for whenever the editor gets built.
 **Warning resolution = the underlying data changes, confirmed.** No separate "dismissed without
 fixing" state — a warning is gone only when re-parsing/re-validating no longer produces it.
 
-## 4. "Other activities" — a general, presence-only category
+## 4. "Other activities" — a general, presence-only category [RESOLVED — HRA-113, via the existing keywords]
 
 Wants a category (examples given: core, strength, cross-training — not an exhaustive/fixed list)
 where **validation is just presence in the day's activity list** — no target, duration, or
@@ -90,7 +95,18 @@ entirely — they're a presence/absence checklist item against Garmin/Strava dat
 pace/distance session to reconcile. Worth keeping in mind when that comparison Story eventually
 gets scoped (not HRA-111/HRA-112's job, and still not this one's).
 
-## 5. AI-assisted transcription of messy real-world plans
+**Shipped as:** relaxing the two existing `CROSS`/`STRENGTH` keywords (target now optional,
+presence-only validation), not a new general-purpose "OTHER" keyword — this note's own text left
+that open ("should generalize... free-text name, not a closed enum"), but HRA-113's Story
+description settled on the narrower change. If a genuinely open-ended activity category is still
+wanted later, that's a new, separate decision.
+
+## 5. AI-assisted transcription of messy real-world plans [STILL OPEN]
+
+The `?` placeholder gap identified below **is resolved** (shipped in HRA-113, part of §1's warnings
+model — see `docs/runplan-dsl.md`). The rest of this section — whether the AI emits DSL text or a
+JSON schema, and any actual transcription prompt/endpoint — is still open and explicitly out of
+scope for HRA-113.
 
 Context: the user is writing an LLM prompt to transcribe an existing, messy (e.g. Italian-language
 PDF/prose) training plan into structured data. They shared an example output shape — session-level
@@ -129,7 +145,12 @@ distance-conditional percentage-blend pace type (`"FP": "<=15km: 50% FL; 35% RG;
   object as trusted input (the closest thing, `plan_templates.parsed_plan`, is `JSON.stringify()`'d
   *output* being stored, `JSON.parse()`'d back on read — never re-validated as untrusted input).
 
-## 6. `plan_instances` needs its own `name` + `event`; goal↔RG conversion at instantiation
+## 6. `plan_instances` needs its own `name` + `event`; goal↔RG conversion at instantiation [PARTIALLY RESOLVED — HRA-113]
+
+**Goal↔RG conversion (below) is shipped.** The `name`/`event` schema gap is **[STILL OPEN]** — it
+did not make it into HRA-113's Story description/AC list despite being resolved in discussion (see
+the "Also confirmed" bullets below); `plan_instances` still has no `name` or `event` column as of
+HRA-113. Worth a small follow-up Story rather than silently dropping it.
 
 **Schema gap identified:** `plan_instances` currently has no `name` and no `event` column at all
 (HRA-112 gave it `id`, `template_id`, `start_date`, `pace_overrides`, `target_activity_id`,
@@ -157,16 +178,14 @@ half=21097.5m, marathon=42195m — same values already seeded in `activity_types
 reuse rather than re-derive) or `PlanMetadata.distance_m` if the template set one explicitly via
 `DISTANCE`.
 
-**Open question, not yet resolved:** `event: "ultra"` / `"custom"` has no fixed standard distance.
-If neither a template `DISTANCE` nor some other distance is available, there's nothing to divide
-the goal time by. Two options, not yet chosen between: (a) `goal_time` input is simply unavailable
-for ultra/custom — the caller must supply `RG` directly; or (b) the instantiate call also accepts
-an explicit distance override, usable for exactly this case. Needs a decision before implementation.
-Note this changes the instantiate endpoint's contract from HRA-112's current shape
-(`pace_overrides: {"RG": "6:40/mi"}` as the only pace-input mechanism) — a goal-time input path is
-a genuinely new parameter, not a rename of an existing one.
+**Resolved (HRA-113): option (b).** The instantiate call accepts an explicit `distance_m` — required
+whenever `goal_time` is used and the event is `ultra`/`custom` (no template `DISTANCE` and no
+standard distance to fall back to). `goal_time` and `distance_m` are new instantiate-body
+parameters alongside the existing `pace_overrides`, not a rename of it — see
+`docs/api.md`/`docs/schema.md` for the exact precedence order and the ambiguous-input rejection
+(`goal_time` + an explicit `RG` override together is a 422).
 
-## 7. Warnings need per-day attachment; instances can knowingly diverge from their template
+## 7. Warnings need per-day attachment; instances can knowingly diverge from their template [RESOLVED — HRA-113]
 
 **Structural gap, confirmed real:** `ParseWarning[]` is currently a flat, top-level array on
 `ParseResult`, correlated to a specific day only by line number — fragile once a day gets edited
@@ -184,12 +203,26 @@ would currently produce. The system doesn't reconcile or warn about that diverge
 
 ## Not yet covered by any note above
 
-- Whether the items above become one Story or several.
-- Whether HRA-111/HRA-112 (both already `In Review`, not `Done`) get amended in place or superseded
-  by new Stories, given §1 reverses a decision already implemented and reviewed there.
-- The exact shape of the approval-status field(s) (§2 gate 2) — column names, and whether it's a
-  simple boolean or carries an `approved_by`/`approved_at` audit trail.
-- The exact contract for the new "generate" (parse-only) endpoint (§3) — request/response shape,
-  and whether it's a new path or a query param on the existing create route.
-- §6's ultra/custom-distance question (explicit distance override at instantiate time, vs. `RG`
-  being mandatory for those events) — still open.
+- ~~Whether the items above become one Story or several.~~ **Resolved:** one consolidated Story,
+  HRA-113.
+- ~~Whether HRA-111/HRA-112 get amended in place or superseded.~~ **Resolved:** amended in place —
+  HRA-111/HRA-112's shipped code was directly modified, not superseded.
+- ~~The exact shape of the approval-status field(s).~~ **Resolved:** `approved_at TEXT`, nullable,
+  on both `plan_templates` and `plan_instances` — see `docs/schema.md`.
+- ~~The exact contract for the new "generate" endpoint.~~ **Resolved:**
+  `POST /api/v1/plan-templates/generate`, its own path — see `docs/api.md`.
+- ~~§6's ultra/custom-distance question.~~ **Resolved:** explicit `distance_m` on the instantiate
+  call (option (b) above).
+
+**Genuinely still open:**
+- `plan_instances.name`/`.event` columns (§6) — discussed and resolved in conversation, but not
+  captured in HRA-113's Story description/AC, so not shipped. Candidate for a small follow-up Story.
+- §5's AI-transcription prompt/endpoint and its DSL-text-vs-JSON question — explicitly out of scope
+  for HRA-113.
+- The instance-edit body's exact long-term shape: HRA-113 shipped `PUT /api/v1/plan-instances/:id`
+  with a structured `{days: [...]}` JSON body (a considered-and-chosen alternative to this file's
+  earlier tentative "reuse day-line DSL text" idea — see `docs/api.md`), since no accordion UI
+  exists yet to build a text-edit contract against. Worth revisiting once that UI's actual shape is
+  known.
+- The accordion review UI itself, and per-day "validate on the fly" (§3) — both need the not-yet-
+  built editor.

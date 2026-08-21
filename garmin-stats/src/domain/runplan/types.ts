@@ -1,7 +1,8 @@
 // ── RunPlan DSL v1 — types ────────────────────────────────────────────────
-// Pure data shapes for the parsed training-plan DSL (HRA-111). No I/O here —
-// mirrors this project's domain/ convention (fit-parser.ts, workout-metrics.ts):
-// pure logic, no DB/network access. See docs/runplan-dsl.md for the grammar.
+// Pure data shapes for the parsed training-plan DSL (HRA-111, amended HRA-113:
+// warnings-only parsing — see docs/runplan-dsl.md). No I/O here — mirrors this
+// project's domain/ convention (fit-parser.ts, workout-metrics.ts): pure logic,
+// no DB/network access.
 
 export type DisplayUnit = "km" | "mi";
 export type OffsetUnit = "s/km" | "s/mi";
@@ -22,7 +23,10 @@ export interface OffsetPace {
   offset_sec_per_km: number;
 }
 
-export type Intensity = AnchorIntensity | OffsetIntensity | AbsoluteIntensity;
+// unknown (HRA-113): a literal `?` placeholder, or any token the parser
+// couldn't otherwise make sense of. Always accepted — never a hard error —
+// and always drives a ParseWarning at the call site that encountered it.
+export type Intensity = AnchorIntensity | OffsetIntensity | AbsoluteIntensity | UnknownIntensity;
 
 export interface AnchorIntensity {
   kind: "anchor";
@@ -43,6 +47,11 @@ export interface AbsoluteIntensity {
   raw: string;
 }
 
+export interface UnknownIntensity {
+  kind: "unknown";
+  raw: string;
+}
+
 export interface DistanceTarget {
   kind: "distance";
   distance_m: number;
@@ -55,7 +64,14 @@ export interface DurationTarget {
   raw: string;
 }
 
-export type Target = DistanceTarget | DurationTarget;
+// unknown (HRA-113): same placeholder concept as UnknownIntensity, for Target
+// position (e.g. the distance in "8x? @ ?").
+export interface UnknownTarget {
+  kind: "unknown";
+  raw: string;
+}
+
+export type Target = DistanceTarget | DurationTarget | UnknownTarget;
 
 export interface RestSpec {
   target: Target;
@@ -71,14 +87,15 @@ export interface ContinuousSegment {
   raw: string;
 }
 
-// rest is REQUIRED (not optional) — HRA-111 amendment 1: an interval without
-// defined recovery is treated as missing information, not a valid session.
+// rest is optional (HRA-113 reverses HRA-111's amendment 1 — nothing is a hard
+// error anymore, see the module-level note in parser.ts). A missing `r:`
+// clause produces a ParseWarning on the owning day instead of blocking parsing.
 export interface IntervalSegment {
   type: "interval";
-  reps: number;
+  reps: number | null; // null = the `?` placeholder (reps count unspecified)
   work_target: Target;
   work_intensity: Intensity;
-  rest: RestSpec;
+  rest?: RestSpec;
   raw: string;
 }
 
@@ -99,11 +116,14 @@ export interface RestBlockSegment {
 
 export type WorkoutSegment = ContinuousSegment | IntervalSegment | ProgressionSegment | RestBlockSegment;
 
-// valid/errors (HRA-111 amendment 2): bottom-up validity so a future accordion
-// UI can mark exactly the broken day/week/section, without the whole document
-// failing to parse. needs_review is a separate, softer signal (e.g. an
-// unresolved pace anchor) — a day can be valid:true and needs_review:true at
-// the same time.
+// HRA-113: valid/errors (HRA-111 amendment 2) are removed — nothing produces a
+// hard error anymore (see parser.ts), so a day/week/section/plan-level "is
+// this broken" flag no longer means anything. warnings replaces it: every
+// day-scoped ParseWarning lives directly on that DayEntry (plan/section/week-
+// scoped warnings — e.g. an unrecognized PACE line — stay on ParseResult.warnings,
+// see below). needs_review is unchanged: true whenever this day has warnings,
+// checked by the future review UI to decide what to surface, not by the parser
+// to decide whether to fail.
 export interface DayEntry {
   day: number;
   suffix?: string;
@@ -115,8 +135,7 @@ export interface DayEntry {
   notes?: string;
   needs_review: boolean;
   raw_dsl: string;
-  valid: boolean;
-  errors: ParseError[];
+  warnings: ParseWarning[];
 }
 
 export interface Week {
@@ -125,8 +144,6 @@ export interface Week {
   notes?: string;
   pace_policy: PacePolicy;
   days: DayEntry[];
-  valid: boolean;
-  errors: ParseError[];
 }
 
 export interface Section {
@@ -135,8 +152,6 @@ export interface Section {
   notes?: string;
   pace_policy: PacePolicy;
   weeks: Week[];
-  valid: boolean;
-  errors: ParseError[];
 }
 
 export interface PlanMetadata {
@@ -154,10 +169,11 @@ export interface PlanMetadata {
 export interface RunPlan {
   metadata: PlanMetadata;
   sections: Section[];
-  valid: boolean;
-  errors: ParseError[];
 }
 
+// Reserved for the document-level "nothing to build a plan from" case
+// (missing PLAN header, empty input) — HRA-113 keeps this exactly as HRA-111
+// defined it; only day/segment-level hard errors moved to warnings.
 export interface ParseError {
   line: number;
   content: string;
@@ -172,8 +188,9 @@ export interface ParseWarning {
 }
 
 // ok:false (no plan at all) is reserved for genuinely unparseable input
-// (missing PLAN header, empty input) — HRA-111 amendment 2. Everything else
-// returns a plan tree, with broken parts marked valid:false.
+// (missing PLAN header, empty input) — unchanged by HRA-113. Everything else
+// returns a plan tree; day/segment-level issues are warnings, never a reason
+// to withhold the plan.
 export type ParseResult =
   | { ok: true; plan: RunPlan; warnings: ParseWarning[] }
   | { ok: false; errors: ParseError[]; warnings: ParseWarning[] };

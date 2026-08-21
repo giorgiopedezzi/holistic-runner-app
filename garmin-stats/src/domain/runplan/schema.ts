@@ -1,7 +1,9 @@
 // ── RunPlan DSL v1 — Zod schemas ────────────────────────────────────────────
 // Mirrors types.ts. Used by the parser to validate the fully-built RunPlan
 // before returning it (HRA-108 §20) — zod is a deliberate, confirmed exception
-// to this backend's zero-runtime-dependency default (HRA-111).
+// to this backend's zero-runtime-dependency default (HRA-111). HRA-113: a
+// mismatch here is now treated as an internal bug (parser.ts throws), not
+// user-facing feedback — see the note in parser.ts.
 import { z } from "zod";
 
 export const displayUnitSchema = z.enum(["km", "mi"]);
@@ -28,13 +30,17 @@ export const offsetIntensitySchema = z.object({
 export const absoluteIntensitySchema = z.object({
   kind: z.literal("absolute"), pace_sec_per_km: z.number(), raw: z.string(),
 });
+// unknown (HRA-113): a literal `?` placeholder or otherwise-unrecognized token.
+export const unknownIntensitySchema = z.object({ kind: z.literal("unknown"), raw: z.string() });
 export const intensitySchema = z.discriminatedUnion("kind", [
-  anchorIntensitySchema, offsetIntensitySchema, absoluteIntensitySchema,
+  anchorIntensitySchema, offsetIntensitySchema, absoluteIntensitySchema, unknownIntensitySchema,
 ]);
 
 export const distanceTargetSchema = z.object({ kind: z.literal("distance"), distance_m: z.number().positive(), raw: z.string() });
 export const durationTargetSchema = z.object({ kind: z.literal("duration"), duration_sec: z.number().positive(), raw: z.string() });
-export const targetSchema = z.discriminatedUnion("kind", [distanceTargetSchema, durationTargetSchema]);
+// unknown (HRA-113): same placeholder concept, for Target position.
+export const unknownTargetSchema = z.object({ kind: z.literal("unknown"), raw: z.string() });
+export const targetSchema = z.discriminatedUnion("kind", [distanceTargetSchema, durationTargetSchema, unknownTargetSchema]);
 
 export const restSpecSchema = z.object({
   target: targetSchema,
@@ -46,10 +52,11 @@ export const restSpecSchema = z.object({
 export const continuousSegmentSchema = z.object({
   type: z.literal("continuous"), target: targetSchema, intensity: intensitySchema, raw: z.string(),
 });
-// rest is required — HRA-111 amendment 1.
+// rest is optional again (HRA-113 reverses HRA-111 amendment 1 — nothing is a
+// hard error anymore). reps is nullable: null = the `?` placeholder.
 export const intervalSegmentSchema = z.object({
-  type: z.literal("interval"), reps: z.number().int().positive(),
-  work_target: targetSchema, work_intensity: intensitySchema, rest: restSpecSchema, raw: z.string(),
+  type: z.literal("interval"), reps: z.number().int().positive().nullable(),
+  work_target: targetSchema, work_intensity: intensitySchema, rest: restSpecSchema.optional(), raw: z.string(),
 });
 export const progressionSegmentSchema = z.object({
   type: z.literal("progression"), target: targetSchema,
@@ -65,8 +72,13 @@ export const workoutSegmentSchema = z.discriminatedUnion("type", [
 export const parseErrorSchema = z.object({
   line: z.number(), content: z.string(), message: z.string(), suggestion: z.string().optional(),
 });
+export const parseWarningSchema = z.object({
+  line: z.number(), content: z.string(), message: z.string(),
+});
 
-// day/week/section/plan validity fields — HRA-111 amendment 2.
+// day/week/section/plan validity fields (HRA-111 amendment 2) are removed —
+// HRA-113: nothing produces a hard error anymore, so `valid`/`errors` no
+// longer mean anything at this level. DayEntry.warnings replaces them.
 export const dayEntrySchema = z.object({
   day: z.number().int(),
   suffix: z.string().optional(),
@@ -78,8 +90,7 @@ export const dayEntrySchema = z.object({
   notes: z.string().optional(),
   needs_review: z.boolean(),
   raw_dsl: z.string(),
-  valid: z.boolean(),
-  errors: z.array(parseErrorSchema),
+  warnings: z.array(parseWarningSchema),
 });
 
 export const weekSchema = z.object({
@@ -88,8 +99,6 @@ export const weekSchema = z.object({
   notes: z.string().optional(),
   pace_policy: pacePolicySchema,
   days: z.array(dayEntrySchema),
-  valid: z.boolean(),
-  errors: z.array(parseErrorSchema),
 });
 
 export const sectionSchema = z.object({
@@ -98,8 +107,6 @@ export const sectionSchema = z.object({
   notes: z.string().optional(),
   pace_policy: pacePolicySchema,
   weeks: z.array(weekSchema),
-  valid: z.boolean(),
-  errors: z.array(parseErrorSchema),
 });
 
 export const planMetadataSchema = z.object({
@@ -117,6 +124,4 @@ export const planMetadataSchema = z.object({
 export const runPlanSchema = z.object({
   metadata: planMetadataSchema,
   sections: z.array(sectionSchema),
-  valid: z.boolean(),
-  errors: z.array(parseErrorSchema),
 });

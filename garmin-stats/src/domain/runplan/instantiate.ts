@@ -14,8 +14,8 @@ export interface InstantiateOptions {
 export type ResolvedSegment =
   | { type: "continuous"; target: Target; resolved_pace_sec_per_km: number | null; raw: string }
   | {
-      type: "interval"; reps: number; work_target: Target; work_resolved_pace_sec_per_km: number | null;
-      rest: { target: Target; resolved_pace_sec_per_km: number | null; rest_type?: RestSpec["rest_type"]; raw: string };
+      type: "interval"; reps: number | null; work_target: Target; work_resolved_pace_sec_per_km: number | null;
+      rest?: { target: Target; resolved_pace_sec_per_km: number | null; rest_type?: RestSpec["rest_type"]; raw: string };
       raw: string;
     }
   | {
@@ -68,7 +68,7 @@ function resolveSegment(seg: WorkoutSegment, policy: PacePolicy, flag: { unresol
       return {
         type: "interval", reps: seg.reps, work_target: seg.work_target,
         work_resolved_pace_sec_per_km: resolvePaceOrNull(seg.work_intensity, policy, flag),
-        rest: {
+        rest: seg.rest && {
           target: seg.rest.target,
           resolved_pace_sec_per_km: seg.rest.intensity ? resolvePaceOrNull(seg.rest.intensity, policy, flag) : null,
           rest_type: seg.rest.rest_type, raw: seg.rest.raw,

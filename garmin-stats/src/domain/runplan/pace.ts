@@ -42,6 +42,9 @@ export function resolveIntensityToPace(intensity: Intensity, policy: PacePolicy)
   if (intensity.kind === "absolute") {
     return { ok: true, pace_sec_per_km: intensity.pace_sec_per_km };
   }
+  if (intensity.kind === "unknown") {
+    return { ok: false, error: "Intensity is unspecified." };
+  }
   const base = resolveAnchor(intensity.anchor, policy, new Set());
   if (intensity.kind === "anchor") {
     return base;

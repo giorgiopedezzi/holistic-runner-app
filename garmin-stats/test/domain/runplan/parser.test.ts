@@ -287,7 +287,7 @@ test("Italian fixture: week 2 D3 — three ordered segments (continuous ; rest_b
   assert.equal(interval.reps, 8);
   const workPace = resolveIntensityToPace(interval.work_intensity, policy);
   assert.equal(workPace.ok && round(workPace.pace_sec_per_km), sec(3, 36));
-  assert.equal(interval.rest.rest_type, "stand");
+  assert.equal(interval.rest?.rest_type, "stand");
 
   const d7 = week2.days.find(d => d.day === 7)!;
   assert.equal(d7.workout_type, "todo");
@@ -352,7 +352,8 @@ test("Italian fixture: week 4 — week override RG=4:12/km -> FL=4:57/km, STRIDE
   assert.equal(d4seg2.type, "interval");
 });
 
-// ── Interval rest is mandatory (HRA-111 amendment 1) ────────────────────────
+// ── Interval rest (HRA-113: optional again — a missing r: clause is a
+//    warning, not a hard error; reverses HRA-111 amendment 1) ─────────────
 
 const dayCtx: DayParseContext = {
   unit: "km", offset_unit: "s/km", default_rest: "jog", pacePolicy: { RG: { kind: "absolute", pace_sec_per_km: 256 } },
@@ -360,47 +361,54 @@ const dayCtx: DayParseContext = {
 
 test("interval with distance rest + intensity parses", () => {
   const day = parseDayEntry("D3: 4x3000m @ RG-20 r:1km @ RG+10", dayCtx);
-  assert.equal(day.valid, true);
+  assert.equal(day.needs_review, false);
   const seg = day.segments[0] as IntervalSegment;
   assert.equal(seg.type, "interval");
+  assert.ok(seg.rest);
   assert.equal(seg.rest.target.kind, "distance");
   assert.ok(seg.rest.intensity);
 });
 
 test("interval with time rest + rest type parses", () => {
   const day = parseDayEntry("D3: 8x500m @ RG-40 r:90s stand", dayCtx);
-  assert.equal(day.valid, true);
+  assert.equal(day.needs_review, false);
   const seg = day.segments[0] as IntervalSegment;
+  assert.ok(seg.rest);
   assert.equal(seg.rest.target.kind, "duration");
   assert.equal(seg.rest.rest_type, "stand");
 });
 
 test("interval with time rest + jog parses", () => {
   const day = parseDayEntry("D3: 5x4min @ RG-10 r:2min jog", dayCtx);
-  assert.equal(day.valid, true);
+  assert.equal(day.needs_review, false);
   const seg = day.segments[0] as IntervalSegment;
+  assert.ok(seg.rest);
   assert.equal(seg.rest.rest_type, "jog");
 });
 
 test("interval with distance rest + anchor intensity parses", () => {
+  // FL is intentionally not in dayCtx.pacePolicy — needs_review is expected
+  // true here (the rest anchor can't resolve), the point of this test is the
+  // segment's *shape*, not pace resolution.
   const day = parseDayEntry("D3: 4x2000m @ RG-20 r:1km @ FL", dayCtx);
-  assert.equal(day.valid, true);
   const seg = day.segments[0] as IntervalSegment;
-  assert.equal(seg.rest.intensity?.kind, "anchor");
+  assert.equal(seg.rest?.intensity?.kind, "anchor");
 });
 
-test("interval WITHOUT rest returns the exact mandated ParseError", () => {
+test("interval WITHOUT rest produces a warning, not a hard error", () => {
   const day = parseDayEntry("D3: 4x3000m @ RG-20", dayCtx);
-  assert.equal(day.valid, false);
-  assert.equal(day.errors.length, 1);
-  assert.equal(day.errors[0].message, "Interval segment must include rest between repetitions.");
-  assert.ok(day.errors[0].suggestion?.includes("r:"));
+  assert.equal(day.needs_review, true);
+  assert.equal(day.warnings.length, 1);
+  assert.equal(day.warnings[0].message, "Interval segment has no rest specified between repetitions.");
+  const seg = day.segments[0] as IntervalSegment;
+  assert.equal(seg.rest, undefined);
 });
 
 for (const bad of ["D3: 10x1000m @ RG-25", "D2: 6x1mi @ HMP", "D4: 5x4min @ RG-10"]) {
-  test(`interval without rest is invalid: ${bad}`, () => {
+  test(`interval without rest produces a warning, still parses: ${bad}`, () => {
     const day = parseDayEntry(bad, dayCtx);
-    assert.equal(day.valid, false);
+    assert.equal(day.needs_review, true);
+    assert.equal((day.segments[0] as IntervalSegment).rest, undefined);
   });
 }
 
@@ -500,15 +508,15 @@ D1: REST
 
 // ── Days ─────────────────────────────────────────────────────────────────
 
-test("day: D1-D7 parse, invalid day number is flagged invalid, raw_dsl preserved", () => {
+test("day: D1-D7 parse, invalid day number produces a warning, raw_dsl preserved", () => {
   for (let d = 1; d <= 7; d++) {
     const day = parseDayEntry(`D${d}: REST`, dayCtx);
     assert.equal(day.day, d);
-    assert.equal(day.valid, true);
+    assert.equal(day.needs_review, false);
   }
   const bad = parseDayEntry("D8: REST", dayCtx);
   assert.equal(bad.day, 8);
-  assert.equal(bad.valid, false);
+  assert.equal(bad.needs_review, true);
   const raw = "D3 [interval]: 3x3000m @ RG-20 r:1km @ RG+10";
   assert.equal(parseDayEntry(raw, dayCtx).raw_dsl, raw);
 });
@@ -559,11 +567,11 @@ test("segments: rest_block parses duration and rest type", () => {
   assert.equal(seg.rest_type, "stand");
 });
 
-test("segments: invalid workout syntax and missing units are flagged invalid", () => {
+test("segments: invalid workout syntax and missing units produce warnings, still parse", () => {
   const missingUnit = parseDayEntry("D3: 4x3 @ RG-20 r:1km @ RG+10", dayCtx);
-  assert.equal(missingUnit.valid, false);
+  assert.equal(missingUnit.needs_review, true);
   const garbage = parseDayEntry("D3: not a real workout !!!", dayCtx);
-  assert.equal(garbage.valid, false);
+  assert.equal(garbage.needs_review, true);
 });
 
 // ── Target normalization ────────────────────────────────────────────────
@@ -588,9 +596,11 @@ test("target: duration units normalize to seconds (s/sec/min/'/h)", () => {
   }
 });
 
-test("target: no unit is invalid", () => {
+test("target: no unit produces a warning, falls back to unknown", () => {
   const day = parseDayEntry("D1: 15 @ RG", dayCtx);
-  assert.equal(day.valid, false);
+  assert.equal(day.needs_review, true);
+  const seg = day.segments[0] as ContinuousSegment;
+  assert.equal(seg.target.kind, "unknown");
 });
 
 // ── Intensity ────────────────────────────────────────────────────────────
@@ -620,14 +630,13 @@ test("intensity: anchor, offset (default/explicit s/km/s/mi), absolute km/mi all
   assert.ok(Math.abs(absMiPace - 415 / KM_PER_MILE) < 0.01);
 });
 
-test("intensity: unknown anchor parses but marks the day needs_review, and the DSL-level parse warns", () => {
+test("intensity: unknown anchor parses but marks the day needs_review with a day-level warning", () => {
   const result = parseRunPlanDSL("PLAN\nWEEK 1\nD1: 10km @ UNKNOWN_PACE\n");
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("unreachable");
   const day = result.plan.sections[0].weeks[0].days[0];
-  assert.equal(day.valid, true, "an unresolved anchor is a warning, not a hard error");
   assert.equal(day.needs_review, true);
-  assert.ok(result.warnings.length > 0);
+  assert.ok(day.warnings.length > 0, "an unresolved anchor produces a day-level warning");
 });
 
 // ── Pace policy scoping / adjustment ────────────────────────────────────
@@ -677,7 +686,7 @@ test("pace policy: missing anchor produces a resolution error", () => {
   assert.equal(result.ok, false);
 });
 
-test("pace policy: circular pace definitions are detected as plan errors", () => {
+test("pace policy: circular pace definitions are detected as plan-level warnings", () => {
   const result = parseRunPlanDSL(`PLAN
 PACE RG=FL+10s/km
 PACE FL=RG+10s/km
@@ -686,6 +695,43 @@ D1: REST
 `);
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("unreachable");
-  assert.equal(result.plan.valid, false);
-  assert.ok(result.plan.errors.some(e => e.message.toLowerCase().includes("circular")));
+  assert.ok(result.warnings.some(w => w.message.toLowerCase().includes("circular")));
+});
+
+// ── HRA-113: `?` placeholder, optional CROSS/STRENGTH target ──────────────
+
+test("`?` placeholder is accepted for target/intensity, producing specific warnings (known rep-count)", () => {
+  const day = parseDayEntry(
+    "D1: 10km @ FL ; 8x? @ ?",
+    { ...dayCtx, pacePolicy: { ...dayCtx.pacePolicy, FL: { kind: "absolute", pace_sec_per_km: 300 } } },
+  );
+  assert.equal(day.needs_review, true);
+  const interval = day.segments[1] as IntervalSegment;
+  assert.equal(interval.reps, 8);
+  assert.equal(interval.work_target.kind, "unknown");
+  assert.equal(interval.work_intensity.kind, "unknown");
+  assert.ok(day.warnings.some(w => w.message.includes("Work target")));
+  assert.ok(day.warnings.some(w => w.message.includes("Work intensity")));
+});
+
+test("`?` placeholder is accepted for interval rep-count", () => {
+  const day = parseDayEntry("D1: ?x400m @ RG r:200m jog", dayCtx);
+  const interval = day.segments[0] as IntervalSegment;
+  assert.equal(interval.reps, null);
+  assert.equal(interval.work_target.kind, "distance");
+  assert.ok(day.warnings.some(w => w.message.includes("repetitions")));
+});
+
+test("CROSS/STRENGTH: description-only form (no target) parses with no warning", () => {
+  const cross = parseDayEntry("D5: CROSS core", dayCtx);
+  assert.equal(cross.workout_type, "cross");
+  assert.equal(cross.activity_target, undefined);
+  assert.equal(cross.activity_description, "core");
+  assert.equal(cross.needs_review, false);
+
+  const strength = parseDayEntry("D5: STRENGTH mobility work", dayCtx);
+  assert.equal(strength.workout_type, "strength");
+  assert.equal(strength.activity_target, undefined);
+  assert.equal(strength.activity_description, "mobility work");
+  assert.equal(strength.needs_review, false);
 });

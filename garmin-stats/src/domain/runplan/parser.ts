@@ -1,10 +1,16 @@
 // ── RunPlan DSL v1 — parser ─────────────────────────────────────────────────
 // parseRunPlanDSL(input): manual line-based parsing with regular expressions,
 // no external parser-generator dependency (HRA-111). See docs/runplan-dsl.md.
+//
+// HRA-113: nothing below ok:false (missing PLAN header / empty input) is a
+// hard failure anymore. Anything the parser can't make sense of — a missing
+// interval rest, an unrecognized token, a literal `?` placeholder — degrades
+// to a ParseWarning instead, so messy/incomplete real-world input still
+// produces a full plan tree to review and fix, never a rejection.
 
 import type {
   AbsolutePace, AnchorIntensity, DayEntry, DayParseContext, DisplayUnit, EventType,
-  Intensity, IntervalSegment, OffsetPace, OffsetUnit, PacePolicy, ParseError, ParseWarning,
+  Intensity, IntervalSegment, OffsetIntensity, OffsetPace, OffsetUnit, PacePolicy, ParseWarning,
   ProgressionSegment, RestBlockSegment, RestSpec, RestType, RunPlan, Section, Target, Week,
   WorkoutSegment,
 } from "./types.ts";
@@ -40,11 +46,16 @@ const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))\s+WEEKS\s+(\S+)$/i;
 const WEEK_RE = /^WEEK\s+(\d+)(?:\s+START\s+(\d{4}-\d{2}-\d{2}))?$/i;
 const DAY_RE = /^D(\d+)([a-c])?(?:\s*\[([^\]]+)\])?\s*:\s*(.*)$/;
 
-const CROSS_RE = /^CROSS\s+(\S+)\s+(.+)$/i;
-const STRENGTH_RE = /^STRENGTH\s+(\S+)\s+(.+)$/i;
+// HRA-113: target is optional — CROSS/STRENGTH validation is presence-only
+// (naming the activity is enough). Captures everything after the keyword;
+// splitOptionalTarget below decides whether the first token is a real target.
+const CROSS_RE = /^CROSS\s+(.+)$/i;
+const STRENGTH_RE = /^STRENGTH\s+(.+)$/i;
 
-const INTERVAL_HEADER_RE = /^(\d+)\s*x\s*(\S+)\s*@\s*(\S+)/i;
-const INTERVAL_RE = /^(\d+)\s*x\s*(\S+)\s*@\s*(\S+)\s+r:\s*(\S+)(?:\s*@\s*(\S+))?(?:\s+(stand|walk|jog))?$/i;
+// HRA-113: reps may be `?` (unspecified); the `r:` rest clause is optional —
+// a missing one is a warning (see parseInterval), not a match failure.
+const INTERVAL_HEADER_RE = /^(\d+|\?)\s*x\s*(\S+)\s*@\s*(\S+)/i;
+const INTERVAL_RE = /^(\d+|\?)\s*x\s*(\S+)\s*@\s*(\S+)(?:\s+r:\s*(\S+)(?:\s*@\s*(\S+))?(?:\s+(stand|walk|jog))?)?$/i;
 const PROGRESSION_RE = /^(\S+)\s+PROG\s+(\S+)\s*->\s*(\S+)$/i;
 const REST_BLOCK_RE = /^REST\s+(\S+)(?:\s+(stand|walk|jog))?$/i;
 const CONTINUOUS_RE = /^(\S+)\s*@\s*(\S+)$/;
@@ -52,8 +63,10 @@ const CONTINUOUS_RE = /^(\S+)\s*@\s*(\S+)$/;
 const EVENT_VALUES: readonly EventType[] = ["5k", "10k", "half", "marathon", "ultra"];
 
 // ── low-level token parsers ─────────────────────────────────────────────────
+// Never fail (HRA-113) — anything unrecognized falls back to kind:"unknown",
+// carrying the raw text forward so the caller can warn with real context.
 
-function parseTarget(token: string): Target | null {
+function parseTarget(token: string): Target {
   let m = DISTANCE_RE.exec(token);
   if (m) {
     const n = parseFloat(m[1]);
@@ -72,10 +85,14 @@ function parseTarget(token: string): Target | null {
   if (m) {
     return { kind: "duration", duration_sec: parseFloat(m[1]) * SEC_PER_MIN, raw: token };
   }
-  return null;
+  return { kind: "unknown", raw: token };
 }
 
-function parseIntensity(token: string, offsetUnit: OffsetUnit): Intensity | null {
+function looksLikeTarget(token: string): boolean {
+  return DISTANCE_RE.test(token) || DURATION_RE.test(token) || APOSTROPHE_MIN_RE.test(token);
+}
+
+function parseIntensity(token: string, offsetUnit: OffsetUnit): Intensity {
   let m = ABS_PACE_RE.exec(token);
   if (m) {
     const totalSec = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
@@ -94,15 +111,18 @@ function parseIntensity(token: string, offsetUnit: OffsetUnit): Intensity | null
   if (ANCHOR_RE.test(token)) {
     return { kind: "anchor", anchor: token, raw: token };
   }
-  return null;
+  return { kind: "unknown", raw: token };
 }
 
 // Exported for HRA-112's plan-template instantiate endpoint — a pace-override
 // value in a request body ("6:40/mi", "RG+10s/km") uses the exact same
-// grammar as a PACE line's right-hand side.
+// grammar as a PACE line's right-hand side. Unlike parseIntensity, this keeps
+// its "can fail" contract (null) — pace_overrides is a REST request parameter,
+// not DSL prose, so rejecting a genuinely invalid override at the API
+// boundary is still correct (rest-api-standards, not the DSL leniency rule).
 export function parsePaceValue(token: string, offsetUnit: OffsetUnit): AbsolutePace | OffsetPace | null {
   const intensity = parseIntensity(token, offsetUnit);
-  if (!intensity || intensity.kind === "anchor") return null;
+  if (intensity.kind === "anchor" || intensity.kind === "unknown") return null;
   return intensity.kind === "absolute"
     ? { kind: "absolute", pace_sec_per_km: intensity.pace_sec_per_km }
     : { kind: "offset", anchor: intensity.anchor, offset_sec_per_km: intensity.offset_sec_per_km };
@@ -114,73 +134,114 @@ function splitNote(line: string): { main: string; note?: string } {
   return { main: line.slice(0, idx).trim(), note: line.slice(idx + 1).trim() };
 }
 
+// CROSS/STRENGTH target is optional (HRA-113): if the first word after the
+// keyword looks like a real Target AND there's more text after it, treat it
+// as target+description; otherwise the whole remainder is just the
+// description (e.g. "CROSS core" — no target, "core" is the description).
+function splitOptionalTarget(rest: string): { target?: Target; description: string } {
+  const parts = rest.split(/\s+/);
+  if (parts.length > 1 && looksLikeTarget(parts[0])) {
+    return { target: parseTarget(parts[0]), description: parts.slice(1).join(" ") };
+  }
+  return { description: rest };
+}
+
 // ── workout segment parsers ─────────────────────────────────────────────────
+// Each always returns a segment (never fails, HRA-113) plus any warning
+// messages generated while building it — the caller (parseDayEntry) attaches
+// line context and pushes them onto the day's warnings.
 
-function parseInterval(seg: string, offsetUnit: OffsetUnit): IntervalSegment | { error: string; suggestion?: string } {
-  if (INTERVAL_HEADER_RE.test(seg) && !/\br:/i.test(seg)) {
-    return {
-      error: "Interval segment must include rest between repetitions.",
-      suggestion: `Use syntax: ${seg} r:1km @ RG+10`,
-    };
-  }
+interface SegmentResult<T extends WorkoutSegment = WorkoutSegment> {
+  segment: T;
+  warnings: string[];
+}
+
+function parseInterval(seg: string, offsetUnit: OffsetUnit): SegmentResult<IntervalSegment> {
+  const warnings: string[] = [];
   const m = INTERVAL_RE.exec(seg);
-  if (!m) return { error: `Invalid interval syntax: ${seg}` };
-  const workTarget = parseTarget(m[2]);
-  const workIntensity = parseIntensity(m[3], offsetUnit);
-  const restTarget = parseTarget(m[4]);
-  if (!workTarget || !workIntensity || !restTarget) {
-    return { error: `Invalid interval syntax (bad target/intensity): ${seg}` };
-  }
-  const restIntensity = m[5] ? parseIntensity(m[5], offsetUnit) ?? undefined : undefined;
-  const rest: RestSpec = {
-    target: restTarget,
-    intensity: restIntensity,
-    rest_type: m[6] as RestType | undefined,
-    raw: seg.slice(seg.indexOf("r:")),
-  };
-  return {
-    type: "interval",
-    reps: parseInt(m[1], 10),
-    work_target: workTarget,
-    work_intensity: workIntensity,
-    rest,
-    raw: seg,
-  };
-}
-
-function parseProgression(seg: string, offsetUnit: OffsetUnit): ProgressionSegment | { error: string } {
-  const m = PROGRESSION_RE.exec(seg);
-  if (!m) return { error: `Invalid progression syntax: ${seg}` };
-  const target = parseTarget(m[1]);
-  const start = parseIntensity(m[2], offsetUnit);
-  const end = parseIntensity(m[3], offsetUnit);
-  if (!target || !start || !end) return { error: `Invalid progression syntax (bad target/intensity): ${seg}` };
-  return { type: "progression", target, start_intensity: start, end_intensity: end, raw: seg };
-}
-
-function parseRestBlock(seg: string): RestBlockSegment | { error: string } {
-  const m = REST_BLOCK_RE.exec(seg);
-  if (!m) return { error: `Invalid rest block syntax: ${seg}` };
-  const target = parseTarget(m[1]);
-  if (!target) return { error: `Invalid rest block target: ${seg}` };
-  return { type: "rest_block", target, rest_type: m[2] as RestType | undefined, raw: seg };
-}
-
-function parseContinuous(seg: string, offsetUnit: OffsetUnit): WorkoutSegment | { error: string } {
-  const m = CONTINUOUS_RE.exec(seg);
-  if (!m) return { error: `Unrecognized workout segment syntax: ${seg}` };
-  const target = parseTarget(m[1]);
-  const intensity = parseIntensity(m[2], offsetUnit);
-  if (!target) {
+  if (!m) {
+    warnings.push(`Invalid interval syntax: ${seg}`);
     return {
-      error: `Target has no unit: ${m[1]}`,
+      segment: {
+        type: "interval", reps: null,
+        work_target: { kind: "unknown", raw: seg }, work_intensity: { kind: "unknown", raw: seg },
+        raw: seg,
+      },
+      warnings,
     };
   }
-  if (!intensity) return { error: `Invalid intensity: ${m[2]}` };
-  return { type: "continuous", target, intensity, raw: seg };
+  const reps = m[1] === "?" ? null : parseInt(m[1], 10);
+  if (reps === null) warnings.push("Number of repetitions is unspecified.");
+  const workTarget = parseTarget(m[2]);
+  if (workTarget.kind === "unknown") warnings.push(`Work target is unspecified or unrecognized: ${m[2]}`);
+  const workIntensity = parseIntensity(m[3], offsetUnit);
+  if (workIntensity.kind === "unknown") warnings.push(`Work intensity is unspecified or unrecognized: ${m[3]}`);
+
+  let rest: RestSpec | undefined;
+  if (m[4]) {
+    const restTarget = parseTarget(m[4]);
+    if (restTarget.kind === "unknown") warnings.push(`Rest target is unspecified or unrecognized: ${m[4]}`);
+    const restIntensity = m[5] ? parseIntensity(m[5], offsetUnit) : undefined;
+    rest = {
+      target: restTarget, intensity: restIntensity, rest_type: m[6] as RestType | undefined,
+      raw: seg.slice(seg.indexOf("r:")),
+    };
+  } else {
+    warnings.push("Interval segment has no rest specified between repetitions.");
+  }
+
+  return { segment: { type: "interval", reps, work_target: workTarget, work_intensity: workIntensity, rest, raw: seg }, warnings };
 }
 
-function parseSegment(seg: string, offsetUnit: OffsetUnit): WorkoutSegment | { error: string; suggestion?: string } {
+function parseProgression(seg: string, offsetUnit: OffsetUnit): SegmentResult<ProgressionSegment> {
+  const warnings: string[] = [];
+  const m = PROGRESSION_RE.exec(seg);
+  if (!m) {
+    warnings.push(`Invalid progression syntax: ${seg}`);
+    return {
+      segment: {
+        type: "progression", target: { kind: "unknown", raw: seg },
+        start_intensity: { kind: "unknown", raw: seg }, end_intensity: { kind: "unknown", raw: seg }, raw: seg,
+      },
+      warnings,
+    };
+  }
+  const target = parseTarget(m[1]);
+  if (target.kind === "unknown") warnings.push(`Progression target is unspecified or unrecognized: ${m[1]}`);
+  const start = parseIntensity(m[2], offsetUnit);
+  if (start.kind === "unknown") warnings.push(`Progression start intensity is unspecified or unrecognized: ${m[2]}`);
+  const end = parseIntensity(m[3], offsetUnit);
+  if (end.kind === "unknown") warnings.push(`Progression end intensity is unspecified or unrecognized: ${m[3]}`);
+  return { segment: { type: "progression", target, start_intensity: start, end_intensity: end, raw: seg }, warnings };
+}
+
+function parseRestBlock(seg: string): SegmentResult<RestBlockSegment> {
+  const warnings: string[] = [];
+  const m = REST_BLOCK_RE.exec(seg);
+  if (!m) {
+    warnings.push(`Invalid rest block syntax: ${seg}`);
+    return { segment: { type: "rest_block", target: { kind: "unknown", raw: seg }, raw: seg }, warnings };
+  }
+  const target = parseTarget(m[1]);
+  if (target.kind === "unknown") warnings.push(`Rest block target is unspecified or unrecognized: ${m[1]}`);
+  return { segment: { type: "rest_block", target, rest_type: m[2] as RestType | undefined, raw: seg }, warnings };
+}
+
+function parseContinuous(seg: string, offsetUnit: OffsetUnit): SegmentResult {
+  const warnings: string[] = [];
+  const m = CONTINUOUS_RE.exec(seg);
+  if (!m) {
+    warnings.push(`Unrecognized workout segment syntax: ${seg}`);
+    return { segment: { type: "continuous", target: { kind: "unknown", raw: seg }, intensity: { kind: "unknown", raw: seg }, raw: seg }, warnings };
+  }
+  const target = parseTarget(m[1]);
+  if (target.kind === "unknown") warnings.push(`Target is unspecified or has no unit: ${m[1]}`);
+  const intensity = parseIntensity(m[2], offsetUnit);
+  if (intensity.kind === "unknown") warnings.push(`Intensity is unspecified or unrecognized: ${m[2]}`);
+  return { segment: { type: "continuous", target, intensity, raw: seg }, warnings };
+}
+
+function parseSegment(seg: string, offsetUnit: OffsetUnit): SegmentResult {
   if (INTERVAL_HEADER_RE.test(seg)) return parseInterval(seg, offsetUnit);
   if (/\bPROG\b/i.test(seg)) return parseProgression(seg, offsetUnit);
   if (/^REST\s+/i.test(seg)) return parseRestBlock(seg);
@@ -192,15 +253,13 @@ function parseSegment(seg: string, offsetUnit: OffsetUnit): WorkoutSegment | { e
 
 export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
   const { main, note } = splitNote(rawLine);
-  const errors: ParseError[] = [];
-  const m = DAY_RE.exec(main);
+  const warnings: ParseWarning[] = [];
+  const warn = (message: string) => warnings.push({ line: 0, content: rawLine, message });
 
+  const m = DAY_RE.exec(main);
   if (!m) {
-    return {
-      day: 0, workout_type: "todo", segments: [], notes: note, needs_review: true,
-      raw_dsl: rawLine, valid: false,
-      errors: [{ line: 0, content: rawLine, message: `Unrecognized day entry syntax: ${main}` }],
-    };
+    warn(`Unrecognized day entry syntax: ${main}`);
+    return { day: 0, workout_type: "todo", segments: [], notes: note, needs_review: true, raw_dsl: rawLine, warnings };
   }
 
   const day = parseInt(m[1], 10);
@@ -208,74 +267,58 @@ export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
   const category = m[3];
   const workoutText = m[4].trim();
 
-  if (day < 1 || day > 7) {
-    errors.push({ line: 0, content: rawLine, message: "Day number must be 1 through 7." });
-  }
+  if (day < 1 || day > 7) warn("Day number should be 1 through 7.");
 
-  const base = {
-    day, suffix, category, notes: note, raw_dsl: rawLine,
-  };
+  const base = { day, suffix, category, notes: note, raw_dsl: rawLine };
 
   if (workoutText === "REST") {
-    return { ...base, workout_type: "rest", segments: [], needs_review: false, valid: errors.length === 0, errors };
+    return { ...base, workout_type: "rest", segments: [], needs_review: warnings.length > 0, warnings };
   }
   if (workoutText === "TODO") {
-    return { ...base, workout_type: "todo", segments: [], needs_review: true, valid: errors.length === 0, errors };
+    return { ...base, workout_type: "todo", segments: [], needs_review: true, warnings };
   }
 
   const cross = CROSS_RE.exec(workoutText);
   if (cross) {
-    const target = parseTarget(cross[1]) ?? undefined;
-    if (!target) errors.push({ line: 0, content: rawLine, message: `Invalid CROSS target: ${cross[1]}` });
-    return {
-      ...base, workout_type: "cross", segments: [], activity_target: target, activity_description: cross[2],
-      needs_review: false, valid: errors.length === 0, errors,
-    };
+    const { target, description } = splitOptionalTarget(cross[1]);
+    return { ...base, workout_type: "cross", segments: [], activity_target: target, activity_description: description, needs_review: warnings.length > 0, warnings };
   }
   const strength = STRENGTH_RE.exec(workoutText);
   if (strength) {
-    const target = parseTarget(strength[1]) ?? undefined;
-    if (!target) errors.push({ line: 0, content: rawLine, message: `Invalid STRENGTH target: ${strength[1]}` });
-    return {
-      ...base, workout_type: "strength", segments: [], activity_target: target, activity_description: strength[2],
-      needs_review: false, valid: errors.length === 0, errors,
-    };
+    const { target, description } = splitOptionalTarget(strength[1]);
+    return { ...base, workout_type: "strength", segments: [], activity_target: target, activity_description: description, needs_review: warnings.length > 0, warnings };
   }
 
   // Plain run — one or more ;-separated segments.
   const segments: WorkoutSegment[] = [];
-  let needsReview = false;
   for (const raw of workoutText.split(";")) {
     const seg = raw.trim();
     if (!seg) continue;
-    const result = parseSegment(seg, ctx.offset_unit);
-    if ("error" in result) {
-      errors.push({ line: 0, content: rawLine, message: result.error, suggestion: result.suggestion });
-      continue;
-    }
-    segments.push(result);
+    const { segment, warnings: segWarnings } = parseSegment(seg, ctx.offset_unit);
+    segments.push(segment);
+    for (const w of segWarnings) warn(w);
   }
 
-  // §5.7 — an intensity that references an anchor missing from the effective
-  // pace policy doesn't fail parsing; it's a warning, and the day is flagged
-  // needs_review (distinct from valid:false, which is reserved for hard
-  // syntax errors like a missing interval rest).
+  // An intensity that references an anchor missing from the effective pace
+  // policy doesn't fail parsing (HRA-108 §5.7, still true under HRA-113) —
+  // it's a warning. kind:"unknown" intensities already warned above, so skip
+  // them here to avoid a duplicate message for the same token.
   for (const seg of segments) {
     const intensities: Intensity[] =
       seg.type === "continuous" ? [seg.intensity]
-      : seg.type === "interval" ? [seg.work_intensity, ...(seg.rest.intensity ? [seg.rest.intensity] : [])]
+      : seg.type === "interval" ? [seg.work_intensity, ...(seg.rest?.intensity ? [seg.rest.intensity] : [])]
       : seg.type === "progression" ? [seg.start_intensity, seg.end_intensity]
       : [];
     for (const intensity of intensities) {
-      if (intensity.kind === "absolute") continue;
-      if (!resolveIntensityToPace(intensity, ctx.pacePolicy).ok) needsReview = true;
+      if (intensity.kind === "absolute" || intensity.kind === "unknown") continue;
+      if (!resolveIntensityToPace(intensity, ctx.pacePolicy).ok) {
+        const anchor = (intensity as AnchorIntensity | OffsetIntensity).anchor;
+        warn(`Pace anchor "${anchor}" could not be resolved against the effective pace policy.`);
+      }
     }
   }
 
-  return {
-    ...base, workout_type: "run", segments,
-    needs_review: needsReview, valid: errors.length === 0, errors,
-  };
+  return { ...base, workout_type: "run", segments, needs_review: warnings.length > 0, warnings };
 }
 
 // ── main entry point ─────────────────────────────────────────────────────
@@ -301,12 +344,8 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
   }
 
   const plan: RunPlan = {
-    metadata: {
-      unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {},
-    },
+    metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
     sections: [],
-    valid: true,
-    errors: [],
   };
   const warnings: ParseWarning[] = [];
 
@@ -325,21 +364,19 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
   function closeSection(section: Section | undefined) {
     if (!section) return;
     for (const anchor of detectCircularPaceRefs(section.pace_policy)) {
-      section.errors.push({ line: 0, content: section.name, message: `Circular pace reference in section "${section.name}": ${anchor}` });
+      warnings.push({ line: 0, content: section.name, message: `Circular pace reference in section "${section.name}": ${anchor}` });
     }
-    section.valid = section.errors.length === 0 && section.weeks.every(w => w.valid);
   }
   function closeWeek(week: Week | undefined) {
     if (!week) return;
     for (const anchor of detectCircularPaceRefs(week.pace_policy)) {
-      week.errors.push({ line: 0, content: `WEEK ${week.number}`, message: `Circular pace reference in week ${week.number}: ${anchor}` });
+      warnings.push({ line: 0, content: `WEEK ${week.number}`, message: `Circular pace reference in week ${week.number}: ${anchor}` });
     }
-    week.valid = week.errors.length === 0 && week.days.every(d => d.valid);
   }
 
   function ensureDefaultSection() {
     if (!currentSection) {
-      currentSection = { name: "Plan", week_spec: "*", pace_policy: {}, weeks: [], valid: true, errors: [] };
+      currentSection = { name: "Plan", week_spec: "*", pace_policy: {}, weeks: [] };
       plan.sections.push(currentSection);
     }
   }
@@ -356,7 +393,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       closeSection(currentSection);
       currentWeek = undefined;
       const name = sectionMatch[1] ?? sectionMatch[2];
-      currentSection = { name, week_spec: sectionMatch[3], notes: note, pace_policy: {}, weeks: [], valid: true, errors: [] };
+      currentSection = { name, week_spec: sectionMatch[3], notes: note, pace_policy: {}, weeks: [] };
       plan.sections.push(currentSection);
       scope = "section";
       metadataClosed = true;
@@ -370,7 +407,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       ensureDefaultSection();
       currentWeek = {
         number: parseInt(weekMatch[1], 10), start_date: weekMatch[2], notes: note,
-        pace_policy: {}, days: [], valid: true, errors: [],
+        pace_policy: {}, days: [],
       };
       currentSection!.weeks.push(currentWeek);
       scope = "week";
@@ -384,7 +421,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
     if (dayHeaderMatch) {
       metadataClosed = true;
       if (!currentWeek) {
-        plan.errors.push({ line: n, content: text, message: "DAY entry appears outside any WEEK." });
+        warnings.push({ line: n, content: text, message: "DAY entry appears outside any WEEK." });
         continue;
       }
       const ctx: DayParseContext = {
@@ -392,12 +429,9 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
         pacePolicy: getEffectivePacePolicy(plan, currentSection!, currentWeek),
       };
       const day = parseDayEntry(text, ctx);
-      day.errors = day.errors.map(e => ({ ...e, line: n }));
+      day.warnings = day.warnings.map(w => ({ ...w, line: n }));
       currentWeek.days.push(day);
       weekSawDay = true;
-      if (day.needs_review) {
-        warnings.push({ line: n, content: text, message: "One or more pace anchors on this day could not be resolved." });
-      }
       continue;
     }
 
@@ -407,7 +441,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       const anchor = paceMatch[1];
       const value = parsePaceValue(paceMatch[2], plan.metadata.offset_unit);
       if (!value) {
-        plan.errors.push({ line: n, content: text, message: `Invalid PACE value: ${paceMatch[2]}` });
+        warnings.push({ line: n, content: text, message: `Invalid PACE value: ${paceMatch[2]}` });
         continue;
       }
       activePolicy()[anchor] = value;
@@ -434,8 +468,8 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       }
       if ((m = DISTANCE_META_RE.exec(main))) {
         const target = parseTarget(m[1]);
-        if (target && target.kind === "distance") plan.metadata.distance_m = target.distance_m;
-        else plan.errors.push({ line: n, content: text, message: `Invalid DISTANCE value: ${m[1]}` });
+        if (target.kind === "distance") plan.metadata.distance_m = target.distance_m;
+        else warnings.push({ line: n, content: text, message: `Invalid DISTANCE value: ${m[1]}` });
         continue;
       }
       if ((m = GOAL_RE.exec(main))) {
@@ -448,26 +482,25 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       if ((m = DEFAULT_REST_RE.exec(main))) { plan.metadata.default_rest = m[1].toLowerCase() as RestType; continue; }
     }
 
-    plan.errors.push({ line: n, content: text, message: `Unrecognized line: ${main}` });
+    warnings.push({ line: n, content: text, message: `Unrecognized line: ${main}` });
   }
 
   closeWeek(currentWeek);
   closeSection(currentSection);
   for (const anchor of detectCircularPaceRefs(plan.metadata.pace_policy)) {
-    plan.errors.push({ line: 0, content: "PLAN", message: `Circular pace reference at plan level: ${anchor}` });
+    warnings.push({ line: 0, content: "PLAN", message: `Circular pace reference at plan level: ${anchor}` });
   }
 
-  plan.valid = plan.errors.length === 0 && plan.sections.every(s => s.valid);
-
-  // Zod validation of the final shape (HRA-108 §20) — a schema mismatch here
-  // means a parser bug (the shape parseRunPlanDSL builds should always match
-  // schema.ts), so it's surfaced as a plan-level error rather than thrown.
+  // Zod validation of the final shape (HRA-108 §20) is now a pure internal
+  // invariant check, not user-facing feedback (HRA-113: there's no more
+  // errors/valid concept on RunPlan to append a mismatch into). A schema
+  // mismatch here means parseRunPlanDSL built a shape that doesn't match
+  // schema.ts — a parser bug, not something about the caller's DSL text — so
+  // it throws rather than silently becoming "just another warning", which
+  // would misrepresent an internal defect as a user-input problem.
   const zodResult = runPlanSchema.safeParse(plan);
   if (!zodResult.success) {
-    for (const issue of zodResult.error.issues) {
-      plan.errors.push({ line: 0, content: issue.path.join("."), message: issue.message });
-    }
-    plan.valid = false;
+    throw new Error(`Internal error: parsed RunPlan failed schema validation: ${JSON.stringify(zodResult.error.issues)}`);
   }
 
   return { ok: true, plan, warnings };

@@ -248,6 +248,11 @@ export function initSchema(db: DatabaseSync): void {
       dsl_source  TEXT    NOT NULL,
       parsed_plan TEXT    NOT NULL,
       event       TEXT,
+      -- Gate 2 (HRA-113): NULL = not approved. Set only via the explicit
+      -- approve endpoint, after a zero-warning save (gate 1). Any subsequent
+      -- edit (PUT) clears it back to NULL — approval means "a human signed
+      -- off on this exact saved state," not "this currently parses cleanly".
+      approved_at TEXT,
       created_at  TEXT    DEFAULT (datetime('now'))
     );
 
@@ -261,6 +266,8 @@ export function initSchema(db: DatabaseSync): void {
       start_date         TEXT    NOT NULL,
       pace_overrides     TEXT,
       target_activity_id INTEGER REFERENCES activities(id),
+      -- Gate 2 (HRA-113): same semantics as plan_templates.approved_at above.
+      approved_at        TEXT,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -452,6 +459,17 @@ export function initSchema(db: DatabaseSync): void {
   if (!settingsCols.some(c => c.name === "language")) {
     db.exec("ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto'");
   }
+
+  // HRA-113: approval gate columns, added after plan_templates/plan_instances
+  // already existed (HRA-112). First migration either table has needed.
+  const planTemplateCols = db.prepare("PRAGMA table_info(plan_templates)").all() as { name: string }[];
+  if (!planTemplateCols.some(c => c.name === "approved_at")) {
+    db.exec("ALTER TABLE plan_templates ADD COLUMN approved_at TEXT");
+  }
+  const planInstanceCols = db.prepare("PRAGMA table_info(plan_instances)").all() as { name: string }[];
+  if (!planInstanceCols.some(c => c.name === "approved_at")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN approved_at TEXT");
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -546,6 +564,9 @@ export interface PlanTemplateRow {
   // stays symbolic until an instance is created from this template.
   parsed_plan: string;
   event: string | null;
+  // NULL = not approved (HRA-113 gate 2). Set by POST .../approve; cleared to
+  // NULL by any subsequent PUT.
+  approved_at: string | null;
   created_at: string;
 }
 
@@ -557,6 +578,9 @@ export interface PlanInstanceRow {
   // provenance (what was actually overridden to produce this instance).
   pace_overrides: string | null;
   target_activity_id: number | null;
+  // NULL = not approved (HRA-113 gate 2). Same semantics as
+  // PlanTemplateRow.approved_at.
+  approved_at: string | null;
   created_at: string;
 }
 

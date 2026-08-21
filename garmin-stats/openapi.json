@@ -260,12 +260,14 @@
       },
       "PlanTemplate": {
         "type": "object",
-        "description": "A reusable RunPlan DSL v1 template (HRA-111/HRA-112) — parsed but pace-unresolved; see docs/runplan-dsl.md.",
+        "description": "A reusable RunPlan DSL v1 template (HRA-111/HRA-112, amended HRA-113) — parsed but pace-unresolved; see docs/runplan-dsl.md.",
         "properties": {
           "id": { "type": "integer" }, "name": { "type": "string" },
           "dsl_source": { "type": "string", "description": "The original DSL text." },
           "parsed_plan": { "type": "string", "description": "JSON-serialized, pre-resolution RunPlan." },
-          "event": { "type": ["string", "null"] }, "created_at": { "type": "string" }
+          "event": { "type": ["string", "null"] },
+          "approved_at": { "type": ["string", "null"], "description": "HRA-113 gate 2: NULL = not approved. Set via POST .../approve; cleared by any subsequent PUT." },
+          "created_at": { "type": "string" }
         }
       },
       "ResolvedSegment": {
@@ -296,8 +298,25 @@
           "id": { "type": "integer" }, "template_id": { "type": "integer" },
           "start_date": { "type": "string", "format": "date" },
           "pace_overrides": { "type": ["string", "null"], "description": "JSON-serialized PacePolicy overrides applied at instantiation." },
-          "target_activity_id": { "type": ["integer", "null"] }, "created_at": { "type": "string" },
+          "target_activity_id": { "type": ["integer", "null"] },
+          "approved_at": { "type": ["string", "null"], "description": "HRA-113 gate 2: NULL = not approved. Set via POST .../approve; cleared by any subsequent PUT." },
+          "created_at": { "type": "string" },
           "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDay" } }
+        }
+      },
+      "ParseWarning": {
+        "type": "object",
+        "description": "A non-fatal parse issue (HRA-113: nothing the parser encounters is a hard error — everything degrades to a warning). Day-scoped warnings live on the day itself; this shape is also used for the plan-scoped list (unrecognized lines, circular pace refs).",
+        "properties": {
+          "line": { "type": "integer" }, "content": { "type": "string" }, "message": { "type": "string" }
+        }
+      },
+      "GeneratedPlan": {
+        "type": "object",
+        "description": "Response of POST /api/v1/plan-templates/generate — a parse-only preview, never persisted.",
+        "properties": {
+          "plan": { "type": "object", "description": "The parsed RunPlan (domain/runplan/types.ts), with per-day warnings on each DayEntry." },
+          "warnings": { "type": "array", "items": { "$ref": "#/components/schemas/ParseWarning" }, "description": "Plan-scoped warnings only (day-scoped warnings live on each DayEntry inside plan)." }
         }
       }
     }
@@ -517,11 +536,19 @@
     "/api/v1/activity-types": {
       "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
     },
+    "/api/v1/plan-templates/generate": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Parse-only preview of DSL source — never persists (HRA-113)",
+        "description": "Runs the same parse as POST /api/v1/plan-templates without writing a row. 422 only if the DSL fails to parse outright (ParseResult.ok:false); a plan with day-level warnings still returns 200 — what a review UI calls on every edit before the user is ready to save.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["dsl_source"], "properties": { "dsl_source": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "The parsed plan preview.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GeneratedPlan" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/plan-templates": {
       "get": { "tags": ["plan-templates"], "summary": "List plan templates, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Plan templates.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanTemplate" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "post": {
         "tags": ["plan-templates"], "summary": "Save a template, parsing and validating its DSL source",
-        "description": "Rejects (422) unless the DSL both parses and is fully valid (HRA-111's bottom-up validity model) — a template with any hard error (e.g. an interval missing rest) can't be saved. The 422 body's errors[] lists every broken day.",
+        "description": "Rejects (422) unless the DSL parses and has zero outstanding warnings anywhere in the tree (HRA-113 — replaces HRA-111's bottom-up valid/errors model; nothing the parser encounters is a hard error anymore, e.g. an interval missing rest is now a warning, not a rejection). The 422 body's errors[] lists every flagged day.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "dsl_source"], "properties": { "name": { "type": "string" }, "dsl_source": { "type": "string" } } } } } },
         "responses": { "201": { "description": "The created template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
@@ -530,23 +557,47 @@
       "get": { "tags": ["plan-templates"], "summary": "Get one plan template", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "put": {
         "tags": ["plan-templates"], "summary": "Replace a plan template (re-parses dsl_source from scratch)",
+        "description": "Same zero-warning gate as POST. Always clears approved_at back to NULL (HRA-113 gate 2 — any edit revokes approval, even one that still parses with zero warnings).",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "dsl_source"], "properties": { "name": { "type": "string" }, "dsl_source": { "type": "string" } } } } } },
         "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       },
       "delete": { "tags": ["plan-templates"], "summary": "Delete a plan template (ON DELETE CASCADE removes every derived instance, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
+    "/api/v1/plan-templates/{id}/approve": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Approve a template (gate 2, HRA-113)",
+        "description": "Sets approved_at. Only meaningful on an already-saved (zero-warning) template — approval is a deliberate human sign-off on the exact currently-saved state, revoked by any subsequent PUT.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/plan-templates/{id}/instantiate": {
       "post": {
         "tags": ["plan-templates"], "summary": "Resolve a template for one race: override pace anchors + a start date, persist the result",
-        "description": "target_activity_id (if given) is validated like date_ranges.activity_id, but against the resolved plan's last day — checked fully before any write, so a rejected request leaves no orphaned rows.",
+        "description": "target_activity_id (if given) is validated like date_ranges.activity_id, but against the resolved plan's last day — checked fully before any write, so a rejected request leaves no orphaned rows. goal_time (HRA-113) is an alternate way to supply the RG anchor, converted via distance (distance_m if given, else the template's own DISTANCE, else the event's standard distance; ultra/custom have none, so goal_time for those events requires distance_m explicitly). Supplying both goal_time and an explicit RG override is rejected as ambiguous.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["start_date"], "properties": { "start_date": { "type": "string", "format": "date" }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "anchor -> pace value string, same grammar as a PACE line's right-hand side, e.g. {\"RG\": \"6:40/mi\"}." }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["start_date"], "properties": { "start_date": { "type": "string", "format": "date" }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "anchor -> pace value string, same grammar as a PACE line's right-hand side, e.g. {\"RG\": \"6:40/mi\"}." }, "goal_time": { "type": "string", "description": "HH:MM:SS — alternate input for the RG anchor, converted via distance." }, "distance_m": { "type": "number", "description": "Required alongside goal_time when event is ultra/custom and no template DISTANCE is set." }, "target_activity_id": { "type": ["integer", "null"] } } } } } },
         "responses": { "201": { "description": "The created instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
     "/api/v1/plan-instances/{id}": {
-      "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "put": {
+        "tags": ["plan-templates"], "summary": "Replace an instance's resolved days (HRA-113)",
+        "description": "Structured JSON, not DSL text — an instance holds concrete ResolvedDay data, not template source. Rejects (422) if any submitted day has needs_review:true. Never touches or re-instantiates the source template; an instance may diverge from what the template would currently produce. Clears approved_at back to NULL, same gate-2 rule as the template PUT.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["days"], "properties": { "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDay" } } } } } } },
+        "responses": { "200": { "description": "The updated instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
+    "/api/v1/plan-instances/{id}/approve": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113)",
+        "description": "Same gate-2 semantics as the template approve endpoint.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "The updated instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
     },
     "/api/v1/locales/{lang}": {
       "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }

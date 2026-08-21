@@ -7,10 +7,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
-const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, created_at FROM plan_instances";
+const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, created_at FROM plan_instances";
 const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review FROM plan_instance_days";
 
-export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at">;
+export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
 
 export function createPlanInstancesRepo(db: DatabaseSync) {
@@ -25,6 +25,9 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     VALUES
       ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review)
   `);
+  const deleteDaysByInstanceStmt = db.prepare("DELETE FROM plan_instance_days WHERE instance_id = ?");
+  const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
+  const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
 
   return {
     instanceById: (id: number): PlanInstanceRow | undefined => findInstanceById.get(id) as unknown as PlanInstanceRow | undefined,
@@ -43,6 +46,15 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
         $segments: d.segments, $activity_target: d.activity_target, $activity_description: d.activity_description,
         $notes: d.notes, $needs_review: d.needs_review,
       });
+    },
+    // Compound operations (delete+insert+clear-approval) belong to
+    // services/plan-instances.service.ts, which owns the transaction — these
+    // are the single-statement primitives it composes (rest-api-standards §11).
+    deleteDaysByInstance: (instanceId: number) => { deleteDaysByInstanceStmt.run(instanceId); },
+    clearApproval: (id: number) => { clearApprovalStmt.run(id); },
+    approve: (id: number): PlanInstanceRow => {
+      approveStmt.run(id);
+      return findInstanceById.get(id) as unknown as PlanInstanceRow;
     },
   };
 }

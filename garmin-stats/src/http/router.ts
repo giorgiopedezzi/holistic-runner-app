@@ -113,6 +113,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.updateInstance(req, res, url);
       }
 
       if (req.method === "POST") {
@@ -126,8 +127,11 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements/restore" || route === "/api/v1/body-measurements/purge") return await body.restorePurge(req, res, url);
         if (route === "/api/v1/settings/background/upload") return await settings.uploadBackground(req, res, url);
         if (route === "/api/v1/date-ranges")               return await dateRanges.create(req, res, url);
+        if (route === "/api/v1/plan-templates/generate")    return await planTemplates.generate(req, res, url);
         if (route === "/api/v1/plan-templates")             return await planTemplates.create(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await planTemplates.instantiate(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+\/approve$/.test(route))     return await planTemplates.approveTemplate(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await planTemplates.approveInstance(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);
