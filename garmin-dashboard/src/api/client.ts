@@ -10,6 +10,7 @@ import type {
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
+  PlanInstance, PlanInstanceWithDays,
 } from "@/types/api";
 import type { ParseWarning, RunPlan } from "@/types/runplan";
 
@@ -227,5 +228,28 @@ export const api = {
     update: (id: number, name: string, dsl_source: string) => request<PlanTemplate>(`/api/v1/plan-templates/${id}`, "PUT", undefined, { name, dsl_source }),
     approve: (id: number) => request<PlanTemplate>(`/api/v1/plan-templates/${id}/approve`, "POST"),
     remove: (id: number) => request<null>(`/api/v1/plan-templates/${id}`, "DELETE"),
+    // POST /api/v1/plan-templates/:id/instantiate (HRA-112/HRA-113/HRA-114) —
+    // pace_overrides is {anchor: "pace string"}, same grammar as a PACE
+    // line's right-hand side; goal_time is the alternate RG-anchor input.
+    instantiate: (templateId: number, body: {
+      name: string; start_date: string; pace_overrides?: Record<string, string>;
+      goal_time?: string; distance_m?: number; target_activity_id?: number | null;
+    }) => request<PlanInstanceWithDays>(`/api/v1/plan-templates/${templateId}/instantiate`, "POST", undefined, body),
+  },
+  planInstances: {
+    // template_id is optional — HRA-118's own list card can show all
+    // instances or scope to one template (the GET .../plan-instances list
+    // route was added this Story — no prior endpoint returned a collection).
+    list: async (templateId?: number) => (await request<Paginated<PlanInstance>>(
+      "/api/v1/plan-instances", "GET", templateId != null ? { limit: ALL, template_id: String(templateId) } : { limit: ALL },
+    )).data,
+    getById: (id: number) => request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`),
+    // Each day is {section_name, week_number, date, dsl} (HRA-115) — raw DSL
+    // text, re-parsed and resolved server-side against that day's own
+    // effective pace policy.
+    update: (id: number, name: string, days: { section_name: string; week_number: number; date: string; dsl: string }[]) =>
+      request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`, "PUT", undefined, { name, days }),
+    approve: (id: number) => request<PlanInstance>(`/api/v1/plan-instances/${id}/approve`, "POST"),
+    remove: (id: number) => request<null>(`/api/v1/plan-instances/${id}`, "DELETE"),
   },
 };

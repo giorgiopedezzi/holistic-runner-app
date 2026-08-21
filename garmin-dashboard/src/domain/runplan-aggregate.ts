@@ -182,14 +182,17 @@ export interface DayView {
   workout_type: WorkoutType;
   // The day's raw D-line text, editable. Template days always have one
   // (DayEntry.raw_dsl). Instance days have none persisted on the backend
-  // yet (plan_instance_days stores only resolved segments) — buildInstanceSectionView
-  // requires the caller to supply one per day; sourcing that text for a real
-  // instance is left to HRA-118 (flagged as a candidate in the HRA-116 review).
+  // (plan_instance_days stores only resolved segments) — buildInstanceSectionView
+  // seeds this via reconstructDslFromResolvedDay (HRA-118) below.
   dsl: string;
   notes?: string;
   needs_review: boolean;
   warnings: ParseWarningLike[];
   distance: DistanceTotal;
+  // Concrete calendar date — only ever set for instance days (a template day
+  // has no date until instantiated). HRA-118 needs this to build each day's
+  // PUT /api/v1/plan-instances/:id body ({section_name, week_number, date, dsl}).
+  date?: string;
 }
 
 // Local alias so this file doesn't need to import ParseWarning just for this one signature.
@@ -247,7 +250,7 @@ export function buildInstanceSectionView(
     const days: DayView[] = week.days.map(day => ({
       day: day.day, suffix: day.suffix, category: day.category, workout_type: day.workout_type,
       dsl: day.dsl, notes: day.notes, needs_review: day.needs_review, warnings: [],
-      distance: computeResolvedDayDistance(day),
+      distance: computeResolvedDayDistance(day), date: day.date,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,
@@ -258,4 +261,85 @@ export function buildInstanceSectionView(
     name: sectionName, notes: sectionNotes, raw_dsl: sectionRawDsl, weeks: weekViews,
     totals: aggregateResolvedDays(weeks.flatMap(w => w.days)),
   };
+}
+
+// ── instance day-line reconstruction (HRA-118) ──────────────────────────
+// plan_instance_days stores only resolved segments, never the original
+// D-line text — resolveDay (backend instantiate.ts) preserves each
+// segment's original Target objects unchanged, only intensities get
+// resolved, so `target.raw`/`work_target.raw` are still the exact original
+// token text (e.g. "5km", "1000m"). The one genuinely lossy piece is
+// intensity: a resolved segment carries only resolved_pace_sec_per_km, never
+// the original anchor/offset — so every intensity is reconstructed as an
+// absolute pace (e.g. "4:40/km"), never the symbolic anchor the plan was
+// originally authored with. This is a real, unavoidable loss (the anchor is
+// gone from the data by the time it's resolved), not an oversight — flagged
+// in the HRA-118 review. The reconstructed line is still fully valid,
+// re-parseable, re-editable DSL text; it's the seed the accordion shows,
+// not a promise to reproduce the author's original symbolic notation.
+function formatAbsolutePaceKm(paceSecPerKm: number): string {
+  const totalSec = Math.round(paceSecPerKm);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min}:${String(sec).padStart(2, "0")}/km`;
+}
+
+function formatIntensity(resolvedPaceSecPerKm: number | null): string {
+  return resolvedPaceSecPerKm == null ? "?" : formatAbsolutePaceKm(resolvedPaceSecPerKm);
+}
+
+function formatResolvedSegment(seg: ResolvedSegment): string {
+  switch (seg.type) {
+    case "continuous":
+      return `${seg.target.raw} @ ${formatIntensity(seg.resolved_pace_sec_per_km)}`;
+    case "interval": {
+      const rest = seg.rest
+        ? ` r:${seg.rest.target.raw}${seg.rest.resolved_pace_sec_per_km != null ? ` @ ${formatIntensity(seg.rest.resolved_pace_sec_per_km)}` : ""}${seg.rest.rest_type ? ` ${seg.rest.rest_type}` : ""}`
+        : "";
+      return `${seg.reps ?? "?"}x${seg.work_target.raw} @ ${formatIntensity(seg.work_resolved_pace_sec_per_km)}${rest}`;
+    }
+    case "progression":
+      return `${seg.target.raw} PROG ${formatIntensity(seg.start_resolved_pace_sec_per_km)} -> ${formatIntensity(seg.end_resolved_pace_sec_per_km)}`;
+    case "rest_block":
+      return `REST ${seg.target.raw}${seg.rest_type ? ` ${seg.rest_type}` : ""}`;
+  }
+}
+
+export function reconstructDslFromResolvedDay(day: ResolvedDay): string {
+  const prefix = `D${day.day}${day.suffix ?? ""}${day.category ? ` [${day.category}]` : ""}:`;
+  let body: string;
+  if (day.workout_type === "rest") body = "REST";
+  else if (day.workout_type === "todo") body = "TODO";
+  else if (day.workout_type === "cross" || day.workout_type === "strength") {
+    const keyword = day.workout_type === "cross" ? "CROSS" : "STRENGTH";
+    const targetText = day.activity_target ? `${day.activity_target.raw} ` : "";
+    body = `${keyword} ${targetText}${day.activity_description ?? ""}`.trim();
+  } else {
+    body = day.segments.map(formatResolvedSegment).join("; ");
+  }
+  const line = `${prefix} ${body}`;
+  return day.notes ? `${line} # ${day.notes}` : line;
+}
+
+// ── instance section/week grouping (HRA-118) ────────────────────────────
+// An instance has no first-class Section/Week entities — plan_instance_days
+// is a flat list of rows, each carrying its own denormalized section_name/
+// week_number string (docs/schema.md). Groups them into the same SectionView
+// tree buildTemplateSectionView produces, preserving first-seen order
+// (days normally already arrive date-ordered from the backend).
+export function groupResolvedDaysIntoSectionViews(days: (ResolvedDay & { dsl: string })[]): SectionView[] {
+  const sectionOrder: string[] = [];
+  const bySection = new Map<string, Map<number, (ResolvedDay & { dsl: string })[]>>();
+  for (const day of days) {
+    if (!bySection.has(day.section_name)) { bySection.set(day.section_name, new Map()); sectionOrder.push(day.section_name); }
+    const weeks = bySection.get(day.section_name)!;
+    if (!weeks.has(day.week_number)) weeks.set(day.week_number, []);
+    weeks.get(day.week_number)!.push(day);
+  }
+  return sectionOrder.map(sectionName => {
+    const weeks = bySection.get(sectionName)!;
+    const weekInputs: InstanceWeekInput[] = [...weeks.keys()].sort((a, b) => a - b)
+      .map(number => ({ number, days: weeks.get(number)! }));
+    return buildInstanceSectionView(sectionName, "", weekInputs);
+  });
 }

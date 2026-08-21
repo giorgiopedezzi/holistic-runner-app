@@ -20,6 +20,7 @@ import { ClassifySection } from "@/components/manage/ClassifySection";
 import { DeleteSection } from "@/components/manage/DeleteSection";
 import { TrashSection } from "@/components/manage/TrashSection";
 import { PlanTemplatesSection } from "@/components/manage/PlanTemplatesSection";
+import { PlanInstancesSection } from "@/components/manage/PlanInstancesSection";
 
 interface Props {
   // Same list App.tsx shares with Activities/Body's bar and Overview & Trends
@@ -45,6 +46,9 @@ export function ManageTab({ savedRanges }: Props) {
 
       <SectionTitle>{t("manage.planTemplatesSectionTitle", "Training-plan templates")}</SectionTitle>
       <PlanTemplatesSection />
+
+      <SectionTitle>{t("manage.planInstancesSectionTitle", "Training-plan instances")}</SectionTitle>
+      <PlanInstancesSection />
 
       <SectionTitle>{t("manage.classifySectionTitle", "AI workout classification")}</SectionTitle>
       <ClassifySection />

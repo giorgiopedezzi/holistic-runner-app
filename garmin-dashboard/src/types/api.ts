@@ -112,6 +112,43 @@ export interface PlanTemplate {
   created_at:   string;
 }
 
+// One resolved instantiation of a plan template (HRA-112, amended HRA-114) —
+// mirrors garmin-stats/src/db.ts's PlanInstanceRow.
+export interface PlanInstance {
+  id:                  number;
+  template_id:         number;
+  start_date:          string;
+  pace_overrides:      string | null;
+  target_activity_id:  number | null;
+  approved_at:         string | null;
+  name:                string | null;
+  event:               string | null;
+  created_at:          string;
+}
+
+// One resolved day of a plan instance — mirrors PlanInstanceDayRow. segments
+// is JSON-serialized ResolvedSegment[] (types/runplan.ts), not parsed here.
+export interface PlanInstanceDay {
+  id:                    number;
+  instance_id:           number;
+  section_name:          string;
+  week_number:           number;
+  date:                  string;
+  day:                   number;
+  suffix:                string | null;
+  category:              string | null;
+  workout_type:          string;
+  segments:              string;
+  activity_target:       string | null;
+  activity_description:  string | null;
+  notes:                 string | null;
+  needs_review:          number;
+}
+
+export interface PlanInstanceWithDays extends PlanInstance {
+  days: PlanInstanceDay[];
+}
+
 export interface SportSummary {
   sport:              string;
   total_activities:   number;

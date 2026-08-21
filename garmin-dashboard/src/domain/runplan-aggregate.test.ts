@@ -2,7 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
   buildInstanceSectionView, buildTemplateSectionView, computeResolvedDayDistance,
-  computeTemplateDayDistance, getEffectivePacePolicy, resolveIntensityPaceSecPerKm,
+  computeTemplateDayDistance, getEffectivePacePolicy, groupResolvedDaysIntoSectionViews,
+  reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
 } from "./runplan-aggregate";
 import type {
   DayEntry, PacePolicy, ResolvedDay, ResolvedSegment, Section, Target, Week, WorkoutSegment,
@@ -198,5 +199,53 @@ describe("aggregateResolvedDays", () => {
     ];
     const totals = aggregateResolvedDays(days);
     expect(totals).toMatchObject({ totalDays: 2, activeDays: 1, runningDays: 1, restDays: 1 });
+  });
+});
+
+describe("reconstructDslFromResolvedDay (HRA-118)", () => {
+  function resolvedDay(overrides: Partial<ResolvedDay>): ResolvedDay {
+    return { section_name: "Base", week_number: 1, date: "2026-09-01", day: 3, workout_type: "run", needs_review: false, segments: [], ...overrides };
+  }
+
+  it("reconstructs a continuous segment using the target's original raw text and an absolute-pace intensity", () => {
+    const seg: ResolvedSegment = { type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, resolved_pace_sec_per_km: 280, raw: "5km @ RG-20" };
+    expect(reconstructDslFromResolvedDay(resolvedDay({ segments: [seg] }))).toBe("D3: 5km @ 4:40/km");
+  });
+
+  it("reconstructs an interval with reps, work leg, and rest leg", () => {
+    const seg: ResolvedSegment = {
+      type: "interval", reps: 4, work_target: { kind: "distance", distance_m: 1000, raw: "1000m" }, work_resolved_pace_sec_per_km: 280,
+      rest: { target: { kind: "distance", distance_m: 1000, raw: "1km" }, resolved_pace_sec_per_km: 310, raw: "r:1km @ RG+10" }, raw: "4x1000m @ RG-20 r:1km @ RG+10",
+    };
+    expect(reconstructDslFromResolvedDay(resolvedDay({ segments: [seg] }))).toBe("D3: 4x1000m @ 4:40/km r:1km @ 5:10/km");
+  });
+
+  it("uses ? for an unresolved (null) intensity rather than fabricating a pace", () => {
+    const seg: ResolvedSegment = { type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, resolved_pace_sec_per_km: null, raw: "5km @ FL" };
+    expect(reconstructDslFromResolvedDay(resolvedDay({ segments: [seg] }))).toBe("D3: 5km @ ?");
+  });
+
+  it("reconstructs REST/TODO/CROSS days by literal keyword, with suffix/category/note carried through", () => {
+    expect(reconstructDslFromResolvedDay(resolvedDay({ workout_type: "rest" }))).toBe("D3: REST");
+    expect(reconstructDslFromResolvedDay(resolvedDay({ workout_type: "todo" }))).toBe("D3: TODO");
+    expect(reconstructDslFromResolvedDay(resolvedDay({
+      day: 6, suffix: "a", category: "double", workout_type: "cross",
+      activity_target: { kind: "duration", duration_sec: 2700, raw: "45min" }, activity_description: "bike", notes: "easy spin",
+    }))).toBe("D6a [double]: CROSS 45min bike # easy spin");
+  });
+});
+
+describe("groupResolvedDaysIntoSectionViews (HRA-118)", () => {
+  it("groups a flat day list by section_name then week_number, preserving first-seen order", () => {
+    const days = [
+      { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run" as const, needs_review: false, segments: [], dsl: "D1: 5km @ RG" },
+      { section_name: "Peak", week_number: 3, date: "2026-09-15", day: 1, workout_type: "run" as const, needs_review: false, segments: [], dsl: "D1: 10km @ RG" },
+      { section_name: "Base", week_number: 2, date: "2026-09-08", day: 1, workout_type: "run" as const, needs_review: false, segments: [], dsl: "D1: 6km @ RG" },
+    ];
+    const views = groupResolvedDaysIntoSectionViews(days);
+    expect(views.map(v => v.name)).toEqual(["Base", "Peak"]);
+    expect(views[0].weeks.map(w => w.number)).toEqual([1, 2]);
+    expect(views[0].weeks[0].raw_dsl).toBe("");
+    expect(views[0].weeks[0].days[0].date).toBe("2026-09-01");
   });
 });

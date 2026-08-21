@@ -22,6 +22,12 @@ interface TrainingPlanAccordionProps {
   onSectionEdit: (sectionIndex: number, patch: { name?: string; notes?: string }) => void;
   onWeekEdit: (sectionIndex: number, weekIndex: number, patch: { notes?: string }) => void;
   onDayEdit: (sectionIndex: number, weekIndex: number, dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
+  // HRA-118: an instance has no first-class Section/Week entities to rename
+  // (each day just carries a denormalized section_name/week_number string) —
+  // when true, Section name/note and Week note render as plain read-only
+  // text instead of inputs. Day dsl/note stay editable regardless. Default
+  // false (templates, HRA-117, remain fully editable at every level).
+  readOnlySectionWeek?: boolean;
 }
 
 const inputClass = "hra-border-strong hra-bg-card hra-text-primary";
@@ -98,11 +104,12 @@ function DayEditor({
 }
 
 function WeekEditor({
-  week, onWeekEdit, onDayEdit,
+  week, onWeekEdit, onDayEdit, readOnlySectionWeek,
 }: {
   week: WeekView;
   onWeekEdit: (patch: { notes?: string }) => void;
   onDayEdit: (dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
+  readOnlySectionWeek: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -111,16 +118,20 @@ function WeekEditor({
     <AccordionCard title={t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number })} expanded={expanded} onToggle={() => setExpanded(v => !v)}>
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <TotalsLine totals={week.totals} />
-        <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-          {t("runplan.accordion.noteLabel", "Note")}
-          <input
-            className={inputClass}
-            value={week.notes ?? ""}
-            onChange={e => onWeekEdit({ notes: e.target.value })}
-            placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-            style={{ width: "100%", marginTop: 4, padding: 6 }}
-          />
-        </label>
+        {readOnlySectionWeek ? (
+          week.notes && <div className="hra-text-secondary" style={{ fontSize: 12 }}>{week.notes}</div>
+        ) : (
+          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+            {t("runplan.accordion.noteLabel", "Note")}
+            <input
+              className={inputClass}
+              value={week.notes ?? ""}
+              onChange={e => onWeekEdit({ notes: e.target.value })}
+              placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+              style={{ width: "100%", marginTop: 4, padding: 6 }}
+            />
+          </label>
+        )}
         {week.days.map((day, dayIndex) => (
           <DayEditor key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} />
         ))}
@@ -130,17 +141,25 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, ownerName, onSectionEdit, onWeekEdit, onDayEdit,
+  section, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek,
 }: {
   section: SectionView;
   ownerName: string;
   onSectionEdit: (patch: { name?: string; notes?: string }) => void;
   onWeekEdit: (weekIndex: number, patch: { notes?: string }) => void;
   onDayEdit: (weekIndex: number, dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
+  readOnlySectionWeek: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
-  const isDefaultSection = section.raw_dsl === "";
+  // raw_dsl === "" means two different things depending on mode: for a
+  // template, "the implicit default section — no real SECTION line exists,
+  // show the owner's name instead" (HRA-116); for an instance (always
+  // readOnlySectionWeek, HRA-118), every section lacks raw_dsl by
+  // construction (plan_instance_days has no header text at all) even though
+  // section.name is a real, meaningful denormalized value — so the
+  // owner-name substitution only applies in template mode.
+  const isDefaultSection = !readOnlySectionWeek && section.raw_dsl === "";
   const displayName = isDefaultSection ? ownerName : section.name;
 
   return (
@@ -151,6 +170,8 @@ function SectionEditor({
           <div className="hra-text-muted" style={{ fontSize: 12 }}>
             {t("runplan.accordion.defaultSectionName", `Name follows the plan's own name — ${ownerName}`, { name: ownerName })}
           </div>
+        ) : readOnlySectionWeek ? (
+          <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600 }}>{section.name}</div>
         ) : (
           <label className="hra-text-secondary" style={{ fontSize: 12 }}>
             {t("runplan.accordion.sectionNameLabel", "Section name")}
@@ -162,22 +183,27 @@ function SectionEditor({
             />
           </label>
         )}
-        <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-          {t("runplan.accordion.noteLabel", "Note")}
-          <input
-            className={inputClass}
-            value={section.notes ?? ""}
-            onChange={e => onSectionEdit({ notes: e.target.value })}
-            placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-            style={{ width: "100%", marginTop: 4, padding: 6 }}
-          />
-        </label>
+        {readOnlySectionWeek ? (
+          section.notes && <div className="hra-text-secondary" style={{ fontSize: 12 }}>{section.notes}</div>
+        ) : (
+          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+            {t("runplan.accordion.noteLabel", "Note")}
+            <input
+              className={inputClass}
+              value={section.notes ?? ""}
+              onChange={e => onSectionEdit({ notes: e.target.value })}
+              placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+              style={{ width: "100%", marginTop: 4, padding: 6 }}
+            />
+          </label>
+        )}
         {section.weeks.map((week, weekIndex) => (
           <WeekEditor
             key={weekIndex}
             week={week}
             onWeekEdit={patch => onWeekEdit(weekIndex, patch)}
             onDayEdit={(dayIndex, patch) => onDayEdit(weekIndex, dayIndex, patch)}
+            readOnlySectionWeek={readOnlySectionWeek}
           />
         ))}
       </div>
@@ -185,7 +211,7 @@ function SectionEditor({
   );
 }
 
-export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit }: TrainingPlanAccordionProps) {
+export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false }: TrainingPlanAccordionProps) {
   return (
     <div>
       {sections.map((section, sectionIndex) => (
@@ -196,6 +222,7 @@ export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWe
           onSectionEdit={patch => onSectionEdit(sectionIndex, patch)}
           onWeekEdit={(weekIndex, patch) => onWeekEdit(sectionIndex, weekIndex, patch)}
           onDayEdit={(weekIndex, dayIndex, patch) => onDayEdit(sectionIndex, weekIndex, dayIndex, patch)}
+          readOnlySectionWeek={readOnlySectionWeek}
         />
       ))}
     </div>
