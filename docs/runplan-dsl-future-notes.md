@@ -97,6 +97,43 @@ distance-conditional percentage-blend pace type (`"FP": "<=15km: 50% FL; 35% RG;
   object as trusted input (the closest thing, `plan_templates.parsed_plan`, is `JSON.stringify()`'d
   *output* being stored, `JSON.parse()`'d back on read — never re-validated as untrusted input).
 
+## 6. `plan_instances` needs its own `name` + `event`; goal↔RG conversion at instantiation
+
+**Schema gap identified:** `plan_instances` currently has no `name` and no `event` column at all
+(HRA-112 gave it `id`, `template_id`, `start_date`, `pace_overrides`, `target_activity_id`,
+`created_at` — see `docs/schema.md`). Confirmed needed:
+
+- **`name`** — a genuinely distinct value per instance, not a copy of the template's. Template name
+  describes the reusable plan itself ("Albanesi 12 weeks training plan"); instance name binds it to
+  a specific race ("Albanesi 12 weeks training plan for Boston 2028"). Likely a sensible default
+  (template name + target race name/date) that stays user-editable, but that's a UI concern, not
+  decided here.
+- **`event`** — a **denormalized copy** of the template's event type (confirmed: "right guess" —
+  convenience/read access, e.g. listing instances without joining back to the template each time,
+  not an independently-settable value; an instance is always the same event type as its template).
+
+**Goal ↔ `RG` conversion, scoped to instantiation (not template parsing):** the DSL's `GOAL
+<HH:MM:SS>` metadata line (already implemented, `PlanMetadata.goal_time_sec`) is separate from this
+— that's the template's own informational goal. This is new: **at instantiation, the caller
+supplies either a goal time or an `RG` pace directly — not both required — and the missing one is
+derived from the other using distance.** `RG` is always the canonical, internally-used
+representation; `goal_time` is only ever an alternate *input* method, converted to `RG` at the
+boundary, never itself part of pace resolution.
+
+Distance for the conversion comes from the event's standard distance (5k=5000m, 10k=10000m,
+half=21097.5m, marathon=42195m — same values already seeded in `activity_types.min_distance_m`,
+reuse rather than re-derive) or `PlanMetadata.distance_m` if the template set one explicitly via
+`DISTANCE`.
+
+**Open question, not yet resolved:** `event: "ultra"` / `"custom"` has no fixed standard distance.
+If neither a template `DISTANCE` nor some other distance is available, there's nothing to divide
+the goal time by. Two options, not yet chosen between: (a) `goal_time` input is simply unavailable
+for ultra/custom — the caller must supply `RG` directly; or (b) the instantiate call also accepts
+an explicit distance override, usable for exactly this case. Needs a decision before implementation.
+Note this changes the instantiate endpoint's contract from HRA-112's current shape
+(`pace_overrides: {"RG": "6:40/mi"}` as the only pace-input mechanism) — a goal-time input path is
+a genuinely new parameter, not a rename of an existing one.
+
 ## Not yet covered by any note above
 
 - Whether the four items above become one Story or several.
