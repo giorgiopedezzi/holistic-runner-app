@@ -22,17 +22,26 @@ empty/default plan shell), or does some absolute floor remain below which there'
 plan object to build? HRA-111 §15 currently reserves `ok:false` for exactly those two cases. Needs
 an explicit decision before this is implemented — don't assume either answer.
 
-## 2. Explicit approval gate — separate from parse validity
+## 2. Two separate gates, confirmed — save (automatic) and approval (deliberate, revocable)
 
-**New concept, not yet modeled anywhere:** both a `plan_templates` row and a `plan_instances` row
-need explicit human approval before they're usable (instantiation, future planned-vs-actual
-comparison, etc.) — regardless of whether parsing produced zero warnings. "Parses cleanly" and
-"approved for use" are two different gates.
+**Gate 1 — save, automatic/mechanical:** zero warnings is the precondition to save at all — enables
+the UI's Save button, and gates the HTTP 200 response on `POST`/`PUT`. Replaces HRA-112's current
+`!ok || !plan.valid` rejection check with a warning-count check (`ok:false` stays as-is per §1's
+resolution below; `plan.valid`/hard errors no longer exist as a concept once §1 lands, so the check
+becomes "0 warnings across the whole tree," not "0 errors").
 
-Implies a new status field on both tables (e.g. `approved_at`/`approved`), and changes HRA-112's
-current `POST /api/v1/plan-templates` behavior, which currently **rejects** (422) an invalid parse
-at save time. Under the new "always warning" rule (§1), nothing would be invalid at save time
-anymore — the rejection logic needs to be replaced by "saved as unapproved" rather than "rejected."
+**Gate 2 — approval, deliberate and revocable:** a real, separate, persisted status
+(`plan_templates` and `plan_instances` both need it — schema TBD, e.g. `approved_at`/`approved`),
+set explicitly by the human *after* a successful (zero-warning) save. **Confirmed: any edit
+afterward revokes it**, even an edit that still results in zero warnings — approval means "a human
+signed off on this exact saved state," not "this happens to currently parse cleanly." The two gates
+are genuinely independent: passing gate 1 is necessary to reach gate 2, but reaching gate 1 never
+implies gate 2.
+
+**Also confirmed (§1's open question, now resolved):** `ok:false` keeps exactly its current
+HRA-111 triggers — empty input, or missing `PLAN` header as the first line. Nothing broader. Only
+the *day/segment*-level hard errors (e.g. missing interval rest) move to warnings under §1; the
+document-level "is there even a shell to build" check is unchanged.
 
 ## 3. Any day is editable pre-approval, not just flagged ones
 
@@ -40,6 +49,29 @@ The human review pass (accordion UI, still not built — HRA-111 was only made *
 must let the user amend **any** day, whether `needs_review` is set on it or not — not just the days
 the parser flagged. Confirms `parseDayEntry`'s standalone-callable design (HRA-111) is the right
 shape for this: re-validate one edited day without re-parsing the whole document.
+
+**Two distinct actions confirmed, not one:**
+- **"Generate"** — parse-only, no persistence. DSL text (a textarea) in, the parsed `RunPlan`
+  (rendered as a hierarchical accordion) out. This is a genuinely new endpoint — HRA-112's current
+  `POST /api/v1/plan-templates` conflates parse + persist into one call; "generate" needs its own
+  route that returns a `ParseResult` without writing a row.
+- **"Save"** — persists, gated on zero warnings (§2, gate 1). Same underlying `parseRunPlanDSL`
+  call as "generate," different endpoint contract.
+
+**Editing stays as DSL text (a textarea), not structured form fields.** Confirmed reasoning:
+target users already know this notation ("almost every runner knows this notation" — the app will
+add an explainer for those who don't, but won't build a structured-fields editor as the primary
+path). This also sidesteps a real risk that was flagged: if editing operated on structured fields
+instead, there'd be no code today to serialize a `DayEntry` back into DSL text, so `dsl_source`
+could silently diverge from the parsed structure. Staying text-in/text-out avoids that entirely —
+the edited line is just re-parsed, so text and structure never disagree by construction.
+
+**"Would be nice" to validate on the fly** — re-run `parseDayEntry` (or a smaller per-line check)
+as the user edits a day's text, not only at final save. Soft preference, not a hard requirement;
+noted for whenever the editor gets built.
+
+**Warning resolution = the underlying data changes, confirmed.** No separate "dismissed without
+fixing" state — a warning is gone only when re-parsing/re-validating no longer produces it.
 
 ## 4. "Other activities" — a general, presence-only category
 
@@ -134,10 +166,30 @@ Note this changes the instantiate endpoint's contract from HRA-112's current sha
 (`pace_overrides: {"RG": "6:40/mi"}` as the only pace-input mechanism) — a goal-time input path is
 a genuinely new parameter, not a rename of an existing one.
 
+## 7. Warnings need per-day attachment; instances can knowingly diverge from their template
+
+**Structural gap, confirmed real:** `ParseWarning[]` is currently a flat, top-level array on
+`ParseResult`, correlated to a specific day only by line number — fragile once a day gets edited
+and re-parsed (line numbers shift). **Confirmed fix: `DayEntry` needs its own `warnings:
+ParseWarning[]`**, the same per-node treatment `errors`/`valid` already got in HRA-111's amendment
+2. **Week/section "has warnings" stays derived, never its own stored field** — exactly the same
+pattern as `valid` (a week has warnings if any of its days does; a section, if any of its weeks
+does) — confirmed explicitly, not left ambiguous.
+
+**Instance edits are symmetric with template edits (§3's "generate"/"save"/zero-warnings-to-save
+flow applies to instances too), and can diverge from the template on purpose.** Editing a resolved
+instance day doesn't require touching or re-instantiating from the template — an instance is a real
+independent artifact once created, and the user is allowed to make it drift from what the template
+would currently produce. The system doesn't reconcile or warn about that divergence.
+
 ## Not yet covered by any note above
 
-- Whether the four items above become one Story or several.
+- Whether the items above become one Story or several.
 - Whether HRA-111/HRA-112 (both already `In Review`, not `Done`) get amended in place or superseded
   by new Stories, given §1 reverses a decision already implemented and reviewed there.
-- The exact shape of the new approval-status field(s) (§2) and how they interact with `PUT`
-  (re-editing an already-approved template/instance — does editing revoke approval?).
+- The exact shape of the approval-status field(s) (§2 gate 2) — column names, and whether it's a
+  simple boolean or carries an `approved_by`/`approved_at` audit trail.
+- The exact contract for the new "generate" (parse-only) endpoint (§3) — request/response shape,
+  and whether it's a new path or a query param on the existing create route.
+- §6's ultra/custom-distance question (explicit distance override at instantiate time, vs. `RG`
+  being mandatory for those events) — still open.
