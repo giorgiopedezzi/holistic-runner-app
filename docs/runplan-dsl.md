@@ -81,3 +81,10 @@ No persistence (DB tables, HTTP endpoints) — a parsed `RunPlan` is not yet sav
 (the accordion described above doesn't exist). No planned-vs-actual comparison against
 `activities`. See HRA-112 ("Training-plan templates") for the persistence/reuse layer built on top
 of this parser.
+
+## Future direction (not implemented)
+Several changes are under discussion but not yet built — hard-parse-errors-become-warnings, an
+explicit template/instance approval gate, a general presence-only "other activity" category, and
+AI-assisted transcription of messy real-world plans into this format. See
+`docs/runplan-dsl-future-notes.md` before starting any follow-on Story in this area — it captures
+open questions that haven't been resolved yet, not settled decisions.
