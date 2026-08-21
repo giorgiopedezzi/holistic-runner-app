@@ -385,5 +385,19 @@
   "activity.classify.pendingReview": "Pending review",
   "activity.classify.splitTooltip": "Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out",
   "activity.classify.split1km": "1km",
-  "activity.classify.split05km": "0.5km"
+  "activity.classify.split05km": "0.5km",
+
+  "runplan.accordion.totalDays": "{{n}} days",
+  "runplan.accordion.activeDays": "{{n}} active",
+  "runplan.accordion.runningDays": "{{n}} running",
+  "runplan.accordion.restDays": "{{n}} rest",
+  "runplan.accordion.distance": "{{km}} km",
+  "runplan.accordion.distanceApprox": "~{{km}} km",
+  "runplan.accordion.weekTitle": "Week {{n}}",
+  "runplan.accordion.sectionNameLabel": "Section name",
+  "runplan.accordion.defaultSectionName": "Name follows the plan's own name — {{name}}",
+  "runplan.accordion.noteLabel": "Note",
+  "runplan.accordion.notePlaceholder": "Optional note",
+  "runplan.accordion.dslLabel": "Workout (DSL)",
+  "runplan.accordion.needsReview": "This day needs review before it can be saved."
 }

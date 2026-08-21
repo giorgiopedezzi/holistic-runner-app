@@ -1,0 +1,202 @@
+import { describe, it, expect } from "vitest";
+import {
+  aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
+  buildInstanceSectionView, buildTemplateSectionView, computeResolvedDayDistance,
+  computeTemplateDayDistance, getEffectivePacePolicy, resolveIntensityPaceSecPerKm,
+} from "./runplan-aggregate";
+import type {
+  DayEntry, PacePolicy, ResolvedDay, ResolvedSegment, Section, Target, Week, WorkoutSegment,
+} from "../types/runplan";
+
+const RG_ABSOLUTE: PacePolicy = { RG: { kind: "absolute", pace_sec_per_km: 300 } }; // 5:00/km
+
+function target(kind: "distance" | "duration" | "unknown", value?: number): Target {
+  if (kind === "distance") return { kind, distance_m: value!, raw: `${value}m` };
+  if (kind === "duration") return { kind, duration_sec: value!, raw: `${value}s` };
+  return { kind: "unknown", raw: "?" };
+}
+
+function day(overrides: Partial<DayEntry>): DayEntry {
+  return {
+    day: 1, workout_type: "run", segments: [], needs_review: false, raw_dsl: "D1: 5km @ RG", warnings: [],
+    ...overrides,
+  };
+}
+
+describe("resolveIntensityPaceSecPerKm", () => {
+  it("resolves absolute intensities directly", () => {
+    expect(resolveIntensityPaceSecPerKm({ kind: "absolute", pace_sec_per_km: 250, raw: "4:10/km" }, {})).toBe(250);
+  });
+
+  it("resolves an anchor and an offset against a policy", () => {
+    expect(resolveIntensityPaceSecPerKm({ kind: "anchor", anchor: "RG", raw: "RG" }, RG_ABSOLUTE)).toBe(300);
+    expect(resolveIntensityPaceSecPerKm({ kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" }, RG_ABSOLUTE)).toBe(280);
+  });
+
+  it("returns null for an unresolvable anchor, an unknown intensity, or a circular reference", () => {
+    expect(resolveIntensityPaceSecPerKm({ kind: "anchor", anchor: "FL", raw: "FL" }, {})).toBeNull();
+    expect(resolveIntensityPaceSecPerKm({ kind: "unknown", raw: "?" }, {})).toBeNull();
+    const circular: PacePolicy = { A: { kind: "offset", anchor: "B", offset_sec_per_km: 0 }, B: { kind: "offset", anchor: "A", offset_sec_per_km: 0 } };
+    expect(resolveIntensityPaceSecPerKm({ kind: "anchor", anchor: "A", raw: "A" }, circular)).toBeNull();
+  });
+});
+
+describe("computeTemplateDayDistance — the distance rule", () => {
+  it("sums a distance-kind continuous segment directly, no approximation", () => {
+    const d = day({ segments: [{ type: "continuous", target: target("distance", 5000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }] });
+    expect(computeTemplateDayDistance(d, RG_ABSOLUTE)).toEqual({ meters: 5000, approximate: false });
+  });
+
+  it("converts a duration-kind target using the resolved pace, flagging approximate", () => {
+    const d = day({ segments: [{ type: "continuous", target: target("duration", 1500), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "25min @ RG" }] });
+    // 1500s at 300s/km = 5km = 5000m
+    expect(computeTemplateDayDistance(d, RG_ABSOLUTE)).toEqual({ meters: 5000, approximate: true });
+  });
+
+  it("excludes a duration target whose anchor doesn't resolve", () => {
+    const d = day({ segments: [{ type: "continuous", target: target("duration", 1500), intensity: { kind: "anchor", anchor: "FL", raw: "FL" }, raw: "25min @ FL" }] });
+    expect(computeTemplateDayDistance(d, {})).toEqual({ meters: 0, approximate: false });
+  });
+
+  it("excludes any segment with an unknown target or intensity", () => {
+    const d = day({ segments: [{ type: "continuous", target: target("unknown"), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "? @ RG" }] });
+    expect(computeTemplateDayDistance(d, RG_ABSOLUTE)).toEqual({ meters: 0, approximate: false });
+  });
+
+  it("multiplies an interval's work_target by reps, excludes the rest leg", () => {
+    const seg: WorkoutSegment = {
+      type: "interval", reps: 4, work_target: target("distance", 1000), work_intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" },
+      rest: { target: target("distance", 1000), raw: "r:1km" }, raw: "4x1000m @ RG-20 r:1km",
+    };
+    expect(computeTemplateDayDistance(day({ segments: [seg] }), RG_ABSOLUTE)).toEqual({ meters: 4000, approximate: false });
+  });
+
+  it("excludes an interval with an unspecified rep count (the ? placeholder)", () => {
+    const seg: WorkoutSegment = {
+      type: "interval", reps: null, work_target: target("distance", 1000), work_intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "?x1000m @ RG",
+    };
+    expect(computeTemplateDayDistance(day({ segments: [seg] }), RG_ABSOLUTE)).toEqual({ meters: 0, approximate: false });
+  });
+
+  it("uses the progression's start intensity for duration conversion", () => {
+    const seg: WorkoutSegment = {
+      type: "progression", target: target("duration", 600), start_intensity: { kind: "absolute", pace_sec_per_km: 300, raw: "5:00/km" },
+      end_intensity: { kind: "absolute", pace_sec_per_km: 240, raw: "4:00/km" }, raw: "10min PROG 5:00/km -> 4:00/km",
+    };
+    // 600s at 300s/km = 2km = 2000m (start pace, not end or average)
+    expect(computeTemplateDayDistance(day({ segments: [seg] }), {})).toEqual({ meters: 2000, approximate: true });
+  });
+
+  it("never resolves a rest_block's duration target (no intensity ever exists on it), but sums a distance one", () => {
+    const distanceRest: WorkoutSegment = { type: "rest_block", target: target("distance", 400), raw: "REST 400m" };
+    const durationRest: WorkoutSegment = { type: "rest_block", target: target("duration", 60), raw: "REST 60s" };
+    expect(computeTemplateDayDistance(day({ segments: [distanceRest] }), {})).toEqual({ meters: 400, approximate: false });
+    expect(computeTemplateDayDistance(day({ segments: [durationRest] }), RG_ABSOLUTE)).toEqual({ meters: 0, approximate: false });
+  });
+
+  it("counts a CROSS/STRENGTH activity_target directly (distance) or excludes it (duration, no pace ever possible)", () => {
+    const crossDistance = day({ workout_type: "cross", segments: [], activity_target: target("distance", 10000) });
+    const crossDuration = day({ workout_type: "cross", segments: [], activity_target: target("duration", 2700) });
+    expect(computeTemplateDayDistance(crossDistance, {})).toEqual({ meters: 10000, approximate: false });
+    expect(computeTemplateDayDistance(crossDuration, {})).toEqual({ meters: 0, approximate: false });
+  });
+
+  it("REST and TODO days always total zero distance, regardless of any segments", () => {
+    expect(computeTemplateDayDistance(day({ workout_type: "rest" }), {})).toEqual({ meters: 0, approximate: false });
+    expect(computeTemplateDayDistance(day({ workout_type: "todo" }), {})).toEqual({ meters: 0, approximate: false });
+  });
+});
+
+describe("computeResolvedDayDistance — same rule, already-resolved paces", () => {
+  function resolvedDay(overrides: Partial<ResolvedDay>): ResolvedDay {
+    return { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", segments: [], needs_review: false, ...overrides };
+  }
+
+  it("sums a resolved continuous segment and excludes an unresolved duration one", () => {
+    const resolved: ResolvedSegment = { type: "continuous", target: target("distance", 8000), resolved_pace_sec_per_km: 300, raw: "8km @ RG" };
+    expect(computeResolvedDayDistance(resolvedDay({ segments: [resolved] }))).toEqual({ meters: 8000, approximate: false });
+
+    const unresolved: ResolvedSegment = { type: "continuous", target: target("duration", 1500), resolved_pace_sec_per_km: null, raw: "25min @ FL" };
+    expect(computeResolvedDayDistance(resolvedDay({ segments: [unresolved] }))).toEqual({ meters: 0, approximate: false });
+  });
+
+  it("multiplies a resolved interval's work leg by reps, excludes rest", () => {
+    const resolved: ResolvedSegment = {
+      type: "interval", reps: 4, work_target: target("distance", 1000), work_resolved_pace_sec_per_km: 280,
+      rest: { target: target("distance", 1000), resolved_pace_sec_per_km: 310, raw: "r:1km @ RG+10" }, raw: "4x1000m @ RG-20 r:1km @ RG+10",
+    };
+    expect(computeResolvedDayDistance(resolvedDay({ segments: [resolved] }))).toEqual({ meters: 4000, approximate: false });
+  });
+});
+
+describe("aggregate day-count categorization", () => {
+  it("counts total/active/running/rest days correctly across a mixed week", () => {
+    const days: DayEntry[] = [
+      day({ day: 1, workout_type: "run" }),
+      day({ day: 2, workout_type: "rest" }),
+      day({ day: 3, workout_type: "cross" }),
+      day({ day: 4, workout_type: "strength" }),
+      day({ day: 5, workout_type: "todo" }),
+      day({ day: 6, workout_type: "run" }),
+      day({ day: 7, workout_type: "rest" }),
+    ];
+    const section: Section = { name: "Base", week_spec: "1", pace_policy: {}, raw_dsl: "SECTION \"Base\" WEEKS 1", weeks: [{ number: 1, pace_policy: {}, days, raw_dsl: "WEEK 1" }] };
+    const totals = aggregateTemplateSection(section, {});
+    expect(totals.totalDays).toBe(7);
+    expect(totals.activeDays).toBe(4); // run, cross, strength, run (todo excluded)
+    expect(totals.runningDays).toBe(2);
+    expect(totals.restDays).toBe(2);
+  });
+});
+
+describe("pace policy inheritance (Plan -> Section -> Week)", () => {
+  it("a week override wins over a section override, which wins over the plan", () => {
+    const planPolicy: PacePolicy = { RG: { kind: "absolute", pace_sec_per_km: 300 } };
+    const sectionPolicy: PacePolicy = { RG: { kind: "absolute", pace_sec_per_km: 290 } };
+    const weekPolicy: PacePolicy = { RG: { kind: "absolute", pace_sec_per_km: 280 } };
+    expect(getEffectivePacePolicy(planPolicy, sectionPolicy, weekPolicy).RG).toEqual({ kind: "absolute", pace_sec_per_km: 280 });
+    expect(getEffectivePacePolicy(planPolicy, sectionPolicy, {}).RG).toEqual({ kind: "absolute", pace_sec_per_km: 290 });
+    expect(getEffectivePacePolicy(planPolicy, {}, {}).RG).toEqual({ kind: "absolute", pace_sec_per_km: 300 });
+  });
+
+  it("aggregateTemplateWeek resolves each week against its own effective policy, not a shared one", () => {
+    const week1: Week = { number: 1, pace_policy: {}, raw_dsl: "WEEK 1", days: [day({ segments: [{ type: "continuous", target: target("distance", 1000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "1km @ RG" }] })] };
+    const week2: Week = { number: 2, pace_policy: { RG: { kind: "absolute", pace_sec_per_km: 280 } }, raw_dsl: "WEEK 2", days: [] };
+    const section: Section = { name: "Base", week_spec: "1-2", pace_policy: {}, raw_dsl: "SECTION \"Base\" WEEKS 1-2", weeks: [week1, week2] };
+    const planPolicy: PacePolicy = { RG: { kind: "absolute", pace_sec_per_km: 300 } };
+    // week1 has no own override, so it resolves against the plan-level RG (300s/km) — distance is unaffected here since target is already distance-kind, but the effective-policy plumbing is what's under test.
+    const totals = aggregateTemplateWeek(section, week1, planPolicy);
+    expect(totals.distance).toEqual({ meters: 1000, approximate: false });
+  });
+});
+
+describe("view-model builders", () => {
+  it("buildTemplateSectionView carries raw_dsl through untouched, including the default section's empty one", () => {
+    const week: Week = { number: 1, pace_policy: {}, raw_dsl: "WEEK 1", days: [day({})] };
+    const defaultSection: Section = { name: "Plan", week_spec: "*", pace_policy: {}, raw_dsl: "", weeks: [week] };
+    const view = buildTemplateSectionView(defaultSection, {});
+    expect(view.raw_dsl).toBe("");
+    expect(view.name).toBe("Plan"); // underlying name is untouched — display substitution is the component's job, not the builder's
+    expect(view.weeks[0].raw_dsl).toBe("WEEK 1");
+    expect(view.weeks[0].days[0].dsl).toBe("D1: 5km @ RG");
+  });
+
+  it("buildInstanceSectionView groups flat resolved days and computes totals the same way", () => {
+    const resolvedDay: ResolvedDay = { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", needs_review: false, segments: [{ type: "continuous", target: target("distance", 6000), resolved_pace_sec_per_km: 300, raw: "6km @ RG" }] };
+    const view = buildInstanceSectionView("Base", "SECTION \"Base\" WEEKS 1", [{ number: 1, days: [{ ...resolvedDay, dsl: "D1: 6km @ RG" }] }]);
+    expect(view.totals.distance).toEqual({ meters: 6000, approximate: false });
+    expect(view.weeks[0].days[0].dsl).toBe("D1: 6km @ RG");
+    expect(view.weeks[0].raw_dsl).toBe("");
+  });
+});
+
+describe("aggregateResolvedDays", () => {
+  it("matches the same categorization rule as the template path", () => {
+    const days: ResolvedDay[] = [
+      { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", needs_review: false, segments: [] },
+      { section_name: "Base", week_number: 1, date: "2026-09-02", day: 2, workout_type: "rest", needs_review: false, segments: [] },
+    ];
+    const totals = aggregateResolvedDays(days);
+    expect(totals).toMatchObject({ totalDays: 2, activeDays: 1, runningDays: 1, restDays: 1 });
+  });
+});

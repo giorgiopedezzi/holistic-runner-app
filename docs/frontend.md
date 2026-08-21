@@ -454,3 +454,82 @@ mode produced it.
 Per-instance custom-property hooks declared in :root (2026-08-17) — --swatch-color (default var(--accent)), --kpi-color (default var(--text-primary)), --legend-color (default var(--text-secondary)). Components set them inline only where a value is genuinely per-instance; declaring them with defaults keeps every var() reference valid CSS without the inline hook and lets IDE inspection (WebStorm) resolve the names (it previously warned on all three).
 --accent-glow removed (2026-08-17) — the fixed cyan pairing token existed for the two-glow ambient and the pill's second gradient stop; both went single-hue/monochromatic on 2026-08-17, so the token was deleted. --accent-light now serves both the hero ring (--accent-strong → --accent-light) and the active pill gradient.
 Action-button primitive .hra-btn (2026-08-17) — filled/outline action buttons get a hover glow tinted to their own semantic color via a --btn-glow hook (same philosophy as .hra-swatch's per-swatch glow): data-variant="accent" | "green" | "danger" | "outline". Call sites to migrate: ManageTab's three sync buttons (green), SettingsTab Save (green), Delete/Restore/Purge (danger), .hra-chrome-preview-button (accent). The quiet hover glow was also extended to .hra-toggle-pill, .hra-date-trigger, .hra-select-trigger (box-shadow added to their transitions). All of it lives in index.css per the "styles live in index.css" rule; .hra-btn is included in the prefers-reduced-motion transition-none list.
+
+## Training-plan accordion (`TrainingPlanAccordion.tsx`, `domain/runplan-aggregate.ts`, `types/runplan.ts`)
+Shared Section → Week → Day review/edit UI for the RunPlan DSL v1 (`docs/runplan-dsl.md`), built once
+(HRA-116) so the two Data & Sync cards — template CRUD (HRA-117) and instance CRUD (HRA-118) — don't
+each duplicate the nesting or the aggregate math. **Pure component + computation only**: no API
+wiring lives here, no `generate`/save/approve/delete/instantiate call — those are the two card
+Stories' job.
+
+**Types (`types/runplan.ts`)** duplicate the backend's `domain/runplan/types.ts`/`instantiate.ts`
+shapes (`Target`/`Intensity`/`WorkoutSegment`/`DayEntry`/`Section`/`Week`/`ResolvedSegment`/
+`ResolvedDay`) — this app has no shared client-type layer yet (Epic HRA-36), so these are a
+deliberate hand-kept duplicate, same convention as every other API-shaped type in `types/api.ts`.
+
+**Aggregate module (`domain/runplan-aggregate.ts`)** owns every domain-shape-specific computation:
+- **Pace resolution** (`resolveIntensityPaceSecPerKm`, `getEffectivePacePolicy`) mirrors the backend's
+  `domain/runplan/pace.ts` — anchor/offset chains, circular-reference safety, Plan→Section→Week
+  shallow-merge inheritance.
+- **The distance rule**: a `distance`-kind target sums directly; a `duration`-kind target converts
+  via its resolved pace when one is available, and is excluded entirely otherwise (an unresolved
+  anchor, or a segment with `kind: "unknown"`). Two deliberate, documented assumptions where the
+  Story text didn't fully pin the behavior down (flagged in HRA-116's review comment as a real
+  design choice): **an interval's rest leg is excluded from the total — only `reps × work_target`
+  counts** (training-plan volume convention, "4x1000m" = 4km of work, not recovery jogs); **a
+  progression's duration→distance conversion uses the START intensity's resolved pace**, not an
+  average of start/end or the end pace alone.
+- **Day-count categorization**: `totalDays`/`activeDays` (every day whose `workout_type` isn't
+  `rest`/`todo`)/`runningDays` (`workout_type === "run"` only)/`restDays`. Section and Week totals
+  are the *same* reduction over a different day list — `aggregateTemplateWeek`/
+  `aggregateTemplateSection` are thin wrappers over one shared `aggregateTemplateDays`, deliberately
+  not two parallel implementations.
+- **View-model builders** (`buildTemplateSectionView`/`buildInstanceSectionView`) turn either a real
+  template `Section` (+ the plan's top-level `PacePolicy`) or a grouped list of instance
+  `ResolvedDay`s into one render-ready `SectionView` tree (`SectionView` → `WeekView[]` →
+  `DayView[]`, each already carrying its own computed `totals`/`distance`) — `TrainingPlanAccordion`
+  itself knows nothing about `WorkoutSegment`/`ResolvedSegment`/`PacePolicy`, only this tree shape.
+  **Instance days have no persisted DSL text on the backend** (`plan_instance_days` stores only
+  resolved segments, never the original D-line) — `buildInstanceSectionView`'s day input type
+  requires the caller to supply a `dsl: string` per day; sourcing that text for a real instance is
+  left to HRA-118, flagged as an open question rather than solved speculatively here.
+
+**Component (`TrainingPlanAccordion.tsx`)**: `Section`/`Week`/`Day` each render as their own
+`AccordionCard` (`ui/AccordionCard.tsx`), independently collapsible (no single-expand constraint —
+several can be open at once, unlike `SettingsTab`'s accordion). Section starts expanded, Week/Day
+start collapsed. Editable fields: Section name + note, Week note only (weeks are identified by
+number, never a name), Day `dsl` text (`<textarea>`, monospace) + note — all plain `<input>`/
+`<textarea>` with this app's existing `hra-border-strong hra-bg-card hra-text-primary` classes (no
+new `Input`/`Textarea` primitive was added; none exists yet and one wasn't needed for this scope).
+Edits go out via `onSectionEdit`/`onWeekEdit`/`onDayEdit` callbacks keyed by index — the component
+never mutates its own props.
+
+**Default-section name substitution (AC3)**: when `SectionView.raw_dsl === ""` (HRA-115's signal for
+"no real `SECTION` line exists"), the accordion displays the owning template's/instance's own
+`ownerName` prop instead of the section's stored `name`, and shows a read-only line explaining why
+instead of a name input — editing a name that has nowhere to persist yet (no real header line to
+patch) would be misleading before HRA-115's "add a new `SECTION` line" editor exists. **Display-only**
+— `ownerName` is never written into `section.name`; the builder's own `name` field stays whatever the
+parser produced (`"Plan"`), untouched, and the substitution happens at render time in the component.
+
+**Warnings/`needs_review` (AC4)**: shown inline inside each Day's own panel — the day's
+`ParseWarning[]` list line-by-line when non-empty; a plain "needs review" message when
+`needs_review` is true but the (instance-mode) day carries no structured warnings at all (instance
+rows only ever have the 0/1 flag, never a warnings array).
+
+**i18n**: every label goes through `t()` (`runplan.accordion.*` keys, `garmin-stats/locales/en.json`/
+`it.json`). ⚠️ Every dynamic label's `defaultValue` is a pre-substituted JS template literal, never a
+literal `{{var}}` placeholder — the `notReadyT` stub (CLAUDE.md's i18n mechanics note) returns
+`defaultValue` verbatim without interpolating it, so a `{{n}}`/`{{km}}` placeholder inside
+`defaultValue` itself would render as the literal text `{{n}}` in exactly this component's own unit
+tests (and briefly in production before the locale bundle loads) — caught and fixed during this
+Story, not a pre-existing pattern elsewhere copied wrong.
+
+**Tests**: `domain/runplan-aggregate.test.ts` — pure fixture-based coverage of the distance rule
+(every segment type, unresolved anchors, the `~`/approximate flag, the interval-rest and
+progression-pace assumptions above), day-count categorization, Plan→Section→Week pace inheritance,
+and both view-model builders. No `TrainingPlanAccordion.test.tsx` render test is checked in — the
+component was verified live (render, expand, edit-callback wiring, default-section substitution,
+warning surfacing) via a temporary test during implementation, then removed, since a durable render
+test would need real fixture data from a real template/instance that doesn't exist as a consumer yet
+(HRA-117/118); adding one now would only exercise this Story's own hand-built fixtures a second time.

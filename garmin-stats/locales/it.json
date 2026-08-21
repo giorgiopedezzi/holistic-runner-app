@@ -385,5 +385,19 @@
   "activity.classify.pendingReview": "In attesa di revisione",
   "activity.classify.splitTooltip": "Granularità delle frazioni usata per (ri)classificare — frazioni più fini possono far emergere una struttura a intervalli che una frazione più grossolana appiattisce",
   "activity.classify.split1km": "1km",
-  "activity.classify.split05km": "0.5km"
+  "activity.classify.split05km": "0.5km",
+
+  "runplan.accordion.totalDays": "{{n}} giorni",
+  "runplan.accordion.activeDays": "{{n}} attivi",
+  "runplan.accordion.runningDays": "{{n}} di corsa",
+  "runplan.accordion.restDays": "{{n}} di riposo",
+  "runplan.accordion.distance": "{{km}} km",
+  "runplan.accordion.distanceApprox": "~{{km}} km",
+  "runplan.accordion.weekTitle": "Settimana {{n}}",
+  "runplan.accordion.sectionNameLabel": "Nome sezione",
+  "runplan.accordion.defaultSectionName": "Il nome segue quello del piano — {{name}}",
+  "runplan.accordion.noteLabel": "Nota",
+  "runplan.accordion.notePlaceholder": "Nota opzionale",
+  "runplan.accordion.dslLabel": "Allenamento (DSL)",
+  "runplan.accordion.needsReview": "Questo giorno richiede una revisione prima di poter essere salvato."
 }
