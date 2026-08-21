@@ -15,6 +15,15 @@ export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
 
 export function createPlanInstancesRepo(db: DatabaseSync) {
   const findInstanceById = db.prepare(`SELECT ${INSTANCE_FIELDS} WHERE id = ?`);
+  // HRA-118: the instance card's list view — optionally scoped to one
+  // template ("per-template instance list", the Story's own AC1 wording).
+  // Separate prepared statements per shape (all vs. by-template) rather than
+  // one query with a nullable bound param reused twice, matching this repo's
+  // existing style of one statement per query shape.
+  const listAllStmt = db.prepare(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
+  const countAllStmt = db.prepare("SELECT COUNT(*) AS count FROM plan_instances");
+  const listByTemplateStmt = db.prepare(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
+  const countByTemplateStmt = db.prepare("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
   const insertInstance = db.prepare(
     "INSERT INTO plan_instances (template_id, start_date, pace_overrides, target_activity_id, name, event) VALUES ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event)",
   );
@@ -34,6 +43,12 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
 
   return {
     instanceById: (id: number): PlanInstanceRow | undefined => findInstanceById.get(id) as unknown as PlanInstanceRow | undefined,
+    listPage: (limit: number, offset: number, templateId?: number): PlanInstanceRow[] =>
+      (templateId != null
+        ? listByTemplateStmt.all(templateId, limit, offset)
+        : listAllStmt.all(limit, offset)) as unknown as PlanInstanceRow[],
+    count: (templateId?: number): { count: number } =>
+      (templateId != null ? countByTemplateStmt.get(templateId) : countAllStmt.get()) as unknown as { count: number },
     daysByInstance: (instanceId: number): PlanInstanceDayRow[] => findDaysByInstance.all(instanceId) as unknown as PlanInstanceDayRow[],
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
       const info = insertInstance.run({

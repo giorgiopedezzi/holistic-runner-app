@@ -255,6 +255,23 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, { ...instance, days }, 201);
   };
 
+  // GET /api/v1/plan-instances?template_id=&limit=&offset= — HRA-118's
+  // instance card list view. template_id is optional (the Story's own "or a
+  // combined view" wording); when given, must reference a real template
+  // (400, not silently returning an empty page for a typo'd id).
+  const listInstances: Handler = (_req, res, url) => {
+    const templateIdParam = url.searchParams.get("template_id");
+    let templateId: number | undefined;
+    if (templateIdParam != null) {
+      templateId = Number(templateIdParam);
+      if (!Number.isInteger(templateId)) throw badRequest("Invalid template_id.");
+      if (!templates.byId(templateId)) throw notFound(`No plan template with id ${templateId}.`);
+    }
+    const { limit, offset } = parsePageParams(url.searchParams);
+    const total = instancesRepo.count(templateId).count;
+    return send(res, paginated(instancesRepo.listPage(limit, offset, templateId), total, limit, offset));
+  };
+
   const instanceById: Handler = (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
@@ -362,6 +379,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, updateInstance, approveInstance, removeInstance,
+    instantiate, instanceById, updateInstance, approveInstance, removeInstance, listInstances,
   };
 }

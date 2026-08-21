@@ -593,6 +593,14 @@
         "responses": { "201": { "description": "The created instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
+    "/api/v1/plan-instances": {
+      "get": {
+        "tags": ["plan-templates"], "summary": "List plan instances, newest first (HRA-118)",
+        "description": "template_id is optional — omit for all instances, or scope to one template's own instances. 404 if template_id doesn't reference a real template.",
+        "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" }, { "name": "template_id", "in": "query", "required": false, "schema": { "type": "integer" } } ],
+        "responses": { "200": { "description": "Plan instances.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstance" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/plan-instances/{id}": {
       "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "put": {

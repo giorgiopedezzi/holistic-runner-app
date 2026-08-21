@@ -41,6 +41,7 @@ rule); this table exists for quick lookup, not as a second contract.
 | `/api/v1/locales/:lang` | Translation bundle for `:lang` (`en` or `it`) — flat key→string JSON, read live off `garmin-stats/locales/<lang>.json`, no envelope. `:lang` is whitelisted before touching the filesystem; `problem+json` 404 for an unsupported or missing language |
 | `/api/v1/plan-templates` | Saved training-plan templates (paginated envelope), newest first. See `docs/schema.md`'s `plan_templates` section (HRA-112) |
 | `/api/v1/plan-templates/:id` | Single plan template (includes `approved_at`, HRA-113) |
+| `/api/v1/plan-instances?template_id=` | Resolved plan instances (paginated envelope), newest first (HRA-118) — added since the instance card needs a way to list more than one at a time; no prior endpoint returned a collection. `template_id` is optional (a "list all" vs. a per-template list); 404 if a given `template_id` doesn't reference a real template, 400 if it isn't an integer |
 | `/api/v1/plan-instances/:id` | A resolved instance of a template — the instantiate response's own `Location` target — plus its `days` (all `plan_instance_days` rows, each with `segments` as JSON), `approved_at` (HRA-113), and `name`/`event` (HRA-114) |
 
 ### DELETE
