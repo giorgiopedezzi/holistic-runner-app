@@ -109,5 +109,24 @@ check an item that isn't actually true. This is a checklist-state update, not li
 Problem/Change/Rules sections — those are the approved spec (rule 5), untouched. The comment
 explains *why*; the checklist reflects *what*, and only the checklist does (HRA-101).
 
+⚠️ **The Acceptance Criteria list is a real Jira checklist (ADF `taskList`/`taskItem` nodes with a
+`state: "TODO"|"DONE"` attribute) — not literal `- [ ]` text.** `editJiraIssue`'s markdown mode
+(`contentFormat: "markdown"`, or omitted) does **not** parse GFM task-list syntax: sending a
+`- [x] ...` string degrades the real checklist into a plain bullet list with the literal text
+`[x] ...`, which then round-trips back out of Jira as escaped `* \[x\] ...` — silently destroying
+the checklist while looking like a normal edit (confirmed HRA-115: it happened, was later corrected
+by re-sending the description as real ADF). **`getJiraIssue` cannot show you the underlying ADF
+either** — every `responseContentFormat` it's given (`markdown` or `adf`) comes back as the same
+markdown-flattened string, so you cannot detect this failure by re-reading the issue afterward; the
+tool will look like it worked.
+
+**The fix: build the whole description as a real ADF document and send it via
+`editJiraIssue(..., contentFormat: "adf", fields: {description: <ADF object, not a string>})`.**
+Use `taskList`/`taskItem` (`attrs: {localId, state: "DONE"|"TODO"}`) for the Acceptance Criteria
+section, and ordinary `heading`/`paragraph`/`orderedList`/`bulletList`/`text` nodes (with
+`code`/`strong`/`em` marks for inline formatting) for everything else — reproducing the untouched
+Problem/Change/scope sections verbatim, not just the checklist. This is the only path that survives
+the round-trip; a markdown string, even a byte-perfect one, does not.
+
 Then **STOP**. Do not transition to Done. Do not set `Review Outcome`, `Contributor Type`, `Agent`,
 `Model`, or `Planned thinking effort` — the human sets those.

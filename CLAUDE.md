@@ -447,6 +447,21 @@ Portfolio-facing writeup: `PROJECT-OVERVIEW.md`.
   role). **Verify link direction visually in the Jira UI after creating — not via another API read**
   (a second API read reasons from the same ambiguous data as the first and can confirm the same
   error; verified wrong this way once, HRA-94↔HRA-95/96/97/98).
+- **A description's Acceptance Criteria checklist is a real ADF `taskList`/`taskItem` structure
+  (`attrs: {state: "TODO"|"DONE"}`), not literal `- [ ]` text — editing it as markdown silently
+  destroys it.** `editJiraIssue` with `contentFormat: "markdown"` (or omitted) does not parse GFM
+  task-list syntax: sending `fields.description` as a string containing `- [x] ...` degrades the
+  real checklist into a plain bullet list holding the literal text `[x] ...`, which then reads back
+  out as escaped `* \[x\] ...` — a silent corruption that looks like a normal edit succeeded
+  (confirmed on HRA-115). **`getJiraIssue` cannot catch this either**: every `responseContentFormat`
+  it's given comes back as the same markdown-flattened string, so re-reading the issue afterward
+  will not reveal the damage, and it does not expose raw ADF at all. **Fix:** whenever a Story
+  description's checklist needs its state changed, send the *entire* description as a real ADF
+  document via `editJiraIssue(..., contentFormat: "adf", fields: {description: <ADF object>})` —
+  `taskList`/`taskItem` nodes for the checklist, ordinary `heading`/`paragraph`/`orderedList`/
+  `bulletList`/`text` (with `code`/`strong`/`em` marks) reproducing every other section verbatim. A
+  markdown string is never safe for this field once a real checklist exists in it, even one that
+  looks byte-identical to what was there before.
 - **Custom fields** (project-scoped, single-select) — **not on the create/edit screen**, so
   `getJiraIssueTypeMetaWithFields`/`editmeta` omit them, but they CAN be set by passing
   `{ "customfield_101xx": { "value": "<option>" } }` in `createJiraIssue`'s `additional_fields` or
