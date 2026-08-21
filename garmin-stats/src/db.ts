@@ -268,6 +268,14 @@ export function initSchema(db: DatabaseSync): void {
       target_activity_id INTEGER REFERENCES activities(id),
       -- Gate 2 (HRA-113): same semantics as plan_templates.approved_at above.
       approved_at        TEXT,
+      -- HRA-114: genuinely distinct from the source template's own name (e.g.
+      -- template "Albanesi 12 weeks training plan" -> instance "...for Boston
+      -- 2028"). Nullable at the DB level (a migration can't invent a real name
+      -- for pre-existing rows) — the application enforces it as required on
+      -- create. event is a denormalized copy of the template's event at
+      -- instantiation time, for read convenience — never independently set.
+      name               TEXT,
+      event              TEXT,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -470,6 +478,28 @@ export function initSchema(db: DatabaseSync): void {
   if (!planInstanceCols.some(c => c.name === "approved_at")) {
     db.exec("ALTER TABLE plan_instances ADD COLUMN approved_at TEXT");
   }
+
+  // HRA-114: name/event, added after plan_instances already existed (HRA-112).
+  // Backfill runs only on the migration that actually adds `name` — a fresh
+  // install's CREATE TABLE above already has the column with no rows to fill.
+  const addingInstanceName = !planInstanceCols.some(c => c.name === "name");
+  if (addingInstanceName) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN name TEXT");
+  }
+  if (!planInstanceCols.some(c => c.name === "event")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN event TEXT");
+  }
+  if (addingInstanceName) {
+    // Pre-HRA-114 rows have no real instance name of their own — the source
+    // template's name/event is the best available placeholder, per the
+    // Story's own migration rule (editable afterward via PUT).
+    db.exec(`
+      UPDATE plan_instances
+      SET name = (SELECT name FROM plan_templates WHERE plan_templates.id = plan_instances.template_id),
+          event = (SELECT event FROM plan_templates WHERE plan_templates.id = plan_instances.template_id)
+      WHERE name IS NULL
+    `);
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -581,6 +611,12 @@ export interface PlanInstanceRow {
   // NULL = not approved (HRA-113 gate 2). Same semantics as
   // PlanTemplateRow.approved_at.
   approved_at: string | null;
+  // HRA-114: the instance's own name, distinct from its template's — required
+  // by the application on create, nullable at the DB level only because a
+  // migration can't invent one for pre-existing rows (backfilled instead).
+  name: string | null;
+  // HRA-114: denormalized copy of the template's event at instantiation time.
+  event: string | null;
   created_at: string;
 }
 

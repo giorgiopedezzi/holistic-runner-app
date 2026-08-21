@@ -93,7 +93,22 @@ user is ready to save.
 **exactly** like `date_ranges.activity_id` above: race-typed, `date_only` strictly after the
 instance's last resolved day), `approved_at` (nullable TEXT, same gate-2 semantics as
 `plan_templates.approved_at` — set via `POST /api/v1/plan-instances/:id/approve`, cleared by any
-subsequent `PUT /api/v1/plan-instances/:id`), `created_at`.
+subsequent `PUT /api/v1/plan-instances/:id`), `name` (nullable TEXT — HRA-114: the instance's own
+name, genuinely distinct from its source template's, e.g. template "Albanesi 12 weeks training plan"
+→ instance "...for Boston 2028"; required by the application on create/`PUT`, nullable at the DB
+level only because a migration can't invent a real name for pre-existing rows), `event` (nullable
+TEXT — HRA-114: a denormalized copy of the template's `event` at instantiation time, for read
+convenience; never independently settable, always the same event type as its template), `created_at`.
+
+**`name`/`event` migration (HRA-114):** rows created before this Story had neither column. The
+migration backfills them from the source template (`name` ← template's `name`, `event` ← template's
+`event`) via a joined `UPDATE`, so no pre-existing instance is left with a `NULL name` — the
+backfilled value is a placeholder, editable afterward via `PUT`.
+
+**Instantiation requires a `name` (HRA-114):** `POST /api/v1/plan-templates/:id/instantiate`'s
+request body requires `name` (string, 422 if missing/blank) — the instance's own name. `event` is
+never a request parameter; it's always auto-populated as a denormalized copy of the template's
+`event` at creation time.
 
 **Instantiation-time pace input (HRA-113):** the instantiate call accepts pace anchors two ways —
 `pace_overrides` (explicit `PacePolicy`-shaped values, as before) or a `goal_time` (`HH:MM:SS`),
@@ -105,12 +120,14 @@ so a `goal_time` for those events requires an explicit `distance_m` on the insta
 otherwise. Supplying both `goal_time` and an explicit `RG` in `pace_overrides` is rejected as
 ambiguous.
 
-**Editing an instance (HRA-113):** `PUT /api/v1/plan-instances/:id` replaces the instance's resolved
-days wholesale (structured JSON body, `{days: [...]}` — an instance holds concrete `ResolvedDay`
-data, not DSL text, so there's nothing to re-parse). Gated the same way as a template save: any
-submitted day with `needs_review: true` is rejected with 422. Editing an instance **never** touches
-or re-instantiates its source template — an instance is an independent artifact once created, and is
-allowed to diverge from what the template would currently produce.
+**Editing an instance (HRA-113, extended HRA-114):** `PUT /api/v1/plan-instances/:id` replaces the
+instance's `name` and resolved days wholesale (structured JSON body, `{name, days: [...]}` — an
+instance holds concrete `ResolvedDay` data, not DSL text, so there's nothing to re-parse). `name` is
+required (422 if missing/blank); `event` is never accepted here — read-only/derived from the
+template. Gated the same way as a template save: any submitted day with `needs_review: true` is
+rejected with 422. Editing an instance **never** touches or re-instantiates its source template — an
+instance is an independent artifact once created, and is allowed to diverge from what the template
+would currently produce.
 
 `plan_instance_days`: one row per resolved day, `instance_id` FK to `plan_instances(id)` **ON
 DELETE CASCADE**. Columns: `id`, `section_name`, `week_number`, `date` (concrete `YYYY-MM-DD`,

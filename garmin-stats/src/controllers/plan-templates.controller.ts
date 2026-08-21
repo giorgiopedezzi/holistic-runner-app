@@ -44,7 +44,7 @@ function parseIdForAction(pathname: string): number {
 type TemplateBody = Partial<{ name: string; dsl_source: string }>;
 type GenerateBody = Partial<{ dsl_source: string }>;
 type InstantiateBody = Partial<{
-  start_date: string; pace_overrides: Record<string, string>;
+  name: string; start_date: string; pace_overrides: Record<string, string>;
   goal_time: string; distance_m: number;
   target_activity_id: number | null;
 }>;
@@ -54,7 +54,7 @@ type InstanceDayBody = {
   activity_target?: unknown; activity_description?: string; notes?: string;
   needs_review: boolean;
 };
-type InstanceUpdateBody = Partial<{ days: InstanceDayBody[] }>;
+type InstanceUpdateBody = Partial<{ name: string; days: InstanceDayBody[] }>;
 
 // HRA-113: nothing in the tree is a hard error anymore — walk plan-scoped
 // (ParseResult.warnings) plus every day's own DayEntry.warnings so a 422 body
@@ -195,6 +195,8 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (!template) throw notFound(`No plan template with id ${templateId}.`);
 
     const body = await readJsonBody<InstantiateBody>(req);
+    const name = body.name?.trim();
+    if (!name) throw unprocessable("name is required.");
     if (!body.start_date || !ISO_DATE.test(body.start_date)) {
       throw unprocessable("start_date is required in YYYY-MM-DD format.");
     }
@@ -247,7 +249,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     }
 
-    const { instance, days } = instancesService.instantiate(templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId);
+    const { instance, days } = instancesService.instantiate(templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId, name);
 
     res.setHeader("Location", `/api/v1/plan-instances/${instance.id}`);
     return send(res, { ...instance, days }, 201);
@@ -262,20 +264,24 @@ export function createPlanTemplatesController(ctx: AppContext) {
   };
 
   // PUT /api/v1/plan-instances/:id — full replacement of the instance's
-  // resolved days (HRA-113 AC9). Structured JSON, not DSL text: an instance
-  // holds concrete ResolvedDay data, not template source, and no accordion
-  // UI exists yet to build a day-line-text edit contract against. Considered
-  // and rejected: reusing day-line DSL text (the future-notes' tentative
-  // recommendation) — deferred until the editor's actual shape is known,
-  // flagged in the review comment as a deviation from that note. Symmetric
-  // with template save (HRA-113 §3): zero days needing review is the
-  // precondition, gated here rather than via parseRunPlanDSL since instance
-  // days are already resolved, not DSL text to re-parse.
+  // name + resolved days (HRA-113 AC9, extended HRA-114 with `name`).
+  // Structured JSON, not DSL text: an instance holds concrete ResolvedDay
+  // data, not template source, and no accordion UI exists yet to build a
+  // day-line-text edit contract against. Considered and rejected: reusing
+  // day-line DSL text (the future-notes' tentative recommendation) —
+  // deferred until the editor's actual shape is known, flagged in the review
+  // comment as a deviation from that note. Symmetric with template save
+  // (HRA-113 §3): zero days needing review is the precondition, gated here
+  // rather than via parseRunPlanDSL since instance days are already
+  // resolved, not DSL text to re-parse. `event` is never accepted here —
+  // read-only/derived from the template at instantiation time (HRA-114).
   const updateInstance: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
     if (!instancesRepo.instanceById(id)) throw notFound(`No plan instance with id ${id}.`);
     const body = await readJsonBody<InstanceUpdateBody>(req);
+    const name = body.name?.trim();
+    if (!name) throw unprocessable("name is required.");
     if (!Array.isArray(body.days) || body.days.length === 0) {
       throw unprocessable("days is required and must be a non-empty array.");
     }
@@ -291,7 +297,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       segments: JSON.stringify(d.segments), activity_target: d.activity_target ? JSON.stringify(d.activity_target) : null,
       activity_description: d.activity_description ?? null, notes: d.notes ?? null, needs_review: 0,
     }));
-    const { instance, days } = instancesService.updateDays(id, dayInputs);
+    const { instance, days } = instancesService.updateDays(id, name, dayInputs);
     return send(res, { ...instance, days });
   };
 

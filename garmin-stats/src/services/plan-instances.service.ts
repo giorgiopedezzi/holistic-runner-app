@@ -14,7 +14,7 @@ import type { RunPlan } from "../domain/runplan/types.ts";
 
 export function createPlanInstancesService(db: DatabaseSync, instances: PlanInstancesRepo) {
   function instantiate(
-    templateId: number, plan: RunPlan, options: InstantiateOptions, targetActivityId: number | null,
+    templateId: number, plan: RunPlan, options: InstantiateOptions, targetActivityId: number | null, name: string,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     const resolvedDays = instantiatePlan(plan, options);
 
@@ -25,6 +25,10 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         start_date: options.startDate,
         pace_overrides: options.paceOverrides ? JSON.stringify(options.paceOverrides) : null,
         target_activity_id: targetActivityId,
+        name,
+        // Denormalized copy of the template's event at creation time
+        // (docs/runplan-dsl-future-notes.md §6) — never independently set.
+        event: plan.metadata.event ?? null,
       });
       for (const day of resolvedDays) {
         instances.createDay({
@@ -51,20 +55,24 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     }
   }
 
-  // Full replacement of an instance's resolved days (HRA-113 PUT
-  // /api/v1/plan-instances/:id). Never touches or re-instantiates the source
-  // template — an instance is an independent artifact once created, and is
-  // allowed to diverge from what the template would currently produce
-  // (docs/runplan-dsl-future-notes.md §7). Clearing approved_at is part of
-  // the same transaction: an edit that fails must not leave a cleared
-  // approval with stale days, or vice versa.
-  function updateDays(instanceId: number, days: Omit<PlanInstanceDayInput, "instance_id">[]): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
+  // Full replacement of an instance's name + resolved days (HRA-113 PUT
+  // /api/v1/plan-instances/:id, extended HRA-114 with `name`). Never touches
+  // or re-instantiates the source template — an instance is an independent
+  // artifact once created, and is allowed to diverge from what the template
+  // would currently produce (docs/runplan-dsl-future-notes.md §7). `event`
+  // stays read-only/derived, never part of this replacement. Clearing
+  // approved_at is part of the same transaction: an edit that fails must not
+  // leave a cleared approval with stale days/name, or vice versa.
+  function updateDays(
+    instanceId: number, name: string, days: Omit<PlanInstanceDayInput, "instance_id">[],
+  ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     db.exec("BEGIN");
     try {
       instances.deleteDaysByInstance(instanceId);
       for (const day of days) {
         instances.createDay({ ...day, instance_id: instanceId });
       }
+      instances.updateName(instanceId, name);
       instances.clearApproval(instanceId);
       db.exec("COMMIT");
     } catch (e) {
