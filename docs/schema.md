@@ -120,14 +120,27 @@ so a `goal_time` for those events requires an explicit `distance_m` on the insta
 otherwise. Supplying both `goal_time` and an explicit `RG` in `pace_overrides` is rejected as
 ambiguous.
 
-**Editing an instance (HRA-113, extended HRA-114):** `PUT /api/v1/plan-instances/:id` replaces the
-instance's `name` and resolved days wholesale (structured JSON body, `{name, days: [...]}` — an
-instance holds concrete `ResolvedDay` data, not DSL text, so there's nothing to re-parse). `name` is
+**Editing an instance (HRA-113, extended HRA-114, HRA-115):** `PUT /api/v1/plan-instances/:id`
+replaces the instance's `name` and resolved days wholesale (`{name, days: [...]}`). `name` is
 required (422 if missing/blank); `event` is never accepted here — read-only/derived from the
-template. Gated the same way as a template save: any submitted day with `needs_review: true` is
-rejected with 422. Editing an instance **never** touches or re-instantiates its source template — an
-instance is an independent artifact once created, and is allowed to diverge from what the template
-would currently produce.
+template. **Each day now carries its raw DSL text** (`{section_name, week_number, date, dsl}`,
+`dsl` the same D-line grammar as a template, e.g. `"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10"`)
+**instead of pre-resolved segments (HRA-115, reopening HRA-113's "structured JSON, not DSL text"
+call now that a real editor UI exists to build a text-edit contract against)**. For each day, the
+backend looks up that day's section/week in the source template's own parsed plan to find the
+effective `PacePolicy` for that scope, merges in the instance's own `pace_overrides` at plan level
+(same precedence `instantiatePlan` itself applies), calls `parseDayEntry(dsl, ctx)` against that
+policy, and resolves the parsed day the same way `instantiatePlan` resolves a segment
+(`domain/runplan/instantiate.ts`'s exported `resolveDay`). Gated the same way as a template save:
+any day whose fresh parse still carries a warning (`needs_review: true`) is rejected with 422,
+listing every flagged day — derived from the parse itself now, not a client-supplied flag. Editing
+an instance **never** touches or re-instantiates its source template — an instance is an
+independent artifact once created, and is allowed to diverge from what the template would currently
+produce.
+
+**Deleting an instance (HRA-115):** `DELETE /api/v1/plan-instances/:id` — hard delete, no trash,
+same reasoning as `plan_templates`' delete. `ON DELETE CASCADE` (`plan_instance_days.instance_id`)
+removes the instance's days too. 204 on success, 404 if the instance doesn't exist.
 
 `plan_instance_days`: one row per resolved day, `instance_id` FK to `plan_instances(id)` **ON
 DELETE CASCADE**. Columns: `id`, `section_name`, `week_number`, `date` (concrete `YYYY-MM-DD`,

@@ -1,4 +1,4 @@
-# RunPlan DSL v1 (HRA-111, amended HRA-113)
+# RunPlan DSL v1 (HRA-111, amended HRA-113, HRA-115)
 
 > Reference detail, loaded on demand. Rules that PREVENT a mistake live in `CLAUDE.md`;
 > this file DESCRIBES how the system works. Reachable from CLAUDE.md's routing table.
@@ -10,7 +10,10 @@ it — see `docs/schema.md`'s `plan_templates`/`plan_instances`/`plan_instance_d
 `docs/api.md`'s plan-templates/plan-instances endpoints (HRA-112, amended HRA-113).
 
 ## Files
-- `types.ts` — `RunPlan`, `PlanMetadata`, `Section`, `Week`, `DayEntry`, `WorkoutSegment` (the
+- `types.ts` — `RunPlan`, `PlanMetadata`, `Section`, `Week` (each carrying its own `raw_dsl: string`
+  — the original `SECTION`/`WEEK` header line as written, HRA-115; the implicit default section's is
+  `""`, signaling "no real header to replace" to an editor reconstructing `dsl_source`), `DayEntry`,
+  `WorkoutSegment` (the
   `ContinuousSegment`/`IntervalSegment`/`ProgressionSegment`/`RestBlockSegment` union), `Target`
   (`DistanceTarget`/`DurationTarget`/`UnknownTarget`), `Intensity`
   (`AnchorIntensity`/`OffsetIntensity`/`AbsoluteIntensity`/`UnknownIntensity`),

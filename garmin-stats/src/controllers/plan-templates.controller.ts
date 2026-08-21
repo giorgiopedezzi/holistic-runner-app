@@ -13,10 +13,11 @@
  */
 import type { AppContext, Handler } from "../http/context.ts";
 import type { PlanTemplateRow } from "../db.ts";
-import { parseRunPlanDSL, parsePaceValue } from "../domain/runplan/parser.ts";
-import { instantiatePlan } from "../domain/runplan/instantiate.ts";
+import { parseRunPlanDSL, parsePaceValue, parseDayEntry } from "../domain/runplan/parser.ts";
+import { instantiatePlan, resolveDay } from "../domain/runplan/instantiate.ts";
+import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
 import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
-import type { EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
+import type { DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
@@ -48,12 +49,11 @@ type InstantiateBody = Partial<{
   goal_time: string; distance_m: number;
   target_activity_id: number | null;
 }>;
-type InstanceDayBody = {
-  section_name: string; week_number: number; date: string; day: number;
-  suffix?: string; category?: string; workout_type: string; segments: unknown[];
-  activity_target?: unknown; activity_description?: string; notes?: string;
-  needs_review: boolean;
-};
+// HRA-115: a day edit is now its raw DSL text (same grammar as a template's
+// D-line) plus the section/week/date scope it lives in — not pre-resolved
+// segments. The backend re-parses+resolves it against that scope's own
+// effective pace policy (see updateInstance below).
+type InstanceDayBody = { section_name: string; week_number: number; date: string; dsl: string };
 type InstanceUpdateBody = Partial<{ name: string; days: InstanceDayBody[] }>;
 
 // HRA-113: nothing in the tree is a hard error anymore — walk plan-scoped
@@ -264,41 +264,80 @@ export function createPlanTemplatesController(ctx: AppContext) {
   };
 
   // PUT /api/v1/plan-instances/:id — full replacement of the instance's
-  // name + resolved days (HRA-113 AC9, extended HRA-114 with `name`).
-  // Structured JSON, not DSL text: an instance holds concrete ResolvedDay
-  // data, not template source, and no accordion UI exists yet to build a
-  // day-line-text edit contract against. Considered and rejected: reusing
-  // day-line DSL text (the future-notes' tentative recommendation) —
-  // deferred until the editor's actual shape is known, flagged in the review
-  // comment as a deviation from that note. Symmetric with template save
-  // (HRA-113 §3): zero days needing review is the precondition, gated here
-  // rather than via parseRunPlanDSL since instance days are already
-  // resolved, not DSL text to re-parse. `event` is never accepted here —
-  // read-only/derived from the template at instantiation time (HRA-114).
+  // name + resolved days (HRA-113 AC9, extended HRA-114 with `name`, HRA-115
+  // with DSL-based day editing). Each day now carries its raw DSL text (`dsl`,
+  // same grammar as a template's D-line) instead of pre-resolved segments —
+  // reopens HRA-113's "structured JSON, not DSL text" call now that a real
+  // editor UI exists to build a text-edit contract against. For each day: look
+  // up its section/week in the source template's own parsed plan to get that
+  // scope's effective PacePolicy, merge in the instance's own pace_overrides
+  // (same precedence instantiatePlan itself applies — overrides at plan level,
+  // template section/week overrides still win on top), parseDayEntry against
+  // that policy, then resolveDay it the same way instantiatePlan resolves a
+  // segment. Same zero-needs_review-to-save gate as before, now derived from
+  // the fresh parse rather than a client-supplied flag. `event` is never
+  // accepted here — read-only/derived from the template at instantiation time
+  // (HRA-114). Never touches or re-instantiates the source template — an
+  // instance is allowed to diverge from what the template would currently
+  // produce (docs/runplan-dsl-future-notes.md §7).
   const updateInstance: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    if (!instancesRepo.instanceById(id)) throw notFound(`No plan instance with id ${id}.`);
+    const instance = instancesRepo.instanceById(id);
+    if (!instance) throw notFound(`No plan instance with id ${id}.`);
+    const template = templates.byId(instance.template_id);
+    if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
+    const plan = JSON.parse(template.parsed_plan) as RunPlan;
+    const instanceOverrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
+    const overriddenPlan: RunPlan = {
+      ...plan,
+      metadata: { ...plan.metadata, pace_policy: { ...plan.metadata.pace_policy, ...instanceOverrides } },
+    };
+
     const body = await readJsonBody<InstanceUpdateBody>(req);
     const name = body.name?.trim();
     if (!name) throw unprocessable("name is required.");
     if (!Array.isArray(body.days) || body.days.length === 0) {
       throw unprocessable("days is required and must be a non-empty array.");
     }
-    const flagged = body.days
-      .filter(d => d.needs_review)
-      .map(d => ({ field: `week ${d.week_number} day ${d.day}`, message: `Day ${d.day} (${d.date}) still needs review.` }));
+
+    const flagged: { field: string; message: string }[] = [];
+    const dayInputs: Omit<PlanInstanceDayInput, "instance_id">[] = [];
+    for (const d of body.days) {
+      if (!d.section_name || !d.week_number || !d.date || !d.dsl?.trim()) {
+        throw unprocessable("Each day requires section_name, week_number, date, and dsl.");
+      }
+      const section = overriddenPlan.sections.find(s => s.name === d.section_name);
+      const week = section?.weeks.find(w => w.number === d.week_number);
+      if (!section || !week) {
+        throw unprocessable(`Unknown section/week for day: "${d.section_name}" week ${d.week_number}.`);
+      }
+      const policy = getEffectivePacePolicy(overriddenPlan, section, week);
+      const ctx: DayParseContext = {
+        unit: overriddenPlan.metadata.unit, offset_unit: overriddenPlan.metadata.offset_unit,
+        default_rest: overriddenPlan.metadata.default_rest, pacePolicy: policy,
+      };
+      const parsedDay = parseDayEntry(d.dsl, ctx);
+      if (parsedDay.needs_review) {
+        flagged.push({ field: `week ${d.week_number} day ${parsedDay.day}`, message: `Day ${parsedDay.day} (${d.date}) still needs review.` });
+        continue;
+      }
+      const resolved = resolveDay(parsedDay, d.section_name, d.week_number, d.date, policy);
+      dayInputs.push({
+        section_name: resolved.section_name, week_number: resolved.week_number, date: resolved.date, day: resolved.day,
+        suffix: resolved.suffix ?? null, category: resolved.category ?? null, workout_type: resolved.workout_type,
+        segments: JSON.stringify(resolved.segments),
+        activity_target: resolved.activity_target ? JSON.stringify(resolved.activity_target) : null,
+        activity_description: resolved.activity_description ?? null, notes: resolved.notes ?? null,
+        needs_review: resolved.needs_review ? 1 : 0,
+      });
+    }
     if (flagged.length > 0) {
       throw unprocessable("One or more days still need review — resolve every flag before saving.", { errors: flagged });
     }
-    const dayInputs: Omit<PlanInstanceDayInput, "instance_id">[] = body.days.map(d => ({
-      section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
-      suffix: d.suffix ?? null, category: d.category ?? null, workout_type: d.workout_type,
-      segments: JSON.stringify(d.segments), activity_target: d.activity_target ? JSON.stringify(d.activity_target) : null,
-      activity_description: d.activity_description ?? null, notes: d.notes ?? null, needs_review: 0,
-    }));
-    const { instance, days } = instancesService.updateDays(id, name, dayInputs);
-    return send(res, { ...instance, days });
+
+    const { instance: updated, days } = instancesService.updateDays(id, name, dayInputs);
+    return send(res, { ...updated, days });
   };
 
   // POST /api/v1/plan-instances/:id/approve — gate 2, symmetric with the
@@ -310,8 +349,19 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, instancesRepo.approve(id));
   };
 
+  // DELETE /api/v1/plan-instances/:id — hard delete, no trash, same reasoning
+  // as plan-templates' delete above (HRA-115). ON DELETE CASCADE
+  // (plan_instance_days.instance_id) removes the instance's days too.
+  const removeInstance: Handler = (_req, res, url) => {
+    const id = parseId(url.pathname);
+    if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
+    if (!instancesRepo.instanceById(id)) throw notFound(`No plan instance with id ${id}.`);
+    instancesRepo.remove(id);
+    return sendNoContent(res);
+  };
+
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, updateInstance, approveInstance,
+    instantiate, instanceById, updateInstance, approveInstance, removeInstance,
   };
 }

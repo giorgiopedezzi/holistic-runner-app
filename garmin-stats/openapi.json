@@ -291,6 +291,16 @@
           "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] }
         }
       },
+      "PlanInstanceDayEdit": {
+        "type": "object",
+        "description": "One day submitted to PUT /api/v1/plan-instances/{id} (HRA-115) — raw DSL text plus the section/week/date scope it lives in, not pre-resolved segments. The backend re-parses dsl against that scope's own effective pace policy (template Section/Week PacePolicy merged with the instance's pace_overrides) and resolves it the same way instantiation resolves a segment.",
+        "required": ["section_name", "week_number", "date", "dsl"],
+        "properties": {
+          "section_name": { "type": "string" }, "week_number": { "type": "integer" },
+          "date": { "type": "string", "format": "date" },
+          "dsl": { "type": "string", "description": "Raw D-line text, same grammar as a template, e.g. \"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10\"." }
+        }
+      },
       "PlanInstance": {
         "type": "object",
         "description": "One resolved instantiation of a plan template for a specific race.",
@@ -586,12 +596,13 @@
     "/api/v1/plan-instances/{id}": {
       "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "put": {
-        "tags": ["plan-templates"], "summary": "Replace an instance's name + resolved days (HRA-113, extended HRA-114)",
-        "description": "Structured JSON, not DSL text — an instance holds concrete ResolvedDay data, not template source. name is required (HRA-114); event is never accepted here, read-only/derived from the template. Rejects (422) if any submitted day has needs_review:true. Never touches or re-instantiates the source template; an instance may diverge from what the template would currently produce. Clears approved_at back to NULL, same gate-2 rule as the template PUT.",
+        "tags": ["plan-templates"], "summary": "Replace an instance's name + resolved days (HRA-113, extended HRA-114, HRA-115)",
+        "description": "name is required (HRA-114); event is never accepted here, read-only/derived from the template. Each day is raw DSL text plus its section/week/date scope (HRA-115, reopening HRA-113's structured-JSON-only call now that a real editor UI exists) — the backend looks up that day's section/week in the source template's own parsed plan for its effective PacePolicy, merges in the instance's own pace_overrides, re-parses dsl against that policy, and resolves it the same way instantiation resolves a segment. Rejects (422) if any day's fresh parse still needs review, listing every flagged day. Never touches or re-instantiates the source template; an instance may diverge from what the template would currently produce. Clears approved_at back to NULL, same gate-2 rule as the template PUT.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "days"], "properties": { "name": { "type": "string" }, "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDay" } } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "days"], "properties": { "name": { "type": "string" }, "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDayEdit" } } } } } } },
         "responses": { "200": { "description": "The updated instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
-      }
+      },
+      "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/api/v1/plan-instances/{id}/approve": {
       "post": {

@@ -29,6 +29,8 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
   const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
+  // ON DELETE CASCADE (plan_instance_days.instance_id) removes the instance's days too.
+  const deleteInstanceStmt = db.prepare("DELETE FROM plan_instances WHERE id = ?");
 
   return {
     instanceById: (id: number): PlanInstanceRow | undefined => findInstanceById.get(id) as unknown as PlanInstanceRow | undefined,
@@ -59,6 +61,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;
     },
+    remove: (id: number) => { deleteInstanceStmt.run(id); },
   };
 }
 

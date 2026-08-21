@@ -87,6 +87,26 @@ function resolveSegment(seg: WorkoutSegment, policy: PacePolicy, flag: { unresol
   }
 }
 
+// Resolves one already-parsed DayEntry against an effective pace policy into
+// a concrete ResolvedDay — the same per-day step instantiatePlan runs in its
+// loop below. Exported (HRA-115) so the plan-instances PUT endpoint's
+// DSL-based day editing can resolve a single re-parsed day the exact same way
+// a full instantiation would, without re-deriving this logic.
+export function resolveDay(
+  day: DayEntry, sectionName: string, weekNumber: number, date: string, policy: PacePolicy,
+): ResolvedDay {
+  const flag = { unresolved: false };
+  const segments = day.segments.map(seg => resolveSegment(seg, policy, flag));
+  return {
+    section_name: sectionName, week_number: weekNumber, date,
+    day: day.day, suffix: day.suffix, category: day.category, workout_type: day.workout_type,
+    segments,
+    activity_target: day.activity_target, activity_description: day.activity_description,
+    notes: day.notes,
+    needs_review: day.needs_review || flag.unresolved,
+  };
+}
+
 // Applies paceOverrides at plan level (section/week overrides already in the
 // template are preserved as-is — they still apply on top per HRA-111's own
 // inheritance rule), then walks every section/week/day producing concrete
@@ -103,16 +123,7 @@ export function instantiatePlan(plan: RunPlan, options: InstantiateOptions): Res
       const policy = getEffectivePacePolicy(overriddenPlan, section, week);
       const weekDate = week.start_date ?? addDays(options.startDate, (week.number - 1) * 7);
       for (const day of week.days) {
-        const flag = { unresolved: false };
-        const segments = day.segments.map(seg => resolveSegment(seg, policy, flag));
-        days.push({
-          section_name: section.name, week_number: week.number, date: weekDate,
-          day: day.day, suffix: day.suffix, category: day.category, workout_type: day.workout_type,
-          segments,
-          activity_target: day.activity_target, activity_description: day.activity_description,
-          notes: day.notes,
-          needs_review: day.needs_review || flag.unresolved,
-        });
+        days.push(resolveDay(day, section.name, week.number, weekDate, policy));
       }
     }
   }

@@ -99,6 +99,7 @@ export const weekSchema = z.object({
   notes: z.string().optional(),
   pace_policy: pacePolicySchema,
   days: z.array(dayEntrySchema),
+  raw_dsl: z.string(),
 });
 
 export const sectionSchema = z.object({
@@ -107,6 +108,7 @@ export const sectionSchema = z.object({
   notes: z.string().optional(),
   pace_policy: pacePolicySchema,
   weeks: z.array(weekSchema),
+  raw_dsl: z.string(),
 });
 
 export const planMetadataSchema = z.object({

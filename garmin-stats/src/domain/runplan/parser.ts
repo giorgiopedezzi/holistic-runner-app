@@ -376,7 +376,9 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
 
   function ensureDefaultSection() {
     if (!currentSection) {
-      currentSection = { name: "Plan", week_spec: "*", pace_policy: {}, weeks: [] };
+      // raw_dsl: "" — there is no real SECTION header line to replace, since
+      // this section was never written in source (HRA-115).
+      currentSection = { name: "Plan", week_spec: "*", pace_policy: {}, weeks: [], raw_dsl: "" };
       plan.sections.push(currentSection);
     }
   }
@@ -393,7 +395,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       closeSection(currentSection);
       currentWeek = undefined;
       const name = sectionMatch[1] ?? sectionMatch[2];
-      currentSection = { name, week_spec: sectionMatch[3], notes: note, pace_policy: {}, weeks: [] };
+      currentSection = { name, week_spec: sectionMatch[3], notes: note, pace_policy: {}, weeks: [], raw_dsl: text };
       plan.sections.push(currentSection);
       scope = "section";
       metadataClosed = true;
@@ -407,7 +409,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       ensureDefaultSection();
       currentWeek = {
         number: parseInt(weekMatch[1], 10), start_date: weekMatch[2], notes: note,
-        pace_policy: {}, days: [],
+        pace_policy: {}, days: [], raw_dsl: text,
       };
       currentSection!.weeks.push(currentWeek);
       scope = "week";

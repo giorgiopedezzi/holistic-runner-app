@@ -64,7 +64,7 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/v1/activities/:id/type` | Body `{activity_type_id, name?}` — full replacement of the activity's type/name sub-resource. 422 if the type is unknown or the activity's `distance_m` is shorter than the type's `min_distance_m`; 404 if the activity doesn't exist |
 | `/api/v1/date-ranges/:id` | Body `{name, from, to, activity_id?}` — full replacement, incl. renaming (the Data & Sync tab's "Update" row). Same validation as `POST /api/v1/date-ranges` below, except the duplicate-name check excludes the row's own id (so re-saving under its current name doesn't 409 itself). 404 if the row doesn't exist |
 | `/api/v1/plan-templates/:id` | Body `{name, dsl_source}` — full replacement; `dsl_source` is re-parsed from scratch (same validation as `POST /api/v1/plan-templates` below). 404 if the template doesn't exist. Always clears `approved_at` back to `NULL` (HRA-113 gate 2 — any edit revokes approval, even one that still parses with zero warnings) |
-| `/api/v1/plan-instances/:id` | Body `{name, days: [...]}` — full replacement of the instance's name + resolved days (structured JSON, not DSL text: an instance holds concrete `ResolvedDay` data). `name` required (422 if missing/blank, HRA-114); `event` is never accepted here — read-only/derived from the template. Rejects with 422 (listing which days) if any submitted day has `needs_review: true`. Never touches or re-instantiates the source template. Clears `approved_at` back to `NULL`, same gate-2 rule as the template PUT above. 404 if the instance doesn't exist (HRA-113) |
+| `/api/v1/plan-instances/:id` | Body `{name, days: [...]}` — full replacement of the instance's name + resolved days. `name` required (422 if missing/blank, HRA-114); `event` is never accepted here — read-only/derived from the template. **Each day is `{section_name, week_number, date, dsl}` (HRA-115)** — `dsl` is the raw D-line text, same grammar as a template (e.g. `"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10"`), not pre-resolved segments. The backend looks up that day's section/week in the source template's parsed plan for its effective `PacePolicy`, merges in the instance's own `pace_overrides`, re-parses the `dsl` against that policy, and resolves it the same way instantiation resolves a segment. Rejects with 422 (listing which days) if any day's fresh parse still needs review. Never touches or re-instantiates the source template. Clears `approved_at` back to `NULL`, same gate-2 rule as the template PUT above. 404 if the instance doesn't exist (HRA-113) |
 
 ### POST
 | Endpoint | Description |
@@ -82,8 +82,9 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 | `/api/v1/plan-templates/:id/approve` | No body. Sets `approved_at` (gate 2, HRA-113) — only meaningful on a saved (already zero-warning) template. Returns the updated row |
 | `/api/v1/plan-instances/:id/approve` | No body. Same gate-2 semantics as the template approve endpoint above, for an instance (HRA-113) |
 
-### DELETE (date ranges / plan templates — hard delete, not soft)
+### DELETE (date ranges / plan templates / plan instances — hard delete, not soft)
 | Endpoint | Description |
 |---|---|
 | `/api/v1/date-ranges/:id` | Deletes a saved date range permanently (204). Unlike activities/body measurements, saved ranges have no trash — they're just a recall label, not synced data |
 | `/api/v1/plan-templates/:id` | Deletes a plan template permanently (204) — `ON DELETE CASCADE` also removes every instance (and each instance's days) derived from it. No trash, same reasoning as date ranges |
+| `/api/v1/plan-instances/:id` | Deletes a plan instance permanently (204, HRA-115) — `ON DELETE CASCADE` also removes its `plan_instance_days` rows. No trash, same reasoning as plan templates. 404 if the instance doesn't exist |

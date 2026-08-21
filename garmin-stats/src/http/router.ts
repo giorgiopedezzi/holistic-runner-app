@@ -91,6 +91,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.remove(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.remove(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.removeInstance(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL

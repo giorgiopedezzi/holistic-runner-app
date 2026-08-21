@@ -144,6 +144,10 @@ export interface Week {
   notes?: string;
   pace_policy: PacePolicy;
   days: DayEntry[];
+  // HRA-115: the original `WEEK <n> [START <date>][ # note]` header line, as
+  // written — lets an editor patch this week's header in place when
+  // reconstructing an edited dsl_source, mirroring DayEntry.raw_dsl above.
+  raw_dsl: string;
 }
 
 export interface Section {
@@ -152,6 +156,11 @@ export interface Section {
   notes?: string;
   pace_policy: PacePolicy;
   weeks: Week[];
+  // HRA-115: the original `SECTION "<name>" WEEKS <spec>[ # note]` header line,
+  // as written. Empty for the implicit default section (no SECTION line in
+  // source) — signals an editor to add a new SECTION line instead of patching
+  // one that never existed.
+  raw_dsl: string;
 }
 
 export interface PlanMetadata {
