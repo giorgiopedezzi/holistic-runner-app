@@ -125,6 +125,9 @@
   --kpi-color:    var(--text-primary);
   --legend-color: var(--text-secondary);
   --btn-color:    var(--accent);
+  --dyn-color:    var(--text-primary);
+  --dyn-bg:       var(--bg-card);
+  --dyn-border:   var(--border);
 
   color-scheme: dark;
 }
