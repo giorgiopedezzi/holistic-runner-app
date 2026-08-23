@@ -22,9 +22,9 @@ import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 const THEME_NAMES = ["dark", "light"];
 const UNIT_SYSTEMS = ["metric", "imperial", "auto"];
 const DETAIL_VIEWS = ["accordion", "modal"];
-// Narrowed to the 2 values paired 1:1 with palette (dashboard design-system
+// Narrowed to the 3 values paired 1:1 with palette (dashboard design-system
 // rework) — no longer independently user-choosable, see updatePalette below.
-const ACCENT_COLORS = ["sky", "amber"];
+const ACCENT_COLORS = ["sky", "amber", "graphite"];
 // Style (numeric/literal) × region (uk/us) — see db.ts's date_format column
 // comment and garmin-dashboard's utils/dateFormat.ts for what each renders as.
 const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
@@ -32,13 +32,15 @@ const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
 // (garmin-dashboard's i18n.ts) — same writable-'auto' idiom as unit_system,
 // unlike theme. 'en'/'it' are the two bundles under garmin-stats/locales/.
 const LANGUAGES = ["auto", "en", "it", "fr", "de", "es", "ja"];
-// Dashboard design-system rework — 'metal' or 'warm', crossed with theme
-// (dark/light) for 4 total looks. Replaces the earlier style_pack axis
-// entirely. See db.ts's palette column comment and docs/frontend.md's
-// Appearance section.
-const PALETTES = ["metal", "warm"];
+// Dashboard design-system rework — 'metal'/'warm' cross with theme (dark/
+// light) for 4 looks; 'graphite' is a third, standalone, dark-only palette
+// (matches on data-palette alone in index.css, ignoring data-theme
+// entirely) — selecting it makes the Theme picker irrelevant, there is no
+// "light graphite". Replaces the earlier style_pack axis entirely. See
+// db.ts's palette column comment and docs/frontend.md's Appearance section.
+const PALETTES = ["metal", "warm", "graphite"];
 // palette -> its paired accent_color (see db.ts's accent_color comment).
-const PALETTE_ACCENT: Record<string, string> = { metal: "sky", warm: "amber" };
+const PALETTE_ACCENT: Record<string, string> = { metal: "sky", warm: "amber", graphite: "graphite" };
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };

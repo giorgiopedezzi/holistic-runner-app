@@ -206,9 +206,11 @@
 
   "settings.theme.dark": "Dark",
   "settings.theme.light": "Light",
+  "settings.theme.disabledForGraphite": "Graphite is a fixed dark look — Theme doesn't apply while it's selected",
 
   "settings.palette.metal": "Metal",
   "settings.palette.warm": "Warm",
+  "settings.palette.graphite": "Graphite",
 
   "settings.units.auto": "Auto",
   "settings.units.metric": "Metric (km, kg)",

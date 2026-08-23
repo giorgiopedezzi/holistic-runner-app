@@ -266,12 +266,13 @@ export type StoredUnitSystem = "metric" | "imperial" | "auto";
 // ActivitiesTab; 'modal' opens it as a popup (the original behavior).
 export type ActivityDetailView = "accordion" | "modal";
 
-// Narrowed to the 2 values paired 1:1 with Palette below (dashboard
+// Narrowed to the 3 values paired 1:1 with Palette below (dashboard
 // design-system rework) — no independent picker any more; the backend keeps
-// them in lockstep (sky=metal, amber=warm). Governs interactive chrome only
-// (buttons, active pills, links, rings, focus), never --data-* colors.
-export type AccentColor = "sky" | "amber";
-export const ACCENT_COLOR_NAMES: AccentColor[] = ["sky", "amber"];
+// them in lockstep (sky=metal, amber=warm, graphite=graphite). Governs
+// interactive chrome only (buttons, active pills, links, rings, focus),
+// never --data-* colors.
+export type AccentColor = "sky" | "amber" | "graphite";
+export const ACCENT_COLOR_NAMES: AccentColor[] = ["sky", "amber", "graphite"];
 
 // How every displayed date is formatted app-wide (utils/fmt.ts's fmtDate) —
 // style (numeric vs literal) × region (uk vs us). See utils/dateFormat.ts for
@@ -296,11 +297,15 @@ export type StoredLanguage = Language | "auto";
 
 // Dashboard palette flavor — 'metal' (cold/technical/minimal) or 'warm'
 // (amber/premium/expressive), crossed with Theme (dark/light) above for 4
-// total looks. Applied via a data-palette attribute (index.css), compounded
-// with the existing data-theme attribute. Replaces the earlier 4-way
-// StylePack (HRA-119: boomer/genz/millennial/minimal) entirely.
-export type Palette = "metal" | "warm";
-export const PALETTE_NAMES: Palette[] = ["metal", "warm"];
+// total looks, PLUS 'graphite' — a third, standalone, dark-only palette
+// (matches on data-palette alone in index.css, ignoring data-theme
+// entirely; there is no "light graphite", so ThemePicker becomes
+// irrelevant while it's selected — see SettingsTab.tsx's ThemePicker).
+// Applied via a data-palette attribute (index.css), compounded with the
+// existing data-theme attribute for metal/warm. Replaces the earlier
+// 4-way StylePack (HRA-119: boomer/genz/millennial/minimal) entirely.
+export type Palette = "metal" | "warm" | "graphite";
+export const PALETTE_NAMES: Palette[] = ["metal", "warm", "graphite"];
 
 export interface Settings {
   outlier_speed_delta_per_sec:   number;

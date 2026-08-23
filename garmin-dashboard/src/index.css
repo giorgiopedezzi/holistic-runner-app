@@ -265,6 +265,65 @@
   color-scheme: light;
 }
 
+/* ── GRAPHITE (third Palette value, standalone — not crossed with Theme) ──
+   Dark-only, deliberately monochrome/desaturated. A real, selectable
+   `Palette` value now (`PALETTE_NAMES`, `PalettePicker`, backend
+   `updatePalette`) — no longer a devtools-only preview. Matches on
+   `[data-palette="graphite"]` ALONE (no `[data-theme]` qualifier — Theme is
+   irrelevant while this is active, there is no "light graphite"; the two
+   real Theme×Palette combinations that use metal/warm are unaffected since
+   their selectors require `[data-palette="metal"/"warm"]` specifically).
+   `ThemePicker` visually disables itself while this palette is selected
+   (see SettingsTab.tsx) rather than silently doing nothing when clicked.
+   The 4 real theme×metal/warm themes were deliberately left exactly as
+   they were — this palette was evaluated standalone first, then wired in
+   as-is, per explicit instruction not to touch the other 4.
+   Token mapping from the given GRAPHITE_THEME object, plus a few judgment
+   calls for slots that object didn't cover:
+     background/card/surface/border/text/textMuted/textDim/accent/success/
+       danger map directly to --bg/--bg-card/--bg-surface/--border/
+       --text-primary/--text-secondary/--text-muted/--accent/--accent-green/
+       --accent-red.
+     surface2 (#1B1B1B) — no existing slot for a 2nd surface tier; kept as
+       --bg-surface-2, defined but not consumed by anything yet (available
+       if a future component wants a deeper nesting level).
+     --border-strong — not given; derived as a lightened --border.
+     --on-accent — not given; --accent is a light gray, so on-accent is a
+       near-black (matching --bg's own darkness) for contrast, not pure #000.
+     --accent-blue — no equivalent given; since "graphite" means genuinely
+       monochrome, this reuses --accent itself rather than introducing an
+       unrelated hue.
+     --accent-orange — no equivalent given; derived as a muted warm gray,
+       matching the desaturated character of the given success/danger hues
+       rather than a saturated amber that would break the monochrome mood.
+     Ambient-glow mix percentages — not given; reused the existing dark-
+       theme defaults. */
+:root[data-palette="graphite"] {
+  --bg:             #050505;
+  --bg-card:        #0C0C0C;
+  --bg-surface:     #141414;
+  --bg-surface-2:   #1B1B1B;
+  --bg-danger:      #B86A6A18;
+  --border:         #292929;
+  --border-strong:  #3D3D3D;
+  --text-primary:   #F2F2F2;
+  --text-secondary: #A3A3A3;
+  --text-muted:     #6B6B6B;
+  --accent:         #D4D4D4;
+  --on-accent:      #0A0A0A;
+  --accent-green:   #8FAF9A;
+  --accent-blue:    #D4D4D4;
+  --accent-red:     #B86A6A;
+  --accent-orange:  #B8A26A;
+  --ambient-accent-mix: 8%; --ambient-dark-mix: 30%;
+  --card-accent-mix:    9%; --card-dark-mix:    12%;
+  color-scheme: dark;
+}
+/* Atmosphere shimmer reduced to nothing for Graphite specifically — "the
+   monochrome UI + static data gradients is already visually strong," per
+   the stated preference for this theme. */
+:root[data-palette="graphite"] body::before { animation: none; }
+
 html, body, #root { height: 100%; }
 
 body {
@@ -387,6 +446,12 @@ body {
 }
 .hra-lift:active {
   transform: scale(0.98);
+}
+.hra-lift:disabled,
+.hra-lift:disabled:hover,
+.hra-lift:disabled:active {
+  transform: none;
+  box-shadow: none;
 }
 
 .hra-nav-hover {
@@ -568,12 +633,17 @@ body {
 [data-theme-preview="light"]     { --preview-bg: #F7F9FB; --preview-card: #FFFFFF; --preview-text: #111827; --preview-accent: #2563EB; }
 [data-palette-preview="metal"]   { --preview-bg: #0B1220; --preview-card: #121A2B; --preview-text: #E6EDF3; --preview-accent: #3B82F6; }
 [data-palette-preview="warm"]    { --preview-bg: #0F141A; --preview-card: #1A1F26; --preview-text: #F5EDE3; --preview-accent: #F59E0B; }
+[data-palette-preview="graphite"] { --preview-bg: #050505; --preview-card: #0C0C0C; --preview-text: #F2F2F2; --preview-accent: #D4D4D4; }
 
 .hra-theme-swatch {
   position: relative; width: 96px; padding: 0; border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
   border: 1px solid var(--border); background: none;
 }
 .hra-theme-swatch[data-selected="true"] { border-color: var(--preview-accent); }
+/* ThemePicker disables itself while Graphite (dark-only, standalone) is
+   the active palette — Theme has no effect, so clicking would silently do
+   nothing without this. */
+.hra-theme-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
 .hra-theme-swatch-preview {
   background: var(--preview-bg); padding: 16px 10px; display: flex; align-items: center; justify-content: center;
 }
@@ -592,6 +662,41 @@ body {
   display: flex; align-items: center; justify-content: center; font-size: var(--fs-meta); font-weight: var(--fw-data); line-height: 1;
 }
 
+/* Chart hover-highlight (dashboard design-system rework, "hover flash
+   effect" — but as a smooth highlight TRANSITION, never a literal flash).
+   Two CSS-only overlay layers sit on top of the chart's plot area, each
+   positioned by a --hover-x custom property updated imperatively on
+   mousemove (same ref-based, no-re-render pattern RunnerIcon already uses
+   for its own cx tracking) — the underlying Line/gradient colors are NEVER
+   touched; this is a separate visual layer, not a recoloring of the data.
+   Tall ellipses (not circles) so the effect reads as a vertical highlight
+   COLUMN around the hovered x, matching the "segment near the cursor"
+   framing, not a circular spot. */
+.hra-chart-hover-dim, .hra-chart-hover-glow {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+.hra-chart-hover-dim[data-active="true"], .hra-chart-hover-glow[data-active="true"] {
+  opacity: 1;
+}
+/* Dims everywhere except a window around the cursor — reads as "other
+   segments ~60-75% opacity" without touching the line's own colors: a
+   semi-transparent wash of --bg-card, strongest away from the cursor,
+   fully transparent right at it. */
+.hra-chart-hover-dim {
+  background: radial-gradient(80px 100% ellipse at var(--hover-x, 50%) 50%,
+    transparent 0%, color-mix(in srgb, var(--bg-card) 45%, transparent) 100%);
+}
+/* A small, local brighten right at the cursor — reads as "hovered point
+   ~15-25% brighter" — blended additively (screen) so it lifts whatever's
+   under it rather than washing it out with a flat tint. */
+.hra-chart-hover-glow {
+  mix-blend-mode: screen;
+  background: radial-gradient(36px 100% ellipse at var(--hover-x, 50%) 50%,
+    color-mix(in srgb, var(--text-primary) 20%, transparent) 0%, transparent 100%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hra-lift, .hra-nav-hover, .hra-swatch, .card, .hra-btn {
     transition: none !important;
@@ -599,6 +704,8 @@ body {
   .hra-lift:hover, .hra-lift:active, .hra-nav-hover:active, .hra-swatch:hover, .hra-swatch:active, .hra-btn:active {
     transform: none !important;
   }
+  body::before { animation: none !important; }
+  .hra-chart-hover-dim, .hra-chart-hover-glow { transition: none !important; }
 }
 
 /* Automatic ambient (corrected 2026-08-16, then again 2026-08-17 — replaces
@@ -617,6 +724,17 @@ body {
    Follows accent + theme automatically via var(). Cards stay ~80% opaque on
    top, so the ramp shows through the page's margins and, faintly, through
    the cards themselves (glass, not solid). */
+/* Atmosphere shimmer (dashboard design-system rework) — a very low-frequency
+   opacity breathe on the ambient glow ONLY, never on data colors: "Gradient
+   = DATA, Animation = ATMOSPHERE." 12s, ease-in-out, a small ±8% opacity
+   swing (0.92↔1) — deliberately understated; this is meant to be felt more
+   than seen. Graphite disables it outright below (its own comment explains
+   why) rather than just reducing it further, per the stated preference for
+   that theme specifically. */
+@keyframes hra-atmosphere-shimmer {
+  0%, 100% { opacity: 0.92; }
+  50%      { opacity: 1; }
+}
 body::before {
   content: "";
   position: fixed;
@@ -627,6 +745,7 @@ body::before {
   color-mix(in srgb, var(--accent) var(--ambient-accent-mix), var(--bg)) 0%,
   var(--bg) 46%,
   color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 100%);
+  animation: hra-atmosphere-shimmer 12s ease-in-out infinite;
 }
 
 a { color: var(--accent); text-decoration: none; }

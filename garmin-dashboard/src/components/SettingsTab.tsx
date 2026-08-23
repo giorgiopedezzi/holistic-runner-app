@@ -41,8 +41,8 @@ const THEME_LABEL: Record<Theme, string> = {
 // `.hra-theme-swatch*` classes keyed off `data-theme-preview` (index.css);
 // this component only chooses which theme to preview and whether it's
 // selected.
-function ThemeSwatch({ theme, label, selected, onClick, title }: {
-  theme: Theme; label: string; selected: boolean; onClick: () => void; title?: string;
+function ThemeSwatch({ theme, label, selected, onClick, title, disabled }: {
+  theme: Theme; label: string; selected: boolean; onClick: () => void; title?: string; disabled?: boolean;
 }) {
   return (
     <button
@@ -51,6 +51,7 @@ function ThemeSwatch({ theme, label, selected, onClick, title }: {
       data-selected={selected}
       onClick={onClick}
       title={title}
+      disabled={disabled}
     >
       <div className="hra-theme-swatch-preview">
         <div className="hra-theme-swatch-pill" />
@@ -74,6 +75,12 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const { t: translate } = useTranslation();
   const current = appearance.settings?.theme;
   const hasExplicitChoice = current === "dark" || current === "light";
+  // Graphite is dark-only and standalone (matches on data-palette alone,
+  // ignoring data-theme entirely) — Theme has no effect while it's active,
+  // so the picker disables itself rather than silently doing nothing when
+  // clicked.
+  const graphiteActive = appearance.settings?.palette === "graphite";
+  const disabledTitle = translate("settings.theme.disabledForGraphite", "Graphite is a fixed dark look — Theme doesn't apply while it's selected");
 
   return (
     <div className="hra-chip-row" style={{ gap: 10 }}>
@@ -84,6 +91,8 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
           label={translate(`settings.theme.${t}`, THEME_LABEL[t])}
           selected={hasExplicitChoice ? current === t : appearance.resolvedTheme === t}
           onClick={() => appearance.setTheme(t)}
+          disabled={graphiteActive}
+          title={graphiteActive ? disabledTitle : undefined}
         />
       ))}
     </div>
@@ -93,8 +102,9 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
 // Palette labels only — same "label here, colors in CSS" split ThemeSwatch
 // documents above.
 const PALETTE_LABEL: Record<Palette, string> = {
-  metal: "Metal",
-  warm:  "Warm",
+  metal:    "Metal",
+  warm:     "Warm",
+  graphite: "Graphite",
 };
 
 // A single palette swatch — same visual language as ThemeSwatch above (a

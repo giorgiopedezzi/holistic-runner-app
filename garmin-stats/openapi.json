@@ -207,10 +207,10 @@
           "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] },
           "min_trend_group_size": { "type": "integer" },
           "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] },
-          "accent_color": { "type": "string", "enum": ["sky", "amber"], "description": "Paired 1:1 with palette (sky=metal, amber=warm) — no longer independently settable, see the /palette endpoint." },
+          "accent_color": { "type": "string", "enum": ["sky", "amber", "graphite"], "description": "Paired 1:1 with palette (sky=metal, amber=warm, graphite=graphite) — no longer independently settable, see the /palette endpoint." },
           "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
           "language": { "type": "string", "enum": ["auto", "en", "it"] },
-          "palette": { "type": "string", "enum": ["metal", "warm"], "description": "Dashboard palette flavor, crossed with theme (dark/light) for 4 total looks. Replaces the earlier style_pack (HRA-119)." }
+          "palette": { "type": "string", "enum": ["metal", "warm", "graphite"], "description": "Dashboard palette flavor. 'metal'/'warm' cross with theme (dark/light) for 4 total looks; 'graphite' is a third, standalone, dark-only palette (no light counterpart). Replaces the earlier style_pack (HRA-119)." }
         }
       },
       "SyncResult": {
@@ -495,7 +495,7 @@
       "put": {
         "tags": ["settings"], "summary": "Set the dashboard palette (replace singleton)",
         "description": "'metal' or 'warm', crossed with theme (dark/light) for 4 total looks. Replaces the earlier style_pack (HRA-119). Also updates accent_color to the paired value server-side.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["palette"], "properties": { "palette": { "type": "string", "enum": ["metal", "warm"] } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["palette"], "properties": { "palette": { "type": "string", "enum": ["metal", "warm", "graphite"] } } } } } },
         "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },

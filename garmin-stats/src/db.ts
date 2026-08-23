@@ -182,8 +182,9 @@ export function initSchema(db: DatabaseSync): void {
       -- 'accordion' (default) expands an activity's detail inline in
       -- ActivitiesTab; 'modal' opens it as a popup (the original behavior).
       activity_detail_view          TEXT NOT NULL DEFAULT 'accordion',
-      -- Narrowed to 2 values (dashboard design-system rework): 'sky' (blue,
-      -- paired with palette='metal') or 'amber' (paired with palette='warm').
+      -- Narrowed to 3 values (dashboard design-system rework): 'sky' (blue,
+      -- paired with palette='metal'), 'amber' (paired with palette='warm'),
+      -- or 'graphite' (neutral gray, paired with palette='graphite').
       -- No longer independently user-choosable — updatePalette() writes both
       -- columns together so they always agree; kept as its own column rather
       -- than derived, so the data model still records "which accent" without
@@ -203,11 +204,14 @@ export function initSchema(db: DatabaseSync): void {
       language                      TEXT NOT NULL DEFAULT 'auto',
       -- Dashboard design-system rework: 'metal' (cold/technical/minimal) or
       -- 'warm' (amber/premium/expressive), crossed with theme (dark/light)
-      -- for 4 total looks. Replaces the earlier 4-way style_pack (HRA-119:
-      -- boomer/genz/millennial/minimal) entirely — that axis is gone, not
-      -- kept alongside this one. Applied via a data-palette attribute
-      -- (index.css), compounded with data-theme — see docs/frontend.md's
-      -- Appearance section.
+      -- for 4 total looks, PLUS 'graphite' — a third, standalone, dark-only
+      -- palette (matches on data-palette alone in index.css, ignoring
+      -- data-theme entirely; there is no "light graphite"). Replaces the
+      -- earlier 4-way style_pack (HRA-119: boomer/genz/millennial/minimal)
+      -- entirely — that axis is gone, not kept alongside this one. Applied
+      -- via a data-palette attribute (index.css), compounded with
+      -- data-theme for metal/warm — see docs/frontend.md's Appearance
+      -- section.
       palette                       TEXT NOT NULL DEFAULT 'metal',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );

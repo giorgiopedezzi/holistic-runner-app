@@ -116,6 +116,26 @@ export function ActivityChartSection({
   // that actually need to change.
   const runnerIconRef = useRef<RunnerIconHandle>(null);
   const runnerReadoutRef = useRef<RunnerReadoutHandle>(null);
+  // Hover-highlight overlay (dashboard design-system rework, "hover flash
+  // effect" — a smooth highlight transition, not a literal flash): same
+  // imperative-ref pattern as RunnerIcon above, for the same reason — a
+  // mousemove-driven setState here would re-render the whole chart. Purely
+  // visual (CSS `--hover-x` position + a `data-active` toggle); never
+  // touches the Line's own data-driven colors.
+  const hoverDimRef = useRef<HTMLDivElement>(null);
+  const hoverGlowRef = useRef<HTMLDivElement>(null);
+  function setHoverHighlight(cx: number | null) {
+    for (const ref of [hoverDimRef, hoverGlowRef]) {
+      const el = ref.current;
+      if (!el) continue;
+      if (cx == null) {
+        el.dataset.active = "false";
+      } else {
+        el.style.setProperty("--hover-x", `${cx}px`);
+        el.dataset.active = "true";
+      }
+    }
+  }
 
   // Plot width for both RunnerReadout's edge math and the autoplay loop's
   // own x-domain→pixel conversion below — measured off the chart's own
@@ -171,11 +191,13 @@ export function ActivityChartSection({
     const cx = state.activeCoordinate.x;
     runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, false, rowDynamics[idx]);
     runnerReadoutRef.current?.show(row);
+    setHoverHighlight(cx);
   }
   function handleChartMouseLeave() {
     if (playStatus === "playing") return;
     showIdleStand(chartData[0]?.x ?? 0);
     runnerReadoutRef.current?.hide();
+    setHoverHighlight(null);
   }
 
   // White, standing — shown at rest (before any hover/play, on mouse-leave,
@@ -565,6 +587,13 @@ export function ActivityChartSection({
           />
         </ComposedChart>
       </ResponsiveContainer>
+      {/* Hover-highlight overlay — two plain CSS layers on top of the SVG,
+          not part of it, so the chart's own data-driven colors are never
+          touched. Position tracks the cursor via --hover-x, set
+          imperatively in handleChartMouseMove/Leave above (see
+          setHoverHighlight) — no React re-render per mouse event. */}
+      <div ref={hoverDimRef} className="hra-chart-hover-dim" data-active="false" />
+      <div ref={hoverGlowRef} className="hra-chart-hover-glow" data-active="false" />
       </div>
       </ChartCard>
 

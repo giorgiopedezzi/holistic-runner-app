@@ -206,9 +206,11 @@
 
   "settings.theme.dark": "Scuro",
   "settings.theme.light": "Chiaro",
+  "settings.theme.disabledForGraphite": "Graphite è un look scuro fisso: il Tema non si applica finché è selezionato",
 
   "settings.palette.metal": "Metallico",
   "settings.palette.warm": "Caldo",
+  "settings.palette.graphite": "Graphite",
 
   "settings.units.auto": "Automatico",
   "settings.units.metric": "Metrico (km, kg)",

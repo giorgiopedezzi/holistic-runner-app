@@ -277,28 +277,38 @@ section; two different UX patterns fill each section's content, deliberately not
 All persist in the SQLite `settings` table rather than `localStorage` (see Stack & constraints above) — the pattern to follow for any future global setting.
 
 ## Appearance (theming + automatic ambient glow)
-- **4 themes — Theme (`dark`/`light`) crossed with Palette (`metal`/`warm`)** — dashboard design-system
-  rework, replacing the earlier 2-theme + StylePack (HRA-119) system entirely. Each combination is a
-  full `:root[data-theme="…"][data-palette="…"] { --bg, --bg-surface, --bg-card, --border,
-  --border-strong, --text-primary/secondary/muted, --accent, --on-accent, --accent-green/blue/red/
-  orange, color-scheme }` block in `index.css`. `--accent` is now baked directly into each of the 4
-  blocks (an exact fixed hex per theme×palette — steel blue for Metal, amber/gold for Warm) rather than
-  a separately user-selectable value — see the AccentColor note below. `:root` itself duplicates Dark
-  Metal's values directly (not just a fallback, the same reasoning as before) since it's the default/
-  primary theme, so the very first paint — before `useAppearance()`'s `GET /api/settings` resolves —
-  still looks right.
-- **Palette is the new user-facing choice; Theme still exists alongside it.** `types/api.ts`'s
-  `Palette` (`'metal' | 'warm'`) is applied as a `data-palette` attribute on `<html>`, compounding with
-  the existing `data-theme` attribute — `SettingsTab`'s `PalettePicker` (2 swatches, same visual
-  language as `ThemePicker`'s) replaces the earlier `StylePackPicker` entirely. `'metal'` is the
-  default (cold/technical/minimal), matching Dark Metal's status as the primary theme.
+- **4 theme×palette combinations — Theme (`dark`/`light`) crossed with Palette (`metal`/`warm`) —
+  plus a 5th, standalone Graphite palette (dark-only, does not cross with Theme).** Dashboard
+  design-system rework, replacing the earlier 2-theme + StylePack (HRA-119) system entirely. Each of
+  the 4 crossed combinations is a full `:root[data-theme="…"][data-palette="…"] { --bg, --bg-surface,
+  --bg-card, --border, --border-strong, --text-primary/secondary/muted, --accent, --on-accent,
+  --accent-green/blue/red/orange, color-scheme }` block in `index.css`. `--accent` is now baked
+  directly into each of the 4 blocks (an exact fixed hex per theme×palette — steel blue for Metal,
+  amber/gold for Warm) rather than a separately user-selectable value — see the AccentColor note
+  below. `:root` itself duplicates Dark Metal's values directly (not just a fallback, the same
+  reasoning as before) since it's the default/primary theme, so the very first paint — before
+  `useAppearance()`'s `GET /api/settings` resolves — still looks right.
+- **Graphite is a third `Palette` value, but standalone, not a 5th theme×palette cell.** Its CSS
+  block matches on `[data-palette="graphite"]` ALONE (no `[data-theme]` qualifier) — Theme becomes
+  irrelevant while it's active, so there is no "light Graphite." Selecting it in `PalettePicker`
+  disables both `ThemePicker` swatches (`ThemeSwatch`'s `disabled` prop, titled via
+  `settings.theme.disabledForGraphite`) rather than silently ignoring the stored Theme value. Its
+  ambient shimmer (see below) is switched off entirely (`[data-palette="graphite"] body::before {
+  animation: none; }`) rather than just toned down, per the original design brief's instruction to
+  reduce Graphite's motion further than the other themes.
+- **Palette is the user-facing choice; Theme still exists alongside it for the 4 non-Graphite
+  combinations.** `types/api.ts`'s `Palette` (`'metal' | 'warm' | 'graphite'`) is applied as a
+  `data-palette` attribute on `<html>`, compounding with the existing `data-theme` attribute (except
+  for Graphite, see above) — `SettingsTab`'s `PalettePicker` (3 swatches, same visual language as
+  `ThemePicker`'s) replaces the earlier `StylePackPicker` entirely. `'metal'` is the default
+  (cold/technical/minimal), matching Dark Metal's status as the primary theme.
 - **AccentColor is no longer an independent user choice.** The earlier 6-hue curated `AccentPicker`
-  (HRA-95) is gone — each theme×palette combination now bakes in its own exact accent. `AccentColor`
-  (`'sky' | 'amber'`) still exists as a `Settings` field, narrowed to the 2 values paired 1:1 with
-  Palette (`sky`=metal, `amber`=warm) — the backend's `updatePalette` writes both columns together so
-  they can never drift apart, but nothing in the frontend reads `accent_color` for rendering any more;
-  `useAppearance.ts` no longer sets `--accent`/`--on-accent` from JS at all (no more inline-style vs.
-  stylesheet specificity fight to reason about).
+  (HRA-95) is gone — each palette bakes in its own exact accent. `AccentColor`
+  (`'sky' | 'amber' | 'graphite'`) still exists as a `Settings` field, paired 1:1 with Palette
+  (`sky`=metal, `amber`=warm, `graphite`=graphite) — the backend's `updatePalette` writes both
+  columns together so they can never drift apart, but nothing in the frontend reads `accent_color`
+  for rendering any more; `useAppearance.ts` no longer sets `--accent`/`--on-accent` from JS at all
+  (no more inline-style vs. stylesheet specificity fight to reason about).
 - **`--text-muted` and `--accent-green` were contrast-corrected** in the original 2-theme system after
   real-world use surfaced them as too low-contrast — see the CSS design tokens section below for the
   values that carried forward into the 4-theme system's Metal variants.
@@ -334,6 +344,17 @@ All persist in the SQLite `settings` table rather than `localStorage` (see Stack
   again per-tab) so appearance applies regardless of which tab is open, and passed down to
   `SettingsTab` as a prop.
 - ** Automatic ambient glow, not a background picture (corrected 2026-08-16, then again 2026-08-17 — supersedes the earlier per-user picker). The old SettingsTab.tsx "Background picture" gallery (BackgroundPicker, bundled presets + custom upload, --bg-image) is gone: useAppearance.ts no longer computes or sets --bg-image, and index.css's body::before paints ONE page-sized single-hue radial ramp — radial-gradient(135% 135% at 0% 0%, color-mix(accent 8%, --bg) 0%, --bg 46%, color-mix(black 30%, --bg) 100%) — lighter at the top-left, darker toward the bottom-right, per the approved soft-ambient render. The brief 2026-08-16 two-glow version (accent + fixed cyan --accent-glow) was replaced the next day: two independent hues read as "two colors", the user asked for one accent-derived ramp. --accent-glow itself was removed from :root on 2026-08-17 when .hra-pill-active went monochromatic (--accent → --accent-light), leaving nothing that references it. CSS-only, no JS, no per-user setting; follows theme + accent automatically via var(), nothing to persist. types/api.ts's background_kind/background_value fields and their backend routes were left in place — removing the API contract itself is Epic HRA-36's job — but nothing in the frontend calls them anymore.
+- **The ambient glow shimmers subtly** — `hra-atmosphere-shimmer` (`index.css`), a 12s ease-in-out
+  `opacity: 0.92 → 1 → 0.92` loop on `body::before`. Deliberately restrained per the design brief:
+  atmosphere only, never a data-color or hue change. Disabled for Graphite (see above) and under
+  `prefers-reduced-motion: reduce` (`animation: none !important`).
+- **Chart hover-highlight** (`ActivityChartSection.tsx`) dims the rest of the plot and brightens a
+  narrow band around the cursor, via two absolutely-positioned overlay divs (`.hra-chart-hover-dim`,
+  `.hra-chart-hover-glow`) whose `--hover-x` custom property and `data-active` are set imperatively
+  from refs in `handleChartMouseMove`/`handleChartMouseLeave` — not React state, so hovering never
+  re-renders the `ComposedChart` (same pattern as the pre-existing `RunnerIcon`/`RunnerReadout`).
+  Both fade via `transition: opacity 120ms ease, filter 120ms ease`, respect
+  `prefers-reduced-motion`, and never touch the underlying data-color gradients.
 - **The two mix percentages in that gradient (and `.card`'s own matching radial) are `:root` custom
   properties, not literals baked into the formula** — `--ambient-accent-mix`/`--ambient-dark-mix` for
   `body::before`, `--card-accent-mix`/`--card-dark-mix` for `.card`. Light theme overrides all four to
