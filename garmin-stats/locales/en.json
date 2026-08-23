@@ -207,17 +207,8 @@
   "settings.theme.dark": "Dark",
   "settings.theme.light": "Light",
 
-  "settings.accent.teal": "Teal",
-  "settings.accent.violet": "Violet",
-  "settings.accent.magenta": "Magenta",
-  "settings.accent.amber": "Amber",
-  "settings.accent.sky": "Sky",
-  "settings.accent.lime": "Lime",
-
-  "settings.stylePack.boomer": "Boomer",
-  "settings.stylePack.genz": "GenZ",
-  "settings.stylePack.millennial": "Millennial",
-  "settings.stylePack.minimal": "Minimal",
+  "settings.palette.metal": "Metal",
+  "settings.palette.warm": "Warm",
 
   "settings.units.auto": "Auto",
   "settings.units.metric": "Metric (km, kg)",
@@ -235,12 +226,11 @@
 
   "settings.appearance.title": "Appearance",
   "settings.appearance.themeLabel": "Theme",
-  "settings.appearance.accentDescription": "Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors",
+  "settings.appearance.paletteDescription": "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.",
   "settings.appearance.previewButton": "Button",
   "settings.appearance.previewActivePill": "Active pill",
   "settings.appearance.previewLink": "Link",
   "settings.appearance.previewFocusRing": "Focus ring",
-  "settings.appearance.stylePackDescription": "Style pack — a full palette (background, borders, radius, shadows), independent of theme and accent",
 
   "settings.activityDetails.title": "Activity details",
   "settings.activityDetails.description": "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.",

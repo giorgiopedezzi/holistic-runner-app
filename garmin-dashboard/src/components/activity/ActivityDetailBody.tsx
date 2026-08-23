@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { MapPin, Timer, Clock, Flame, Footprints, Heart, HeartPulse, TrendingUp, TrendingDown } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components/ui";
@@ -222,18 +223,24 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           <>
             {activity.sport === "running" && <ClassificationCard activity={activity} onUpdate={setActivity} />}
 
+            {/* Leading icons (dashboard design-system rework, "harmonize
+                badges") — same size (18) and coloring convention as
+                Overview's Stat icons (docs/frontend.md's "Icon coloring"
+                rule): heart matches its own HR red, flame is the one filled
+                dark-orange exception, everything else is the plain accent
+                token. */}
             <StatGrid>
-              <Stat label={t("activity.stat.distance", "Distance")} value={fmtKm(activity.distance_m)} accent="var(--accent-green)" />
-              {activity.moving_time_sec != null && <Stat label={t("activity.stat.movingTime", "Moving time")} value={fmtDuration(activity.moving_time_sec)} />}
-              <Stat label={t("activity.stat.duration", "Duration")} value={fmtDuration(activity.duration_sec)} />
-              {activity.calories != null && <Stat label={t("activity.stat.calories", "Calories")} value={`${activity.calories} kcal`} />}
+              <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("activity.stat.distance", "Distance")} value={fmtKm(activity.distance_m)} accent="var(--accent-green)" />
+              {activity.moving_time_sec != null && <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("activity.stat.movingTime", "Moving time")} value={fmtDuration(activity.moving_time_sec)} />}
+              <Stat icon={<Clock size={18} color="var(--accent)" />} label={t("activity.stat.duration", "Duration")} value={fmtDuration(activity.duration_sec)} />
+              {activity.calories != null && <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />} label={t("activity.stat.calories", "Calories")} value={`${activity.calories} kcal`} />}
               {(activity.avg_pace_minkm != null || activity.avg_speed_ms != null) &&
                 <SpeedPaceStat avgSpeedMs={activity.avg_speed_ms} avgPaceMinKm={activity.avg_pace_minkm} />}
-              {activity.avg_cadence != null && <Stat label={t("activity.stat.cadence", "Cadence")} value={`${activity.avg_cadence} spm`} />}
-              {activity.avg_hr != null      && <Stat label={t("activity.stat.avgHr", "Avg HR")} value={`${activity.avg_hr} bpm`} accent="var(--accent-red)" />}
-              {activity.max_hr != null      && <Stat label={t("activity.stat.maxHr", "Max HR")} value={`${activity.max_hr} bpm`} />}
-              {activity.ascent_m != null    && <Stat label={t("activity.stat.ascent", "Ascent")} value={fmtElevation(activity.ascent_m)} />}
-              {activity.descent_m != null   && <Stat label={t("activity.stat.descent", "Descent")} value={fmtElevation(activity.descent_m)} />}
+              {activity.avg_cadence != null && <Stat icon={<Footprints size={18} color="var(--accent)" />} label={t("activity.stat.cadence", "Cadence")} value={`${activity.avg_cadence} spm`} />}
+              {activity.avg_hr != null      && <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("activity.stat.avgHr", "Avg HR")} value={`${activity.avg_hr} bpm`} accent="var(--accent-red)" />}
+              {activity.max_hr != null      && <Stat icon={<HeartPulse size={18} color="var(--accent-red)" />} label={t("activity.stat.maxHr", "Max HR")} value={`${activity.max_hr} bpm`} />}
+              {activity.ascent_m != null    && <Stat icon={<TrendingUp size={18} color="var(--accent)" />} label={t("activity.stat.ascent", "Ascent")} value={fmtElevation(activity.ascent_m)} />}
+              {activity.descent_m != null   && <Stat icon={<TrendingDown size={18} color="var(--accent)" />} label={t("activity.stat.descent", "Descent")} value={fmtElevation(activity.descent_m)} />}
             </StatGrid>
 
             {track.length > 5 && (

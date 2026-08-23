@@ -207,17 +207,8 @@
   "settings.theme.dark": "Scuro",
   "settings.theme.light": "Chiaro",
 
-  "settings.accent.teal": "Verde acqua",
-  "settings.accent.violet": "Viola",
-  "settings.accent.magenta": "Magenta",
-  "settings.accent.amber": "Ambra",
-  "settings.accent.sky": "Azzurro",
-  "settings.accent.lime": "Lime",
-
-  "settings.stylePack.boomer": "Boomer",
-  "settings.stylePack.genz": "GenZ",
-  "settings.stylePack.millennial": "Millennial",
-  "settings.stylePack.minimal": "Minimal",
+  "settings.palette.metal": "Metallico",
+  "settings.palette.warm": "Caldo",
 
   "settings.units.auto": "Automatico",
   "settings.units.metric": "Metrico (km, kg)",
@@ -235,12 +226,11 @@
 
   "settings.appearance.title": "Aspetto",
   "settings.appearance.themeLabel": "Tema",
-  "settings.appearance.accentDescription": "Colore accento — governa solo pulsanti, pillole attive, link e anelli di focus; mai i colori dei grafici/dati",
+  "settings.appearance.paletteDescription": "Palette — un intero look (sfondo, card, bordo, testo, accento), incrociata con il tema per 4 combinazioni totali. Non influisce mai sui colori dei grafici/dati.",
   "settings.appearance.previewButton": "Pulsante",
   "settings.appearance.previewActivePill": "Pillola attiva",
   "settings.appearance.previewLink": "Link",
   "settings.appearance.previewFocusRing": "Anello di focus",
-  "settings.appearance.stylePackDescription": "Pacchetto di stile — una palette completa (sfondo, bordi, raggio, ombre), indipendente da tema e accento",
 
   "settings.activityDetails.title": "Dettagli attività",
   "settings.activityDetails.description": "Come si apre il dettaglio cliccando un'attività nella scheda Attività — espansione in linea nell'elenco, oppure apertura come popup.",

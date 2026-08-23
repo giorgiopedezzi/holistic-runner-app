@@ -330,16 +330,10 @@ export function ActivityChartSection({
   return (
     <div style={{ marginTop: 24 }}>
       <div className="hra-control-row" style={{ gap: 16, marginBottom: 12 }}>
-        <div style={{ display: "flex", gap: 4 }}>
+        <div className="hra-segment">
           {(["distance", "time"] as XMode[]).map(m => (
             <button key={m} onClick={() => setXMode(m)}
-              className="hra-dyn-border hra-dyn-bg hra-dyn-color"
-              style={{
-                fontSize: 11, padding: "3px 10px", borderRadius: 999, cursor: "pointer",
-                "--dyn-border": xMode === m ? "var(--border-strong)" : "transparent",
-                "--dyn-bg": xMode === m ? "var(--bg-card)" : "transparent",
-                "--dyn-color": xMode === m ? "var(--text-primary)" : "var(--text-muted)",
-              } as CSSProperties}>
+              className="hra-segment-item" data-active={xMode === m}>
               {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
             </button>
           ))}
@@ -361,23 +355,14 @@ export function ActivityChartSection({
       <div style={{ marginBottom: 12 }}>
         {/* Speed/Pace: one column, always active, axis always
             visible (mandatory metric — no on/off toggle, unlike
-            the optional metrics below). One pill, split into two
-            clickable halves (not a separate label + switch) — the
-            selected half reads brighter/lighter, the other dims. */}
+            the optional metrics below). Tinted to the metric's own
+            color via --segment-color rather than the app accent —
+            the one switch app-wide with a per-instance tint. */}
         <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
-          <div className="hra-dyn-border" style={{
-            display: "inline-flex", borderRadius: 999, overflow: "hidden",
-            "--dyn-border": METRIC_DEFS.speed.color,
-          } as CSSProperties}>
+          <div className="hra-segment" style={{ "--segment-color": METRIC_DEFS.speed.color } as CSSProperties}>
             {(["speed", "pace"] as SpeedMode[]).map(m => (
               <button key={m} onClick={() => setSpeedMode(m)}
-                className="hra-dyn-bg hra-dyn-color"
-                style={{
-                  fontSize: 11, padding: "4px 12px", border: "none", cursor: "pointer",
-                  "--dyn-bg": speedMode === m ? `color-mix(in srgb, ${METRIC_DEFS.speed.color} 20%, transparent)` : "transparent",
-                  "--dyn-color": speedMode === m ? METRIC_DEFS.speed.color : "var(--text-secondary)",
-                  fontWeight: speedMode === m ? 600 : 400,
-                } as CSSProperties}>
+                className="hra-segment-item" data-active={speedMode === m}>
                 {m === "speed"
                   ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
                   : t("activity.chart.paceUnit", "Pace (mm:ss)")}

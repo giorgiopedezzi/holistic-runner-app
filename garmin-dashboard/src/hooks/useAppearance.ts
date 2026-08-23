@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, StylePack } from "@/types/api";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { setDateFormatSystem } from "@/utils/dateFormat";
-import { ACCENT_PALETTE } from "@/utils/accent";
 import { useSettings } from "@/hooks/useSettings";
 import i18next, { detectLanguageFromLocale } from "@/i18n";
 
@@ -43,15 +42,17 @@ function resolveLanguage(stored: StoredLanguage): Language {
 // correction's) but nothing here reads them anymore.
 function applyToDocument(settings: Settings) {
   document.documentElement.setAttribute("data-theme", resolveTheme(settings.theme));
-  // HRA-119: full-palette style pack, compounded with data-theme above (see
-  // index.css's :root[data-style-pack="…"][data-theme="…"] blocks). No
-  // resolution needed — style_pack has no 'auto' concept, always a concrete
-  // value once the settings row loads (defaults to 'boomer' server-side).
-  document.documentElement.setAttribute("data-style-pack", settings.style_pack);
+  // Dashboard design-system rework: palette, compounded with data-theme above
+  // (see index.css's :root[data-theme="…"][data-palette="…"] blocks). No
+  // resolution needed — palette has no 'auto' concept, always a concrete
+  // value once the settings row loads (defaults to 'metal' server-side).
+  document.documentElement.setAttribute("data-palette", settings.palette);
 
-  const accent = ACCENT_PALETTE[settings.accent_color];
-  document.documentElement.style.setProperty("--accent", accent.hex);
-  document.documentElement.style.setProperty("--on-accent", accent.onAccent);
+  // --accent/--on-accent are no longer set from JS — each
+  // [data-theme][data-palette] block in index.css defines its own fixed
+  // accent directly (spec: one exact hex per theme, not a user-overridable
+  // choice). accent_color still exists on Settings (paired 1:1 with palette
+  // server-side) but nothing here reads it any more.
 
   setUnitSystem(resolveUnitSystem(settings.unit_system));
   setDateFormatSystem(settings.date_format);
@@ -96,7 +97,7 @@ export interface AppearanceActions {
   // Optional for the same reason setAccentColor/setDateFormat/setLanguage
   // are — keeps the pre-existing hand-written AppearanceApi stub
   // (SettingsTab.pickers.test.tsx) valid without modification.
-  setStylePack?:    (pack: StylePack) => Promise<void>;
+  setPalette?:      (palette: Palette) => Promise<void>;
 }
 export interface AppearanceMeta {
   resolvedTheme:       Theme | null;
@@ -179,8 +180,8 @@ export function useAppearance(): AppearanceApi {
     void i18next.changeLanguage(language);
   }, [update]);
 
-  const setStylePack = useCallback(async (pack: StylePack) => {
-    const updated = await api.settings.setStylePack(pack);
+  const setPalette = useCallback(async (palette: Palette) => {
+    const updated = await api.settings.setPalette(palette);
     update(updated);
   }, [update]);
 
@@ -191,7 +192,7 @@ export function useAppearance(): AppearanceApi {
     setAccentColor,
     setDateFormat,
     setLanguage,
-    setStylePack,
+    setPalette,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
     resolvedLanguage: settings ? resolveLanguage(settings.language) : null,

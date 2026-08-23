@@ -613,11 +613,11 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // feedback: "no reason to have match order/match by time visually
   // different from overlapping/distinct"), not its own bespoke style.
   const alignToggle = countsDiffer ? (
-    <div className="hra-segmented-group"
+    <div className="hra-segment"
       title={t("overview.alignTooltip", "The two periods have a different number of activities — pick how to line them up")}>
       {([["index", "Match order"], ["time", "Match by time"]] as const).map(([m, l]) => (
         <button key={m} onClick={() => setAlignMode(m)}
-          className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${alignMode === m ? "hra-pill-active" : ""}`}>
+          className="hra-segment-item" data-active={alignMode === m}>
           {t(`overview.align.${m}`, l)}
         </button>
       ))}
@@ -977,32 +977,27 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   const modeControls = (
     <div className="hra-row" style={{ gap: 8 }}>
       {compareEnabled && (
-        <div className="hra-segmented-group">
+        <div className="hra-segment">
           {(["overlap", "distinct"] as const).map(v => (
             <button key={v}
-              className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${viewMode === v ? "hra-pill-active" : ""}`}
+              className="hra-segment-item" data-active={viewMode === v}
               onClick={() => setViewMode(v)}>
               {v === "overlap" ? t("overview.view.overlap", "Overlapping") : t("overview.view.distinct", "Distinct")}
             </button>
           ))}
         </div>
       )}
-      {/* One segmented container (polish pass) — a single bordered pill
-          housing all three modes, rather than three independently-bordered
-          buttons, so the group reads as one control. Inactive items are
-          identical (no per-item border/background), only the active one
-          gets the gradient pill; hover is the shared quiet bg-tint. */}
-      <div className="hra-segmented-group">
+      {/* One segmented container (polish pass) — a single joined bar housing
+          all three modes, rather than three independently-bordered buttons,
+          so the group reads as one control (dashboard design-system rework:
+          .hra-segment, same shape every switch app-wide now uses). */}
+      <div className="hra-segment">
         {GROUP_MODES.map(m => (
           <button key={m}
-            className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
+            className="hra-segment-item" data-active={groupMode === m}
             onClick={() => setGroupMode(m)}
             disabled={!modeEnabled[m]}
-            title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}
-            style={{
-              cursor: modeEnabled[m] ? "pointer" : "not-allowed",
-              opacity: modeEnabled[m] ? 1 : 0.4,
-            }}>
+            title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}>
             {t(`overview.group.${m}`, GROUP_LABEL[m])}
           </button>
         ))}
@@ -1295,24 +1290,24 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // vertical sidebar beside the main graph.
   const otherKeyMetrics = (
     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={14} />} label={t("overview.stat.activities", "Activities")} value={totals.acts}
+      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={18} />} label={t("overview.stat.activities", "Activities")} value={totals.acts}
         deltaText={showDiff ? comparisonTooltip(totals.acts, prevActs, v => String(v)) : undefined}
         deltaPositive={showDiff ? deltaPositive(totals.acts, prevActs) : undefined} />
       {totals.acts > 0 && (
-        <Stat icon={<MapPin size={14} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
+        <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
           deltaText={showDiff ? comparisonTooltip(totals.km / totals.acts, prevAvgDistance, v => fmtKm(v * 1000)) : undefined}
           deltaPositive={showDiff ? deltaPositive(totals.km / totals.acts, prevAvgDistance) : undefined} />
       )}
       {run?.avg_hr && (
-        <Stat icon={<Heart size={14} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
+        <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
           deltaText={showDiff && prevRun ? comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`) : undefined}
           deltaPositive={showDiff && prevRun ? deltaPositive(run.avg_hr, prevRun.avgHr) : undefined} />
       )}
-      <Stat icon={<Timer size={14} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
+      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
         deltaText={showDiff ? comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`) : undefined}
         deltaPositive={showDiff ? deltaPositive(totals.hours, prevHours) : undefined} />
       {totals.calories > 0 && (
-        <Stat icon={<Flame size={14} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+        <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
           label={t("overview.stat.calories", "Calories")} value={`${totals.calories.toLocaleString()} kcal`}
           deltaText={showDiff ? comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`) : undefined}
           deltaPositive={showDiff ? deltaPositive(totals.calories, prevCalories) : undefined} />
@@ -1326,16 +1321,16 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // metric of the second graph must be the data of the second graph."
   const compareOtherKeyMetrics = hasPrevData ? (
     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={14} />} label={t("overview.stat.activities", "Activities")} value={prevActs ?? 0} />
+      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={18} />} label={t("overview.stat.activities", "Activities")} value={prevActs ?? 0} />
       {prevActs ? (
-        <Stat icon={<MapPin size={14} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
+        <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
       ) : null}
       {prevRun?.avgHr ? (
-        <Stat icon={<Heart size={14} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${Math.round(prevRun.avgHr)} bpm`} accent="var(--accent-red)" />
+        <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${Math.round(prevRun.avgHr)} bpm`} accent="var(--accent-red)" />
       ) : null}
-      <Stat icon={<Timer size={14} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${(prevHours ?? 0).toFixed(1)} h`} />
+      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${(prevHours ?? 0).toFixed(1)} h`} />
       {prevCalories ? (
-        <Stat icon={<Flame size={14} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+        <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
           label={t("overview.stat.calories", "Calories")} value={`${Math.round(prevCalories).toLocaleString()} kcal`} />
       ) : null}
     </div>

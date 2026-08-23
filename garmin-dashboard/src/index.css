@@ -23,30 +23,47 @@
      value so the two stay in sync if the header's own sizing ever changes. */
   --header-height:  48px;
 
-  --bg:             #0b0d12;
-  --bg-surface:     #14171f;
-  --bg-card:        #191d28;
-  --bg-danger:      #e24b4a18;
-  --border:         #2a2f3d;
-  --border-strong:  #3a404f;
+  /* Typography scale (dashboard design-system rework) — deliberately just 6
+     sizes app-wide, hierarchy comes from weight/spacing, not more sizes.
+     display = page titles/hero values; heading = section/card titles; body =
+     normal text; data = KPI values/important numbers; label = controls/
+     legends; meta = secondary/comparison text. Applied throughout this file;
+     literal font-size/font-weight values inside individual component TSX
+     files are a separate, later sweep (out of this pass's scope). */
+  --fs-display: 22px; --fw-display: 600;
+  --fs-heading: 18px; --fw-heading: 600;
+  --fs-body:    15px; --fw-body:    400;
+  --fs-data:    16px; --fw-data:    600;
+  --fs-label:   13px; --fw-label:   500;
+  --fs-meta:    11px; --fw-meta:    400;
 
-  --text-primary:   #e8eaf0;
-  --text-secondary: #9aa0b4;
-  --text-muted:     #7d8494;
+  /* Dark Metal — the primary/default theme (dashboard design-system
+     rework). :root duplicates its values directly (not just a fallback) so
+     the very first paint, before /api/settings resolves, still looks right —
+     see the [data-theme][data-palette] blocks below for the other 3. */
+  --bg:             #0B1220;
+  --bg-surface:     #1A2433;
+  --bg-card:        #121A2B;
+  --bg-danger:      #EF444418;
+  --border:         #2A3B4D;
+  --border-strong:  #3A4F66;
 
-  --accent-green:   #17a06c;
+  --text-primary:   #E6EDF3;
+  --text-secondary: #C3CCD8;
+  --text-muted:     #9AA4B2;
+
+  --accent-green:   #22C55E;
   --accent-blue:    #3a8ef5;
-  --accent-red:     #e24b4a;
+  --accent-red:     #EF4444;
   --accent-orange:  #f59e0b;
 
-  /* Selectable accent (HRA-94 token, HRA-95 picker) — governs interactive
-     chrome only (buttons, active pills, links, rings, focus), never
-     chart/data series. Fixed per accent name, identical across all 4 themes
-     (see utils/accent.ts) — not per-theme like --accent-blue was, since the
-     accent is now a user choice, not a theme-derived value. The hex/onAccent
-     pair below is only the pre-JS fallback ('sky', the default and closest
-     match to the old seeded --accent-blue); useAppearance.ts overrides both
-     as inline custom-property styles on <html> once /api/settings resolves. */;
+  /* --accent/--on-accent (dashboard design-system rework) — fixed per
+     [data-theme][data-palette] block below (no longer a user-selectable
+     picker, no longer set from JS at all). This bare pair is only the
+     pre-attribute-resolution fallback for the very first paint, before
+     App.tsx's useAppearance() sets data-theme/data-palette — mirrors Dark
+     Metal, the default theme. */
+  --accent:    #3B82F6;
   --on-accent: #000000;
 
   /* Fixed semantic data colors (HRA-94) — same metric = same color
@@ -57,8 +74,15 @@
      future chart work can reference one token instead of repeating literals.
      Theme-agnostic like the sources they mirror (see CLAUDE.md: "Only
      general UI chrome is themed"). */
-  --data-pace:   #15965f;
-  --data-hr:     #e24b4a;
+  /* Pace and HR are a distinctive metallic/pink-red gradient (dashboard
+     design-system rework, sections 4 & 7) — identical across all 4 themes,
+     never derived from --accent. These two flat tokens are each ramp's
+     fastest/highest anchor, used for legend swatches and axis-tick text; the
+     actual continuous gradient stops live in components/activity/shared.ts
+     (SPEED_COLOR_STOPS/HR_COLOR_STOPS). --data-hr is deliberately its own
+     red, distinct from --accent-red (system danger) — see shared.ts. */
+  --data-pace:   #4A8FC7;
+  --data-hr:     #C92F3D;
   --data-elev:   #3a8ef5;
   --data-weight: #3a8ef5;
   --data-fat:    #d97706;
@@ -143,55 +167,109 @@
   --color-data-muscle: var(--data-muscle);
 }
 
-:root[data-theme="dark"] {
-  --bg:             #0b0d12;
-  --bg-surface:     #14171f;
-  --bg-card:        #191d28;
-  --bg-danger:      #e24b4a18;
-  --border:         #2a2f3d;
-  --border-strong:  #3a404f;
-  --text-primary:   #e8eaf0;
-  --text-secondary: #9aa0b4;
-  --text-muted:     #7d8494;
-  --accent-green:   #17a06c;
+/* ── Theme × Palette (dashboard design-system rework) ─────────────────────
+   4 combinations: dark/light crossed with metal (cold/technical/minimal —
+   the primary default) and warm (amber/premium/expressive). Replaces the
+   earlier plain [data-theme="…"] blocks — palette carries all of the color
+   identity now, theme alone no longer does. `--accent` is fixed per block
+   (not user-selectable — see useAppearance.ts/PalettePicker), same for every
+   Success/Danger value. --data-pace/--data-hr are NOT set here — they're
+   theme-invariant (see :root above). */
+
+:root[data-theme="dark"][data-palette="metal"] {
+  --bg:             #0B1220;
+  --bg-surface:     #1A2433;
+  --bg-card:        #121A2B;
+  --bg-danger:      #EF444418;
+  --border:         #2A3B4D;
+  --border-strong:  #3A4F66;
+  --text-primary:   #E6EDF3;
+  --text-secondary: #C3CCD8;
+  --text-muted:     #9AA4B2;
+  --accent:         #3B82F6;
+  --on-accent:      #000000;
+  --accent-green:   #22C55E;
   --accent-blue:    #3a8ef5;
-  --accent-red:     #e24b4a;
+  --accent-red:     #EF4444;
   --accent-orange:  #f59e0b;
+  --ambient-accent-mix: 8%;  --ambient-dark-mix: 30%;
+  --card-accent-mix:    9%;  --card-dark-mix:    12%;
   color-scheme: dark;
 }
 
-:root[data-theme="light"] {
-  --bg:             #eceef1;
-  --bg-surface:     #f7f8fa;
-  --bg-card:        #f7f8fa;
-  --bg-danger:      #d23f3e14;
-  --border:         #e2e4ea;
-  --border-strong:  #c8cbd6;
-  --text-primary:   #1a1d27;
-  --text-secondary: #565c6d;
-  --text-muted:     #6b7182;
-  --accent-green:   #087a52;
-  --accent-blue:    #2f6fe0;
-  --accent-red:     #d23f3e;
+:root[data-theme="dark"][data-palette="warm"] {
+  --bg:             #0F141A;
+  --bg-surface:     #22272E;
+  --bg-card:        #1A1F26;
+  --bg-danger:      #EF444418;
+  --border:         #2F353D;
+  --border-strong:  #40474F;
+  --text-primary:   #F5EDE3;
+  --text-secondary: #C2BEA9;
+  --text-muted:     #8B8A6A;
+  --accent:         #F59E0B;
+  --on-accent:      #000000;
+  --accent-green:   #22C55E;
+  --accent-blue:    #3a8ef5;
+  --accent-red:     #EF4444;
   --accent-orange:  #d97706;
-  color-scheme: light;
+  --ambient-accent-mix: 8%;  --ambient-dark-mix: 30%;
+  --card-accent-mix:    9%;  --card-dark-mix:    12%;
+  color-scheme: dark;
+}
 
+:root[data-theme="light"][data-palette="metal"] {
+  --bg:             #F7F9FB;
+  --bg-surface:     #F0F4F8;
+  --bg-card:        #FFFFFF;
+  --bg-danger:      #DC262614;
+  --border:         #D1D9E2;
+  --border-strong:  #B9C3D0;
+  --text-primary:   #111827;
+  --text-secondary: #3E4554;
+  --text-muted:     #6B7280;
+  --accent:         #2563EB;
+  --on-accent:      #ffffff;
+  --accent-green:   #16A34A;
+  --accent-blue:    #2f6fe0;
+  --accent-red:     #DC2626;
+  --accent-orange:  #d97706;
   /* Stronger accent concentration than dark's default (see :root) — a light
      --bg/--card-bg needs much more of the accent mixed in before the tint
      actually reads at all. The far-corner (black) mix stays roughly in the
      same range as dark's — it's the near-corner accent stop that was doing
      almost nothing before. */
-  --ambient-accent-mix: 22%;
-  --ambient-dark-mix:   26%;
-  --card-accent-mix:    20%;
-  --card-dark-mix:      14%;
+  --ambient-accent-mix: 22%; --ambient-dark-mix: 26%;
+  --card-accent-mix:    20%; --card-dark-mix:    14%;
+  color-scheme: light;
+}
+
+:root[data-theme="light"][data-palette="warm"] {
+  --bg:             #FAF7F2;
+  --bg-surface:     #FBF8F2;
+  --bg-card:        #FFFFFF;
+  --bg-danger:      #D1434314;
+  --border:         #E5E3DB;
+  --border-strong:  #CFCBBD;
+  --text-primary:   #1F2937;
+  --text-secondary: #454E5C;
+  --text-muted:     #6B7280;
+  --accent:         #F59E0B;
+  --on-accent:      #000000;
+  --accent-green:   #22C55E;
+  --accent-blue:    #2f6fe0;
+  --accent-red:     #D14343;
+  --accent-orange:  #b45309;
+  --ambient-accent-mix: 22%; --ambient-dark-mix: 26%;
+  --card-accent-mix:    20%; --card-dark-mix:    14%;
+  color-scheme: light;
 }
 
 html, body, #root { height: 100%; }
 
 body {
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   background: var(--bg);
   color: var(--text-primary);
@@ -239,47 +317,30 @@ body {
           0 0 28px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
-/* Gradient accent pill for "active" chrome (nav tabs, range/mode toggles,
-   trend group-mode, Body tab's Chart/Table toggle) — the class itself only
-   carries the transition; the actual active-state visuals live in
-   .hra-pill-active below, added/removed by className (never an inline style
-   object) per the "styles live in index.css" rule (CLAUDE.md). ui/pill.ts's
-   glowPillStyle() JS helper was the pre-correction mechanism (computed the
-   same gradient inline, and had drifted to reference the since-removed
-   --accent-glow token) — deleted in the button/pill pass (2026-08-17) once
-   BodyTab, its last caller, moved to this class instead. */
+/* Gradient accent pill for the header's own primary nav tabs (App.tsx) —
+   the class itself only carries the transition; the actual active-state
+   visuals live in .hra-pill-active below, added/removed by className
+   (never an inline style object) per the "styles live in index.css" rule
+   (CLAUDE.md). Deliberately NOT used any more for in-view mode switches
+   (Overview's Overlap/Distinct etc., Body tab's Chart/Table, Units/Date
+   format/etc. pickers) — those all moved to .hra-segment/.hra-segment-item
+   below (dashboard design-system rework, "harmonize switches"): primary
+   page navigation keeps this louder gradient+glow identity on purpose (see
+   .hra-pill-active's own comment), but an in-view switch is a different
+   kind of control and reads as one joined segmented bar instead. */
 .hra-pill {
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s, color 0.15s;
 }
-/* Default (inactive) look for a nav-style pill (header tabs, date-range
-   presets, trend group-mode) — background/border/color live here so
-   `.hra-pill-active` (below, later in the cascade, same specificity) can
-   cleanly override them with zero inline style on either side. */
+/* Default (inactive) look for the header's nav-style pill — background/
+   border/color live here so `.hra-pill-active` (below, later in the
+   cascade, same specificity) can cleanly override them with zero inline
+   style on either side. */
 .hra-nav-pill {
   background: none;
   border: 1px solid transparent;
   border-radius: 999px;
   color: var(--text-secondary);
   cursor: pointer;
-}
-/* Small-size .hra-nav-pill variant (Body tab's Chart/Table switch, Overview's
-   Overlap/Distinct and Single/Week/Month switches) — distinct from the
-   header nav tabs' own size (App.tsx), which stays inline because it's
-   genuinely dynamic (padding/font-weight both change with active state,
-   nothing fixed to name a class after). */
-.hra-nav-pill--sm {
-  font-size: 11px;
-  padding: 3px 10px;
-}
-/* Wrapper for a row of .hra-nav-pill--sm buttons acting as one segmented
-   control (Overview's Overlap/Distinct and Single/Week/Month switches) —
-   the bordered pill housing the group, not any one button's own look. */
-.hra-segmented-group {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
 }
 .hra-pill-active {
   /* Monochromatic two-stop ramp (corrected 2026-08-17) — the second stop
@@ -354,7 +415,7 @@ body {
    delete, login/re-login, classify — is the ghost `cta` shape (see below),
    which is the actual majority of the app's action chrome. */
 .hra-btn {
-  font-family: inherit; font-size: 12px; font-weight: 600;
+  font-family: inherit; font-size: var(--fs-label); font-weight: var(--fw-data);
   padding: 6px 14px; border-radius: var(--radius-sm);
   border: 1px solid transparent; cursor: pointer;
   transition: box-shadow 0.18s ease-out, transform 0.18s ease-out,
@@ -373,7 +434,7 @@ body {
 .hra-btn[data-variant="outline"]:hover { border-color: var(--accent); }
 /* Ghost CTA (2026-08-17, generalized) — transparent fill, border+text tinted
    to ONE color, hover fills a 12% tint of that same color (same recipe as
-   .hra-toggle-pill[data-active]'s tint). The color itself is the one
+   .hra-segment-item[data-active]'s tint). The color itself is the one
    per-instance hook (--btn-color), same pattern as --swatch-color/
    --kpi-color/--legend-color elsewhere in this file — defaults to --accent
    so a bare cta button (Login, Classify/Reclassify, Restore selected) needs
@@ -426,47 +487,55 @@ body {
   transform: scale(0.98);
 }
 
-/* Accent swatch — a rounded rectangle now (was a circular orb), same shape
-   language as .card's own border-radius, with a light→base→dark radial
-   gradient built entirely from the --swatch-color custom-property hook
-   each AccentPicker button sets inline (per-instance data, not a
-   style-owned visual); the gradient itself is CSS-owned. Fixed
-   flex-shrink:0 so the accent row (nowrap, see AccentPicker) doesn't
-   squash individual swatches before it starts scrolling. */
-.hra-accent-swatch {
-  width: 52px; height: 44px; flex-shrink: 0; border-radius: var(--radius-md); cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 700;
-  border: 2px solid var(--border);
-  outline: none; outline-offset: 2px;
-  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--swatch-color) 55%, white), var(--swatch-color) 55%, color-mix(in srgb, var(--swatch-color) 70%, black));
+/* Segmented switch (dashboard design-system rework, "harmonize switches") —
+   the ONE canonical shape for every in-view mode toggle app-wide (Units,
+   Date format, Activity detail view, plan-instance pace mode, Overview's
+   Overlap/Distinct + Single/Week/Month + Match order/by time, Body tab's
+   Chart/Table, and the activity detail chart's Speed/Pace + Distance/Time —
+   replacing that last pair's own bespoke inline styles too). Generalizes
+   what started as the Speed/Pace switch's one-off look: the container
+   clips its children to a capsule (border-radius:999px + overflow:hidden),
+   so the first/last segment reads rounded at its outer edge only and every
+   middle segment is a plain rectangle, with NO gap between segments — a
+   single joined bar, never a row of independently-bordered pills. Deliberately
+   distinct from the header's own .hra-pill/.hra-pill-active (primary page
+   navigation keeps its louder gradient+glow identity, see that class's own
+   comment) — an in-view switch is a different kind of control.
+   --segment-color is the one per-instance hook (defaults to --accent) so a
+   metric-scoped switch (Speed/Pace) can tint to its own metric color
+   instead of the app accent; it drives the container border AND the active
+   segment's tint/text together, same pattern as --btn-color/--swatch-color
+   elsewhere in this file. */
+.hra-segment {
+  display: inline-flex;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid var(--segment-color, var(--border-strong));
 }
-.hra-accent-swatch[data-selected="true"] {
-  border-color: var(--swatch-color);
-  outline: 2px solid var(--swatch-color);
-}
-
-/* Shared toggle-pill for simple two/three-option pickers (Units,
-   Activity-detail-view) — replaces each call site's own
-   `background: selected ? "var(--accent)22" : ...` (an invalid
-   hex-suffix-on-a-var() string that never actually worked) with a real
-   color-mix, owned here instead of recomputed per component.
-   (2026-08-17) hover adds a quiet accent glow, same language as the
-   date/select triggers below. */
-.hra-toggle-pill {
-  font-size: 12px; padding: 6px 14px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--border-strong);
-  background: var(--bg-card);
+.hra-segment-item {
+  font-family: inherit;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-body);
+  padding: 4px 12px;
+  border: none;
+  cursor: pointer;
+  background: transparent;
   color: var(--text-secondary);
-  transition: border-color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
 }
-.hra-toggle-pill:hover {
-  box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent);
+.hra-segment-item:hover:not([data-active="true"]) {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
-.hra-toggle-pill[data-active="true"] {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
+.hra-segment-item[data-active="true"] {
+  background: color-mix(in srgb, var(--segment-color, var(--accent)) 20%, transparent);
+  color: var(--segment-color, var(--accent));
+  font-weight: var(--fw-data);
+}
+.hra-segment-item:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 /* Boolean on/off switch (DateRangeBar's "Compare" toggle) — a plain <button
@@ -487,15 +556,18 @@ body {
 }
 .hra-switch[data-checked="true"] .hra-switch-thumb { transform: translateX(14px); background: var(--bg); }
 
-/* Theme swatch previews (SettingsTab's ThemePicker) — each theme's actual
-   colors, keyed by data-theme-preview so a swatch can show a DIFFERENT
-   theme's look while a different one is currently active (var(--bg) etc.
-   only ever resolve to the theme in effect, not the one being previewed).
-   Mirrors index.css's own [data-theme="…"] blocks; --preview-accent mirrors
-   each theme's seeded --accent value (see ThemePicker/AccentPicker in
-   frontend.md). */
-[data-theme-preview="dark"]      { --preview-bg: #0f1117; --preview-card: #1e2330; --preview-text: #e8eaf0; --preview-accent: #1db87a; }
-[data-theme-preview="light"]     { --preview-bg: #f5f6f8; --preview-card: #ffffff; --preview-text: #1a1d27; --preview-accent: #0e9f6a; }
+/* Theme/Palette swatch previews (SettingsTab's ThemePicker + PalettePicker,
+   sharing the same .hra-theme-swatch* CSS shape) — keyed by data-theme-preview
+   or data-palette-preview so a swatch can show a DIFFERENT theme/palette's
+   look while a different one is currently active (var(--bg) etc. only ever
+   resolve to what's actually in effect, not the one being previewed). Each
+   is represented against Metal or Dark (whichever axis it isn't itself
+   previewing) since Dark Metal is the default combination — mirrors
+   index.css's own [data-theme][data-palette] blocks above. */
+[data-theme-preview="dark"]      { --preview-bg: #0B1220; --preview-card: #121A2B; --preview-text: #E6EDF3; --preview-accent: #3B82F6; }
+[data-theme-preview="light"]     { --preview-bg: #F7F9FB; --preview-card: #FFFFFF; --preview-text: #111827; --preview-accent: #2563EB; }
+[data-palette-preview="metal"]   { --preview-bg: #0B1220; --preview-card: #121A2B; --preview-text: #E6EDF3; --preview-accent: #3B82F6; }
+[data-palette-preview="warm"]    { --preview-bg: #0F141A; --preview-card: #1A1F26; --preview-text: #F5EDE3; --preview-accent: #F59E0B; }
 
 .hra-theme-swatch {
   position: relative; width: 96px; padding: 0; border-radius: var(--radius-md); overflow: hidden; cursor: pointer;
@@ -511,13 +583,13 @@ body {
   box-shadow: 0 0 10px color-mix(in srgb, var(--preview-accent) 55%, transparent);
 }
 .hra-theme-swatch-label {
-  font-size: 11px; padding: 5px 0; background: var(--preview-card); color: var(--text-secondary);
+  font-size: var(--fs-meta); padding: 5px 0; background: var(--preview-card); color: var(--text-secondary);
 }
 .hra-theme-swatch[data-selected="true"] .hra-theme-swatch-label { color: var(--preview-accent); }
 .hra-theme-swatch-badge {
-  position: absolute; top: 4px; right: 4px; width: 15px; height: 15px; border-radius: 50%;
+  position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 50%;
   background: var(--preview-accent); color: #000;
-  display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; line-height: 1;
+  display: flex; align-items: center; justify-content: center; font-size: var(--fs-meta); font-weight: var(--fw-data); line-height: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -587,7 +659,7 @@ input:focus, select:focus { border-color: var(--accent); }
    (2026-08-17) triggers also get a quiet accent glow on hover/open. ── */
 .hra-date-trigger {
   display: inline-flex; align-items: center; gap: 6px;
-  font-family: inherit; font-size: 12px;
+  font-family: inherit; font-size: var(--fs-label);
   background: var(--bg-card); color: var(--text-primary);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   /* Reduced control height (header row 2, correction pass) — was 6px 10px;
@@ -617,7 +689,7 @@ input:focus, select:focus { border-color: var(--accent); }
 
 .hra-select-trigger {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
-  font-family: inherit; font-size: 13px;
+  font-family: inherit; font-size: var(--fs-label);
   background: var(--bg-card); color: var(--text-primary);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   padding: 6px 10px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
@@ -631,7 +703,7 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-select-item {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: 13px; color: var(--text-primary);
+  font-size: var(--fs-label); color: var(--text-primary);
   padding: 6px 10px; cursor: pointer; outline: none;
   max-width: min(60vw, 320px);
 }
@@ -640,7 +712,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-select-item[data-disabled] { opacity: 0.4; pointer-events: none; }
 .hra-select-item-indicator { color: var(--accent); display: flex; }
 
-.hra-calendar { font-size: 13px; color: var(--text-primary); }
+.hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
 .hra-calendar .rdp-nav { display: flex; justify-content: space-between; }
 .hra-calendar .rdp-button_previous,
@@ -653,7 +725,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-calendar .rdp-button_next:hover { background: var(--bg-surface); color: var(--text-primary); }
 .hra-calendar .rdp-button_previous[disabled],
 .hra-calendar .rdp-button_next[disabled] { opacity: 0.3; cursor: not-allowed; }
-.hra-calendar .rdp-weekday { color: var(--text-muted); font-size: 11px; font-weight: 400; padding: 4px 0; }
+.hra-calendar .rdp-weekday { color: var(--text-muted); font-size: var(--fs-meta); font-weight: var(--fw-meta); padding: 4px 0; }
 .hra-calendar .rdp-day_button {
   width: 30px; height: 30px; border-radius: var(--radius-sm);
   color: var(--text-primary); background: none; border: none; cursor: pointer;
@@ -687,12 +759,12 @@ input:focus, select:focus { border-color: var(--accent); }
 /* The bolded heading text atop a Manage-tab card ("Delete data range",
    "Sync all", "Trash", ...) — marginBottom stays inline where a site needs
    the gap to its body text (not every site does). */
-.hra-block-title   { font-size: 14px; font-weight: 500; }
-.hra-input-narrow  { width: 120px; font-size: 13px; padding: 5px 8px; }
+.hra-block-title   { font-size: var(--fs-label); font-weight: var(--fw-label); }
+.hra-input-narrow  { width: 120px; font-size: var(--fs-label); padding: 5px 8px; }
 /* Bottom half of a card split by an expanded row (ActivityRow, AccordionCard)
    — padding stays inline, it differs between the two callers. */
 .hra-card-joined-bottom { border-top: none; border-radius: 0 0 16px 16px; }
-.hra-stat-value    { font-size: 18px; font-weight: 600; line-height: 1.2; }
+.hra-stat-value    { font-size: var(--fs-data); font-weight: var(--fw-data); line-height: 1.2; }
 
 /* ════════════════════════════════════════════════════════════════════════
    Generic color/border utilities (2026-08-20 theme-leak sweep) — same
@@ -756,7 +828,7 @@ input:focus, select:focus { border-color: var(--accent); }
    onto a var() call — invalid CSS; color-mix() is the correct way to blend
    a token toward transparent). */
 .hra-status-msg {
-  font-size: 12px; padding: 8px 12px; border-radius: 6px;
+  font-size: var(--fs-label); padding: 8px 12px; border-radius: 6px;
   background: var(--bg-card); color: var(--text-secondary);
   border: 1px solid color-mix(in srgb, var(--border) 27%, transparent);
 }
@@ -777,7 +849,7 @@ input:focus, select:focus { border-color: var(--accent); }
   border-radius: var(--radius-md);
   padding: 14px 16px;
   color: var(--accent-red);
-  font-size: 13px;
+  font-size: var(--fs-label);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -837,7 +909,7 @@ input:focus, select:focus { border-color: var(--accent); }
   justify-content: flex-end; gap: 8px; margin-top: 6px;
 }
 .hra-brand {
-  font-weight: 700; font-size: 14px; letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
+  font-weight: var(--fw-data); font-size: var(--fs-label); letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
 }
 .hra-status-dot {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block;
@@ -853,7 +925,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-lang-list { display: flex; flex-direction: column; gap: 2px; min-width: 88px; }
 .hra-lang-item {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; font: inherit; font-size: 13px; color: var(--text-primary);
+  width: 100%; font: inherit; font-size: var(--fs-label); color: var(--text-primary);
   background: none; border: none; border-radius: var(--radius-sm);
   padding: 6px 10px; cursor: pointer; text-align: left;
 }
@@ -875,16 +947,16 @@ input:focus, select:focus { border-color: var(--accent); }
    per-instance hook (Stat's existing `accent` prop threads straight through
    to it), defaulting to --text-primary. */
 .hra-label {
-  font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: var(--fs-meta); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
 }
 .hra-kpi-value {
-  font-size: 30px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; white-space: nowrap;
+  font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em; line-height: 1; white-space: nowrap;
   color: var(--kpi-color, var(--text-primary));
 }
-.hra-kpi-value--sm { font-size: 26px; }
-.hra-kpi-unit { font-size: 16px; font-weight: 500; color: var(--text-muted); }
-.hra-kpi-unit--sm { font-size: 14px; }
-.hra-kpi-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+.hra-kpi-value--sm { font-size: var(--fs-heading); }
+.hra-kpi-unit { font-size: var(--fs-label); font-weight: var(--fw-label); color: var(--text-muted); }
+.hra-kpi-unit--sm { font-size: var(--fs-meta); }
+.hra-kpi-sub { font-size: var(--fs-meta); color: var(--text-secondary); margin-top: 4px; }
 
 /* Stat's optional leading icon (label row) and always-visible comparison
    delta line (dashboard graph-first reorg) — deltaPositive undefined stays
@@ -892,7 +964,7 @@ input:focus, select:focus { border-color: var(--accent); }
    data" rule elsewhere on this tab: a caller simply omits deltaText rather
    than rendering a fake/neutral percentage. */
 .hra-stat-icon { display: inline-flex; color: var(--text-muted); }
-.hra-stat-delta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.hra-stat-delta { font-size: var(--fs-meta); color: var(--text-muted); margin-top: 4px; }
 .hra-stat-delta-up { color: var(--accent-green); }
 .hra-stat-delta-down { color: var(--accent-red); }
 
@@ -909,11 +981,11 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-graph-kpi-label {
   display: flex; align-items: center; gap: 6px;
-  font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+  font-size: var(--fs-meta); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
 }
 .hra-graph-kpi-icon { color: var(--kpi-icon-color, var(--accent)); display: inline-flex; }
-.hra-graph-kpi-value { font-size: 15px; font-weight: 700; line-height: 1.15; color: var(--text-primary); white-space: nowrap; }
-.hra-graph-kpi-unit { font-size: 11px; font-weight: 500; color: var(--text-muted); }
+.hra-graph-kpi-value { font-size: var(--fs-data); font-weight: var(--fw-data); line-height: 1.15; color: var(--text-primary); white-space: nowrap; }
+.hra-graph-kpi-unit { font-size: var(--fs-meta); font-weight: var(--fw-label); color: var(--text-muted); }
 
 /* ── Hero row (Overview) — ring card + distance/time/recent card share one
    accent-tinted gradient, a stronger version of .card's own diagonal recipe
@@ -936,12 +1008,12 @@ input:focus, select:focus { border-color: var(--accent); }
    Both brighten on hover together with the ring's own .hra-tooltip
    wrapper, signalling there's a fuller comparison in the tooltip. */
 .hra-ring-value {
-  font-size: 26px; font-weight: 700; letter-spacing: -0.02em;
+  font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em;
   fill: var(--text-primary); font-variant-numeric: tabular-nums;
   transition: fill 0.15s ease;
 }
 .hra-ring-compare {
-  font-size: 10px; fill: var(--text-muted); font-variant-numeric: tabular-nums;
+  font-size: var(--fs-meta); fill: var(--text-muted); font-variant-numeric: tabular-nums;
   transition: fill 0.15s ease;
 }
 .hra-tooltip:hover .hra-ring-value   { fill: var(--accent-light); }
@@ -963,7 +1035,7 @@ input:focus, select:focus { border-color: var(--accent); }
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-card) 94%);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-strong));
   color: var(--text-primary);
-  font-size: 11px; font-weight: 500; white-space: nowrap;
+  font-size: var(--fs-meta); font-weight: var(--fw-label); white-space: nowrap;
   padding: 6px 11px; border-radius: 8px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
   opacity: 0; pointer-events: none;
@@ -984,7 +1056,7 @@ input:focus, select:focus { border-color: var(--accent); }
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-strong));
   border-radius: 10px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--fs-label);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   display: flex; gap: 6px; align-items: center; white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1056,7 +1128,7 @@ input:focus, select:focus { border-color: var(--accent); }
   bottom: 36px; left: 50%; transform: translateX(-50%);
   pointer-events: none;
   display: flex; gap: 6px; align-items: center; white-space: nowrap;
-  font-size: 10px; font-variant-numeric: tabular-nums;
+  font-size: var(--fs-meta); font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 6px rgba(0, 0, 0, 0.5);
 }
 
@@ -1112,7 +1184,7 @@ input:focus, select:focus { border-color: var(--accent); }
    the one per-series hook (pace/HR/whatever a future chart passes); every
    actual visual (border/background/glow/dim-when-off) is CSS-owned. */
 .hra-legend-chip {
-  font-size: 11px; padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  font-size: var(--fs-meta); padding: 3px 10px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-secondary);
@@ -1137,201 +1209,8 @@ input:focus, select:focus { border-color: var(--accent); }
   background: color-mix(in srgb, var(--accent) 3%, var(--bg-surface));
 }
 .hra-chrome-preview-focus {
-  font-size: 11px; padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
+  font-size: var(--fs-meta); padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
-/* ══════════════════════════════════════════════════════════════════════════
-   STYLE PACKS (HRA-119) — GenZ / Millennial / Minimal. "Boomer" is this
-   file's own base palette above (the pre-existing :root/[data-theme] blocks)
-   and the default style_pack value — nothing below applies unless a user
-   explicitly picks a different pack, matching useAppearance.ts's
-   data-style-pack attribute.
-
-   Every rule below — both the :root variable blocks AND the structural
-   overrides (.card, .hra-pill-active, :focus-visible, etc.) — is scoped
-   under :root[data-style-pack="<pack>"], compounded with the existing
-   data-theme attribute for the two per-pack variable blocks. This is the
-   fix for two problems the original (unscoped, !important-laden) source
-   files had:
-     1. An unscoped .card{...} etc. would apply to EVERY pack once merged
-        into one stylesheet, not just its own — silently corrupting every
-        other pack's (and Boomer's) look.
-     2. --accent/--on-accent no longer carry !important (the original files
-        forced them to win over ANY rule, including the inline style
-        useAppearance.ts's setAccentColor() applies per HRA-95 — the one
-        case !important beats even an inline style — which made the accent
-        picker silently inert under every non-Boomer pack). Proper scoping
-        (an attribute-qualified selector) already gives these rules more
-        specificity than Boomer's own bare :root block without needing
-        !important, and — critically — a normal-weight rule still loses to
-        setAccentColor()'s inline --accent/--on-accent, restoring the
-        picker's effect under every pack, exactly like Boomer.
-   The two `!important`s that remain (both packs' `.hra-nav-hover:hover`
-   border-color) are unrelated to that bug — overriding a same-specificity
-   hover rule elsewhere — and were left untouched; only --accent/--on-accent
-   were ever the diagnosed problem. */
-
-/* ── PACK: GENZ ─────────────────────────────────────────────────────────── */
-:root[data-style-pack="genz"][data-theme="dark"] {
-  --bg: #150f1e; --bg-surface: #1d1529; --bg-card: #221a30;
-  --bg-danger: #ff2e9a22;
-  --border: #3d2f57; --border-strong: #6a55a0;
-  --text-primary: #f5f2ff; --text-secondary: #c0b6e6; --text-muted: #948bc0;
-  --accent: #ccff00; --on-accent: #000000;
-  --accent-green: #3dff88; --accent-blue: #22d3ee; --accent-red: #ff2e9a; --accent-orange: #ffb02e;
-  --data-pace: #3dff88; --data-hr: #ff2e9a; --data-elev: #22d3ee; --data-weight: #22d3ee;
-  --data-fat: #ffb02e; --data-muscle: #3dff88;
-  --accent-strong: #ff2e9a; --accent-light: #22d3ee;
-  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
-  --ambient-accent-mix: 14%; --ambient-dark-mix: 40%; --card-accent-mix: 10%; --card-dark-mix: 30%;
-  --card-shadow: 5px 5px 0 #000; --card-shadow-hover: 7px 7px 0 #000; --pop-shadow: 5px 5px 0 #000;
-  color-scheme: dark;
-}
-:root[data-style-pack="genz"][data-theme="light"] {
-  --bg: #f6f1e7; --bg-surface: #fbf8ef; --bg-card: #fffdf6;
-  --bg-danger: #e5148c1a;
-  --border: #141414; --border-strong: #000000;
-  --text-primary: #141414; --text-secondary: #44403a; --text-muted: #6f6a60;
-  --accent: #ff2e9a; --on-accent: #000000;
-  --accent-green: #00a870; --accent-blue: #6b4de6; --accent-red: #e5148c; --accent-orange: #ff8a00;
-  --data-pace: #00a870; --data-hr: #e5148c; --data-elev: #6b4de6; --data-weight: #6b4de6;
-  --data-fat: #ff8a00; --data-muscle: #00a870;
-  --accent-strong: #7c3aed; --accent-light: #22d3ee;
-  --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px;
-  --ambient-accent-mix: 14%; --ambient-dark-mix: 0%; --card-accent-mix: 6%; --card-dark-mix: 0%;
-  --card-shadow: 5px 5px 0 #000; --card-shadow-hover: 7px 7px 0 #000; --pop-shadow: 5px 5px 0 #000;
-  color-scheme: light;
-}
-:root[data-style-pack="genz"] body::after { content: ""; position: fixed; inset: 0; z-index: 2000; pointer-events: none; opacity: .06;
-  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>"); }
-:root[data-style-pack="genz"] input, :root[data-style-pack="genz"] select, :root[data-style-pack="genz"] .hra-date-trigger,
-:root[data-style-pack="genz"] .hra-select-trigger, :root[data-style-pack="genz"] .hra-toggle-pill, :root[data-style-pack="genz"] .hra-switch,
-:root[data-style-pack="genz"] .hra-segmented-group { border-width: 2px; }
-:root[data-style-pack="genz"] .card { background: var(--bg-card); border: 2px solid var(--border-strong); box-shadow: var(--card-shadow); }
-:root[data-style-pack="genz"] .card:hover { box-shadow: var(--card-shadow-hover); transform: translate(-1px,-1px); }
-:root[data-style-pack="genz"] .hra-pill-active { background: var(--accent); border: 2px solid #000; color: #000; box-shadow: 3px 3px 0 #000; }
-:root[data-style-pack="genz"] .hra-pill-active:hover { box-shadow: 4px 4px 0 #000; }
-:root[data-style-pack="genz"] .hra-lift:hover { transform: translate(-2px,-2px); box-shadow: var(--card-shadow-hover); }
-:root[data-style-pack="genz"] .hra-lift:active { transform: none; box-shadow: 2px 2px 0 #000; }
-:root[data-style-pack="genz"] .hra-btn:hover, :root[data-style-pack="genz"] .hra-swatch:hover, :root[data-style-pack="genz"] .hra-toggle-pill:hover,
-:root[data-style-pack="genz"] .hra-date-trigger:hover, :root[data-style-pack="genz"] .hra-date-trigger[data-state="open"],
-:root[data-style-pack="genz"] .hra-select-trigger:hover, :root[data-style-pack="genz"] .hra-select-trigger[data-state="open"] { box-shadow: 3px 3px 0 #000; }
-:root[data-style-pack="genz"] .hra-legend-chip[data-active="true"], :root[data-style-pack="genz"] .hra-theme-swatch-pill { box-shadow: 2px 2px 0 #000; }
-:root[data-style-pack="genz"] .hra-hero-ring-glow { filter: drop-shadow(0 0 10px color-mix(in srgb, #ff2e9a 70%, transparent))
-  drop-shadow(0 0 22px color-mix(in srgb, #22d3ee 55%, transparent)); }
-:root[data-style-pack="genz"] .hra-trend-line-pace { filter: drop-shadow(0 0 4px var(--data-pace)); }
-:root[data-style-pack="genz"] .hra-trend-line-hr { filter: drop-shadow(0 0 4px var(--data-hr)); }
-:root[data-style-pack="genz"] :focus-visible { box-shadow: 3px 3px 0 #000; }
-:root[data-style-pack="genz"] .hra-header { border-bottom: 2px solid var(--border-strong); }
-:root[data-style-pack="genz"] .hra-popover-content, :root[data-style-pack="genz"] .hra-select-content { box-shadow: var(--pop-shadow); }
-:root[data-style-pack="genz"][data-theme="dark"] body::before { background: radial-gradient(130% 130% at 0% 0%,
-  color-mix(in srgb, #8b5cf6 24%, var(--bg)) 0%, var(--bg) 45%, #0a0712 100%); }
-
-/* ── PACK: MILLENNIAL ───────────────────────────────────────────────────── */
-:root[data-style-pack="millennial"][data-theme="dark"] {
-  --bg: #1c1915; --bg-surface: #24201a; --bg-card: #2a251e;
-  --bg-danger: #e07a5f26;
-  --border: #3b352b; --border-strong: #514939;
-  --text-primary: #f0eae0; --text-secondary: #b6ac9c; --text-muted: #948b7d;
-  --accent: #8aa892; --on-accent: #223028;
-  --accent-green: #85a68d; --accent-blue: #8aa7bd; --accent-red: #e08a6d; --accent-orange: #d9a066;
-  --data-pace: #8fb39a; --data-hr: #e08a6d; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
-  --data-fat: #d9a066; --data-muscle: #8fb39a;
-  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 24px;
-  --ambient-accent-mix: 10%; --ambient-dark-mix: 34%; --card-accent-mix: 8%; --card-dark-mix: 12%;
-  --card-shadow: 0 12px 32px -18px rgba(0,0,0,.55);
-  --card-shadow-hover: 0 18px 42px -18px rgba(0,0,0,.65);
-  --pop-shadow: 0 12px 28px rgba(0,0,0,.5);
-  color-scheme: dark;
-}
-:root[data-style-pack="millennial"][data-theme="light"] {
-  --bg: #faf6f0; --bg-surface: #fffdf9; --bg-card: #fffdf9;
-  --bg-danger: #e07a5f1a;
-  --border: #e9e1d5; --border-strong: #d8ccba;
-  --text-primary: #33302b; --text-secondary: #6e675c; --text-muted: #7d7467;
-  --accent: #8aa892; --on-accent: #223028;
-  --accent-green: #7d9b84; --accent-blue: #8aa7bd; --accent-red: #e07a5f; --accent-orange: #d9a066;
-  --data-pace: #6f8f79; --data-hr: #e07a5f; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
-  --data-fat: #d9a066; --data-muscle: #6f8f79;
-  --radius-sm: 10px; --radius-md: 14px; --radius-lg: 24px;
-  --ambient-accent-mix: 10%; --ambient-dark-mix: 5%; --card-accent-mix: 7%; --card-dark-mix: 4%;
-  --card-shadow: 0 12px 32px -18px rgba(96,78,56,.25);
-  --card-shadow-hover: 0 18px 42px -18px rgba(96,78,56,.32);
-  --pop-shadow: 0 12px 28px rgba(96,78,56,.18);
-  color-scheme: light;
-}
-:root[data-style-pack="millennial"] .card { background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--card-shadow); }
-:root[data-style-pack="millennial"] .card:hover { box-shadow: var(--card-shadow-hover); }
-:root[data-style-pack="millennial"] .hra-hero-tint { background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, var(--accent) 14%, var(--bg-card)) 0%, var(--bg-card) 100%); }
-:root[data-style-pack="millennial"] .hra-hero-ring-glow { filter: drop-shadow(0 6px 16px color-mix(in srgb, var(--accent) 30%, transparent)); }
-:root[data-style-pack="millennial"] .hra-trend-line-pace, :root[data-style-pack="millennial"] .hra-trend-line-hr { filter: none; }
-:root[data-style-pack="millennial"] .hra-pill-active { background: linear-gradient(135deg, var(--accent),
-  color-mix(in srgb, var(--accent) 78%, white)); box-shadow: none; }
-:root[data-style-pack="millennial"] .hra-pill-active:hover { box-shadow: none; }
-:root[data-style-pack="millennial"] .hra-lift:hover { transform: translateY(-2px); box-shadow: var(--card-shadow-hover); }
-:root[data-style-pack="millennial"] .hra-btn:hover { box-shadow: 0 10px 22px -12px color-mix(in srgb, var(--btn-glow, var(--accent)) 40%, transparent); }
-:root[data-style-pack="millennial"] .hra-swatch:hover { transform: scale(1.06); box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--swatch-color) 45%, transparent); }
-:root[data-style-pack="millennial"] .hra-toggle-pill:hover, :root[data-style-pack="millennial"] .hra-date-trigger:hover, :root[data-style-pack="millennial"] .hra-date-trigger[data-state="open"],
-:root[data-style-pack="millennial"] .hra-select-trigger:hover, :root[data-style-pack="millennial"] .hra-select-trigger[data-state="open"] { box-shadow: 0 6px 16px -8px rgba(0,0,0,.25); }
-:root[data-style-pack="millennial"] .hra-legend-chip[data-active="true"], :root[data-style-pack="millennial"] .hra-theme-swatch-pill { box-shadow: none; }
-:root[data-style-pack="millennial"] :focus-visible { box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
-:root[data-style-pack="millennial"] .hra-nav-hover:not(.hra-pill-active):hover { border-color: var(--border-strong) !important; }
-:root[data-style-pack="millennial"] .hra-header { background: color-mix(in srgb, var(--bg-surface) 92%, transparent); }
-:root[data-style-pack="millennial"] .hra-popover-content, :root[data-style-pack="millennial"] .hra-select-content, :root[data-style-pack="millennial"] .hra-tooltip::after { box-shadow: var(--pop-shadow); }
-:root[data-style-pack="millennial"][data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,253,249,.9); }
-
-/* ── PACK: MINIMAL ──────────────────────────────────────────────────────── */
-:root[data-style-pack="minimal"][data-theme="dark"] {
-  --bg: #101013; --bg-surface: #151518; --bg-card: #18181b;
-  --bg-danger: #d23f3e14;
-  --border: #26262a; --border-strong: #3b3b40;
-  --text-primary: #ececec; --text-secondary: #a5a5a5; --text-muted: #818181;
-  --accent: #9db3c8; --on-accent: #10161c;
-  --accent-green: #8aa892; --accent-blue: #8aa7bd; --accent-red: #c97a74; --accent-orange: #c9a27a;
-  --data-pace: #d5dce4; --data-hr: #76889a; --data-elev: #8aa7bd; --data-weight: #8aa7bd;
-  --data-fat: #c9a27a; --data-muscle: #8aa892;
-  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px;
-  --ambient-accent-mix: 0%; --ambient-dark-mix: 0%; --card-accent-mix: 0%; --card-dark-mix: 0%;
-  --card-shadow: none; --card-shadow-hover: none; --pop-shadow: 0 4px 12px rgba(0,0,0,.5);
-  color-scheme: dark;
-}
-:root[data-style-pack="minimal"][data-theme="light"] {
-  --bg: #ffffff; --bg-surface: #ffffff; --bg-card: #ffffff;
-  --bg-danger: #d23f3e10;
-  --border: #e7e7e7; --border-strong: #c9c9c9;
-  --text-primary: #161616; --text-secondary: #5c5c5c; --text-muted: #767676;
-  --accent: #64748b; --on-accent: #ffffff;
-  --accent-green: #708c7d; --accent-blue: #728698; --accent-red: #bf6058; --accent-orange: #b08968;
-  --data-pace: #3f4a56; --data-hr: #9aa5b1; --data-elev: #728698; --data-weight: #728698;
-  --data-fat: #b08968; --data-muscle: #708c7d;
-  --radius-sm: 4px; --radius-md: 8px; --radius-lg: 12px;
-  --ambient-accent-mix: 0%; --ambient-dark-mix: 0%; --card-accent-mix: 0%; --card-dark-mix: 0%;
-  --card-shadow: none; --card-shadow-hover: none; --pop-shadow: 0 4px 12px rgba(0,0,0,.08);
-  color-scheme: light;
-}
-:root[data-style-pack="minimal"] .card, :root[data-style-pack="minimal"] .hra-hero-tint, :root[data-style-pack="minimal"] .hra-chrome-preview { background: var(--bg-card); }
-:root[data-style-pack="minimal"] .card { border: 1px solid var(--border); box-shadow: none; }
-:root[data-style-pack="minimal"] .card:hover { box-shadow: none; }
-:root[data-style-pack="minimal"] .hra-hero-ring-glow, :root[data-style-pack="minimal"] .hra-trend-line-pace, :root[data-style-pack="minimal"] .hra-trend-line-hr { filter: none; }
-:root[data-style-pack="minimal"] .hra-lift:hover, :root[data-style-pack="minimal"] .hra-lift:active { transform: none; box-shadow: none; }
-:root[data-style-pack="minimal"] .hra-btn:hover, :root[data-style-pack="minimal"] .hra-swatch:hover, :root[data-style-pack="minimal"] .hra-toggle-pill:hover,
-:root[data-style-pack="minimal"] .hra-date-trigger:hover, :root[data-style-pack="minimal"] .hra-date-trigger[data-state="open"],
-:root[data-style-pack="minimal"] .hra-select-trigger:hover, :root[data-style-pack="minimal"] .hra-select-trigger[data-state="open"],
-:root[data-style-pack="minimal"] .hra-legend-chip[data-active="true"], :root[data-style-pack="minimal"] .hra-theme-swatch-pill { box-shadow: none; }
-:root[data-style-pack="minimal"] .hra-swatch:hover { transform: none; }
-:root[data-style-pack="minimal"] :focus-visible { outline: 1px solid var(--accent); box-shadow: none; }
-:root[data-style-pack="minimal"] .hra-nav-hover:not(.hra-pill-active):hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border-color: var(--border-strong) !important; }
-:root[data-style-pack="minimal"] .hra-header { background: var(--bg-surface); backdrop-filter: none; -webkit-backdrop-filter: none;
-  border-bottom: 1px solid var(--border); }
-:root[data-style-pack="minimal"] .hra-sticky-summary { background: var(--bg); }
-:root[data-style-pack="minimal"] .hra-popover-content, :root[data-style-pack="minimal"] .hra-select-content, :root[data-style-pack="minimal"] .hra-tooltip::after { box-shadow: var(--pop-shadow); }
-:root[data-style-pack="minimal"] .hra-kpi-value, :root[data-style-pack="minimal"] .hra-brand { font-weight: 600; }
-:root[data-style-pack="minimal"] .hra-label { letter-spacing: 0.08em; }
-:root[data-style-pack="minimal"][data-theme="light"] .hra-pill-active { background: #161616; color: #ffffff; box-shadow: none; }
-:root[data-style-pack="minimal"][data-theme="dark"]  .hra-pill-active { background: #ececec; color: #111111; box-shadow: none; }
-:root[data-style-pack="minimal"] .hra-pill-active:hover { box-shadow: none; }
-:root[data-style-pack="minimal"][data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,255,255,.9); }
 :root[data-theme="light"] .hra-runner-values { text-shadow: 0 1px 2px rgba(255,255,255,.9); }

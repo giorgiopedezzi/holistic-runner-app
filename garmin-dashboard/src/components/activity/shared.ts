@@ -71,19 +71,23 @@ export const AXIS_SIDE: Record<MetricKey, "left" | "right"> = {
 // darkest, same "how much" visual language as pause duration.
 export const HR_RECOVERY_COLOR_CAP = 60; // bpm — observed real deltas run ~8-55bpm
 
-// Pink (easy, ≤80bpm) → deeper pink (135bpm) → red (≥190bpm), keyed on the
-// actual bpm value (fixed anatomical thresholds, not normalized against this
-// activity's own min/max) so the same HR always reads the same color across
-// activities. Drives BOTH the mouse-follow runner icon and the HR line's
+// Pink → rose → coral → red → deep red across a fixed 70-190bpm anatomical
+// range (dashboard design-system rework, section 7), keyed on the actual bpm
+// value (not normalized against this activity's own min/max) so the same HR
+// always reads the same color across activities. Deliberately its own red
+// family (C92F3D at the top), distinct from --accent-red/system danger — see
+// section 8. Drives BOTH the mouse-follow runner icon and the HR line's
 // gradient (MetricGradient.tsx samples this same function), which is what
 // keeps the runner's color and the line it's standing over in agreement by
 // construction rather than by two lists that have to be kept in sync. Pure
 // function (no React) so it can be called from an imperative mousemove
 // handler without touching component state.
 const HR_COLOR_STOPS: [number, [number, number, number]][] = [
-  [80,  [219, 160, 206]], // #dba0ce
-  [135, [214,  86, 141]], // #d6568d
-  [190, [255,   0,  38]], // #ff0026
+  [70,  [214, 137, 158]], // #D6899E — low, muted pink
+  [100, [204,  91, 119]], // #CC5B77 — rose
+  [130, [193,  58,  88]],  // #C13A58 — strong coral
+  [160, [170,  37,  65]],  // #AA2541 — deep red
+  [190, [139,  25,  49]],  // #8B1931 — high, deep red
 ];
 export function hrRunnerColor(bpm: number): string {
   return rampColor(HR_COLOR_STOPS, bpm);
@@ -109,10 +113,18 @@ export function metricStroke(key: MetricKey, id: string): string {
 // and a race for another, and one absolute mapping would flatten every easy
 // run to a single color. MetricGradient.tsx does the value→position mapping,
 // anchoring 0.5 to the activity's own mean.
+//
+// Distinctive metallic gradient (dashboard design-system rework, sections 4
+// & 5) — steel blue (fastest) through oxidized metal (average) to copper
+// (slowest). Deliberately no green (reads as "success", not pace) and no red
+// (reserved for HR/danger) — see section 4's semantic rule, identical across
+// all 4 themes, never derived from --accent.
 const SPEED_COLOR_STOPS: [number, [number, number, number]][] = [
-  [0,   [237, 221,  83]], // #eddd53 — slowest
-  [0.5, [ 20, 219,  90]], // #14db5a — average
-  [1,   [  0,  37, 245]], // #0025f5 — fastest
+  [0,    [151,  75,  52]], // #974B34 — slowest, deep copper
+  [0.25, [151, 117,  65]], // #977541 — dark brass
+  [0.5,  [ 91, 119, 112]], // #5B7770 — dark oxidized metal
+  [0.75, [ 57, 123, 148]], // #397B94 — deep blue steel
+  [1,    [ 45, 111, 174]], // #2D6FAE — fastest, deep steel blue
 ];
 export function speedRampColor(t: number): string {
   return rampColor(SPEED_COLOR_STOPS, t);

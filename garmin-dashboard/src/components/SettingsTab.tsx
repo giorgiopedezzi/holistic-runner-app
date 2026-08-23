@@ -12,9 +12,8 @@ import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
-import type { Settings, Theme, StoredUnitSystem, AccentColor, StylePack } from "@/types/api";
-import { THEME_NAMES, ACCENT_COLOR_NAMES, DATE_FORMAT_OPTIONS, STYLE_PACK_NAMES } from "@/types/api";
-import { ACCENT_PALETTE } from "@/utils/accent";
+import type { Settings, Theme, StoredUnitSystem, Palette } from "@/types/api";
+import { THEME_NAMES, DATE_FORMAT_OPTIONS, PALETTE_NAMES } from "@/types/api";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
@@ -91,73 +90,55 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   );
 }
 
-// Accent picker (HRA-95): a swatch per curated accent, offering all 6.
-// Keyboard-navigable for free — these are plain <button>s (Tab, Enter/Space),
-// same as ThemePicker above; aria-pressed reflects selection for screen readers.
-export function AccentPicker({ appearance }: { appearance: AppearanceApi }) {
-  const { t } = useTranslation();
-  const current = appearance.settings?.accent_color;
+// Palette labels only — same "label here, colors in CSS" split ThemeSwatch
+// documents above.
+const PALETTE_LABEL: Record<Palette, string> = {
+  metal: "Metal",
+  warm:  "Warm",
+};
+
+// A single palette swatch — same visual language as ThemeSwatch above (a
+// gradient pill preview over a hairline border, corner check badge when
+// selected), keyed off data-palette-preview instead of data-theme-preview so
+// index.css can give it its own preview colors independent of whichever
+// theme (dark/light) happens to be active while browsing this picker.
+function PaletteSwatch({ palette, label, selected, onClick }: {
+  palette: Palette; label: string; selected: boolean; onClick: () => void;
+}) {
   return (
-    // flex-wrap: nowrap — the accent row must stay a single row (all 6
-    // curated accents fit comfortably at the settings card's own width);
-    // overflow-x lets it scroll rather than wrap on a genuinely narrow
-    // viewport instead of silently breaking the "one row" requirement.
-    <div style={{ display: "flex", gap: 10, flexWrap: "nowrap", overflowX: "auto", paddingBottom: 2 }}>
-      {ACCENT_COLOR_NAMES.map((name: AccentColor) => {
-        const def = ACCENT_PALETTE[name];
-        const selected = current === name;
-        const label = t(`settings.accent.${name}`, def.label);
-        return (
-          // --swatch-color is the one per-instance hook, feeding both
-          // .hra-swatch's hover glow and .hra-accent-swatch's gradient
-          // fill/selected border (index.css) — no gradient/border/hex
-          // literal computed here (correction pass).
-          <button
-            key={name}
-            className="hra-swatch hra-accent-swatch hra-dyn-color"
-            data-selected={selected}
-            style={{ "--swatch-color": def.hex, "--dyn-color": def.onAccent } as CSSProperties}
-            onClick={() => appearance.setAccentColor?.(name)}
-            aria-pressed={selected}
-            aria-label={label}
-            title={label}
-          >
-            {selected ? "✓" : ""}
-          </button>
-        );
-      })}
-    </div>
+    <button
+      className="hra-lift hra-theme-swatch"
+      data-palette-preview={palette}
+      data-selected={selected}
+      onClick={onClick}
+    >
+      <div className="hra-theme-swatch-preview">
+        <div className="hra-theme-swatch-pill" />
+      </div>
+      <div className="hra-theme-swatch-label">{label}</div>
+      {selected && <div className="hra-theme-swatch-badge">✓</div>}
+    </button>
   );
 }
 
-// Style pack labels only — same "label here, colors in CSS" split ThemePicker
-// documents above.
-const STYLE_PACK_LABEL: Record<StylePack, string> = {
-  boomer: "Boomer",
-  genz: "GenZ",
-  millennial: "Millennial",
-  minimal: "Minimal",
-};
-
-// Style pack picker (HRA-119): a full-palette choice orthogonal to Theme and
-// Accent above — toggle-pill row, same simple pattern UnitsPicker/
-// DateFormatPicker already use (a full swatch-preview mechanism like
-// ThemePicker's would need a data-style-pack-preview variant of every pack's
-// tokens, out of scope for this Story).
-export function StylePackPicker({ appearance }: { appearance: AppearanceApi }) {
-  const { t } = useTranslation();
-  const current = appearance.settings?.style_pack;
+// Palette picker — replaces the earlier StylePack picker (HRA-119) entirely.
+// Fixes the accent that goes with each theme (no separate accent picker any
+// more, see useAppearance.ts's applyToDocument): metal -> steel blue, warm ->
+// amber/gold, both baked directly into index.css's [data-theme][data-palette]
+// blocks.
+export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
+  const { t: translate } = useTranslation();
+  const current = appearance.settings?.palette;
   return (
-    <div className="hra-chip-row" style={{ gap: 8 }}>
-      {STYLE_PACK_NAMES.map(pack => (
-        <button
-          key={pack}
-          className="hra-toggle-pill"
-          data-active={current === pack}
-          onClick={() => appearance.setStylePack?.(pack)}
-        >
-          {t(`settings.stylePack.${pack}`, STYLE_PACK_LABEL[pack])}
-        </button>
+    <div className="hra-chip-row" style={{ gap: 10 }}>
+      {PALETTE_NAMES.map(p => (
+        <PaletteSwatch
+          key={p}
+          palette={p}
+          label={translate(`settings.palette.${p}`, PALETTE_LABEL[p])}
+          selected={current === p}
+          onClick={() => appearance.setPalette?.(p)}
+        />
       ))}
     </div>
   );
@@ -169,7 +150,9 @@ export function StylePackPicker({ appearance }: { appearance: AppearanceApi }) {
 // under the accent row, so picking a swatch shows its effect immediately
 // without having to go find a button on another tab. All visuals are
 // `.hra-chrome-preview*` classes (index.css); the active pill reuses
-// `.hra-pill-active`, the same class the header/date-range/trend pills do.
+// `.hra-pill-active`, the header's own primary-nav-tab style (in-view mode
+// switches all moved to `.hra-segment`/`.hra-segment-item` instead, see
+// index.css's "harmonize switches" comment).
 function ChromePreviewStrip() {
   const { t } = useTranslation();
   return (
@@ -195,19 +178,21 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
   const current = appearance.settings?.unit_system;
   return (
     <div className="hra-row-wrap">
-      {UNIT_SYSTEM_OPTIONS.map(opt => {
-        const selected = current === opt.value;
-        return (
-          <button
-            key={opt.value}
-            className="hra-toggle-pill"
-            data-active={selected}
-            onClick={() => appearance.setUnits(opt.value)}
-          >
-            {t(`settings.units.${opt.value}`, opt.label)}
-          </button>
-        );
-      })}
+      <div className="hra-segment">
+        {UNIT_SYSTEM_OPTIONS.map(opt => {
+          const selected = current === opt.value;
+          return (
+            <button
+              key={opt.value}
+              className="hra-segment-item"
+              data-active={selected}
+              onClick={() => appearance.setUnits(opt.value)}
+            >
+              {t(`settings.units.${opt.value}`, opt.label)}
+            </button>
+          );
+        })}
+      </div>
       {current === "auto" && appearance.resolvedUnitSystem && (
         <span className="hra-text-muted" style={{ fontSize: 11 }}>
           {t("settings.units.currentlyNote", `currently: ${appearance.resolvedUnitSystem} (from your browser's locale — there's no direct way to read the OS's actual measurement-system setting)`, { system: appearance.resolvedUnitSystem })}
@@ -226,13 +211,13 @@ export function DateFormatPicker({ appearance }: { appearance: AppearanceApi }) 
   const { t } = useTranslation();
   const current = appearance.settings?.date_format;
   return (
-    <div className="hra-chip-row" style={{ gap: 8 }}>
+    <div className="hra-segment">
       {DATE_FORMAT_OPTIONS.map(opt => {
         const selected = current === opt.value;
         return (
           <button
             key={opt.value}
-            className="hra-toggle-pill"
+            className="hra-segment-item"
             data-active={selected}
             onClick={() => appearance.setDateFormat?.(opt.value)}
           >
@@ -382,10 +367,11 @@ export function SettingsTab({ appearance }: Props) {
           body::before: two radial accent/accent-glow washes over the theme
           base), which needs no per-user picking. See frontend.md's
           Appearance section.
-          Three stacked rows (not the earlier 2-column grid): theme type,
-          then accent (kept to one row — see AccentPicker), then the live
-          chrome preview strip, each full-width so the row itself reads as
-          one group rather than two side-by-side halves. */}
+          Two stacked rows (not the earlier 2-column grid, and no separate
+          accent row any more — each palette bakes its own fixed accent in,
+          see PalettePicker), then the live chrome preview strip, each
+          full-width so the row itself reads as one group rather than two
+          side-by-side halves. */}
       <AccordionCard title={t("settings.appearance.title", "Appearance")} expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
         <div style={{ marginBottom: 20 }}>
           <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>{t("settings.appearance.themeLabel", "Theme")}</div>
@@ -393,15 +379,9 @@ export function SettingsTab({ appearance }: Props) {
         </div>
         <div>
           <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
-            {t("settings.appearance.accentDescription", "Accent color — governs buttons, active pills, links and focus rings only; never chart/data colors")}
+            {t("settings.appearance.paletteDescription", "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.")}
           </div>
-          <AccentPicker appearance={appearance} />
-        </div>
-        <div style={{ marginTop: 20 }}>
-          <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
-            {t("settings.appearance.stylePackDescription", "Style pack — a full palette (background, borders, radius, shadows), independent of theme and accent")}
-          </div>
-          <StylePackPicker appearance={appearance} />
+          <PalettePicker appearance={appearance} />
         </div>
         <ChromePreviewStrip />
       </AccordionCard>
@@ -424,13 +404,13 @@ export function SettingsTab({ appearance }: Props) {
         <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
           {t("settings.activityDetails.description", "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.")}
         </p>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="hra-segment">
           {(["accordion", "modal"] as const).map(v => {
             const selected = saved?.activity_detail_view === v;
             return (
               <button
                 key={v}
-                className="hra-toggle-pill"
+                className="hra-segment-item"
                 data-active={selected}
                 onClick={() => setDetailView(v)}
               >

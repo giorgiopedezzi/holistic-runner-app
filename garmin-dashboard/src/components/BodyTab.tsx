@@ -42,18 +42,13 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
   const { t } = useTranslation();
   const [view, setView] = useState<"chart" | "table">("chart");
 
-  // Active/inactive visuals are .hra-pill-active/.hra-nav-pill (index.css) —
-  // same classes the header nav tabs use — not a computed style object.
-  const tabBtnClass = (isActive: boolean) =>
-    ["hra-pill", "hra-nav-pill", "hra-nav-pill--sm", "hra-nav-hover", isActive ? "hra-pill-active" : ""].filter(Boolean).join(" ");
-
   return (
     <div style={{ marginBottom: 24 }}>
       <div className="hra-row-between">
         <div className="hra-text-secondary" style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>
-        <div style={{ display: "flex", gap: 4 }}>
-          <button className={tabBtnClass(view === "chart")} onClick={() => setView("chart")}>{t("body.chart.chartView", "Chart")}</button>
-          <button className={tabBtnClass(view === "table")} onClick={() => setView("table")}>{t("body.chart.tableView", "Table")}</button>
+        <div className="hra-segment">
+          <button className="hra-segment-item" data-active={view === "chart"} onClick={() => setView("chart")}>{t("body.chart.chartView", "Chart")}</button>
+          <button className="hra-segment-item" data-active={view === "table"} onClick={() => setView("table")}>{t("body.chart.tableView", "Table")}</button>
         </div>
       </div>
 

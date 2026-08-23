@@ -207,10 +207,10 @@
           "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] },
           "min_trend_group_size": { "type": "integer" },
           "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] },
-          "accent_color": { "type": "string", "enum": ["teal", "violet", "magenta", "amber", "sky", "lime"] },
+          "accent_color": { "type": "string", "enum": ["sky", "amber"], "description": "Paired 1:1 with palette (sky=metal, amber=warm) — no longer independently settable, see the /palette endpoint." },
           "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
           "language": { "type": "string", "enum": ["auto", "en", "it"] },
-          "style_pack": { "type": "string", "enum": ["boomer", "genz", "millennial", "minimal"], "description": "Full-palette choice, orthogonal to theme/accent_color (HRA-119). 'boomer' is today's existing palette and the default." }
+          "palette": { "type": "string", "enum": ["metal", "warm"], "description": "Dashboard palette flavor, crossed with theme (dark/light) for 4 total looks. Replaces the earlier style_pack (HRA-119)." }
         }
       },
       "SyncResult": {
@@ -483,7 +483,7 @@
       "put": { "tags": ["settings"], "summary": "Set activity detail view (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/accent": {
-      "put": { "tags": ["settings"], "summary": "Set the accent color (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["accent_color"], "properties": { "accent_color": { "type": "string", "enum": ["teal", "violet", "magenta", "amber", "sky", "lime"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "put": { "tags": ["settings"], "summary": "Set the accent color (replace singleton)", "description": "No UI calls this any more (accent is now derived from palette) — endpoint kept functional for API completeness.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["accent_color"], "properties": { "accent_color": { "type": "string", "enum": ["sky", "amber"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/date-format": {
       "put": { "tags": ["settings"], "summary": "Set the date display format (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date_format"], "properties": { "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
@@ -491,11 +491,11 @@
     "/api/v1/settings/language": {
       "put": { "tags": ["settings"], "summary": "Set the UI language (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["language"], "properties": { "language": { "type": "string", "enum": ["auto", "en", "it"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
-    "/api/v1/settings/style-pack": {
+    "/api/v1/settings/palette": {
       "put": {
-        "tags": ["settings"], "summary": "Set the style pack (replace singleton, HRA-119)",
-        "description": "Full-palette choice, orthogonal to theme/accent_color. 'boomer' is today's existing palette and the default.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["style_pack"], "properties": { "style_pack": { "type": "string", "enum": ["boomer", "genz", "millennial", "minimal"] } } } } } },
+        "tags": ["settings"], "summary": "Set the dashboard palette (replace singleton)",
+        "description": "'metal' or 'warm', crossed with theme (dark/light) for 4 total looks. Replaces the earlier style_pack (HRA-119). Also updates accent_color to the paired value server-side.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["palette"], "properties": { "palette": { "type": "string", "enum": ["metal", "warm"] } } } } } },
         "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },

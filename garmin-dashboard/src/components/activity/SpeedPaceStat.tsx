@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Gauge } from "lucide-react";
 import { Card, Label } from "@/components/ui";
 import { fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
@@ -13,7 +14,13 @@ export function SpeedPaceStat({ avgSpeedMs, avgPaceMinKm }: { avgSpeedMs: number
   const { t } = useTranslation();
   return (
     <Card>
-      <Label style={{ marginBottom: 6 }}>{t("activity.stat.avgSpeedPace", "Avg speed / pace")}</Label>
+      {/* Same hra-stat-icon + Label shape Stat itself uses (ui/Stat.tsx) —
+          this card is bespoke (two values side by side) but its header
+          row should still read as one of the same family of badges. */}
+      <Label style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+        <span className="hra-stat-icon" aria-hidden="true"><Gauge size={18} color="var(--accent)" /></span>
+        {t("activity.stat.avgSpeedPace", "Avg speed / pace")}
+      </Label>
       <div style={{ display: "flex", gap: 14 }}>
         <div>
           <div className="hra-stat-value">{avgPaceMinKm != null ? fmtPace(avgPaceMinKm) : "—"}</div>

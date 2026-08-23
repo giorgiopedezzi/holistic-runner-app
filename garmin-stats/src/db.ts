@@ -182,11 +182,12 @@ export function initSchema(db: DatabaseSync): void {
       -- 'accordion' (default) expands an activity's detail inline in
       -- ActivitiesTab; 'modal' opens it as a popup (the original behavior).
       activity_detail_view          TEXT NOT NULL DEFAULT 'accordion',
-      -- Selectable --accent (HRA-95): one of a curated 6-name set (teal,
-      -- violet, magenta, amber, sky, lime) — see utils/accent.ts for the
-      -- fixed hex + WCAG-verified --on-accent per name. 'sky' is the closest
-      -- match to the --accent-blue every theme was seeded to in HRA-94, so
-      -- existing installs see the smallest possible jump on upgrade.
+      -- Narrowed to 2 values (dashboard design-system rework): 'sky' (blue,
+      -- paired with palette='metal') or 'amber' (paired with palette='warm').
+      -- No longer independently user-choosable — updatePalette() writes both
+      -- columns together so they always agree; kept as its own column rather
+      -- than derived, so the data model still records "which accent" without
+      -- a picker UI able to set it out of step with palette.
       accent_color                  TEXT NOT NULL DEFAULT 'sky',
       -- How every displayed date is formatted app-wide (utils/fmt.ts's
       -- fmtDate on the frontend) — one of 'numeric_uk' (23/03/2026),
@@ -200,13 +201,14 @@ export function initSchema(db: DatabaseSync): void {
       -- 'auto' idiom as unit_system above — plus the two concrete supported
       -- codes ('en'/'it'). Independent of date_format/unit_system.
       language                      TEXT NOT NULL DEFAULT 'auto',
-      -- HRA-119: full-palette "style pack" — orthogonal to theme (dark/light)
-      -- and accent_color (the 6 curated hues). 'boomer' is today's existing
-      -- palette (index.css's own base block) and the default, so existing
-      -- installs see no visual change until a user explicitly picks a
-      -- different pack. Applied via a data-style-pack attribute (index.css),
-      -- compounded with data-theme — see docs/frontend.md's Appearance section.
-      style_pack                    TEXT NOT NULL DEFAULT 'boomer',
+      -- Dashboard design-system rework: 'metal' (cold/technical/minimal) or
+      -- 'warm' (amber/premium/expressive), crossed with theme (dark/light)
+      -- for 4 total looks. Replaces the earlier 4-way style_pack (HRA-119:
+      -- boomer/genz/millennial/minimal) entirely — that axis is gone, not
+      -- kept alongside this one. Applied via a data-palette attribute
+      -- (index.css), compounded with data-theme — see docs/frontend.md's
+      -- Appearance section.
+      palette                       TEXT NOT NULL DEFAULT 'metal',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
@@ -474,8 +476,11 @@ export function initSchema(db: DatabaseSync): void {
   if (!settingsCols.some(c => c.name === "language")) {
     db.exec("ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto'");
   }
-  if (!settingsCols.some(c => c.name === "style_pack")) {
-    db.exec("ALTER TABLE settings ADD COLUMN style_pack TEXT NOT NULL DEFAULT 'boomer'");
+  if (!settingsCols.some(c => c.name === "palette")) {
+    db.exec("ALTER TABLE settings ADD COLUMN palette TEXT NOT NULL DEFAULT 'metal'");
+  }
+  if (settingsCols.some(c => c.name === "style_pack")) {
+    db.exec("ALTER TABLE settings DROP COLUMN style_pack");
   }
 
   // HRA-113: approval gate columns, added after plan_templates/plan_instances
@@ -682,7 +687,7 @@ export interface SettingsRow {
   accent_color: string;
   date_format: string;
   language: string;
-  style_pack: string;
+  palette: string;
 }
 
 // ── Typed param builders ──────────────────────────────────────────────────

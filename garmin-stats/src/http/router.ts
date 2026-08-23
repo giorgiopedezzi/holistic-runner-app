@@ -112,7 +112,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/accent")          return await settings.updateAccent(req, res, url);
         if (route === "/api/v1/settings/date-format")     return await settings.updateDateFormat(req, res, url);
         if (route === "/api/v1/settings/language")        return await settings.updateLanguage(req, res, url);
-        if (route === "/api/v1/settings/style-pack")      return await settings.updateStylePack(req, res, url);
+        if (route === "/api/v1/settings/palette")         return await settings.updatePalette(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);

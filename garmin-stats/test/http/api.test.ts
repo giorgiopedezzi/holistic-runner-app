@@ -152,13 +152,13 @@ test("DELETE /api/v1/activities?from&to soft-deletes a whole range", async () =>
 test("GET /api/v1/settings returns the seeded singleton with defaults", async () => {
   await withServer(async (s) => {
     const row = (await s.api("/api/v1/settings")).json as {
-      theme: string; unit_system: string; outlier_speed_delta_per_sec: number; min_trend_group_size: number; style_pack: string;
+      theme: string; unit_system: string; outlier_speed_delta_per_sec: number; min_trend_group_size: number; palette: string;
     };
     assert.equal(row.theme, "auto");
     assert.equal(row.unit_system, "auto");
     assert.equal(row.outlier_speed_delta_per_sec, 2.0);
     assert.equal(row.min_trend_group_size, 5);
-    assert.equal(row.style_pack, "boomer");
+    assert.equal(row.palette, "metal");
   });
 });
 
@@ -181,13 +181,15 @@ test("PUT /api/v1/settings/theme persists a valid theme and rejects an invalid o
   });
 });
 
-test("PUT /api/v1/settings/style-pack persists a valid pack and rejects an invalid one", async () => {
+test("PUT /api/v1/settings/palette persists a valid palette (and its paired accent) and rejects an invalid one", async () => {
   await withServer(async (s) => {
-    const ok = await s.api("/api/v1/settings/style-pack", putJson({ style_pack: "genz" }));
+    const ok = await s.api("/api/v1/settings/palette", putJson({ palette: "warm" }));
     assert.equal(ok.status, 200);
-    assert.equal((ok.json as { style_pack: string }).style_pack, "genz");
+    const okBody = ok.json as { palette: string; accent_color: string };
+    assert.equal(okBody.palette, "warm");
+    assert.equal(okBody.accent_color, "amber");
 
-    const bad = await s.api("/api/v1/settings/style-pack", putJson({ style_pack: "hipster" }));
+    const bad = await s.api("/api/v1/settings/palette", putJson({ palette: "hipster" }));
     assert.equal(bad.status, 422); // validation failure (parsed OK, breaks the rule) — HRA-37
   });
 });

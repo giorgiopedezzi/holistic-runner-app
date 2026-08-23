@@ -24,7 +24,7 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   accent_color: "sky",
   date_format: "literal_uk",
   language: "auto",
-  style_pack: "boomer",
+  palette: "metal",
   ...overrides,
 });
 

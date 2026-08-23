@@ -182,14 +182,54 @@ section; two different UX patterns fill each section's content, deliberately not
 All persist in the SQLite `settings` table rather than `localStorage` (see Stack & constraints above) — the pattern to follow for any future global setting.
 
 ## Appearance (theming + automatic ambient glow)
-- **2 predefined themes** (`dark`, `light`, `types/api.ts`'s `THEME_NAMES` — narrowed from 4 by dropping `dark-blue`/`light-warm`), each a full `[data-theme="…"] { --bg, --bg-surface, --bg-card, --border, --border-strong, --text-primary/secondary/muted, --accent-green/blue/red/orange, color-scheme }` block in `index.css`. `:root` itself duplicates the `dark` theme's values directly (not just a fallback) so the very first paint — before `useAppearance()`'s `GET /api/settings` resolves — still looks right; there's no earlier client-side value to flash from since this app has no localStorage. A settings row persisted under a since-retired theme name falls back to resolving as if `'auto'` were selected — see `resolveTheme()`.
-- **`--text-muted` and `--accent-green` were contrast-corrected** in both themes after real-world use surfaced them as too low-contrast (measured ~2.9-3.1:1 against their own theme's `--bg`, well under a readable ~4.5:1) — the dark theme's versions were lightened, the light theme's darkened. See the CSS design tokens section below for the actual values and the reasoning.
-- **`'auto'` is no longer a user-selectable value** — `ThemePicker` only offers Dark/Light, and `setTheme`'s type narrowed to `Theme` (no `StoredTheme`) so the client literally cannot write it again. It survives purely as the DB column's internal default/sentinel: a settings row that was never explicitly set (a fresh install's default row, or an existing install that predates this change) still reads back as `'auto'` on `GET`, and `useAppearance.ts`'s `resolveTheme()` treats that — and any other non-`'dark'`/`'light'` value, e.g. a retired theme name — identically: resolve from the OS's `prefers-color-scheme` at render time (the one appearance signal a web page can read directly, unlike measurement system below), live, via a `matchMedia("(prefers-color-scheme: dark)")` change listener, no reload needed. Once a user clicks either swatch, that install's row holds a real `'dark'`/`'light'` value from then on and OS-following stops. `ThemePicker` still highlights whichever swatch matches `resolvedTheme` while no explicit choice is stored, so the picker shows what's currently in effect even with nothing "selected" by name.
-- **Only general UI chrome is themed.** Chart-specific colors defined in TS (`ActivityModal.tsx`'s `METRIC_DEFS`, `SPORT_COLOR`, `BodyTab.tsx`'s per-metric hexes) were validated specifically against the dark `--bg-card` surface (see the Body metrics chart section below) and are **not** re-validated per theme — they still render on light themes, just without a fresh contrast pass. A real follow-up task if the light themes see much use.
-- **`useAppearance()`** (`hooks/useAppearance.ts`) fetches the full `settings` row once, applies `theme` (resolved) as a `data-theme` attribute on `<html>` and `unit_system` (resolved) to `utils/units.ts`'s module state, then exposes `setTheme`/`setUnits`/`setAccentColor` — each updates the backend *and* immediately re-applies, so `SettingsTab` and the actual document never drift out of sync. Also exposes `resolvedTheme`/`resolvedUnitSystem` (the concrete values after resolving `'auto'`) for `SettingsTab`'s live previews. Lifted to `App.tsx` (not fetched again per-tab) so appearance applies regardless of which tab is open, and passed down to `SettingsTab` as a prop.
-- **Style packs — 4 full-palette CSS variants, orthogonal to theme (HRA-119).** `settings.style_pack` (`'boomer' | 'genz' | 'millennial' | 'minimal'`, default `'boomer'`) is applied as a `data-style-pack` attribute on `<html>`, compounding with `data-theme` — `index.css`'s `:root[data-style-pack="genz"][data-theme="dark"]` etc. `'boomer'` is the original, unscoped `:root[data-theme="…"]` block (unchanged, so an unset/default row renders exactly as before this Story). The other three packs were originally four sibling files (`index-genz.css`, `index-millenial.css` [sic — filename typo, deliberately left alone, out of this Story's scope], `index-minimal.css`, plus a `boomer` file identical to `index.css`) that were never wired into the app; HRA-119 merged their variable blocks *and* their ~15 structural selector overrides (`.card`, `.hra-pill-active`, `:focus-visible`, `body::before/after`, etc. — not just variables, despite the Story's literal wording only naming "the CSS variable block") into `index.css` under the `data-style-pack` scoping, then deleted the four dead files.
-- **Root cause of the pre-existing "accent picker doesn't work under non-Boomer packs" bug**: `setAccentColor` applies the chosen accent via `document.documentElement.style.setProperty("--accent", …)` — an inline style, which normally beats any stylesheet rule regardless of selector specificity, with exactly one exception: `!important`. Every non-Boomer pack's hand-authored CSS hardcoded `--accent`/`--on-accent` with `!important`, silently defeating the picker under those packs alone (Boomer never set `!important` on these two, so it was never affected). Fix: removed `!important` from `--accent`/`--on-accent` in all three non-Boomer packs — the accent picker now works identically under all 4 packs. (An unrelated `!important` on `.hra-nav-hover:hover`'s `border-color` was deliberately left in each pack — the Story's fix was scoped to the two accent variables, not every `!important` in the file.)
-- **Contrast re-verification surfaced two genuine pre-existing defects**, not previously caught: Millennial's and Minimal's `--text-muted` failed WCAG AA (≥4.5:1) against `--bg-card` in both themes (as low as 3.23:1). Corrected via HSL lightness adjustment (same hue/saturation, minimum shift to clear 4.5:1): Millennial dark `#8f8677`→`#948b7d`, Millennial light `#948b7d`→`#7d7467`, Minimal dark `#7d7d7d`→`#818181`, Minimal light `#8f8f8f`→`#767676`. GenZ and Boomer already passed without correction. The curated accent picker's 6 accents' `--on-accent` vs `--accent` pairs are pack-invariant (unaffected by which pack is active) and were re-confirmed passing.
+- **4 themes — Theme (`dark`/`light`) crossed with Palette (`metal`/`warm`)** — dashboard design-system
+  rework, replacing the earlier 2-theme + StylePack (HRA-119) system entirely. Each combination is a
+  full `:root[data-theme="…"][data-palette="…"] { --bg, --bg-surface, --bg-card, --border,
+  --border-strong, --text-primary/secondary/muted, --accent, --on-accent, --accent-green/blue/red/
+  orange, color-scheme }` block in `index.css`. `--accent` is now baked directly into each of the 4
+  blocks (an exact fixed hex per theme×palette — steel blue for Metal, amber/gold for Warm) rather than
+  a separately user-selectable value — see the AccentColor note below. `:root` itself duplicates Dark
+  Metal's values directly (not just a fallback, the same reasoning as before) since it's the default/
+  primary theme, so the very first paint — before `useAppearance()`'s `GET /api/settings` resolves —
+  still looks right.
+- **Palette is the new user-facing choice; Theme still exists alongside it.** `types/api.ts`'s
+  `Palette` (`'metal' | 'warm'`) is applied as a `data-palette` attribute on `<html>`, compounding with
+  the existing `data-theme` attribute — `SettingsTab`'s `PalettePicker` (2 swatches, same visual
+  language as `ThemePicker`'s) replaces the earlier `StylePackPicker` entirely. `'metal'` is the
+  default (cold/technical/minimal), matching Dark Metal's status as the primary theme.
+- **AccentColor is no longer an independent user choice.** The earlier 6-hue curated `AccentPicker`
+  (HRA-95) is gone — each theme×palette combination now bakes in its own exact accent. `AccentColor`
+  (`'sky' | 'amber'`) still exists as a `Settings` field, narrowed to the 2 values paired 1:1 with
+  Palette (`sky`=metal, `amber`=warm) — the backend's `updatePalette` writes both columns together so
+  they can never drift apart, but nothing in the frontend reads `accent_color` for rendering any more;
+  `useAppearance.ts` no longer sets `--accent`/`--on-accent` from JS at all (no more inline-style vs.
+  stylesheet specificity fight to reason about).
+- **`--text-muted` and `--accent-green` were contrast-corrected** in the original 2-theme system after
+  real-world use surfaced them as too low-contrast — see the CSS design tokens section below for the
+  values that carried forward into the 4-theme system's Metal variants.
+- **`'auto'` is no longer a user-selectable Theme value** — `ThemePicker` only offers Dark/Light, and
+  `setTheme`'s type narrowed to `Theme` (no `StoredTheme`) so the client literally cannot write it
+  again. It survives purely as the DB column's internal default/sentinel: a settings row that was never
+  explicitly set still reads back as `'auto'` on `GET`, and `useAppearance.ts`'s `resolveTheme()` treats
+  that — and any other non-`'dark'`/`'light'` value, e.g. a retired theme name — identically: resolve
+  from the OS's `prefers-color-scheme` at render time, live, via a `matchMedia("(prefers-color-scheme:
+  dark)")` change listener, no reload needed. `ThemePicker` still highlights whichever swatch matches
+  `resolvedTheme` while no explicit choice is stored.
+- **Only general UI chrome is themed.** Chart-specific colors defined in TS (`ActivityModal.tsx`'s
+  `METRIC_DEFS`, `SPORT_COLOR`, `BodyTab.tsx`'s per-metric hexes) were validated specifically against
+  the dark `--bg-card` surface and are **not** re-validated per theme — they still render on light
+  themes, just without a fresh contrast pass. Pace and HR are the one deliberate exception: their
+  gradients (`shared.ts`'s `SPEED_COLOR_STOPS`/`HR_COLOR_STOPS`, see the Activity detail chart section)
+  are fixed and theme-invariant BY DESIGN (dashboard design-system rework, sections 4/7) — identical
+  across all 4 themes, never derived from `--accent`.
+- **`useAppearance()`** (`hooks/useAppearance.ts`) fetches the full `settings` row once, applies
+  `theme` (resolved) as `data-theme` and `palette` as `data-palette` on `<html>`, and `unit_system`
+  (resolved) to `utils/units.ts`'s module state, then exposes `setTheme`/`setUnits`/`setPalette` — each
+  updates the backend *and* immediately re-applies, so `SettingsTab` and the actual document never
+  drift out of sync. `setAccentColor` still exists on the hook (kept as inert plumbing, matching the
+  narrowed-but-still-present `accent_color` field) but no UI calls it. Lifted to `App.tsx` (not fetched
+  again per-tab) so appearance applies regardless of which tab is open, and passed down to
+  `SettingsTab` as a prop.
 - ** Automatic ambient glow, not a background picture (corrected 2026-08-16, then again 2026-08-17 — supersedes the earlier per-user picker). The old SettingsTab.tsx "Background picture" gallery (BackgroundPicker, bundled presets + custom upload, --bg-image) is gone: useAppearance.ts no longer computes or sets --bg-image, and index.css's body::before paints ONE page-sized single-hue radial ramp — radial-gradient(135% 135% at 0% 0%, color-mix(accent 8%, --bg) 0%, --bg 46%, color-mix(black 30%, --bg) 100%) — lighter at the top-left, darker toward the bottom-right, per the approved soft-ambient render. The brief 2026-08-16 two-glow version (accent + fixed cyan --accent-glow) was replaced the next day: two independent hues read as "two colors", the user asked for one accent-derived ramp. --accent-glow itself was removed from :root on 2026-08-17 when .hra-pill-active went monochromatic (--accent → --accent-light), leaving nothing that references it. CSS-only, no JS, no per-user setting; follows theme + accent automatically via var(), nothing to persist. types/api.ts's background_kind/background_value fields and their backend routes were left in place — removing the API contract itself is Epic HRA-36's job — but nothing in the frontend calls them anymore.
 - **The two mix percentages in that gradient (and `.card`'s own matching radial) are `:root` custom
   properties, not literals baked into the formula** — `--ambient-accent-mix`/`--ambient-dark-mix` for
@@ -197,8 +237,8 @@ All persist in the SQLite `settings` table rather than `localStorage` (see Stack
   noticeably higher values than dark theme's: the same 8%/9% accent concentration that reads clearly
   against a near-black `--bg`/`--card-bg` barely registers against a near-white one, which used to make
   the light theme's ambient glow and card tint look the same regardless of the chosen accent — fixed by
-  raising the percentages per-theme (`:root[data-theme="light"]`), not by changing the gradient formula
-  itself, which stays identical between themes.
+  raising the percentages per-theme (set identically in both `:root[data-theme="light"][data-palette="…"]`
+  blocks), not by changing the gradient formula itself, which stays identical between themes.
 - **`.hra-runner-playbtn` (the Play/Stop controls above an activity's chart, `ActivityChartSection.tsx`)
   is themed via `var(--text-primary)`, not a literal `white`** — dark theme's `--text-primary` is
   near-white (`#e8eaf0`, same look as before the fix), light theme's is near-black (`#1a1d27`), so the
@@ -351,6 +391,27 @@ shape for a *specific* card, that is very likely a misunderstanding, not a delib
    period's own numbers with no computed delta anywhere on the tab; overlap mode shows deltas
    everywhere. A card that decides this on its own (e.g. always showing a delta regardless of mode)
    is a bug, not a valid alternate reading.
+6. **Every `Stat`'s leading icon is `size={18}`**, app-wide (dashboard design-system rework,
+   "harmonize badges" — raised from 14 in the same pass; `GraphKpiCard`'s own icon stays a separate,
+   deliberately smaller 16, per its own "smaller/plainer than Stat" design). Applies equally to the
+   activity detail view's `StatGrid` (`ActivityDetailBody.tsx`) and `SpeedPaceStat.tsx` — those ten
+   badges had no icon at all before this pass; every one now follows the Icon coloring rule above.
+
+### ⚠️ Segmented switches (binding, whole app)
+**Every in-view mode toggle uses `.hra-segment`/`.hra-segment-item` (index.css)** — dashboard
+design-system rework, "harmonize switches". One joined pill per switch (the container clips its
+children to a capsule shape, so the first/last segment is rounded at its outer edge only and every
+middle segment is a plain rectangle, with no gap between segments), never a row of independently-
+bordered pills. Covers: Overview's Overlap/Distinct, Single/Week/Month, and Match order/Match by time;
+Body tab's Chart/Table; Settings' Units/Date format/Activity detail view pickers; the plan-instance
+pace-mode picker; and the activity detail chart's Speed/Pace and Distance/Time switches (both were
+previously bespoke inline styles, now the same shared class). `--segment-color` is the one
+per-instance hook (defaults to `--accent`) — Speed/Pace is the one switch that overrides it, tinting
+to the metric's own color (`METRIC_DEFS.speed.color`) instead of the app accent. **The header's own
+primary nav tabs (`App.tsx`) deliberately keep `.hra-pill`/`.hra-pill-active`** (the louder
+gradient+glow identity) — that's page navigation, not an in-view switch, and the two are intentionally
+different controls. The earlier `.hra-toggle-pill`/`.hra-nav-pill--sm`/`.hra-segmented-group` classes
+are gone — replaced entirely, not kept alongside the new one.
 
 **The "compare to" range drives every comparison on this tab** (Hero Ring's outer ring, Total/Running/
 By-sport tooltips, AND each sport's second trend chart below) — one `prevActivitiesQ` fetch, reused for
@@ -487,22 +548,26 @@ mode produced it.
 `OverviewTab`, `ActivitiesTab`, and `BodyTab` all distinguish two different "nothing to show" cases instead of one generic message: no data *at all* yet (nothing synced) vs. no data *in the currently-selected range* (data exists, just not here). `RangeEmpty` (`ui.tsx`) takes the entity's overall min/max date (`GET /api/range` / `GET /api/body/range`, fetched once per tab via its own `useQuery(..., [])`) plus the current `from`/`to`, and picks the message: `range.min_date == null` → "No {entity} yet — sync some data from the Data & Sync tab"; otherwise → "No {entity} in the selected range (X to Y). Data available from {min_date} to {max_date}." Generic `Empty` (no range awareness) is still used for everything else that isn't a range query (e.g. `OverviewTab`'s per-sport "too few activities" message above, `BodyTab`'s correlation-chart empty state).
 
 ## CSS design tokens
+Per-theme×palette values (dashboard design-system rework — see the Appearance section above for the
+full rationale). `--accent`/`--accent-green`/`--accent-red` differ per block; `--accent-blue` and
+`--accent-orange` are close-but-tuned-per-block too. See `index.css`'s 4
+`:root[data-theme="…"][data-palette="…"]` blocks for the authoritative values — this table is a quick
+reference, not a duplicate source of truth:
 ```
---accent-green: #17a06c (dark) / #087a52 (light)   distance, positive
---accent-blue:  #3a8ef5   weight, info
---accent-red:   #e24b4a   HR, danger, delete
---accent-orange:#f59e0b   body fat, cadence
+Dark Metal:  --accent #3B82F6  --accent-green #22C55E  --accent-red #EF4444  --accent-orange #f59e0b
+Dark Warm:   --accent #F59E0B  --accent-green #22C55E  --accent-red #EF4444  --accent-orange #d97706
+Light Metal: --accent #2563EB  --accent-green #16A34A  --accent-red #DC2626  --accent-orange #d97706
+Light Warm:  --accent #F59E0B  --accent-green #22C55E  --accent-red #D14343  --accent-orange #b45309
 ```
 
-**Two further token families were added on top of the above (HRA-94, Design System Foundation), each with its own `@theme inline` mapping in `index.css` so they're usable both as `var(--x)` and as Tailwind utility classes (`bg-accent`, `text-data-pace`, …):**
+**Two further token families sit on top of the above (HRA-94, Design System Foundation), each with its own `@theme inline` mapping in `index.css` so they're usable both as `var(--x)` and as Tailwind utility classes (`bg-accent`, `text-data-pace`, …):**
 
-- **Fixed semantic data colors** — `--data-pace` (`#15965f`), `--data-hr` (`#e24b4a`), `--data-elev` (`#3a8ef5`), `--data-weight` (`#3a8ef5`), `--data-fat` (`#d97706`), `--data-muscle` (`#15965f`). Same metric = same color everywhere; these do **not** vary per theme, mirroring the existing chart-color precedent above (`METRIC_DEFS`, `PACE_LINE_COLOR`, `domain/body-metrics.ts` — see "Body metrics chart" and "Activity detail chart"). Declared once in bare `:root` (inherited regardless of `data-theme`), not repeated per theme block. **Not yet wired into any component** — existing chart files still hold their own literal hex per the docs above; a future story (HRA-97, Data Visualization Upgrade) is where chart code switches to referencing these tokens instead of repeating the literals.
-- **Selectable `--accent`** — one per theme (`dark`/`dark-blue`/`light`/`light-warm`), each currently seeded to that theme's own `--accent-blue` (`var(--accent-blue)`, not a new literal) so introducing the token changed no rendered pixel. Meant to govern interactive chrome only (buttons, active pills, links, rings, focus) once wired — but the actual picker UI and the rewiring of `a`/`input:focus`/etc. off their hardcoded `--accent-blue` onto `--accent` is **HRA-95's job, not this story's**; HRA-94 only builds the token and seeds it to a value that preserves today's look.
+- **Fixed semantic data colors** — `--data-pace` (`#4A8FC7`), `--data-hr` (`#C92F3D`), `--data-elev` (`#3a8ef5`), `--data-weight` (`#3a8ef5`), `--data-fat` (`#d97706`), `--data-muscle` (`#15965f`). Same metric = same color everywhere; these do **not** vary per theme — declared once in bare `:root`, not repeated per theme×palette block. `--data-pace`/`--data-hr` are each their ramp's fastest/highest anchor (the actual continuous gradients live in `components/activity/shared.ts`'s `SPEED_COLOR_STOPS`/`HR_COLOR_STOPS`, see the Activity detail chart section) and are deliberately theme-invariant by design (dashboard design-system rework sections 4/7) — never derived from `--accent`, unlike the chrome tokens above. `--data-hr` is deliberately its own red, distinct from `--accent-red` (system danger) — see section 8.
+- **`--accent`** now governs interactive chrome only (buttons, active pills, links, rings, focus) and is fixed per theme×palette block (see the table above) — no longer independently user-selectable (the HRA-95 `AccentPicker` was removed in the dashboard design-system rework; see the Appearance section).
 
 **Tailwind v4 + shadcn/ui setup**: `@tailwindcss/vite` plugin in `vite.config.ts`, `@import "tailwindcss";` at the top of `index.css`, `components.json` at the `garmin-dashboard/` root (style `new-york`, `cssVariables: true`, baseColor `zinc`), and `src/lib/utils.ts`'s `cn()` (clsx + tailwind-merge) for the `shadcn` CLI to target when later stories start adding components. No `tailwind.config.*` file — v4 is CSS-first, all configuration lives in `index.css`'s `@theme` block.
-`--text-muted` and `--accent-green` are the two tokens that needed contrast correction after the 4-theme system shipped: WCAG contrast against their own theme's `--bg` came out to ~2.9-3.1:1 for `dark`'s and `light`'s `--text-muted`, and ~3.1:1 for `light`'s `--accent-green` — all noticeably below a readable ~4.5:1 target (`dark`'s `--accent-green` measured fine at ~6.9:1 already, but was still perceptually "too dark"/muddy, so it was brightened too). Fixed by lightening both tokens in the two dark themes (`dark`, `dark-blue`) and darkening both in the two light themes (`light`, `light-warm`), each re-checked to land at ≥4.5:1 against its own theme's `--bg`. See `index.css` for the actual per-theme hex values (they differ per theme, unlike the other CSS-var-driven chart colors above which are effectively theme-agnostic named constants here).
 
-**`dark`'s `--accent-green` was retuned again (2026-08-06)**, from `#26cc8c` to `#17a06c` — real-world use found the brightened value from the fix above had overshot: at `vsBg=9.07:1` it read noticeably more vivid/dominant than `--accent-red` (`4.80:1`) and `--accent-blue` (`5.72:1`) at their own default lightness, so the three accents didn't feel like one consistent set. `#17a06c` lands at `vsBg=5.64:1` — close to red/blue's own numbers, still comfortably ≥4.5:1 against both `--bg` and `--bg-card` (4.69:1, used for `Stat`'s `accent` text). Separately, **buttons filled with `--accent-green` now use `color: var(--bg)` instead of hardcoded `color: "#fff"`** for their label (`ManageTab.tsx`'s three sync buttons, `SettingsTab.tsx`'s Save button) — white-on-`#17a06c` only manages `3.34:1`, under the readable threshold, and darkening green further to fix that would have undone the "balanced with red/blue" goal above. `var(--bg)` sidesteps the tradeoff entirely and happens to work in both directions: dark themes' `--bg` is near-black (good dark text on a mid-brightness green), light themes' `--bg` is near-white (good light text on light themes' already-dark green, e.g. `light`'s `#087a52`) — verified ≥4.5:1 (4.96–11.28:1) across all 4 themes without per-theme special-casing.
+**Typography scale (dashboard design-system rework)** — 6 sizes app-wide, `--fs-display`(22px)/`--fs-heading`(18px)/`--fs-body`(15px)/`--fs-data`(16px)/`--fs-label`(13px)/`--fs-meta`(11px), each paired with an `--fw-*` weight (600/600/400/600/500/400). Applied throughout `index.css`'s own classes (KPI values, labels, buttons, tooltips, etc.); hierarchy comes from weight/spacing, not from adding more sizes. Literal font-size/font-weight values inside individual component TSX files (inline styles) are a separate, later sweep — not yet done.
 
 Per-instance custom-property hooks declared in :root (2026-08-17) — --swatch-color (default var(--accent)), --kpi-color (default var(--text-primary)), --legend-color (default var(--text-secondary)). Components set them inline only where a value is genuinely per-instance; declaring them with defaults keeps every var() reference valid CSS without the inline hook and lets IDE inspection (WebStorm) resolve the names (it previously warned on all three).
 --accent-glow removed (2026-08-17) — the fixed cyan pairing token existed for the two-glow ambient and the pill's second gradient stop; both went single-hue/monochromatic on 2026-08-17, so the token was deleted. --accent-light now serves both the hero ring (--accent-strong → --accent-light) and the active pill gradient.

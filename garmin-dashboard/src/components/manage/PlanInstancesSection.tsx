@@ -263,9 +263,9 @@ export function PlanInstancesSection() {
         </label>
 
         <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 6 }}>{t("manage.planInstances.paceLabel", "Pace")}</div>
-        <div className="hra-row-wrap" style={{ marginBottom: 10 }}>
-          <button className="hra-toggle-pill" data-active={paceMode === "goalTime"} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
-          <button className="hra-toggle-pill" data-active={paceMode === "anchor"} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
+        <div className="hra-segment" style={{ marginBottom: 10 }}>
+          <button className="hra-segment-item" data-active={paceMode === "goalTime"} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
+          <button className="hra-segment-item" data-active={paceMode === "anchor"} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
         </div>
 
         {paceMode === "goalTime" ? (

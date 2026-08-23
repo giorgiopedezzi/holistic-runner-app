@@ -266,11 +266,12 @@ export type StoredUnitSystem = "metric" | "imperial" | "auto";
 // ActivitiesTab; 'modal' opens it as a popup (the original behavior).
 export type ActivityDetailView = "accordion" | "modal";
 
-// Curated selectable-accent set (HRA-95) — governs interactive chrome only
-// (buttons, active pills, links, rings, focus), never --data-* colors. See
-// utils/accent.ts for the fixed hex + WCAG-verified --on-accent per name.
-export type AccentColor = "teal" | "violet" | "magenta" | "amber" | "sky" | "lime";
-export const ACCENT_COLOR_NAMES: AccentColor[] = ["teal", "violet", "magenta", "amber", "sky", "lime"];
+// Narrowed to the 2 values paired 1:1 with Palette below (dashboard
+// design-system rework) — no independent picker any more; the backend keeps
+// them in lockstep (sky=metal, amber=warm). Governs interactive chrome only
+// (buttons, active pills, links, rings, focus), never --data-* colors.
+export type AccentColor = "sky" | "amber";
+export const ACCENT_COLOR_NAMES: AccentColor[] = ["sky", "amber"];
 
 // How every displayed date is formatted app-wide (utils/fmt.ts's fmtDate) —
 // style (numeric vs literal) × region (uk vs us). See utils/dateFormat.ts for
@@ -293,14 +294,13 @@ export type Language = "en" | "it" | "fr" | "de" | "es" | "ja";
 export const LANGUAGE_NAMES: Language[] = ["en", "it", "fr", "de", "es", "ja"];
 export type StoredLanguage = Language | "auto";
 
-// Full-palette "style pack" (HRA-119) — orthogonal to Theme (dark/light) and
-// AccentColor (the 6 curated hues) above: a whole different set of --bg/
-// --border/--radius/--card-shadow/etc. tokens, applied via a data-style-pack
-// attribute (index.css), compounded with the existing data-theme attribute.
-// 'boomer' is today's existing palette and the default, so existing installs
-// see no visual change until a user explicitly picks a different pack.
-export type StylePack = "boomer" | "genz" | "millennial" | "minimal";
-export const STYLE_PACK_NAMES: StylePack[] = ["boomer", "genz", "millennial", "minimal"];
+// Dashboard palette flavor — 'metal' (cold/technical/minimal) or 'warm'
+// (amber/premium/expressive), crossed with Theme (dark/light) above for 4
+// total looks. Applied via a data-palette attribute (index.css), compounded
+// with the existing data-theme attribute. Replaces the earlier 4-way
+// StylePack (HRA-119: boomer/genz/millennial/minimal) entirely.
+export type Palette = "metal" | "warm";
+export const PALETTE_NAMES: Palette[] = ["metal", "warm"];
 
 export interface Settings {
   outlier_speed_delta_per_sec:   number;
@@ -317,7 +317,7 @@ export interface Settings {
   accent_color: AccentColor;
   date_format: DateFormat;
   language: StoredLanguage;
-  style_pack: StylePack;
+  palette: Palette;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────
@@ -399,12 +399,12 @@ export function classificationStatus(a: {
 
 export type Sport = "running" | "cycling" | "walking" | "hiking" | "swimming" | "other";
 
-export const SPORT_COLOR: Record<string, string> = {
-  running:          "#1db87a",
-  cycling:          "#3a8ef5",
-  walking:          "#f59e0b",
-  swimming:         "#06b6d4",
-  hiking:           "#84cc16",
-  fitness_equipment:"#a855f7",
-  other:            "#6b7280",
+export const SPORT_COLOR_DARK: Record<string, string> = {
+  running:           "#2FAF7F", // emerald
+  cycling:           "#4B8CCF", // steel blue
+  walking:           "#C9953E", // muted amber
+  swimming:          "#3BA6B8", // deep cyan
+  hiking:            "#789B43", // olive
+  fitness_equipment: "#8D62B8", // muted violet
+  other:             "#66717D", // steel grey
 };

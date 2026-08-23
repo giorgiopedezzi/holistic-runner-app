@@ -22,9 +22,9 @@ import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 const THEME_NAMES = ["dark", "light"];
 const UNIT_SYSTEMS = ["metric", "imperial", "auto"];
 const DETAIL_VIEWS = ["accordion", "modal"];
-// Curated selectable-accent set (HRA-95) — see garmin-dashboard's
-// utils/accent.ts for the fixed hex + WCAG-verified --on-accent per name.
-const ACCENT_COLORS = ["teal", "violet", "magenta", "amber", "sky", "lime"];
+// Narrowed to the 2 values paired 1:1 with palette (dashboard design-system
+// rework) — no longer independently user-choosable, see updatePalette below.
+const ACCENT_COLORS = ["sky", "amber"];
 // Style (numeric/literal) × region (uk/us) — see db.ts's date_format column
 // comment and garmin-dashboard's utils/dateFormat.ts for what each renders as.
 const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
@@ -32,10 +32,13 @@ const DATE_FORMATS = ["numeric_uk", "numeric_us", "literal_uk", "literal_us"];
 // (garmin-dashboard's i18n.ts) — same writable-'auto' idiom as unit_system,
 // unlike theme. 'en'/'it' are the two bundles under garmin-stats/locales/.
 const LANGUAGES = ["auto", "en", "it", "fr", "de", "es", "ja"];
-// Full-palette style pack (HRA-119) — orthogonal to theme/accent_color.
-// 'boomer' is today's existing palette and the default. See db.ts's
-// style_pack column comment and docs/frontend.md's Appearance section.
-const STYLE_PACKS = ["boomer", "genz", "millennial", "minimal"];
+// Dashboard design-system rework — 'metal' or 'warm', crossed with theme
+// (dark/light) for 4 total looks. Replaces the earlier style_pack axis
+// entirely. See db.ts's palette column comment and docs/frontend.md's
+// Appearance section.
+const PALETTES = ["metal", "warm"];
+// palette -> its paired accent_color (see db.ts's accent_color comment).
+const PALETTE_ACCENT: Record<string, string> = { metal: "sky", warm: "amber" };
 const IMAGE_EXT_MIME: Record<string, string> = {
   jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif",
 };
@@ -147,12 +150,12 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  const updateStylePack: Handler = async (req, res) => {
+  const updatePalette: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);
-    if (!body.style_pack || !STYLE_PACKS.includes(body.style_pack)) {
-      throw unprocessable(`style_pack must be one of: ${STYLE_PACKS.join(", ")}`);
+    if (!body.palette || !PALETTES.includes(body.palette)) {
+      throw unprocessable(`palette must be one of: ${PALETTES.join(", ")}`);
     }
-    repo.updateStylePack({ $style_pack: body.style_pack });
+    repo.updatePalette({ $palette: body.palette, $accent_color: PALETTE_ACCENT[body.palette] });
     return send(res, repo.get());
   };
 
@@ -190,5 +193,5 @@ export function createSettingsController(ctx: AppContext) {
     return send(res, repo.get());
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updateStylePack, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };
 }
