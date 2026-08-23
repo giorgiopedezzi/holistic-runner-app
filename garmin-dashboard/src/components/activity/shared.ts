@@ -39,7 +39,14 @@ export const METRIC_DEFS: Record<MetricKey, { label: string; color: string }> = 
   cadence:    { label: "Cadence",    color: "#d97706" },
   power:      { label: "Power",      color: "#a855f7" },
 };
-export const OPTIONAL_METRIC_ORDER: OptionalMetricKey[] = ["heart_rate", "altitude_m", "cadence", "power"];
+// Altitude dropped from the toggleable set (dashboard design-system rework,
+// "reorganize activity layout") — RunnerTerrain already visualizes the
+// elevation profile under the runner, and the activity's ascent/descent
+// totals are now their own "Elevation" badge, so a separate Altitude
+// line/axis toggle here was redundant. altitude_m itself is untouched at
+// the domain/type level (MetricKey, METRIC_DEFS, axis helpers) — only this
+// UI-facing list no longer offers it as a chart toggle.
+export const OPTIONAL_METRIC_ORDER: OptionalMetricKey[] = ["heart_rate", "cadence", "power"];
 
 // Compact labels for the runner's mouse-follow readout — "HR", not "Heart
 // rate", to keep the single-line pill short. speed's own real label is

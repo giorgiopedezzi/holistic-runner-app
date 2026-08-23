@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
+import { getResolvedTheme } from "@/utils/theme";
 import { fmtPace, fmtDuration, fmtKm, fmtDate } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
 
@@ -23,7 +24,7 @@ interface ActivityRowProps {
 // can be reused wherever an activity needs to look "as if we were in the
 // Activities tab" (e.g. Overview & Trends' linked-race display).
 export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, expandedContent }: ActivityRowProps) {
-  const color = SPORT_COLOR[a.sport ?? "other"] ?? "#888";
+  const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
   return (
     <div>
       <button

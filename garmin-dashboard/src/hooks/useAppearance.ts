@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
 import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
+import { setResolvedTheme } from "@/utils/theme";
 import { setDateFormatSystem } from "@/utils/dateFormat";
 import { useSettings } from "@/hooks/useSettings";
 import i18next, { detectLanguageFromLocale } from "@/i18n";
@@ -41,7 +42,9 @@ function resolveLanguage(stored: StoredLanguage): Language {
 // the type/backend (an API-contract change is Epic HRA-36's job, not this
 // correction's) but nothing here reads them anymore.
 function applyToDocument(settings: Settings) {
-  document.documentElement.setAttribute("data-theme", resolveTheme(settings.theme));
+  const theme = resolveTheme(settings.theme);
+  document.documentElement.setAttribute("data-theme", theme);
+  setResolvedTheme(theme);
   // Dashboard design-system rework: palette, compounded with data-theme above
   // (see index.css's :root[data-theme="…"][data-palette="…"] blocks). No
   // resolution needed — palette has no 'auto' concept, always a concrete

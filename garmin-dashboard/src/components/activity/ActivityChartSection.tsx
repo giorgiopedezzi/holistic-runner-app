@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { MapPin, Gauge, Heart } from "lucide-react";
 import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
-  fmtMetricValue, axisDomainMinMax, xTickFormatter,
+  fmtMetricValue, axisDomainMinMax, xTickFormatter, distanceTicks, timeTicks,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
 import type { TrackPoint } from "@/types/api";
-import { speedUnitLabel } from "@/utils/units";
+import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
+import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
 import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR, hrRunnerColor, metricStroke } from "./shared";
-import { Label, ChartCard, Checkbox } from "@/components/ui";
+import { Label, ChartCard, Checkbox, GraphKpiCard, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { TrackTooltip } from "./TrackTooltip";
 import { PauseFlagShape } from "./PauseFlagShape";
@@ -26,6 +28,20 @@ const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
 const AXIS_WIDTH = 42;              // must match the YAxis `width` props below
 const MARGIN_LEFT = 5;
 const MARGIN_RIGHT = 5;
+// The right side ALWAYS reserves this fixed total (dashboard design-system
+// rework: "reserve space for the right axis without adding them if not
+// required — the chart must never shrink or widen"). Per-metric axis
+// visibility is now a hardcoded rule, not a user toggle (see the per-metric
+// YAxis rendering below): Heart rate's axis is always shown when HR is
+// active, Cadence/Power's never is — so HR is the ONLY metric that can ever
+// occupy the right side, and this constant is exactly one axis-width, not
+// one per optional metric. The real (only ever 0-or-1) axis width in use
+// right now is topped up to this constant via the chart's own `margin.right`
+// — never via an extra "spacer" axis with no series bound to it (tried
+// once, reverted: Recharts doesn't reserve width for an axis nothing plots
+// against, so that axis's `width` was silently a no-op — `margin` is always
+// honored, unconditionally, which is why it's used instead).
+const RIGHT_AXES_WIDTH = AXIS_WIDTH;
 // Shown standing, before/after any hover or playback (the "beginning and
 // end" pose) — the same pale pink hrRunnerColor(80) itself uses for an
 // easy 80bpm effort, not a literal/theme color, so it reads identically in
@@ -55,6 +71,15 @@ function xToPixel(x: number, domainMin: number, domainMax: number, width: number
 // files under the 300 LOC cap. Pure move: every prop here is a value/setter
 // ActivityDetailBody already computed; no logic changed.
 interface ActivityChartSectionProps {
+  // Distance and the current Speed/Pace value — rendered as GraphKpiCards
+  // inside the main chart's own controlsRow (dashboard design-system
+  // rework, "reorganize activity layout": "move distance and avg speed/
+  // pace inside the graph as in overview"), not as separate StatGrid
+  // badges any more.
+  distanceM: number | null;
+  avgSpeedMs: number | null;
+  avgPaceMinKm: number | null;
+  avgHr: number | null;
   displayTrack: TrackPoint[];
   chartData: ChartRow[];
   hrRecoveryChartData: (ChartRow & { hrRecoveryDelta?: number })[];
@@ -66,19 +91,18 @@ interface ActivityChartSectionProps {
   activeMetrics: OptionalMetricKey[];
   effectiveActive: MetricKey[];
   availableMetrics: Record<MetricKey, boolean>;
-  axisVisible: Record<OptionalMetricKey, boolean>;
   showCard: Record<MetricKey, boolean>;
   toggleMetric: (key: OptionalMetricKey) => void;
-  toggleAxis: (key: OptionalMetricKey) => void;
   toggleCard: (key: MetricKey) => void;
 }
 
 export function ActivityChartSection({
+  distanceM, avgSpeedMs, avgPaceMinKm, avgHr,
   displayTrack, chartData, hrRecoveryChartData,
   xMode, setXMode, pauseThreshold, setPauseThreshold, removeOutliers, setRemoveOutliers,
   speedMode, setSpeedMode, speedDomain,
-  activeMetrics, effectiveActive, availableMetrics, axisVisible, showCard,
-  toggleMetric, toggleAxis, toggleCard,
+  activeMetrics, effectiveActive, availableMetrics, showCard,
+  toggleMetric, toggleCard,
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
   // ── Mouse-follow runner (icon in its own row above the chart, readout
@@ -186,8 +210,7 @@ export function ActivityChartSection({
   // layout, never a stale closure from whichever render scheduled it.
   const playCtxRef = useRef({ chartData, rowDynamics, plotWidth, leftInset: 0, rightInset: 0 });
   useEffect(() => {
-    const rightInset = MARGIN_RIGHT + activeMetrics.filter(k => axisVisible[k]).length * AXIS_WIDTH;
-    playCtxRef.current = { chartData, rowDynamics, plotWidth, leftInset: MARGIN_LEFT + AXIS_WIDTH, rightInset };
+    playCtxRef.current = { chartData, rowDynamics, plotWidth, leftInset: MARGIN_LEFT + AXIS_WIDTH, rightInset: MARGIN_RIGHT + RIGHT_AXES_WIDTH };
   });
   // Default resting pose, shown as soon as the chart has real geometry to
   // place it at — only while idle, so it doesn't fight a mouse hover or an
@@ -232,11 +255,10 @@ export function ActivityChartSection({
   // AFTER this render) — the terrain has to be right on the first paint.
   const terrainXs = useMemo(() => {
     if (plotWidth === 0 || chartData.length === 0) return [];
-    const rightInset = MARGIN_RIGHT + activeMetrics.filter(k => axisVisible[k]).length * AXIS_WIDTH;
     const domainMin = chartData[0].x, domainMax = chartData[chartData.length - 1].x;
     return chartData.map(row =>
-      xToPixel(row.x, domainMin, domainMax, plotWidth, MARGIN_LEFT + AXIS_WIDTH, rightInset));
-  }, [plotWidth, chartData, activeMetrics, axisVisible]);
+      xToPixel(row.x, domainMin, domainMax, plotWidth, MARGIN_LEFT + AXIS_WIDTH, MARGIN_RIGHT + RIGHT_AXES_WIDTH));
+  }, [plotWidth, chartData]);
 
   function showRow(row: ChartRow, idx: number, dwelling: boolean) {
     const cx = pixelX(row.x);
@@ -327,14 +349,61 @@ export function ActivityChartSection({
     setPlayStatus("idle");
   }
 
+  const distanceKm = splitUnit(fmtKm(distanceM));
+  const speedPaceKpi = speedMode === "speed"
+    ? { value: fmtSpeed(avgSpeedMs), unit: speedUnitLabel(), label: t("activity.metric.speedLabel", "Speed") }
+    : { value: fmtPace(avgPaceMinKm), unit: paceUnitLabel(), label: t("activity.metric.paceLabel", "Pace") };
+
+
+  // Explicit round tick positions — km/mi in distance mode ("8 to 10 labels,
+  // at a perfect km"), 5/10/15-minute marks in time mode ("meaningful
+  // interval... depending on the moving time"), dashboard design-system
+  // rework. Shared by the main chart and every standalone card below so
+  // tick placement matches across all of them, not just their widths.
+  const xTicks = useMemo(
+    () => (xMode === "distance" ? distanceTicks(chartData) : timeTicks(chartData)),
+    [xMode, chartData],
+  );
+
+  // Heart rate is the only optional metric that can ever show a Y-axis
+  // (Cadence/Power never do — see the per-metric YAxis rendering below), so
+  // it's the only thing that ever needs real right-side width. `margin.right`
+  // tops up whatever's left of RIGHT_AXES_WIDTH so the main chart's total
+  // right-side reservation is always the same constant, whether HR is
+  // active or not (dashboard design-system rework: "the chart must never
+  // shrink or widen").
+  const hrAxisShown = activeMetrics.includes("heart_rate");
+  const mainChartRightMargin = MARGIN_RIGHT + (hrAxisShown ? 0 : RIGHT_AXES_WIDTH);
+
   return (
     <div style={{ marginTop: 24 }}>
-      <div className="hra-control-row" style={{ gap: 16, marginBottom: 12 }}>
+      {/* One row of selectors (dashboard design-system rework, "reorganize
+          activity layout") — Distance/Time and Speed/Pace switches, the
+          pause-threshold input, the outlier checkbox, AND the Heart
+          rate/Cadence/Power toggles all share one row now: dropping the
+          per-metric "Axis" checkbox (see MetricRow.tsx) freed up enough
+          room to fold what used to be a separate row into this one. */}
+      <div className="hra-control-row" style={{ gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
         <div className="hra-segment">
           {(["distance", "time"] as XMode[]).map(m => (
             <button key={m} onClick={() => setXMode(m)}
               className="hra-segment-item" data-active={xMode === m}>
               {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
+            </button>
+          ))}
+        </div>
+        {/* Speed/Pace: always active, axis always visible (mandatory
+            metric — no on/off toggle, unlike the optional metrics below).
+            Tinted to the metric's own color via --segment-color rather
+            than the app accent — the one switch app-wide with a
+            per-instance tint. */}
+        <div className="hra-segment" style={{ "--segment-color": METRIC_DEFS.speed.color } as CSSProperties}>
+          {(["speed", "pace"] as SpeedMode[]).map(m => (
+            <button key={m} onClick={() => setSpeedMode(m)}
+              className="hra-segment-item" data-active={speedMode === m}>
+              {m === "speed"
+                ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
+                : t("activity.chart.paceUnit", "Pace (mm:ss)")}
             </button>
           ))}
         </div>
@@ -350,75 +419,59 @@ export function ActivityChartSection({
           <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
           {t("activity.chart.removeOutliers", "Remove outliers")}
         </label>
+        {OPTIONAL_METRIC_ORDER.map(key => (
+          <MetricRow
+            key={key}
+            mKey={key}
+            label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+            state={{
+              active:    activeMetrics.includes(key),
+              available: availableMetrics[key],
+              cardOn:    showCard[key],
+            }}
+            onToggle={field => {
+              if (field === "active") toggleMetric(key);
+              else toggleCard(key);
+            }}
+          />
+        ))}
       </div>
 
-      <div style={{ marginBottom: 12 }}>
-        {/* Speed/Pace: one column, always active, axis always
-            visible (mandatory metric — no on/off toggle, unlike
-            the optional metrics below). Tinted to the metric's own
-            color via --segment-color rather than the app accent —
-            the one switch app-wide with a per-instance tint. */}
-        <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
-          <div className="hra-segment" style={{ "--segment-color": METRIC_DEFS.speed.color } as CSSProperties}>
-            {(["speed", "pace"] as SpeedMode[]).map(m => (
-              <button key={m} onClick={() => setSpeedMode(m)}
-                className="hra-segment-item" data-active={speedMode === m}>
-                {m === "speed"
-                  ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
-                  : t("activity.chart.paceUnit", "Pace (mm:ss)")}
-              </button>
-            ))}
+      {/* Play/Stop moved inside the graph's own controlsRow (dashboard
+          design-system rework) — pinned left, badges pinned right via
+          justify-content: space-between, so the badge group stays
+          right-aligned as a unit regardless of how many badges it holds. */}
+      <ChartCard controlsRow={
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
+            <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+          </div>
+          <div className="hra-row-wrap" style={{ gap: 8, justifyContent: "flex-end" }}>
+            <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
+              value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
+            <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
+              value={speedPaceKpi.value} unit={speedPaceKpi.unit} label={speedPaceKpi.label} />
+            {avgHr != null && (
+              <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(avgHr)} />} iconColor={hrRunnerColor(avgHr)}
+                valueColor={hrRunnerColor(avgHr)} value={`${avgHr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
+            )}
           </div>
         </div>
-
-        {/* Other metrics: three columns, three per row */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", columnGap: 12 }}>
-          {OPTIONAL_METRIC_ORDER.map(key => (
-            <MetricRow
-              key={key}
-              mKey={key}
-              label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
-              state={{
-                active:    activeMetrics.includes(key),
-                available: availableMetrics[key],
-                axisOn:    axisVisible[key],
-                cardOn:    showCard[key],
-              }}
-              onToggle={field => {
-                if (field === "active") toggleMetric(key);
-                else if (field === "axis") toggleAxis(key);
-                else toggleCard(key);
-              }}
-            />
-          ))}
-        </div>
-      </div>
-
-      <ChartCard>
-      {/* A separate row, on top of the chart, inside the card — not an
-          overlay floating on the plot. Same width as the chart below it
-          (both direct children of ChartCard, same padding context), so
-          RunnerIcon's `cx` — a pixel offset from Recharts' own
-          activeCoordinate (mouse) or the replicated axis-layout math
-          (autoplay) — lines up between the two without extra translation.
-          The play/pause/replay + stop controls share this row, pinned to
-          the left, while the runner itself roams the rest of the row's
-          width — and, since the runner also rides the altitude profile at
-          1m = 1px, the row is tall enough to hold that full travel
-          (RUNNER_ELEVATION_MAX_PX either side of its center) without the
-          glyph clipping at a summit or a valley. The controls stay
-          vertically centered, which is exactly the runner's own flat-ground
-          height. */}
-      <div style={{ position: "relative", height: RUNNER_ROW_HEIGHT, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+      }>
+      {/* The runner row: terrain silhouette + the roaming glyph. Same width
+          as the chart below it (both direct children of ChartCard, same
+          padding context), so RunnerIcon's `cx` — a pixel offset from
+          Recharts' own activeCoordinate (mouse) or the replicated
+          axis-layout math (autoplay) — lines up between the two without
+          extra translation. Play/Stop now live in the controlsRow above
+          (see ChartCard's controlsRow prop) — this row is the runner's
+          alone, since the runner also rides the altitude profile at 1m =
+          1px and needs the row's full reserved travel
+          (RUNNER_ELEVATION_MAX_PX either side of its center) without a
+          glyph clipping at a summit or a valley. */}
+      <div style={{ position: "relative", height: RUNNER_ROW_HEIGHT, marginBottom: 4 }}>
         <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
-        {/* Positioned + raised so the controls sit above the terrain fill:
-            an absolutely-positioned sibling otherwise paints over in-flow
-            content regardless of DOM order. RunnerIcon needs no such wrapper
-            — it is itself positioned and comes later. */}
-        <div style={{ position: "relative", zIndex: 1, display: "flex", alignItems: "center", gap: 6 }}>
-          <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
-          <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
-        </div>
         <RunnerIcon ref={runnerIconRef} />
       </div>
       <div ref={plotRef} style={{ position: "relative" }}>
@@ -430,7 +483,7 @@ export function ActivityChartSection({
             default ~5px top margin put half the pill above the
             SVG's own top edge, silently clipping it. */}
         <ComposedChart
-          data={chartData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}
+          data={chartData} margin={{ top: 16, right: mainChartRightMargin, bottom: 5, left: 5 }}
           onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
         >
           {/* Speed/Pace and HR are drawn with value-mapped gradients rather
@@ -439,7 +492,7 @@ export function ActivityChartSection({
               the top in both modes here. */}
           <MetricGradientDefs id="overlay" rows={chartData} speedFastAtTop fasterIsHigherValue={speedMode === "speed"} />
           <CartesianGrid {...gridStyle} />
-          <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
+          <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={xTicks}
             tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
           {/* Speed/Pace's axis is never conditionally
               hidden/zero-width — it's the one mandatory metric, so
@@ -459,15 +512,22 @@ export function ActivityChartSection({
             tick={{ fill: SPEED_AXIS_TEXT_COLOR, fontSize: 9 }}
             tickFormatter={(v: number) => fmtMetricValue("speed", v, speedMode)}
             width={42} />
-          {/* Optional metrics' axes, each independently toggleable
-              — all on the right (AXIS_SIDE), never sharing Speed's
-              side on the left. */}
+          {/* Optional metrics' axes — all on the right (AXIS_SIDE), never
+              sharing Speed's side on the left. Only rendered for metrics
+              that are actually active (a Line still needs a scale to bind
+              to, even one that never shows). Per-metric axis VISIBILITY is
+              now a hardcoded rule, not a user toggle: Heart rate's axis is
+              always shown while HR is active; Cadence/Power's is never
+              shown, full stop — see MetricRow.tsx (the "Axis" checkbox is
+              gone) and mainChartRightMargin above (which is what actually
+              keeps the total right-side width constant, not this axis's
+              own width toggling). */}
           {activeMetrics.map(key => (
-            <YAxis key={key} yAxisId={key} hide={!axisVisible[key]} orientation={AXIS_SIDE[key]}
+            <YAxis key={key} yAxisId={key} hide={key !== "heart_rate"} orientation={AXIS_SIDE[key]}
               domain={axisDomainMinMax(displayTrack, key, speedMode)}
               tick={{ fill: METRIC_DEFS[key].color, fontSize: 9 }}
               tickFormatter={(v: number) => fmtMetricValue(key, v, speedMode)}
-              width={axisVisible[key] ? 42 : 0} />
+              width={key === "heart_rate" ? AXIS_WIDTH : 0} />
           ))}
           {effectiveActive.map(key => (
             <Line key={key} yAxisId={key} dataKey={key} stroke={metricStroke(key, "overlay")}
@@ -530,7 +590,17 @@ export function ActivityChartSection({
                   the HR recovery flag plots at the axis's own max
                   value, which sits at the very top pixel row
                   regardless of the domain's data-space padding. */}
-              <ComposedChart data={cardData} margin={{ top: 16, right: 5, bottom: 5, left: 5 }}>
+              {/* right: a fixed constant, not a spacer axis — a standalone
+                  card never has a real right-side axis of its own (always
+                  exactly one "main" axis, on the left), so its right margin
+                  can just BE the same total the main chart always reserves
+                  (RIGHT_AXES_WIDTH), matching it unconditionally. This is
+                  `margin`, not an extra hidden YAxis with no series bound to
+                  it — that was tried once and reverted (see
+                  RIGHT_AXES_WIDTH's own comment): Recharts doesn't reserve
+                  width for an axis nothing plots against, so `margin` is
+                  what's actually honored. */}
+              <ComposedChart data={cardData} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 5, left: 5 }}>
                 {/* Own gradient ids per card — one <svg> each, and a
                     url(#…) may not reach across them. Unlike the overlay
                     chart, this axis is never reversed, so in pace mode the
@@ -538,7 +608,7 @@ export function ActivityChartSection({
                 <MetricGradientDefs id={`card-${key}`} rows={cardData} speedFastAtTop={speedMode === "speed"}
                   fasterIsHigherValue={speedMode === "speed"} />
                 <CartesianGrid {...gridStyle} />
-                <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]}
+                <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={xTicks}
                   tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
                 <YAxis yAxisId="main" domain={domain} tick={axisStyle} tickLine={false} axisLine={false} width={42}
                   tickFormatter={(v: number) => fmtMetricValue(key, v, speedMode)} />

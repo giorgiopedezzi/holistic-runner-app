@@ -399,12 +399,30 @@ export function classificationStatus(a: {
 
 export type Sport = "running" | "cycling" | "walking" | "hiking" | "swimming" | "other";
 
-export const SPORT_COLOR_DARK: Record<string, string> = {
-  running:           "#2FAF7F", // emerald
-  cycling:           "#4B8CCF", // steel blue
-  walking:           "#C9953E", // muted amber
-  swimming:          "#3BA6B8", // deep cyan
-  hiking:            "#789B43", // olive
-  fitness_equipment: "#8D62B8", // muted violet
-  other:             "#66717D", // steel grey
+// Theme-aware per-sport identity color (dashboard design-system rework) —
+// keyed by the resolved Theme so a sport's Badge/RunnerGlyph/etc. color
+// stays legible against both the dark and light backgrounds, same
+// "color follows the entity" precedent as --data-pace/--data-hr. Read via
+// utils/theme.ts's getResolvedTheme() at render time (a module-scope global,
+// same pattern as utils/units.ts) rather than every consumer threading
+// `theme` down as its own prop.
+export const SPORT_COLOR: Record<Theme, Record<string, string>> = {
+  dark: {
+    running:           "#2FAF7F", // emerald
+    cycling:           "#4B8CCF", // steel blue
+    walking:           "#C9953E", // muted amber
+    swimming:          "#3BA6B8", // deep cyan
+    hiking:            "#789B43", // olive
+    fitness_equipment: "#8D62B8", // muted violet
+    other:             "#66717D", // steel grey
+  },
+  light: {
+    running:           "#23805F",
+    cycling:           "#356FA8",
+    walking:           "#9A6E25",
+    swimming:          "#247F90",
+    hiking:            "#5F7F31",
+    fitness_equipment: "#704A96",
+    other:             "#59636E",
+  },
 };

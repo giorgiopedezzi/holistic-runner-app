@@ -25,7 +25,7 @@ import {
 // pending review. Custom border-only pill styling throughout (not ui.tsx's
 // Badge) — Badge's `${color}22` alpha-suffix trick only works with literal
 // hex colors, not this file's `var(--accent-*)` CSS variables.
-function statusColor(status: ReturnType<typeof classificationStatus>): string {
+export function statusColor(status: ReturnType<typeof classificationStatus>): string {
   if (status === "confirmed") return "var(--accent-green)";
   if (status === "pending") return "var(--accent-orange)";
   return "var(--text-muted)";
@@ -244,9 +244,20 @@ function MethodResultCard({
 // here — it applies to whichever card's Classify button gets clicked next,
 // not a per-card setting, since it's a single "how granular" preference the
 // user sets once before running either.
-export function ClassificationCard({ activity, onUpdate }: { activity: Activity; onUpdate: (a: Activity) => void }) {
+export function ClassificationCard({ activity, onUpdate, splitMeters: splitMetersProp, onSplitMetersChange }: {
+  activity: Activity; onUpdate: (a: Activity) => void;
+  // Optional (dashboard design-system rework, "reorganize activity layout")
+  // — ActivityDetailBody lifts this so its classification accordion's
+  // collapsed summary can show the current sampling granularity; falls back
+  // to purely-local state so the pre-existing hand-written test harness
+  // (ClassificationCard.test.tsx, which renders this with just
+  // activity/onUpdate) keeps working unmodified.
+  splitMeters?: number; onSplitMetersChange?: (m: number) => void;
+}) {
   const { t } = useTranslation();
-  const [splitMeters, setSplitMeters] = useState(1000);
+  const [splitMetersState, setSplitMetersState] = useState(1000);
+  const splitMeters = splitMetersProp ?? splitMetersState;
+  const setSplitMeters = onSplitMetersChange ?? setSplitMetersState;
   const status = classificationStatus(activity);
   const color = statusColor(status);
 

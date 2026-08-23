@@ -12,9 +12,9 @@
 
    Only the general UI chrome (backgrounds/borders/text/these four accents)
    is themed. Chart-specific colors defined in TS (ActivityModal's
-   METRIC_DEFS, SPORT_COLOR, BodyTab's per-metric hexes) were validated
-   specifically against the dark --bg-card surface (see CLAUDE.md) and are
-   NOT re-validated per theme here — on light themes they still render, just
+   METRIC_DEFS, BodyTab's per-metric hexes) were validated specifically
+   against the dark --bg-card surface (see CLAUDE.md) and are NOT
+   re-validated per theme here — on light themes they still render, just
    without a fresh contrast pass. */
 :root {
   /* .hra-header's own rendered height (10px+10px padding + 28px row) — the
@@ -984,7 +984,7 @@ input:focus, select:focus { border-color: var(--accent); }
   font-size: var(--fs-meta); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
 }
 .hra-graph-kpi-icon { color: var(--kpi-icon-color, var(--accent)); display: inline-flex; }
-.hra-graph-kpi-value { font-size: var(--fs-data); font-weight: var(--fw-data); line-height: 1.15; color: var(--text-primary); white-space: nowrap; }
+.hra-graph-kpi-value { font-size: var(--fs-data); font-weight: var(--fw-data); line-height: 1.15; color: var(--graph-kpi-color, var(--text-primary)); white-space: nowrap; }
 .hra-graph-kpi-unit { font-size: var(--fs-meta); font-weight: var(--fw-label); color: var(--text-muted); }
 
 /* ── Hero row (Overview) — ring card + distance/time/recent card share one

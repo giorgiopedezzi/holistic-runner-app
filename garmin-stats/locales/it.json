@@ -314,12 +314,9 @@
   "activity.stat.cadence": "Cadenza",
   "activity.stat.avgHr": "FC media",
   "activity.stat.maxHr": "FC massima",
-  "activity.stat.ascent": "Dislivello positivo",
-  "activity.stat.descent": "Dislivello negativo",
-  "activity.stat.avgSpeedPace": "Velocità/ritmo medio",
+  "activity.stat.elevation": "Dislivello",
 
   "activity.metric.noData": "Nessun dato per questa metrica",
-  "activity.metric.axis": "Asse",
   "activity.metric.card": "Scheda",
   "activity.metric.speedLabel": "Velocità",
   "activity.metric.paceLabel": "Ritmo",
@@ -351,6 +348,7 @@
   "activity.chart.speedUnit": "Velocità ({{unit}})",
   "activity.chart.paceUnit": "Ritmo (mm:ss)",
   "activity.chart.hrRecoveryFlagsNote": "i contrassegni mostrano il recupero della FC durante ogni pausa",
+  "activity.chart.notEnoughData": "Dati di tracciamento insufficienti per tracciare un grafico.",
 
   "activity.typePicker.saveFailed": "Salvataggio del tipo di attività non riuscito",
   "activity.typePicker.typePlaceholder": "Tipo",
@@ -360,6 +358,11 @@
   "activity.typePicker.sessionFallback": "sessione",
   "activity.typePicker.namePlaceholder": "es. Maratona di Berlino",
 
+  "activity.classify.title": "Classificazione",
+  "activity.classify.summaryAi": "IA: {{classification}}",
+  "activity.classify.summaryStatistical": "Statistico: {{classification}}",
+  "activity.classify.summarySampling": "Campionamento: {{sampling}}",
+  "activity.classify.confirmedShort": "Confermato",
   "activity.classify.methodAi": "IA",
   "activity.classify.methodStatistical": "Statistico",
   "activity.classify.classifyFailed": "Classificazione non riuscita",

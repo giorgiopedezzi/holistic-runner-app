@@ -167,3 +167,71 @@ export function xTickFormatter(rows: ChartRow[], xMode: XMode) {
     return xMode === "time" ? fmtElapsedClock(nearest.realX) : fmtKm(nearest.realX);
   };
 }
+
+// Candidate step sizes (in the current distance unit — km, or miles under
+// imperial), ascending. distanceTicks picks whichever makes the tick COUNT
+// land closest to the 8-10 label target.
+const NICE_DISTANCE_STEPS = [0.25, 0.5, 1, 1.5, 2, 2.5, 3, 5, 10, 15, 20, 25, 50, 100];
+// Time mode's own candidate set — deliberately just 5/10/15 minutes (not
+// distance's broader "nice number" list): workout duration is conventionally
+// read in round minutes, not an arbitrary nice number.
+const TIME_STEP_MINUTES = [5, 10, 15];
+// Mirrors utils/units.ts's own KM_PER_MI (not exported) — kept local since
+// this is the one other place distance needs unit-aware "nice number" math.
+const KM_PER_MI = 1.609344;
+
+// Shared by distanceTicks/timeTicks below — picks whichever candidate step
+// (in `unitSize`-sized real units of `known[].realX`) lands the tick COUNT
+// closest to an 8-10 target, then for each round-unit target finds the row
+// whose REAL value is closest to it and returns THAT row's `x` (synthetic
+// cursor coordinate — buildChartData collapses pauses/outlier steps to
+// fixed notches, so a tick can't just be the raw target value). The shared
+// `xTickFormatter` above then formats whichever row a tick lands on by its
+// real value, which is why the result reads as the round number it was
+// chosen for (real samples aren't necessarily bit-exact on the target, but
+// always round cleanly at display precision).
+function niceTicks(known: (ChartRow & { realX: number })[], unitSize: number, steps: number[]): number[] {
+  if (known.length === 0) return [];
+  const maxUnits = known[known.length - 1].realX / unitSize;
+  if (maxUnits <= 0) return [known[0].x];
+
+  let bestStep = steps[steps.length - 1];
+  let bestScore = Infinity;
+  for (const step of steps) {
+    const count = Math.floor(maxUnits / step) + 1;
+    if (count < 2) continue;
+    const score = count >= 8 && count <= 10 ? 0 : Math.min(Math.abs(count - 8), Math.abs(count - 10));
+    if (score < bestScore) { bestScore = score; bestStep = step; }
+  }
+
+  const ticks: number[] = [];
+  for (let units = 0; units <= maxUnits + 1e-9; units += bestStep) {
+    const targetReal = units * unitSize;
+    let nearest = known[0], best = Math.abs(known[0].realX - targetReal);
+    for (const r of known) {
+      const d = Math.abs(r.realX - targetReal);
+      if (d < best) { best = d; nearest = r; }
+    }
+    ticks.push(nearest.x);
+  }
+  return [...new Set(ticks)].sort((a, b) => a - b);
+}
+
+// Explicit tick POSITIONS for the X-axis in distance mode, landing exactly
+// on round km/mi marks — never an arbitrary evenly-spaced auto-tick like
+// "3.01 km" (dashboard design-system rework: "8 to 10 labels, at a perfect
+// km"). Unit-aware: km normally, mi under imperial (fmtKm's own unit switch).
+export function distanceTicks(rows: ChartRow[]): number[] {
+  const known = rows.filter((r): r is ChartRow & { realX: number } => r.realX != null);
+  const unitMeters = getUnitSystem() === "imperial" ? KM_PER_MI * 1000 : 1000;
+  return niceTicks(known, unitMeters, NICE_DISTANCE_STEPS);
+}
+
+// Same idea for time mode — round 5/10/15-minute marks instead of an
+// arbitrary elapsed-seconds fraction (dashboard design-system rework:
+// "applies meaningful interval to time too... every 5, 10 or 15 min
+// depending on the moving time").
+export function timeTicks(rows: ChartRow[]): number[] {
+  const known = rows.filter((r): r is ChartRow & { realX: number } => r.realX != null);
+  return niceTicks(known, 60, TIME_STEP_MINUTES);
+}

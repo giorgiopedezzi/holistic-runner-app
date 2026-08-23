@@ -9,7 +9,7 @@ import { setUnitSystem } from "@/utils/units";
 import {
   metricValue, metricUnit, fmtMetricValue, percentile,
   axisDomainCentered, axisDomainMinMax, magnitudeColor, fmtElapsedClock,
-  buildChartData, xTickFormatter,
+  buildChartData, xTickFormatter, distanceTicks, timeTicks,
 } from "./activity-chart";
 
 afterEach(() => setUnitSystem("metric"));
@@ -136,6 +136,79 @@ describe("buildChartData", () => {
     const pts = [pt({ timestamp_unix: 1000, elapsed_sec: 0, speed_ms: 3 }), pt({ timestamp_unix: 1060, elapsed_sec: 5, speed_ms: 3 })];
     const rows = buildChartData(pts, [], "time", ["speed"], "speed");
     expect(rows.map(r => r.realX)).toEqual([0, 60]); // 1060-1000, not elapsed_sec's 5
+  });
+});
+
+describe("distanceTicks", () => {
+  // Dense synthetic track (every 10m) so a "nearest real sample" to any
+  // round-km target is always within a few meters — realistic GPS sampling
+  // density, and dense enough that the round-km formatting below is exact.
+  function denseTrack(maxM: number, stepM = 10) {
+    const pts: TrackPoint[] = [];
+    for (let d = 0; d <= maxM; d += stepM) pts.push(pt({ distance_m: d, speed_ms: 3 }));
+    return buildChartData(pts, [], "distance", ["speed"], "speed");
+  }
+
+  it("returns no ticks for an empty track", () => {
+    expect(distanceTicks([])).toEqual([]);
+  });
+
+  it("picks a step landing the tick count in (or nearest to) the 8-10 target range", () => {
+    const rows = denseTrack(8000); // a clean case: 1km step -> exactly 9 ticks
+    const ticks = distanceTicks(rows);
+    expect(ticks.length).toBeGreaterThanOrEqual(8);
+    expect(ticks.length).toBeLessThanOrEqual(10);
+  });
+
+  it("every tick formats to a round km value, never a stray fraction like '3.01 km'", () => {
+    const rows = denseTrack(8000);
+    const ticks = distanceTicks(rows);
+    const fmt = xTickFormatter(rows, "distance");
+    for (const tick of ticks) {
+      const label = fmt(tick);
+      expect(label).toMatch(/^(—|\d+\.00 km)$/); // fmtKm(0) is "—", not "0.00 km"
+    }
+  });
+
+  it("switches to round miles under imperial, not km forced through a conversion", () => {
+    setUnitSystem("imperial");
+    const rows = denseTrack(16000); // ~9.94 mi
+    const ticks = distanceTicks(rows);
+    const fmt = xTickFormatter(rows, "distance");
+    for (const tick of ticks) {
+      const label = fmt(tick);
+      expect(label).toMatch(/^(—|\d+\.00 mi)$/);
+    }
+  });
+});
+
+describe("timeTicks", () => {
+  // Every 10s of timestamp_unix, dense enough that the nearest real sample
+  // to any round-minute target is always within a few seconds.
+  function denseTimeTrack(maxSec: number, stepSec = 10) {
+    const pts: TrackPoint[] = [];
+    for (let s = 0; s <= maxSec; s += stepSec) pts.push(pt({ timestamp_unix: s, speed_ms: 3 }));
+    return buildChartData(pts, [], "time", ["speed"], "speed");
+  }
+
+  it("returns no ticks for an empty track", () => {
+    expect(timeTicks([])).toEqual([]);
+  });
+
+  it("picks a step (5/10/15 min) landing the tick count in (or nearest to) the 8-10 target range", () => {
+    const rows = denseTimeTrack(2700); // 45 min -> 5min step gives exactly 10 ticks
+    const ticks = timeTicks(rows);
+    expect(ticks.length).toBeGreaterThanOrEqual(8);
+    expect(ticks.length).toBeLessThanOrEqual(10);
+  });
+
+  it("every tick formats to a round minute mark, never an arbitrary elapsed fraction", () => {
+    const rows = denseTimeTrack(2700);
+    const ticks = timeTicks(rows);
+    const fmt = xTickFormatter(rows, "time");
+    for (const tick of ticks) {
+      expect(fmt(tick)).toMatch(/^\d+:00$/); // e.g. "5:00", "10:00" — never "10:05"-style
+    }
   });
 });
 

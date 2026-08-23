@@ -314,12 +314,9 @@
   "activity.stat.cadence": "Cadence",
   "activity.stat.avgHr": "Avg HR",
   "activity.stat.maxHr": "Max HR",
-  "activity.stat.ascent": "Ascent",
-  "activity.stat.descent": "Descent",
-  "activity.stat.avgSpeedPace": "Avg speed / pace",
+  "activity.stat.elevation": "Elevation",
 
   "activity.metric.noData": "No data for this metric",
-  "activity.metric.axis": "Axis",
   "activity.metric.card": "Card",
   "activity.metric.speedLabel": "Speed",
   "activity.metric.paceLabel": "Pace",
@@ -351,6 +348,7 @@
   "activity.chart.speedUnit": "Speed ({{unit}})",
   "activity.chart.paceUnit": "Pace (mm:ss)",
   "activity.chart.hrRecoveryFlagsNote": "flags show HR recovery across each pause",
+  "activity.chart.notEnoughData": "Not enough track data to plot a chart.",
 
   "activity.typePicker.saveFailed": "Failed to save activity type",
   "activity.typePicker.typePlaceholder": "Type",
@@ -360,6 +358,11 @@
   "activity.typePicker.sessionFallback": "session",
   "activity.typePicker.namePlaceholder": "e.g. Berlin Marathon",
 
+  "activity.classify.title": "Classification",
+  "activity.classify.summaryAi": "AI: {{classification}}",
+  "activity.classify.summaryStatistical": "Statistical: {{classification}}",
+  "activity.classify.summarySampling": "Sampling: {{sampling}}",
+  "activity.classify.confirmedShort": "Confirmed",
   "activity.classify.methodAi": "AI",
   "activity.classify.methodStatistical": "Statistical",
   "activity.classify.classifyFailed": "Classification failed",

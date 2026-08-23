@@ -1,21 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Timer, Clock, Flame, Footprints, Heart, HeartPulse, TrendingUp, TrendingDown } from "lucide-react";
+import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
-import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge } from "@/components/ui";
-import { ClassificationCard } from "../ClassificationCard";
+import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty } from "@/components/ui";
+import { ClassificationCard, statusColor } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
-import { SPORT_COLOR, type Activity, type TrackPoint } from "@/types/api";
-import { fmtDuration, fmtKm, fmtElevation, fmtDate } from "@/utils/fmt";
+import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type TrackPoint, type WorkoutClassification } from "@/types/api";
+import { getResolvedTheme } from "@/utils/theme";
+import { fmtDuration, fmtElevation, fmtDate } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
 import { detectPauses, computeHrRecovery } from "@/domain/pauses";
 import {
   axisDomainCentered, buildChartData,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode,
 } from "@/domain/activity-chart";
-import { SpeedPaceStat } from "./SpeedPaceStat";
+import { hrRunnerColor } from "./shared";
 import { ActivityChartSection } from "./ActivityChartSection";
 
 // onClose omitted entirely (not just a no-op) for the accordion/inline use
@@ -41,6 +42,13 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
   const [error,    setError]    = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Classification accordion (dashboard design-system rework, "reorganize
+  // activity layout") — collapsed by default; splitMeters is lifted out of
+  // ClassificationCard (which still falls back to its own local state when
+  // not given these) purely so the collapsed header can show the current
+  // sampling granularity without expanding the section.
+  const [classificationExpanded, setClassificationExpanded] = useState(false);
+  const [splitMeters, setSplitMeters] = useState(1000);
 
   const [xMode, setXMode] = useState<XMode>("distance");
   // Heart rate starts active by default (the rest are opt-in).
@@ -49,17 +57,6 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
   const [pauseThreshold, setPauseThreshold] = useState(30);
   const [removeOutliers, setRemoveOutliers] = useState(true);
   const { settings } = useSettings(); // outlier thresholds; no-ops until it loads
-  // Speed/Pace's axis is mandatory — always visible, no toggle (see
-  // ActivityChartSection) — so this only ever tracks the four optional
-  // metrics.
-  // Defaults mirror activeMetrics/showCard: heart_rate starts on, the rest
-  // off — an axis for a metric whose line isn't even drawn yet is pointless,
-  // and heart_rate's line/card both start active so its axis must too (an
-  // earlier version of this default left heart_rate false here while the
-  // other two started true, so HR's line rendered with no axis on first load).
-  const [axisVisible, setAxisVisible] = useState<Record<OptionalMetricKey, boolean>>({
-    heart_rate: true, altitude_m: false, cadence: false, power: false,
-  });
   // Speed/Pace never gets a standalone card — the overlay chart already
   // shows it (it's always active), a second single-metric copy is redundant.
   // Heart rate's card starts open to match it starting active by default.
@@ -160,9 +157,6 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
       return [...a, key];
     });
   }
-  function toggleAxis(key: OptionalMetricKey) {
-    setAxisVisible(s => ({ ...s, [key]: !s[key] }));
-  }
   function toggleCard(key: MetricKey) {
     setShowCard(s => ({ ...s, [key]: !s[key] }));
   }
@@ -172,7 +166,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           {activity && (
-            <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[activity.sport ?? "other"] ?? "#888"} />
+            <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][activity.sport ?? "other"] ?? "#888"} />
           )}
           <span className="hra-text-secondary" style={{ fontSize: 13 }}>{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
@@ -221,30 +215,86 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
 
         {activity && !loading && (
           <>
-            {activity.sport === "running" && <ClassificationCard activity={activity} onUpdate={setActivity} />}
+            {/* Wrapping up, top to bottom (dashboard design-system rework,
+                "reorganize activity layout"): 1. classification accordion,
+                2. one row of badges, 3/4. the chart section's own selector
+                rows, 5. the graph(s). */}
+            {activity.sport === "running" && (() => {
+              const status = classificationStatus(activity);
+              const classificationLabel = (c: string | null) =>
+                c ? t(WORKOUT_CLASSIFICATION_KEY[c as WorkoutClassification] ?? "unknown", c) : t("activity.classify.notYetClassified", "Not yet classified");
+              const statusLabel = status === "confirmed"
+                ? t("activity.classify.confirmedShort", "Confirmed")
+                : status === "pending" ? t("activity.classify.pendingReview", "Pending review")
+                : t("activity.classify.notYetClassified", "Not yet classified");
+              return (
+                <AccordionCard
+                  expanded={classificationExpanded}
+                  onToggle={() => setClassificationExpanded(e => !e)}
+                  title={
+                    <div className="hra-row-wrap" style={{ gap: 14 }}>
+                      <span>{t("activity.classify.title", "Classification")}</span>
+                      {/* Collapsed summary — sized/weighted as meta text
+                          (secondary info), not a competing headline. */}
+                      <span className="hra-text-secondary" style={{ fontSize: "var(--fs-meta)", fontWeight: "var(--fw-meta)" } as CSSProperties}>
+                        {t("activity.classify.summaryAi", `AI: ${classificationLabel(activity.ai_classification)}`, { classification: classificationLabel(activity.ai_classification) })}
+                        {" · "}
+                        {t("activity.classify.summaryStatistical", `Statistical: ${classificationLabel(activity.statistical_classification)}`, { classification: classificationLabel(activity.statistical_classification) })}
+                        {" · "}
+                        {t("activity.classify.summarySampling", `Sampling: ${splitMeters === 1000 ? "1km" : "0.5km"}`, { sampling: splitMeters === 1000 ? "1km" : "0.5km" })}
+                        {" · "}
+                        <span className="hra-dyn-color" style={{ "--dyn-color": statusColor(status), fontWeight: 600 } as CSSProperties}>
+                          {statusLabel}
+                        </span>
+                      </span>
+                    </div>
+                  }
+                >
+                  <ClassificationCard activity={activity} onUpdate={setActivity} splitMeters={splitMeters} onSplitMetersChange={setSplitMeters} />
+                </AccordionCard>
+              );
+            })()}
 
-            {/* Leading icons (dashboard design-system rework, "harmonize
-                badges") — same size (18) and coloring convention as
-                Overview's Stat icons (docs/frontend.md's "Icon coloring"
-                rule): heart matches its own HR red, flame is the one filled
+            {/* One row of badges (dashboard design-system rework, "harmonize
+                badges" / "reorganize activity layout") — Distance, the
+                currently-selected Speed/Pace value, and Avg HR all moved
+                INSIDE the graph itself (as in Overview's GraphKpiCard, see
+                ActivityChartSection.tsx's controlsRow); Ascent/Descent
+                merged into one Elevation badge here. Same icon size (18)
+                and coloring convention as Overview's Stat icons
+                (docs/frontend.md's "Icon coloring" rule): heart matches its
+                own interpolated HR color, flame is the one filled
                 dark-orange exception, everything else is the plain accent
                 token. */}
             <StatGrid>
-              <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("activity.stat.distance", "Distance")} value={fmtKm(activity.distance_m)} accent="var(--accent-green)" />
               {activity.moving_time_sec != null && <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("activity.stat.movingTime", "Moving time")} value={fmtDuration(activity.moving_time_sec)} />}
               <Stat icon={<Clock size={18} color="var(--accent)" />} label={t("activity.stat.duration", "Duration")} value={fmtDuration(activity.duration_sec)} />
               {activity.calories != null && <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />} label={t("activity.stat.calories", "Calories")} value={`${activity.calories} kcal`} />}
-              {(activity.avg_pace_minkm != null || activity.avg_speed_ms != null) &&
-                <SpeedPaceStat avgSpeedMs={activity.avg_speed_ms} avgPaceMinKm={activity.avg_pace_minkm} />}
               {activity.avg_cadence != null && <Stat icon={<Footprints size={18} color="var(--accent)" />} label={t("activity.stat.cadence", "Cadence")} value={`${activity.avg_cadence} spm`} />}
-              {activity.avg_hr != null      && <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("activity.stat.avgHr", "Avg HR")} value={`${activity.avg_hr} bpm`} accent="var(--accent-red)" />}
-              {activity.max_hr != null      && <Stat icon={<HeartPulse size={18} color="var(--accent-red)" />} label={t("activity.stat.maxHr", "Max HR")} value={`${activity.max_hr} bpm`} />}
-              {activity.ascent_m != null    && <Stat icon={<TrendingUp size={18} color="var(--accent)" />} label={t("activity.stat.ascent", "Ascent")} value={fmtElevation(activity.ascent_m)} />}
-              {activity.descent_m != null   && <Stat icon={<TrendingDown size={18} color="var(--accent)" />} label={t("activity.stat.descent", "Descent")} value={fmtElevation(activity.descent_m)} />}
+              {(activity.ascent_m != null || activity.descent_m != null) && (
+                <Stat icon={<Mountain size={18} color="var(--accent)" />} label={t("activity.stat.elevation", "Elevation")}
+                  value={[
+                    activity.ascent_m  != null ? `↑${fmtElevation(activity.ascent_m)}`  : null,
+                    activity.descent_m != null ? `↓${fmtElevation(activity.descent_m)}` : null,
+                  ].filter(Boolean).join("  ")} />
+              )}
+              {activity.max_hr != null && <Stat icon={<HeartPulse size={18} color={hrRunnerColor(activity.max_hr)} />} label={t("activity.stat.maxHr", "Max HR")} value={`${activity.max_hr} bpm`} accent={hrRunnerColor(activity.max_hr)} />}
             </StatGrid>
+
+            {track.length <= 5 && (
+              // Distance/Speed-Pace moved inside the graph (see above) —
+              // when the track's too short to plot at all, that's also the
+              // only place they'd show, so surface an explicit message
+              // instead of silently showing neither a chart nor a number.
+              <Empty message={t("activity.chart.notEnoughData", "Not enough track data to plot a chart.")} />
+            )}
 
             {track.length > 5 && (
               <ActivityChartSection
+                distanceM={activity.distance_m}
+                avgSpeedMs={activity.avg_speed_ms}
+                avgPaceMinKm={activity.avg_pace_minkm}
+                avgHr={activity.avg_hr}
                 displayTrack={displayTrack}
                 chartData={chartData}
                 hrRecoveryChartData={hrRecoveryChartData}
@@ -256,10 +306,8 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                 activeMetrics={activeMetrics}
                 effectiveActive={effectiveActive}
                 availableMetrics={availableMetrics}
-                axisVisible={axisVisible}
                 showCard={showCard}
                 toggleMetric={toggleMetric}
-                toggleAxis={toggleAxis}
                 toggleCard={toggleCard}
               />
             )}

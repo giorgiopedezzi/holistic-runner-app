@@ -143,9 +143,105 @@ locale guess:
 
 **Two exports**: `ActivityDetailBody` (all the actual content — header info, delete button, stats grid, charts) and `ActivityModal` (a thin wrapper adding the fixed backdrop overlay + × close button around it). `onClose` is optional on `ActivityDetailBody`; its absence is what suppresses the × button and lets `ActivitiesTab.tsx` render the exact same content inline in its accordion row (see Activities tab below) instead of only ever as a popup.
 
-Multi-metric overlay chart (Speed/Pace mandatory, plus optional HR/altitude/cadence/power — each active metric gets its own mean-centered Y-axis; **Heart rate starts active by default**, the rest are opt-in), with a global Distance/Time X-axis toggle and pause detection:
+### Layout, top to bottom (dashboard design-system rework, "reorganize activity layout")
+1. **Classification accordion** (`sport === "running"` only) — `AccordionCard`, collapsed by default. Its
+   title packs a compact summary (AI classification, Statistical classification, current sampling
+   granularity, overall status) next to the "Classification" label, so the essentials are visible without
+   expanding; expanding reveals the full `ClassificationCard`. `splitMeters` (the 1km/0.5km sampling
+   toggle) is lifted from `ClassificationCard` into `ActivityDetailBody` as an *optional* prop
+   (`splitMeters`/`onSplitMetersChange`, falling back to local state when omitted) purely so the
+   collapsed summary can read the current value — `ClassificationCard.test.tsx`'s hand-written harness
+   (which passes neither) keeps working unmodified.
+2. **One row of badges** (`StatGrid`) — Moving time, Duration, Calories, Cadence, Elevation, Max HR, in
+   that order (Max HR deliberately LAST). Distance, Avg speed/pace, AND Avg HR moved OUT of this row and
+   into the graph itself (below, in its `controlsRow`, alongside Play/Stop — see below); Ascent/Descent
+   merged into one Elevation badge (`Mountain` icon, value = `↑{ascent}  ↓{descent}`, whichever side(s)
+   are non-null). Max HR still uses `hrRunnerColor(bpm)` (interpolated per the actual value) for both
+   icon and `accent`, not a flat `--accent-red` — same gradient the chart line and mouse-follow runner
+   use, so a badge's color already tells you roughly how hard that number was; Avg HR's `GraphKpiCard`
+   (inside the graph) does the same via its `valueColor`/`iconColor` props.
+   - **`StatGrid` (`ui/StatGrid.tsx`) uses `repeat(auto-fit, minmax(140px, 1fr))`, not `auto-fill`** —
+     dashboard design-system rework, "space badges equally": `auto-fill` creates extra empty grid tracks
+     to fill the row, leaving the real badges packed to the left with only the 10px gap between them;
+     `auto-fit` collapses those empty tracks to 0 width so the existing badges themselves stretch to
+     share the full row evenly. This is a shared primitive — the change applies everywhere `StatGrid` is
+     used (Overview, Body tab, Activity detail), not just this view.
+3/4. **The chart section's own two rows** (`ActivityChartSection.tsx`) — see below.
+5. **The graph(s)** — the main overlay chart, then any per-metric standalone cards.
+- **`GraphKpiCard`** (Overview's own compact icon+label→value→delta mini-card) moved from being a private
+  function inside `OverviewTab.tsx` to `components/ui/GraphKpiCard.tsx` (dashboard design-system rework,
+  "harmonize badges") specifically so this chart section could reuse the exact same shape for its
+  Distance/Speed-Pace/Avg HR KPIs, not a re-implementation — `OverviewTab.tsx` now imports it like every
+  other `ui/` primitive. Gained an optional `valueColor` prop (a `--graph-kpi-color` hook, same pattern as
+  `Stat`'s `accent`) purely for Avg HR's interpolated color — every other `GraphKpiCard` call site leaves
+  it unset and gets the default `--text-primary`.
+- **The main chart's `controlsRow` holds Play/Stop (left) and Distance/Speed-Pace/Avg HR (right)**, one
+  flex row with `justify-content: space-between` — the badge group stays right-aligned as a unit
+  regardless of how many badges it holds (Avg HR is conditionally omitted when the activity has no HR
+  data, and the row still reads correctly). Play/Stop moved here from their own row above the runner
+  (an earlier pass of this same rework) — this **replaced** that placement, not added to it.
+- **If the track is too short to plot at all (`track.length <= 5`), `ActivityChartSection` doesn't render
+  and an `Empty` "Not enough track data to plot a chart." message takes its place** — since Distance/
+  Speed-Pace/Avg HR now live inside the graph, this is also the one place they'd otherwise silently
+  vanish for a near-empty recording; the message makes that explicit instead.
+- **X-axis ticks land on round values, never an arbitrary fraction like "3.01 km" or a stray
+  elapsed-seconds mark** (`domain/activity-chart.ts`'s `distanceTicks()`/`timeTicks()`, sharing an
+  internal `niceTicks()` helper) — Recharts' own auto-tick placement evenly subdivides the chart's
+  synthetic `x` (cursor) domain, which does NOT correspond 1:1 to real distance/time (pauses/outlier
+  steps are collapsed to fixed notches, see `buildChartData`), so an auto-tick's nearest real sample
+  lands on an arbitrary value. `niceTicks()` instead picks a "nice" step from a candidate list — distance
+  mode: unit-aware nice numbers (km normally, mi under imperial); time mode: just 5/10/15 minutes,
+  deliberately narrower since duration is conventionally read in round minutes, not an arbitrary nice
+  number — landing the tick COUNT closest to an 8-10 target, then for each round target finds the row
+  whose `realX` is closest and uses THAT row's `x` as the tick position. `xTickFormatter` (unchanged)
+  then formats whichever row a tick lands on by its real value, which is why the result reads clean.
+- **Per-metric Y-axis visibility is now a hardcoded rule, not a user toggle** (dashboard design-system
+  rework, "reorganize activity layout" — the "Axis" checkbox that used to live in `MetricRow` is gone
+  entirely, along with the `axisVisible`/`toggleAxis` state that drove it): **Heart rate's axis is always
+  shown whenever HR is active; Cadence's and Power's are never shown**, full stop, regardless of whether
+  their line is plotted. This means Heart rate is the ONLY optional metric that can ever occupy real
+  right-side width — Cadence/Power still get a real (but always `hide`, always `width={0}`) `YAxis`
+  element when active, purely so their `Line` has a scale to bind to.
+- **The main chart's right-side width is ALWAYS a fixed total (`RIGHT_AXES_WIDTH = AXIS_WIDTH`, exactly
+  one axis-width — not one per optional metric, since only HR can ever need one), regardless of whether
+  HR is currently active** (dashboard design-system rework: "reserve space for the right axis without
+  adding them if not required — the chart must never shrink or widen"). This is done via the
+  `ComposedChart`'s own `margin.right` (`mainChartRightMargin`, topping up to the constant whenever HR
+  isn't active), **not** an extra hidden "spacer" `YAxis` — that was tried first and reverted: Recharts
+  doesn't reserve width for an axis nothing plots against (no `Line`/`Scatter` bound to its `yAxisId`),
+  unlike the validated `pauseFlag` axis below (which DOES have a real `Scatter` consumer, which is why
+  *its* `hide`+`width` trick genuinely works) — so that spacer's `width` was silently a no-op, and the
+  chart's actual plot width kept varying with toggle state exactly like before the "fix." `margin`, by
+  contrast, is unconditionally honored, so this is the correct mechanism. `playCtxRef`'s and
+  `terrainXs`'s own `rightInset` calculations (autoplay/terrain pixel math) use this same fixed constant,
+  so the runner's position tracking always matches the chart's actual (constant) geometry.
+- **Every standalone per-metric card reserves that same fixed total via its own `margin.right =
+  MARGIN_RIGHT + RIGHT_AXES_WIDTH`** — a plain constant, not a spacer axis or a computed value, since a
+  standalone card never has a real right-side axis of its own (always exactly one `width={42}` axis, on
+  the left). Without this, a standalone card and the main chart would reserve different total widths for
+  the same container width, so their plot areas would differ and the same `x` value would land at a
+  different pixel offset between the two — dashboard design-system rework: "additional graphs must have
+  exactly the same width of the main graph, otherwise there is a misalignment."
+
+Multi-metric overlay chart (Speed/Pace mandatory, plus optional HR/cadence/power — Altitude dropped from
+the toggleable set, see `shared.ts`'s `OPTIONAL_METRIC_ORDER` comment: `RunnerTerrain` already visualizes
+the elevation profile under the runner, and ascent/descent are now their own Elevation badge, so a
+separate Altitude line/axis toggle was redundant — each active metric gets its own mean-centered Y-axis;
+**Heart rate starts active by default**, the rest are opt-in), with a global Distance/Time X-axis toggle
+and pause detection:
+- **The chart section's one selector row**: Distance/Time + Speed/Pace (both `.hra-segment` switches) +
+  the pause-threshold input + the outlier checkbox + the Heart rate/Cadence/Power `MetricRow` toggles all
+  share ONE row now (previously two separate rows, then three before that) — dropping `MetricRow`'s
+  "Axis" checkbox (see above) freed up enough width per row to fold what used to be its own row into
+  this one.
+- **Play/Stop controls live in the main chart's `controlsRow`** (pinned left, badges pinned right — see
+  the layout list above), not the runner's own row — the runner row is the terrain + glyph alone.
 - **Speed/Pace's axis has no on/off toggle and is never hidden** (fixed 2026-08-06 — it used to have the same "Axis" checkbox as the optional metrics, tied to `axisVisible.speed`; the checkbox is gone and the axis's `hide`/`width` are now hardcoded `false`/`42`, with no state path that can ever zero its width). **What looked like a second, still-unresolved rendering bug after that fix turned out to be a false alarm**: an early follow-up attempt (reordering it first among the `YAxis` elements) was chasing a bug that didn't exist — the axis was rendering correctly the whole time, just on a side the user didn't expect. A **second, real regression then followed**: fixing Speed to `orientation="right"` in isolation (nothing else on that side) genuinely worked, but the very next change — moving Speed back to `orientation="left"` to sit opposite HR, per an explicit "put Speed left, HR right" request — only isolated Speed from *HR specifically*, leaving `altitude_m`/`cadence`/`power` still mapped to `"left"` too. Toggling any of those back on put Speed back in a multi-axis-same-side stack, reintroducing the disappearing-axis symptom. **Fixed 2026-08-07**: `AXIS_SIDE` now puts Speed alone on the left unconditionally and *every* optional metric (not just HR) on the right — Speed never shares a side with anything, under any toggle combination, while still keeping Speed/HR on opposite sides as asked. Lesson: "isolate Speed from the one axis I'm comparing it to right now" isn't the same guarantee as "isolate Speed from everything, always" — the latter is what's actually load-bearing here, and the former quietly regresses the moment a *different* optional metric gets toggled on.
-- **Separately, `axisVisible`'s initial state defaulted every optional metric's axis to `false`, including `heart_rate`** (fixed 2026-08-07), even though `activeMetrics`/`showCard` both correctly default `heart_rate` to on — so HR's line rendered by default with no axis of its own (`hide={!axisVisible.heart_rate}`). Fixed by defaulting `axisVisible.heart_rate` to `true` too, so all three pieces of per-metric default state (`activeMetrics`, `showCard`, `axisVisible`) agree. A genuine bug, but a red herring for the report below — it doesn't explain a *totally missing* axis, only a missing-when-not-yet-toggled-on one for HR specifically.
+- **`axisVisible`/`toggleAxis` (the state this paragraph and the next originally described) no longer
+  exist at all** — per-metric axis visibility was later replaced entirely by the hardcoded HR-only rule
+  above (dashboard design-system rework). The bug this bullet describes (a stale default value) is
+  moot now that there's no per-metric axis STATE left to default incorrectly; kept only because the
+  Speed-axis regression story right below it still references the same DOM investigation.
 - **The actual reported bug (fixed 2026-08-07): Speed's own axis — the one with no toggle, always `hide={false}` — was rendering completely off-screen**, confirmed from the raw chart DOM the user pasted: the axis's `<line>` had `x1="-13" x2="-13"` while the plot area's own left edge was `x="47"` — the axis was drawn 60px further left than it should've been, past the SVG's own boundary, so it never appeared even though it was correctly present in the DOM the whole time. Root cause: the hidden pause-flag axis (`<YAxis yAxisId="pauseFlag" domain={[0,1]} hide />`) had no explicit `orientation`/`width`, so it fell back to Recharts' defaults — `orientation="left"`, `width=60` — and even though `hide` suppresses its visual rendering, Recharts still reserves that 60px in the left-side axis stack, which is exactly the offset error measured in the DOM (`60` = the default YAxis width). This silently pushed the one real left-side axis (Speed) out from under the container. Fixed by adding `width={0}` to the pauseFlag axis so it can never contribute stacking width regardless of its (irrelevant, since hidden) orientation. Lesson: a `hide`d Recharts axis is not free — it still participates in the same-side axis-width stacking calculation unless its `width` is also explicitly zeroed, and this kind of failure is invisible in code review (nothing about the JSX looks wrong) — it only showed up once the actual rendered SVG coordinates were inspected.
 - **Pause flags and HR-recovery flags used to get clipped at the very top of their chart.** Both are 14px-tall custom shapes (`PauseFlagShape`/`HrRecoveryFlagShape`) centered on a data point that sits at the very top of its axis by construction (pause flags: `y=1` on a dedicated `[0,1]` axis; HR-recovery flags: `domain[1]`, the axis's own padded max) — so half the shape's height rendered above pixel row 0 of the chart's own SVG, silently clipped by the browser's default SVG overflow. Fixed by giving both `ComposedChart`s an explicit `margin={{ top: 16, ... }}` (Recharts' default is ~5px) — the data-space domain padding (`axisDomainMinMax`'s 10%) doesn't help here, since it only affects where in *value* space the axis's max sits, not how many *pixels* of the chart's own margin exist above it.
 - **Pause detection is two independent methods, picked per-activity** by whether every `track_points` row has `timestamp_unix`: `detectPausesFromTimestamps` (primary, real Garmin data) is a plain gap ≥ threshold between consecutive points' `timestamp_unix` — this device stops recording entirely during an auto-pause, so no speed/clock heuristics are needed, and `elapsed_sec` isn't used at all (see "FIT parser notes" for why it's unreliable). `detectPausesHeuristic` (fallback, Strava or not-yet-backfilled Garmin) uses a debounced near-zero-speed run — a single noisy speed blip inside an otherwise-slow stretch does not end the run, or one real long stop fragments into several short ones.
@@ -165,8 +261,7 @@ Multi-metric overlay chart (Speed/Pace mandatory, plus optional HR/altitude/cade
 - If a new field is added to `fit-parser.ts` that needs backfilling onto already-imported Garmin activities (like `moving_time_sec`/`timestamp_unix`/the `avg_cadence` fix were), run `npm run reprocess:fit` — it re-parses every file in `fit-archive/` and rewrites *every* activity-level column plus `track_points` in place (not a delete+resync), so it stays a complete backfill as `fit-parser.ts` continues to change, not just the two fields it was first written for.
 - **Modal does not close on backdrop click** — only the explicit × button (or the browser back/away action) closes it; an earlier version closed on any click outside the modal content, which was easy to trigger by accident.
 - **Delete button reads "Delete activity (locally)"**, not a separate "local database only" label + bare "Delete" button — the fuller explanation (what it does, what it doesn't touch, that it's restorable) moved into the button's `title` tooltip instead of sitting permanently in the UI as its own line. Delete is soft (see "Soft delete & trash"); the confirm step now says "Move to trash?" rather than implying permanence.
-- **StatGrid conditionals use `!= null`, never bare truthy checks** (`{activity.descent_m != null && <Stat .../>}`, not `{activity.descent_m && ...}`) — a bare truthy check on a legitimately-zero numeric field (e.g. `descent_m: 0` on a flat run) renders the literal text "0" in the DOM instead of nothing, since `0 && <X/>` evaluates to `0`, not `false`. Card order: Distance, Moving time, Duration, Calories, **Avg speed/pace** (combined into one `SpeedPaceStat` card — same measurement shown two ways, so one card with two value+unit pairs side by side in one row, not two separate cards), Cadence, Avg HR, Max HR, Ascent, Descent — in a 4-column grid that's Cadence at row 2 col 2.
-- **`ui.tsx`'s `Stat` value font is 18px, not the original 22px** — reduced app-wide (every tab using `Stat` inherits it) specifically so `SpeedPaceStat`'s two side-by-side values could match Stat's size exactly rather than needing their own smaller, inconsistent size to fit the card width.
+- **StatGrid conditionals use `!= null`, never bare truthy checks** (`{activity.moving_time_sec != null && <Stat .../>}`, not `{activity.moving_time_sec && ...}`) — a bare truthy check on a legitimately-zero numeric field renders the literal text "0" in the DOM instead of nothing, since `0 && <X/>` evaluates to `0`, not `false`. Card order (post-reorg, see the layout list above): Avg HR, Max HR, Moving time, Duration, Calories, Cadence, Elevation. `SpeedPaceStat.tsx` (the old combined avg-speed/avg-pace card) is deleted — that measurement now lives inside the graph via `GraphKpiCard`, showing only whichever of speed/pace the chart's own switch currently has selected, not both at once.
 
 ## Settings tab (SettingsTab.tsx)
 **Every section is an `AccordionCard` now** (`ui/AccordionCard.tsx`) — a clickable "card" header (title
@@ -216,12 +311,20 @@ All persist in the SQLite `settings` table rather than `localStorage` (see Stack
   dark)")` change listener, no reload needed. `ThemePicker` still highlights whichever swatch matches
   `resolvedTheme` while no explicit choice is stored.
 - **Only general UI chrome is themed.** Chart-specific colors defined in TS (`ActivityModal.tsx`'s
-  `METRIC_DEFS`, `SPORT_COLOR`, `BodyTab.tsx`'s per-metric hexes) were validated specifically against
+  `METRIC_DEFS`, `BodyTab.tsx`'s per-metric hexes) were validated specifically against
   the dark `--bg-card` surface and are **not** re-validated per theme — they still render on light
   themes, just without a fresh contrast pass. Pace and HR are the one deliberate exception: their
   gradients (`shared.ts`'s `SPEED_COLOR_STOPS`/`HR_COLOR_STOPS`, see the Activity detail chart section)
   are fixed and theme-invariant BY DESIGN (dashboard design-system rework, sections 4/7) — identical
   across all 4 themes, never derived from `--accent`.
+- **`types/api.ts`'s `SPORT_COLOR` IS theme-aware, unlike the chart colors above** — `Record<Theme,
+  Record<string, string>>`, keyed first by resolved theme then by sport, since a flat per-sport hex
+  couldn't stay legible against both a near-black and a near-white background. Read via
+  `utils/theme.ts`'s `getResolvedTheme()` — a module-scope global set by `useAppearance()`'s
+  `applyToDocument()` alongside the `data-theme` attribute, same "global side-channel every component
+  reads at render time" pattern `utils/units.ts` already uses for unit system (see that file's own
+  comment for why a plain variable, not React context, is sufficient). Consumers: `ActivityRow.tsx`,
+  `ActivityDetailBody.tsx`, `OverviewTab.tsx`'s two `Badge` call sites.
 - **`useAppearance()`** (`hooks/useAppearance.ts`) fetches the full `settings` row once, applies
   `theme` (resolved) as `data-theme` and `palette` as `data-palette` on `<html>`, and `unit_system`
   (resolved) to `utils/units.ts`'s module state, then exposes `setTheme`/`setUnits`/`setPalette` — each

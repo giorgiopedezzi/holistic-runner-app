@@ -4,6 +4,7 @@ export { Label } from "./Label";
 export { ChartCard, ChartPillLegend, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef } from "./ChartCard";
 export { Stat, splitUnit } from "./Stat";
 export { StatGrid } from "./StatGrid";
+export { GraphKpiCard } from "./GraphKpiCard";
 export { Badge } from "./Badge";
 export { SectionTitle } from "./SectionTitle";
 export { Empty } from "./Empty";

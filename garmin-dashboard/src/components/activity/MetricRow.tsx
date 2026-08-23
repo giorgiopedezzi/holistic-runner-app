@@ -7,24 +7,27 @@ import { METRIC_DEFS } from "./shared";
 export interface MetricRowState {
   active:    boolean;
   available: boolean;
-  axisOn:    boolean;
   cardOn:    boolean;
 }
 
-export type MetricRowField = "active" | "axis" | "card";
+export type MetricRowField = "active" | "card";
 
-// ── Per-metric row: pill (toggles it on/off) + axis switch + card switch.
-// Used for the four optional metrics only — Speed/Pace is always active and
-// has its own inline layout (unit switch instead of an on/off pill).
-// One `state` object + one discriminated `onToggle`, not 4 boolean props +
-// 3 parallel callbacks (HRA-75, architecture-avoid-boolean-props) — the
-// caller still owns activeMetrics/axisVisible/showCard independently, this
-// just collapses how they're threaded through one component's props.
+// ── Per-metric row: pill (toggles it on/off) + card switch. Used for the
+// optional metrics only — Speed/Pace is always active and has its own
+// inline layout (unit switch instead of an on/off pill). Per-metric axis
+// visibility is no longer a user choice here (dashboard design-system
+// rework, "reorganize activity layout": Heart rate's Y-axis is always
+// shown when active, Cadence/Power's never is) — see
+// ActivityChartSection.tsx's per-metric YAxis rendering.
+// One `state` object + one discriminated `onToggle`, not 3 boolean props +
+// 2 parallel callbacks (HRA-75, architecture-avoid-boolean-props) — the
+// caller still owns activeMetrics/showCard independently, this just
+// collapses how they're threaded through one component's props.
 export function MetricRow({ mKey, label, state, onToggle }: {
   mKey: MetricKey; label: string; state: MetricRowState; onToggle: (field: MetricRowField) => void;
 }) {
   const { t } = useTranslation();
-  const { active, available, axisOn, cardOn } = state;
+  const { active, available, cardOn } = state;
   const color = METRIC_DEFS[mKey].color;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", flexWrap: "wrap" }}>
@@ -45,14 +48,9 @@ export function MetricRow({ mKey, label, state, onToggle }: {
         {label}
       </button>
       {active && (
-        <>
-          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
-            <Checkbox size={11} checked={axisOn} onCheckedChange={() => onToggle("axis")} /> {t("activity.metric.axis", "Axis")}
-          </label>
-          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
-            <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> {t("activity.metric.card", "Card")}
-          </label>
-        </>
+        <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
+          <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> {t("activity.metric.card", "Card")}
+        </label>
       )}
     </div>
   );

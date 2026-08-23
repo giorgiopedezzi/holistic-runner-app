@@ -14,7 +14,7 @@ import { api } from "@/api/client";
 import {
   Card, ChartCard, chartGrid, chartTick,
   Stat, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
-  splitUnit,
+  splitUnit, GraphKpiCard,
 } from "@/components/ui";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { ActivityRow } from "@/components/activity/ActivityRow";
@@ -22,6 +22,7 @@ import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
 import { SPORT_COLOR, type Activity, type SavedDateRange, type SportSummary } from "@/types/api";
 import { fmtPace, fmtKm, fmtMinSecRaw, fmtDate } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
+import { getResolvedTheme } from "@/utils/theme";
 import {
   type GroupMode, defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m,
   groupActivitiesBySport, type AlignMode, type OverlapPoint, buildOverlapPoints,
@@ -470,29 +471,6 @@ function TrendSeriesLegend({ paceUnit }: { paceUnit: string }) {
 // Compact KPI card for the main graph's own header row — deliberately
 // smaller/plainer than the shared `Stat` card used by Other key metrics,
 // which is sized to stand on its own in a grid, not to sit inline beside a
-// chart's title. Vertical order is the one canonical layout every metric
-// card on this tab follows (rule, docs/frontend.md): indicator (icon+label)
-// on top, value in the middle, difference at the bottom.
-function GraphKpiCard({ icon, iconColor, value, unit, label, deltaText, deltaPositive: positive }: {
-  icon: ReactNode; iconColor: string; value: string; unit?: string; label: string;
-  deltaText?: string; deltaPositive?: boolean;
-}) {
-  return (
-    <div className="hra-graph-kpi">
-      <div className="hra-graph-kpi-label" style={{ "--kpi-icon-color": iconColor } as CSSProperties}>
-        <span className="hra-graph-kpi-icon">{icon}</span>
-        {label}
-      </div>
-      <div className="hra-graph-kpi-value">{value}{unit && <span className="hra-graph-kpi-unit"> {unit}</span>}</div>
-      {deltaText && (
-        <div className={positive == null ? "hra-stat-delta" : positive ? "hra-stat-delta hra-stat-delta-up" : "hra-stat-delta hra-stat-delta-down"}>
-          {positive != null && (positive ? "↗ " : "↘ ")}{deltaText}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSize, compareEnabled, from, to, compareFrom, compareTo, viewMode, primary, headerControls, kpis, compareKpis, otherKeyMetrics, compareOtherKeyMetrics }: {
   sport: string; activities: Activity[]; compareActivities: Activity[]; mode: GroupMode; minGroupSize: number;
   compareEnabled: boolean; from: string; to: string; compareFrom: string; compareTo: string; viewMode: TrendViewMode;
@@ -702,7 +680,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
           filters and the graph. */}
       {!primary && (
         <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
-          <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
+          <Badge label={sport} color={SPORT_COLOR[getResolvedTheme()][sport] ?? "#888"} />
           <span className="hra-text-muted" style={{ fontSize: 11 }}>
             {compareEnabled
               ? t("overview.sportCounts.withCompare", `${curPoints.length} current ${nounLabel} · ${cmpPoints.length} compare ${nounLabel}`, { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
@@ -1376,7 +1354,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
                   tooltip={tooltip}
                   style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", fontSize: 14 }}
                 >
-                  <Badge label={s.sport ?? "other"} color={SPORT_COLOR[s.sport ?? "other"] ?? "#888"} />
+                  <Badge label={s.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][s.sport ?? "other"] ?? "#888"} />
                   <span className="hra-text-primary" style={{ flex: 1, fontWeight: 500 }}>
                     {fmtKm(s.total_km * 1000)}
                   </span>

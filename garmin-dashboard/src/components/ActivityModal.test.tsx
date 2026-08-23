@@ -3,7 +3,10 @@
  * ActivityDetailBody — the detail content shared by the accordion and the
  * popup. Covers the loading→content transition, the soft-delete confirm flow
  * (DELETE + onDelete callback), and the error state. Uses a ≤5-point track so
- * the >5-point chart is skipped and assertions stay on the stat grid.
+ * the >5-point chart is skipped — assertions stay on the stat grid (Max HR is
+ * the one HR badge left there; Avg HR moved inside the graph) plus the
+ * "not enough data" message that stands in for the graph (and the
+ * Distance/Speed-Pace/Avg HR KPIs that live inside it).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -26,13 +29,17 @@ describe("ActivityDetailBody", () => {
     });
     render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
 
-    // Stat now splits "10.00 km" into a value div + a smaller inline unit
-    // span (polish pass, ui/Stat.tsx's splitUnit) — match on the div's full
-    // textContent rather than a single text node.
+    // Stat splits its value into a value div + a smaller inline unit span
+    // (ui/Stat.tsx's splitUnit) — match on the div's full textContent rather
+    // than a single text node.
     const byExactDivText = (text: string) => (_: string, node: Element | null) =>
       node?.tagName.toLowerCase() === "div" && node.textContent === text;
-    expect(await screen.findByText(byExactDivText("10.00 km"))).toBeInTheDocument();
-    expect(screen.getByText(byExactDivText("152 bpm"))).toBeInTheDocument(); // Avg HR
+    expect(await screen.findByText(byExactDivText("171 bpm"))).toBeInTheDocument(); // Max HR
+    // Distance/Speed-Pace/Avg HR moved inside the graph (dashboard
+    // design-system rework) — shortTrack() is ≤5 points, so the graph
+    // itself is skipped and this "not enough data" message is the one
+    // place that stands in for them, not a StatGrid value.
+    expect(screen.getByText("Not enough track data to plot a chart.")).toBeInTheDocument();
   });
 
   it("soft-deletes on confirm and calls onDelete with the id", async () => {
