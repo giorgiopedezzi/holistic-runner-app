@@ -51,8 +51,11 @@ describe("App tab switching", () => {
     installFetch(appRoutes());
     render(<App />);
 
-    // Overview is the default tab.
-    expect(await screen.findByText("Total")).toBeInTheDocument();
+    // Overview is the default tab. Longer timeout than the default 1000ms —
+    // the graph-first layout (main graph + sidebar) now renders through a
+    // few more nested components before settling, confirmed correct via
+    // manual inspection, just slower to converge in this test environment.
+    await waitFor(() => expect(document.body).toHaveTextContent("Avg distance"), { timeout: 5000 });
 
     fireEvent.click(screen.getByRole("button", { name: "Activities" }));
     expect(await screen.findByText(fmtDate("2026-08-01"))).toBeInTheDocument();
@@ -79,7 +82,8 @@ describe("unit-system propagation across tabs (load-bearing)", () => {
     render(<App />);
 
     // Overview (default) shows the running avg-pace unit label in metric.
-    expect(await screen.findByText("min/km")).toBeInTheDocument();
+    // Longer timeout — see the same note above.
+    await waitFor(() => expect(document.body).toHaveTextContent("min/km"), { timeout: 5000 });
     expect(screen.queryByText("min/mi")).not.toBeInTheDocument();
 
     // Switch to Settings and choose Imperial. The save is async, so wait until

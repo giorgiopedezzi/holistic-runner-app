@@ -726,6 +726,12 @@ input:focus, select:focus { border-color: var(--accent); }
    reusing those. */
 .hra-legend-line-swatch { border-top: 2px solid var(--text-secondary); }
 .hra-legend-bar-swatch  { background: var(--data-pace); }
+/* Generic per-series legend swatches (main trend graph's Distance/Pace/HR
+   row, dashboard graph-first reorg) — color comes from --legend-color
+   (per-instance hook, defaulting to --text-secondary, see :root) rather than
+   a fixed token, since each swatch here tints to whichever series it labels. */
+.hra-series-swatch--line { border-top: 2px solid var(--legend-color); }
+.hra-series-swatch--bar  { background: var(--legend-color); border-radius: 2px; }
 /* ProgressBar's empty track — distinct from its accent-colored fill
    (which is a real per-instance value, handled via --dyn-bg). */
 .hra-bg-border { background: var(--border); }
@@ -817,7 +823,7 @@ input:focus, select:focus { border-color: var(--accent); }
   padding-bottom: 8px;
 }
 .hra-header-inner {
-  max-width: 860px;
+  max-width: 1240px;
   width: 100%;
   margin: 0 auto;
   padding: 0 24px;
@@ -879,6 +885,35 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-kpi-unit { font-size: 16px; font-weight: 500; color: var(--text-muted); }
 .hra-kpi-unit--sm { font-size: 14px; }
 .hra-kpi-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+/* Stat's optional leading icon (label row) and always-visible comparison
+   delta line (dashboard graph-first reorg) — deltaPositive undefined stays
+   neutral (--text-muted, no arrow), matching the "no comparison without
+   data" rule elsewhere on this tab: a caller simply omits deltaText rather
+   than rendering a fake/neutral percentage. */
+.hra-stat-icon { display: inline-flex; color: var(--text-muted); }
+.hra-stat-delta { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+.hra-stat-delta-up { color: var(--accent-green); }
+.hra-stat-delta-down { color: var(--accent-red); }
+
+/* Main graph header's compact KPI cards (subHeader row) — deliberately
+   smaller/plainer than Stat's own card, which is sized to stand alone in a
+   grid, not sit inline beside a chart title. Vertical: indicator (icon +
+   label) on top, value, difference — the one canonical metric-card order
+   (docs/frontend.md), same as Stat's own layout. */
+.hra-graph-kpi {
+  display: flex; flex-direction: column; gap: 2px; flex-shrink: 0;
+  min-width: 108px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 6px 12px;
+}
+.hra-graph-kpi-label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.hra-graph-kpi-icon { color: var(--kpi-icon-color, var(--accent)); display: inline-flex; }
+.hra-graph-kpi-value { font-size: 15px; font-weight: 700; line-height: 1.15; color: var(--text-primary); white-space: nowrap; }
+.hra-graph-kpi-unit { font-size: 11px; font-weight: 500; color: var(--text-muted); }
 
 /* ── Hero row (Overview) — ring card + distance/time/recent card share one
    accent-tinted gradient, a stronger version of .card's own diagonal recipe
@@ -975,7 +1010,19 @@ input:focus, select:focus { border-color: var(--accent); }
    into the distinct pair, compare card starting already merged over
    current) -> `.hra-unmerge-down` (compare card slides back into its own
    slot). `.hra-merged` is the static (non-animated) "already merged" look
-   shared by both crossfade phases. */
+   shared by both crossfade phases.
+
+   `.hra-unmerge-down` is deliberately the exact structural mirror of
+   `.hra-merge-up` — normal document flow, not `position:absolute` — not the
+   asymmetric absolute-overlay version this used to be. That earlier version
+   put the compare card's own "Other key metrics" sidebar in a SEPARATE flex
+   column from an ancestor sized only by the current chart (absolute
+   children don't contribute to a parent's intrinsic height), which made the
+   away-from-overlap direction's sidebar badges behave differently from the
+   towards-overlap direction's (explicit feedback: "towards direction ok,
+   away from direction badges disappear and appear only at the end"). Both
+   directions now use the identical mechanism (real layout box, animated via
+   `transform` only), just with the keyframe reversed. */
 .hra-crossfade { display: grid; }
 .hra-crossfade > * { grid-area: 1 / 1; }
 @keyframes hra-fade-out { from { opacity: 1; } to { opacity: 0; } }
@@ -992,12 +1039,10 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-merge-up { animation: hra-merge-up-move 1s ease-in-out forwards; }
 
 @keyframes hra-unmerge-down-move {
-  from { transform: translateY(0); }
-  to   { transform: translateY(calc(100% + 12px)); }
+  from { transform: translateY(calc(-100% - 12px)); } /* starts already overlapping current — o2d-fade's end state */
+  to   { transform: translateY(0); }
 }
-/* position/inset here (not inline at the call site) — same "already merged"
-   footprint .hra-merged defines, since this phase starts from that state. */
-.hra-unmerge-down { position: absolute; inset: 0; animation: hra-unmerge-down-move 1s ease-in-out forwards; }
+.hra-unmerge-down { animation: hra-unmerge-down-move 1s ease-in-out forwards; }
 
 /* Runner mouse-follow/autoplay readout (ActivityChartSection) — bare text,
    no chip/box (deliberately NOT `.hra-chart-tooltip` — a panel floating

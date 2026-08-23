@@ -45,13 +45,17 @@ describe("TrendsBySport sport-grouping memoization", () => {
 
     render(<OverviewTab range={fakeRange("2026-07-01", "2026-08-01")} compareRange={fakeCompareRange("2026-06-01", "2026-06-30")} savedRanges={[]} />);
 
-    expect(await screen.findByText("Distance & pace/HR trend")).toBeInTheDocument();
+    // "Single" is always enabled regardless of data — its presence proves
+    // TrendsBySport rendered (graph-first reorg moved the "Distance & pace/HR
+    // trend" section title out of the running case, so it's no longer a
+    // reliable mount signal here).
+    const singleButton = await screen.findByRole("button", { name: "Single" });
     await waitFor(() => expect(spy).toHaveBeenCalled());
     const callsAfterMount = spy.mock.calls.length;
 
-    // "Single" is always enabled regardless of data, so this re-renders
-    // TrendsBySport via groupMode changing — activities itself is untouched.
-    fireEvent.click(screen.getByRole("button", { name: "Single" }));
+    // Re-renders TrendsBySport via groupMode changing — activities itself is
+    // untouched.
+    fireEvent.click(singleButton);
 
     expect(spy.mock.calls.length).toBe(callsAfterMount);
   });

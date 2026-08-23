@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
-import i18next from "@/i18n";
+import { MapPin, Timer, Flame, Gauge, Heart } from "lucide-react";
+import { RunnerGlyph } from "@/components/activity/RunnerGlyph";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
 import type { DateRangeState } from "@/hooks/useDateRange";
@@ -12,14 +13,14 @@ import type { CompareRangeState } from "@/hooks/useCompareRange";
 import { api } from "@/api/client";
 import {
   Card, ChartCard, chartGrid, chartTick,
-  Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
+  Stat, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
   splitUnit,
 } from "@/components/ui";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { ActivityRow } from "@/components/activity/ActivityRow";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
-import { SPORT_COLOR, type Activity, type SavedDateRange } from "@/types/api";
-import { fmtPace, fmtKm, fmtElevation, fmtMinSecRaw, fmtDate } from "@/utils/fmt";
+import { SPORT_COLOR, type Activity, type SavedDateRange, type SportSummary } from "@/types/api";
+import { fmtPace, fmtKm, fmtMinSecRaw, fmtDate } from "@/utils/fmt";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
 import {
   type GroupMode, defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m,
@@ -97,6 +98,23 @@ const BAR_COLOR = "var(--text-secondary)";
 // per chart — no CSS-class equivalent for SVG gradient stops).
 const BAR_RADIUS: [number, number, number, number] = [6, 6, 0, 0];
 
+// Shared axis widths — ONE source of truth used both by the YAxis `width`
+// props below AND by the primary graph's header-row padding, so the
+// Current/Compare label lines up with the first bar's left edge and the
+// right-legend cluster lines up with the last bar's right edge (explicit
+// feedback). Km+pace stack on the left, HR alone on the right.
+// Back to their original (pre-rotated-title) widths — the Y-axis vertical
+// titles were removed per explicit feedback ("remove Y axis legend").
+const KM_AXIS_WIDTH = 32;
+const PACE_AXIS_WIDTH = 34;
+const HR_AXIS_WIDTH = 30;
+const LEFT_AXES_WIDTH = KM_AXIS_WIDTH + PACE_AXIS_WIDTH;
+// ChartCard's own header rows already carry 8px of horizontal padding
+// (index.css) — these are the ADDITIONAL amounts needed on top of that to
+// reach the full axis width.
+const HEADER_EXTRA_LEFT = LEFT_AXES_WIDTH - 8;
+const HEADER_EXTRA_RIGHT = HR_AXIS_WIDTH - 8;
+
 // Max distinct x-axis tick labels before sampling kicks in — "too many
 // activities/groups" (e.g. a long Single-mode range, or Week mode over a
 // long span) otherwise renders one illegible label per bar. Recharts'
@@ -116,10 +134,20 @@ function sampleInterval(count: number): number {
 // caller-supplied — computed once from BOTH sides combined, so current and
 // compare's separate charts still share one Y-axis range per measure (the
 // "vertical axis must cover the same range for both" rule).
-function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain }: {
-  sport: string; title: string;
+function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader }: {
+  sport: string; title: ReactNode;
   points: { label: string; totalKm: number; avgPace: number | null; avgHr: number | null }[];
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
+  // "lg" (primary/running graph) — now the SAME size as the compare card too
+  // (explicit feedback: "make the two graphs identical") / default unchanged
+  // (every other sport, exactly as before this Story) — additive, no
+  // behavior change unless a caller opts in.
+  size?: "lg" | "sm";
+  // Row 1 (beside title), the controls row, and row 2 (above the chart) —
+  // see ChartCard's own doc comment for why these are three separate slots.
+  legend?: ReactNode;
+  controlsRow?: ReactNode;
+  subHeader?: ReactNode;
 }) {
   const { t } = useTranslation();
   const isSwimming = sport === "swimming";
@@ -129,11 +157,12 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain 
   const hrColor = "var(--data-hr)"; // fixed semantic data color (HRA-94/97) — was --accent-red, same hex today
   const gradId = useId();
   const interval = sampleInterval(points.length);
+  const height = size === "lg" ? 460 : size === "sm" ? 160 : 220;
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <ChartCard title={title}>
-      <ResponsiveContainer width="100%" height={220}>
+      <ChartCard title={title} legend={legend} controlsRow={controlsRow} subHeader={subHeader && <div style={{ paddingLeft: HEADER_EXTRA_LEFT }}>{subHeader}</div>}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={points}>
           <defs>
             <linearGradient id={`${gradId}-bar`} x1="0" y1="0" x2="0" y2="1">
@@ -153,13 +182,13 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain 
               conditional. Domains are caller-supplied (see doc comment
               above), not self-computed — that's what makes current and
               compare's separate charts share one range. */}
-          <YAxis yAxisId="km" domain={kmDomain} tick={{ fill: BAR_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={32}
+          <YAxis yAxisId="km" domain={kmDomain} tick={{ fill: BAR_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={KM_AXIS_WIDTH}
             tickFormatter={(v: number) => v.toFixed(0)} />
           <YAxis yAxisId="pace" orientation="left" domain={paceDomain} reversed
-            tick={{ fill: PACE_LINE_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={34}
+            tick={{ fill: PACE_LINE_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={PACE_AXIS_WIDTH}
             tickFormatter={(v: number) => fmtMinSecRaw(v)} />
           <YAxis yAxisId="hr" orientation="right" domain={hrDomain}
-            tick={{ fill: hrColor, fontSize: 9 }} tickLine={false} axisLine={false} width={30}
+            tick={{ fill: hrColor, fontSize: 9 }} tickLine={false} axisLine={false} width={HR_AXIS_WIDTH}
             tickFormatter={(v: number) => Math.round(v).toString()} />
           <Tooltip
             cursor={{ stroke: "var(--border-strong)", strokeDasharray: "3 3" }}
@@ -246,9 +275,17 @@ function makeTwoRowTick(points: OverlapPoint[]) {
 // / `data` array, so their categories/positions compute identically: only
 // elements sharing ONE xAxisId get auto-spaced relative to each other, so
 // putting the compare bar on its own axis stops it being pushed aside.
-function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain, paceDomain, hrDomain }: {
-  sport: string; title: string; points: OverlapPoint[]; compareEnabled: boolean;
+function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader }: {
+  sport: string; title: ReactNode; points: OverlapPoint[]; compareEnabled: boolean;
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
+  size?: "lg" | "sm";
+  // Row 1 (beside title) and the controls row — passed straight through to
+  // ChartCard, unlike the Current/Compare swatch group below (this
+  // component's own concern, since only it knows `compareEnabled`), which
+  // always lands in row 2 alongside the caller's `subHeader`.
+  legend?: ReactNode;
+  controlsRow?: ReactNode;
+  subHeader?: ReactNode;
 }) {
   const { t } = useTranslation();
   const isSwimming = sport === "swimming";
@@ -259,20 +296,49 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   const twoRowTick = useMemo(() => makeTwoRowTick(points), [points]);
   const interval = sampleInterval(points.length);
   const gradId = useId();
+  const height = size === "lg" ? 460 : size === "sm" ? 160 : 220;
+  // Aligned to the first bar's left edge (explicit feedback) via the SAME
+  // HEADER_EXTRA_LEFT the YAxis `width` props below use. Compact: one label
+  // per metric, then its two swatches side by side — not six separately
+  // labelled "(current)"/"(previous)" chips (explicit feedback: "to compact
+  // graph legend, show Distance: current [representation] compared
+  // [representation]... same for the others"). This REPLACES the plain
+  // graph legend (Avg pace/Avg HR) while overlapping — showing both would
+  // be redundant, since this one already identifies every curve AND
+  // distinguishes current-vs-previous in one place (explicit feedback:
+  // "when overlap, remove the original legend"). The muted swatch is now
+  // the ONLY visual difference from current (no dash) — the real chart
+  // lines were changed to match this (explicit feedback: "I prefer the
+  // mute color being the real representation," i.e. the chart follows the
+  // legend, not the other way around).
+  const currentCompareLegend = compareEnabled && (
+    <div className="hra-text-muted" style={{ display: "flex", gap: 14, alignItems: "center", fontSize: 11, flexWrap: "wrap" }}>
+      {([
+        [t("overview.stat.distance", "Distance"), "var(--data-pace)", "bar"],
+        [t("overview.stat.avgPace", "Avg pace"), PACE_LINE_COLOR, "line"],
+        [t("overview.stat.avgHr", "Avg HR"), hrColor, "line"],
+      ] as const).map(([metricLabel, color, kind]) => (
+        <span key={metricLabel} className="hra-row-inline" style={{ gap: 6 }}>
+          {metricLabel}:
+          <span className="hra-row-inline" style={{ "--legend-color": color } as CSSProperties} title={t("overview.legend.current", "current")}>
+            <span className={kind === "bar" ? "hra-series-swatch--bar" : "hra-series-swatch--line"} style={{ display: "inline-block", width: 14, height: kind === "bar" ? 8 : 0 }} />
+          </span>
+          <span className="hra-row-inline" style={{ "--legend-color": color, opacity: 0.5 } as CSSProperties} title={t("overview.legend.previous", "previous")}>
+            <span className={kind === "bar" ? "hra-series-swatch--bar" : "hra-series-swatch--line"} style={{ display: "inline-block", width: 14, height: kind === "bar" ? 8 : 0 }} />
+          </span>
+        </span>
+      ))}
+    </div>
+  );
 
   return (
     <div className="hra-overlap-card-enter" style={{ marginBottom: 12 }}>
-      <ChartCard title={title} legend={compareEnabled && (
-        <div className="hra-text-muted" style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11 }}>
-          <span className="hra-row-inline">
-            <span className="hra-legend-line-swatch" style={{ display: "inline-block", width: 14 }} /> {t("overview.legend.current", "Current")}
-          </span>
-          <span className="hra-row-inline">
-            <span className="hra-legend-bar-swatch" style={{ display: "inline-block", width: 14, height: 8, opacity: 0.25, borderRadius: 2 }} /> {t("overview.legend.compare", "Compare")}
-          </span>
+      <ChartCard title={title} legend={legend} controlsRow={controlsRow} subHeader={(currentCompareLegend || subHeader) && (
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", paddingLeft: HEADER_EXTRA_LEFT }}>
+          {currentCompareLegend || subHeader}
         </div>
       )}>
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={points} margin={{ bottom: 8 }}>
           <defs>
             <linearGradient id={`${gradId}-cur`} x1="0" y1="0" x2="0" y2="1">
@@ -283,13 +349,13 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
           <CartesianGrid {...gridStyle} />
           <XAxis xAxisId="xMain" dataKey="slot" tick={twoRowTick} tickLine={false} axisLine={false} height={40} interval={interval} />
           {compareEnabled && <XAxis xAxisId="xOverlay" dataKey="slot" hide />}
-          <YAxis yAxisId="km" domain={kmDomain} tick={{ fill: BAR_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={32}
+          <YAxis yAxisId="km" domain={kmDomain} tick={{ fill: BAR_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={KM_AXIS_WIDTH}
             tickFormatter={(v: number) => v.toFixed(0)} />
           <YAxis yAxisId="pace" orientation="left" domain={paceDomain} reversed
-            tick={{ fill: PACE_LINE_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={34}
+            tick={{ fill: PACE_LINE_COLOR, fontSize: 9 }} tickLine={false} axisLine={false} width={PACE_AXIS_WIDTH}
             tickFormatter={(v: number) => fmtMinSecRaw(v)} />
           <YAxis yAxisId="hr" orientation="right" domain={hrDomain}
-            tick={{ fill: hrColor, fontSize: 9 }} tickLine={false} axisLine={false} width={30}
+            tick={{ fill: hrColor, fontSize: 9 }} tickLine={false} axisLine={false} width={HR_AXIS_WIDTH}
             tickFormatter={(v: number) => Math.round(v).toString()} />
           <Tooltip
             cursor={{ stroke: "var(--border-strong)", strokeDasharray: "3 3" }}
@@ -339,9 +405,13 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
             className="hra-trend-line-pace" dot={{ r: 2.5, fill: PACE_LINE_COLOR, strokeWidth: 0 }}
             activeDot={{ r: 5, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
             connectNulls isAnimationActive={false} />
+          {/* Muted color only — no dash pattern (explicit feedback: "I
+              prefer the mute color being the real representation," i.e. the
+              actual chart should match the compact legend's muted swatch,
+              not the other way around). */}
           {compareEnabled && (
             <Line xAxisId="xMain" yAxisId="pace" dataKey="comparePace" name="Compare Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2}
-              strokeOpacity={0.55} strokeDasharray="5 4" dot={{ r: 2, fill: PACE_LINE_COLOR, strokeWidth: 0, fillOpacity: 0.55 }}
+              strokeOpacity={0.55} dot={{ r: 2, fill: PACE_LINE_COLOR, strokeWidth: 0, fillOpacity: 0.55 }}
               connectNulls isAnimationActive={false} />
           )}
           <Line xAxisId="xMain" yAxisId="hr" dataKey="currentHr" name="Avg HR" stroke={hrColor} strokeWidth={2.5}
@@ -350,7 +420,7 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
             connectNulls isAnimationActive={false} />
           {compareEnabled && (
             <Line xAxisId="xMain" yAxisId="hr" dataKey="compareHr" name="Compare Avg HR" stroke={hrColor} strokeWidth={2}
-              strokeOpacity={0.55} strokeDasharray="5 4" dot={{ r: 2, fill: hrColor, strokeWidth: 0, fillOpacity: 0.55 }}
+              strokeOpacity={0.55} dot={{ r: 2, fill: hrColor, strokeWidth: 0, fillOpacity: 0.55 }}
               connectNulls isAnimationActive={false} />
           )}
         </ComposedChart>
@@ -365,9 +435,94 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
 // domains (so "distinct" mode's two separate charts and "overlap" mode's
 // one merged chart all show the SAME vertical range per measure, current
 // vs compare) up front, then renders whichever `viewMode` picked.
-function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSize, compareEnabled, from, compareFrom, viewMode }: {
+// i18n'd series-identification legend (Distance/Avg pace/Avg HR) — the main
+// trend graph's bars/lines had color alone to identify them before this;
+// added per explicit feedback ("add i18n legend for the axis: distanza,
+// fc..") alongside the graph-first reorg. Swatch colors are the same fixed
+// semantic tokens the chart itself draws with (PACE_LINE_COLOR/hrColor/
+// BAR_COLOR-as-drawn — the bar's own gradient reads as --data-pace at low
+// opacity, so its legend swatch uses that same hue, not the neutral
+// BAR_COLOR used for its axis ticks).
+// "Graph legend" (explicit feedback: distinct from the "axis legend"/KPI
+// cluster) — identifies the CURVES themselves ("the meaning of the curve"),
+// left-aligned. Distance is deliberately omitted: it's drawn as plain bars,
+// self-evident without a legend entry — only the two LINES (pace, HR) need
+// one, since color alone doesn't distinguish them from each other or from
+// their own current-vs-compare dashed/solid variants.
+function TrendSeriesLegend({ paceUnit }: { paceUnit: string }) {
+  const { t } = useTranslation();
+  const items: [string, string][] = [
+    [t("overview.legend.paceAxis", `Avg pace (${paceUnit})`, { unit: paceUnit }), PACE_LINE_COLOR],
+    [t("overview.legend.hrAxis", "Avg HR (bpm)"), "var(--data-hr)"],
+  ];
+  return (
+    <div className="hra-text-muted" style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11, flexWrap: "wrap" }}>
+      {items.map(([label, color]) => (
+        <span key={label} className="hra-row-inline" style={{ "--legend-color": color } as CSSProperties}>
+          <span className="hra-series-swatch--line" style={{ display: "inline-block", width: 14 }} />
+          {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Compact KPI card for the main graph's own header row — deliberately
+// smaller/plainer than the shared `Stat` card used by Other key metrics,
+// which is sized to stand on its own in a grid, not to sit inline beside a
+// chart's title. Vertical order is the one canonical layout every metric
+// card on this tab follows (rule, docs/frontend.md): indicator (icon+label)
+// on top, value in the middle, difference at the bottom.
+function GraphKpiCard({ icon, iconColor, value, unit, label, deltaText, deltaPositive: positive }: {
+  icon: ReactNode; iconColor: string; value: string; unit?: string; label: string;
+  deltaText?: string; deltaPositive?: boolean;
+}) {
+  return (
+    <div className="hra-graph-kpi">
+      <div className="hra-graph-kpi-label" style={{ "--kpi-icon-color": iconColor } as CSSProperties}>
+        <span className="hra-graph-kpi-icon">{icon}</span>
+        {label}
+      </div>
+      <div className="hra-graph-kpi-value">{value}{unit && <span className="hra-graph-kpi-unit"> {unit}</span>}</div>
+      {deltaText && (
+        <div className={positive == null ? "hra-stat-delta" : positive ? "hra-stat-delta hra-stat-delta-up" : "hra-stat-delta hra-stat-delta-down"}>
+          {positive != null && (positive ? "↗ " : "↘ ")}{deltaText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSize, compareEnabled, from, to, compareFrom, compareTo, viewMode, primary, headerControls, kpis, compareKpis, otherKeyMetrics, compareOtherKeyMetrics }: {
   sport: string; activities: Activity[]; compareActivities: Activity[]; mode: GroupMode; minGroupSize: number;
-  compareEnabled: boolean; from: string; compareFrom: string; viewMode: TrendViewMode;
+  compareEnabled: boolean; from: string; to: string; compareFrom: string; compareTo: string; viewMode: TrendViewMode;
+  // Graph-first reorg: the one sport (running) singled out as the page's
+  // main/comparison graph pair gets larger charts + the series legend + the
+  // mode-toggle controls folded into its own card header, instead of a
+  // shared header above the whole sports list. Every other sport keeps the
+  // exact pre-existing layout (primary/headerControls/kpis all omitted).
+  primary?: boolean;
+  headerControls?: ReactNode;
+  // Total distance / Avg pace mini cards for the CURRENT period — rendered
+  // into the current/overlap chart's own controls row, only when primary.
+  kpis?: ReactNode;
+  // Same, but the COMPARE period's own totals (no delta — there's nothing
+  // further back to compare a reference period against) — explicit
+  // feedback: "even the second graph must have 'other metrics badges'."
+  // Rendered into the compare card's own badges-only row (no switches
+  // there, per separate explicit feedback).
+  compareKpis?: ReactNode;
+  // "Other key metrics" sidebar — now shown beside BOTH graphs in distinct
+  // mode, not just the first one (explicit feedback: "add the other key
+  // metrics badges aside the second graph[] too"), so it's placed HERE
+  // (inside the per-graph render) rather than wrapped once around this
+  // whole component by the caller. `otherKeyMetrics` = current period's
+  // figures (beside the current chart); `compareOtherKeyMetrics` = the
+  // compare period's own figures (beside the compare card) — explicit
+  // feedback: "data in the Other metric of the second graph must be the
+  // data of the second graph," not a repeat of the first.
+  otherKeyMetrics?: ReactNode;
+  compareOtherKeyMetrics?: ReactNode;
 }) {
   const { t } = useTranslation();
   const label = sport.charAt(0).toUpperCase() + sport.slice(1);
@@ -452,49 +607,155 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   const paceDomain: [number, number] = [Math.max(0, paceDomainBase[0]), paceDomainBase[1]];
   const hrDomain = meanCenteredDomain(allHr);
 
+  const isSwimmingUnit = sport === "swimming";
+  // The align-mode toggle (Match order/Match by time) — same segmented-pill
+  // visual as the overlap/distinct and single/week/month controls (explicit
+  // feedback: "no reason to have match order/match by time visually
+  // different from overlapping/distinct"), not its own bespoke style.
+  const alignToggle = countsDiffer ? (
+    <div className="hra-segmented-group"
+      title={t("overview.alignTooltip", "The two periods have a different number of activities — pick how to line them up")}>
+      {([["index", "Match order"], ["time", "Match by time"]] as const).map(([m, l]) => (
+        <button key={m} onClick={() => setAlignMode(m)}
+          className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${alignMode === m ? "hra-pill-active" : ""}`}>
+          {t(`overview.align.${m}`, l)}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  // Row 0 (own row, above the switches/pills — explicit feedback): icon +
+  // "{Sport} – Andamento distanza e ritmo" + the period. Built for BOTH the
+  // primary current chart and (identically, just with the compare period)
+  // the primary compare chart in distinct mode — explicit feedback: "the
+  // comparison graph MUST BE IDENTICAL to the current one when it's
+  // distinct... match order/match by time, overlapping/distinct, single/
+  // week/month miss on comparison graph" — so this is now a function of
+  // which period to show, not a single fixed value. Overlap mode's single
+  // merged chart still gets "current PLUS vs {compare period}" appended, as
+  // before. Sport name goes through a small dedicated `sport.*` key set (not
+  // the app-wide sport-enum translation, which CLAUDE.md documents as a
+  // known, deliberately out-of-scope gap elsewhere) — this title is
+  // prominent enough, and new enough, that leaving half of it hardcoded
+  // English would be a regression introduced by this Story, not an existing
+  // gap. Named-range names aren't threaded this deep (savedRanges lives
+  // several components up) — a plain date span is used instead.
+  const periodLabel = `${fmtDate(from)} – ${fmtDate(to)}`;
+  const comparePeriodLabel = `${fmtDate(compareFrom)} – ${fmtDate(compareTo)}`;
+  const overlapTitlePeriod = compareEnabled && viewMode === "overlap"
+    ? t("overview.mainGraphPeriodCompare", `${periodLabel} vs ${comparePeriodLabel}`, { current: periodLabel, compare: comparePeriodLabel })
+    : periodLabel;
+  const buildGraphTitle = (period: string) => (
+    <span className="hra-row-inline" style={{ gap: 8, fontSize: 15, fontWeight: 600, flexWrap: "wrap" }}>
+      <RunnerGlyph pose="a" color="var(--accent)" size={20} />
+      <span className="hra-text-primary">
+        {t("overview.mainGraphTitle", `${t(`sport.${sport}`, label)} – Andamento distanza e ritmo`, { sport: t(`sport.${sport}`, label) })}
+      </span>
+      <span className="hra-text-muted" style={{ fontSize: 12, fontWeight: 400 }}>({period})</span>
+    </span>
+  );
+  const graphTitle = primary ? buildGraphTitle(overlapTitlePeriod) : undefined;
+  const compareGraphTitle = primary ? buildGraphTitle(comparePeriodLabel) : undefined;
+  // Row 1 (own row, below the title, fixed position — explicit feedback:
+  // the KPI badges "are ok" where they sit content-wise, but must "move
+  // higher to align their top to the top of the switches... so the whole
+  // UI won't move when overlaps [only the chart grows taller]"): mode
+  // controls + align toggle on the left, the Distance/Avg-pace value cards
+  // on the right, all in ONE row that never changes height regardless of
+  // view mode. No "⋯" more button — removed per earlier explicit feedback.
+  const graphControlsRow = primary ? (
+    // Right-padded to the same HEADER_EXTRA_RIGHT the YAxis `width` below
+    // uses, so the KPI cards' right edge still lines up with the last bar
+    // (explicit feedback, carried over from when these lived in a separate
+    // row) even though they've moved up to share this one with the pills.
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, paddingRight: HEADER_EXTRA_RIGHT }}>
+      <div className="hra-row-inline" style={{ gap: 8 }}>
+        {alignToggle}
+        {headerControls}
+      </div>
+      {kpis && <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{kpis}</div>}
+    </div>
+  ) : undefined;
+  // Compare card's own equivalent row — badges only, no switches (explicit
+  // feedback, separately: the compare card must show its own totals but
+  // must NOT show the mode-toggle pills).
+  const compareBadgesRow = primary && compareKpis ? (
+    <div style={{ display: "flex", justifyContent: "flex-end", paddingRight: HEADER_EXTRA_RIGHT }}>
+      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{compareKpis}</div>
+    </div>
+  ) : undefined;
+  // Row 2 (subHeader): the "graph legend" — Avg pace / Avg HR curve
+  // identity, left-aligned (explicit feedback: distinct from the row-1 KPI
+  // cluster, which is a different concern — "axis legend" values). Padding
+  // to align with the first bar's left edge is applied where this is
+  // consumed (SportTrendChart/SportTrendOverlapChart), same as before.
+  const subHeader = primary ? (
+    <TrendSeriesLegend paceUnit={isSwimmingUnit ? "/100m" : paceUnitLabel()} />
+  ) : undefined;
+
   return (
     <div style={{ marginBottom: 20 }}>
-      <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
-        <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
-        <span className="hra-text-muted" style={{ fontSize: 11 }}>
-          {compareEnabled
-            ? t("overview.sportCounts.withCompare", `${curPoints.length} current ${nounLabel} · ${cmpPoints.length} compare ${nounLabel}`, { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
-            : t("overview.sportCounts.base", `${curPoints.length} current ${nounLabel}`, { count: curPoints.length, noun: nounLabel })}
-        </span>
-        {countsDiffer && (
-          <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
-            title={t("overview.alignTooltip", "The two periods have a different number of activities — pick how to line them up")}>
-            {([["index", "Match order"], ["time", "Match by time"]] as const).map(([m, l]) => (
-              <button key={m} onClick={() => setAlignMode(m)}
-                className="hra-dyn-bg hra-dyn-color"
-                style={{
-                  fontSize: 10, padding: "3px 8px", border: "none", cursor: "pointer",
-                  "--dyn-bg": alignMode === m ? "var(--bg-card)" : "transparent",
-                  "--dyn-color": alignMode === m ? "var(--text-primary)" : "var(--text-muted)",
-                } as CSSProperties}>
-                {t(`overview.align.${m}`, l)}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Badge + activity-count row — every other sport's original header,
+          unchanged. The primary graph replaces this entirely with its own
+          title/controls rows (graphTitle/graphControlsRow above), per the
+          exact-layout spec: nothing besides those two rows sits between the
+          filters and the graph. */}
+      {!primary && (
+        <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
+          <Badge label={sport} color={SPORT_COLOR[sport] ?? "#888"} />
+          <span className="hra-text-muted" style={{ fontSize: 11 }}>
+            {compareEnabled
+              ? t("overview.sportCounts.withCompare", `${curPoints.length} current ${nounLabel} · ${cmpPoints.length} compare ${nounLabel}`, { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
+              : t("overview.sportCounts.base", `${curPoints.length} current ${nounLabel}`, { count: curPoints.length, noun: nounLabel })}
+          </span>
+          {alignToggle}
+        </div>
+      )}
 
       {tooFew(activities) ? (
-        <Empty message={t("overview.tooFewCurrent", `Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`, { sport, count: activities.length, min: minGroupSize })} />
+        // Primary keeps its own title/controls/KPI header even when there's
+        // too little data for an actual trend line — the period's total
+        // distance/avg pace are still well-defined with just 1-4 activities,
+        // only the multi-point TREND chart isn't. Losing the KPI cards here
+        // would make them vanish silently below the grouping threshold.
+        primary ? (
+          <ChartCard title={graphTitle} controlsRow={graphControlsRow} subHeader={subHeader}>
+            <Empty message={t("overview.tooFewCurrent", `Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`, { sport, count: activities.length, min: minGroupSize })} />
+          </ChartCard>
+        ) : (
+          <Empty message={t("overview.tooFewCurrent", `Too few ${sport} activities to determine a trend (${activities.length} of ${minGroupSize} needed).`, { sport, count: activities.length, min: minGroupSize })} />
+        )
       ) : (() => {
         const currentChart = (
-          <SportTrendChart sport={sport} title={`${label} - current`} points={scaledCur}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
+          <SportTrendChart sport={sport} title={primary ? graphTitle : `${label} - current`} points={scaledCur}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
+            size={primary ? "lg" : undefined} controlsRow={graphControlsRow} subHeader={subHeader} />
         );
+        // Same size as the current chart, and its own title (with the
+        // COMPARE period) + graph legend — but explicitly NO controls row
+        // (explicit feedback: "when distinct is chosen, the second graph
+        // MUST NOT HAVE switches [match order/match by time, overlapping/
+        // distinct, single/week/month]" — those only ever apply to the
+        // shared state one control surface should own, not two). It DOES
+        // get the graph legend though (explicit feedback: "the second graph
+        // MUST have graph legend [avg HR, avg pace]").
         const compareCard = !compareEnabled ? null : tooFew(compareActivities) ? (
-          <Empty message={t("overview.tooFewCompare", `Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`, { sport, count: compareActivities.length, min: minGroupSize })} />
+          primary ? (
+            <ChartCard title={compareGraphTitle} controlsRow={compareBadgesRow} subHeader={subHeader}>
+              <Empty message={t("overview.tooFewCompare", `Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`, { sport, count: compareActivities.length, min: minGroupSize })} />
+            </ChartCard>
+          ) : (
+            <Empty message={t("overview.tooFewCompare", `Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`, { sport, count: compareActivities.length, min: minGroupSize })} />
+          )
         ) : (
-          <SportTrendChart sport={sport} title={`${label} - comparison`} points={scaledCmp}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
+          <SportTrendChart sport={sport} title={primary ? compareGraphTitle : `${label} - comparison`} points={scaledCmp}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
+            size={primary ? "lg" : undefined} controlsRow={compareBadgesRow} subHeader={subHeader} />
         );
         const overlapChart = (
-          <SportTrendOverlapChart sport={sport} title={label} points={scaledOverlap} compareEnabled={compareEnabled}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} />
+          <SportTrendOverlapChart sport={sport} title={primary ? graphTitle : label} points={scaledOverlap} compareEnabled={compareEnabled}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
+            size={primary ? "lg" : undefined} controlsRow={graphControlsRow} subHeader={subHeader} />
         );
         // "Merged" = compareCard rendered as an absolutely-positioned overlay
         // (`.hra-merged`/`.hra-unmerge-down`, both `position:absolute;inset:0`)
@@ -512,45 +773,86 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
           </div>
         );
 
+        // Places "Other key metrics" beside a graph, not just above/below
+        // the whole pair (explicit feedback: "add the other key metrics
+        // badges aside the second graph[] too"). Reuses the identical
+        // flex-basis/max-width pair for every row it wraps, so however many
+        // times it's called, each row independently fits the container's
+        // own width — flexbox always sizes to its parent, so repeating the
+        // same proportions can't make a row wider than the one before it.
+        // `sidebar` defaults to the CURRENT period's figures — callers
+        // wrapping the compare card pass `compareOtherKeyMetrics` explicitly
+        // (explicit feedback: "data in the Other metric of the second graph
+        // must be the data of the second graph," not a repeat of the first).
+        const withSidebar = (graph: ReactNode, sidebar: ReactNode = otherKeyMetrics) => primary && sidebar ? (
+          <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
+            <div style={{ flex: "3 1 480px", minWidth: 0 }}>{graph}</div>
+            <div style={{ flex: "1 1 110px", maxWidth: 130, display: "flex", flexDirection: "column", gap: 10 }}>
+              {sidebar}
+            </div>
+          </div>
+        ) : graph;
+
         switch (phase) {
           case "overlap":
-            return overlapChart;
+            return withSidebar(overlapChart);
           case "distinct":
             return (
               <>
-                {currentChart}
-                {compareCard && <div style={{ marginTop: 12 }}>{compareCard}</div>}
+                {withSidebar(currentChart)}
+                {compareCard && <div style={{ marginTop: 12 }}>{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
           case "d2o-move":
             // Compare card slides up (still in normal flow, so it briefly
             // leaves dead space below it) until it visually overlaps
-            // current — the merged look `d2o-fade` picks up from.
+            // current — the merged look `d2o-fade` picks up from. Each
+            // graph keeps its OWN badges wrapped alongside it (withSidebar
+            // per row, same as "distinct"/"overlap"), so the compare row's
+            // badges slide up WITH its graph as one rigid unit — explicit
+            // feedback: "graphs slide towards graphs, badges towards
+            // badges," which is exactly what moving matched graph+badges
+            // rows together achieves (same horizontal lane throughout,
+            // only vertical position changes).
             return (
               <>
-                {currentChart}
-                {compareCard && <div className="hra-merge-up" style={{ marginTop: 12 }}>{compareCard}</div>}
+                {withSidebar(currentChart)}
+                {compareCard && <div className="hra-merge-up" style={{ marginTop: 12 }}>{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
           case "d2o-fade":
             return (
               <div className="hra-crossfade">
-                <div className="hra-crossfade-out">{mergedPair()}</div>
-                <div className="hra-crossfade-in">{overlapChart}</div>
+                <div className="hra-crossfade-out">{withSidebar(mergedPair())}</div>
+                <div className="hra-crossfade-in">{withSidebar(overlapChart)}</div>
               </div>
             );
           case "o2d-fade":
             return (
               <div className="hra-crossfade">
-                <div className="hra-crossfade-out">{overlapChart}</div>
-                <div className="hra-crossfade-in">{mergedPair()}</div>
+                <div className="hra-crossfade-out">{withSidebar(overlapChart)}</div>
+                <div className="hra-crossfade-in">{withSidebar(mergedPair())}</div>
               </div>
             );
           case "o2d-slide":
-            // Compare card starts merged (matching o2d-fade's end state) and
-            // slides down into its own slot — settling at "distinct" swaps
-            // it back to normal in-flow positioning at the matching spot.
-            return mergedPair("hra-unmerge-down");
+            // Compare card starts translated up to visually overlap current
+            // (matching o2d-fade's end state) and animates back down to its
+            // own normal-flow slot — the exact structural mirror of
+            // "d2o-move" (real layout box + withSidebar per row, animated
+            // via transform only), not the old position:absolute overlay
+            // version. That asymmetry was the actual bug: an absolutely
+            // positioned compare card contributes nothing to its ancestor's
+            // height, so its "Other key metrics" sidebar (a separate flex
+            // column sized off that same ancestor) had no stable box to
+            // stretch to during this one phase — explicit feedback:
+            // "towards direction ok, away from direction badges disappear
+            // and appear only at the end."
+            return (
+              <>
+                {withSidebar(currentChart)}
+                {compareCard && <div className="hra-unmerge-down" style={{ marginTop: 12 }}>{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+              </>
+            );
         }
       })()}
     </div>
@@ -567,9 +869,35 @@ const DEFAULT_MIN_TREND_GROUP_SIZE = 5;
 // Unlike Props (from/to only), the compare window is required here — always
 // resolved by the caller (OverviewTab) before rendering, whether that's the
 // live App.tsx-driven pair or the same-shape default computed locally.
-interface TrendsProps { from: string; to: string; compareFrom: string; compareTo: string; compareEnabled: boolean; }
+interface TrendsProps {
+  from: string; to: string; compareFrom: string; compareTo: string; compareEnabled: boolean;
+  // Raw figures (OverviewTab's existing SportSummary-derived `run`/`prevRun`
+  // — already the source of truth the old "Running" stat grid used) instead
+  // of a pre-built KPI ReactNode: the main graph's KPI cards need `viewMode`
+  // to decide whether to show a difference at all, so they're built HERE.
+  run?: SportSummary;
+  prevRun?: ReturnType<typeof prevSportStats> | null;
+  // Lifted to OverviewTab (not owned locally) — "Other key metrics" below,
+  // a sibling this component knows nothing about, needs the exact same
+  // overlap/distinct state to decide whether IT shows a difference too
+  // (explicit feedback: distinct never shows a delta, overlap always does).
+  viewMode: TrendViewMode;
+  setViewMode: (mode: TrendViewMode) => void;
+  // "Other key metrics" panel, built by OverviewTab (it owns totals/
+  // prevActs/etc.) — rendered as a vertical sidebar beside the main graph
+  // (explicit feedback: "stack other key metrics vertically aside on the
+  // right of the graph... shrink width of the graph, increase the height
+  // so they're aligned in a rectangle"). Only shown beside the PRIMARY
+  // graph; other sports (if any) render full-width below, unchanged.
+  // `compareOtherKeyMetrics` is the SAME shape, computed from the compare
+  // period's own activities instead — shown beside the compare card
+  // specifically (explicit feedback: "data in the Other metric of the
+  // second graph must be the data of the second graph").
+  otherKeyMetrics?: ReactNode;
+  compareOtherKeyMetrics?: ReactNode;
+}
 
-function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: TrendsProps) {
+function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, prevRun, viewMode, setViewMode, otherKeyMetrics, compareOtherKeyMetrics }: TrendsProps) {
   const { t } = useTranslation();
   const { state } = useQuery(() => api.garmin.activities(from, to), [from, to]);
   // Same shape/pattern as the current-period query above — comparison
@@ -586,10 +914,15 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
   const minGroupSize = settings?.min_trend_group_size ?? DEFAULT_MIN_TREND_GROUP_SIZE;
   const [groupMode, setGroupMode] = useState<GroupMode>(() => defaultGroupMode(from, to));
   useEffect(() => setGroupMode(defaultGroupMode(from, to)), [from, to]);
-  // "Overlapping" (default) or "Distinct" — one shared toggle for every
+  // "Overlapping" or "Distinct" (default, explicit feedback: differences are
+  // an overlap-only concept — distinct mode shows each period's own numbers
+  // side by side, with no computed delta) — one shared toggle for every
   // sport's chart on this tab, only shown while comparison is enabled
-  // (nothing to overlap/separate otherwise).
-  const [viewMode, setViewMode] = useState<TrendViewMode>("overlap");
+  // (nothing to overlap/separate otherwise). Lifted to OverviewTab (passed
+  // in as props) rather than owned here, since "Other key metrics" below —
+  // a sibling this component knows nothing about — needs the SAME
+  // showDiff gate the main graph's own KPI cards use.
+  const showDiff = compareEnabled && viewMode === "overlap";
 
   // Memoized so its own reference is stable across renders that don't touch
   // `state` (e.g. a groupMode click) — otherwise the `? state.data : []`
@@ -625,145 +958,139 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled }: Tre
     else if (groupMode === "week" && !weekEnabled) setGroupMode("single");
   }, [state.status, groupMode, weekEnabled, monthEnabled]);
 
-  if (state.status === "loading") return <LoadingSpinner />;
-  if (state.status === "error")   return <ErrorBanner message={state.error} />;
-  if (state.status !== "success" || state.data.length === 0) return null;
+  // "Other key metrics" is sitewide (from OverviewTab's own /api/v1/summary
+  // query), independent of this component's own activities query — it must
+  // still render through every one of this query's own states, not just
+  // "success with data," or it would flicker/disappear on every load and
+  // vanish entirely on a genuinely activity-less period.
+  if (state.status === "loading") return <>{otherKeyMetrics}<LoadingSpinner /></>;
+  if (state.status === "error")   return <>{otherKeyMetrics}<ErrorBanner message={state.error} /></>;
+  if (state.status !== "success" || state.data.length === 0) return <>{otherKeyMetrics}</>;
 
   const modeEnabled: Record<GroupMode, boolean> = { single: true, week: weekEnabled, month: monthEnabled };
 
+  // One shared control cluster (Overlapping/Distinct + Single/Week/Month) —
+  // unchanged mechanics, just relocated: it used to sit above the whole
+  // sports list as a page-level section header; graph-first reorg moves it
+  // into running's own card header (below), the page's one primary graph,
+  // since that's the only chart these controls visually belong beside now.
+  const modeControls = (
+    <div className="hra-row" style={{ gap: 8 }}>
+      {compareEnabled && (
+        <div className="hra-segmented-group">
+          {(["overlap", "distinct"] as const).map(v => (
+            <button key={v}
+              className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${viewMode === v ? "hra-pill-active" : ""}`}
+              onClick={() => setViewMode(v)}>
+              {v === "overlap" ? t("overview.view.overlap", "Overlapping") : t("overview.view.distinct", "Distinct")}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* One segmented container (polish pass) — a single bordered pill
+          housing all three modes, rather than three independently-bordered
+          buttons, so the group reads as one control. Inactive items are
+          identical (no per-item border/background), only the active one
+          gets the gradient pill; hover is the shared quiet bg-tint. */}
+      <div className="hra-segmented-group">
+        {GROUP_MODES.map(m => (
+          <button key={m}
+            className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
+            onClick={() => setGroupMode(m)}
+            disabled={!modeEnabled[m]}
+            title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}
+            style={{
+              cursor: modeEnabled[m] ? "pointer" : "not-allowed",
+              opacity: modeEnabled[m] ? 1 : 0.4,
+            }}>
+            {t(`overview.group.${m}`, GROUP_LABEL[m])}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Running is the page's one graph-first star (per the reorg spec/mockup);
+  // every other sport (if any) keeps rendering exactly as before, further
+  // down, under its own plain section title — no size/header change, no
+  // duplicated mode controls (they stay shared state, just shown once).
+  const runningEntry = sportsSorted.find(([sport]) => sport === "running");
+  const otherEntries = sportsSorted.filter(([sport]) => sport !== "running");
+
+  const runningKpis = run && prevRun ? (
+    <>
+      <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
+        value={fmtPace(run.avg_pace ?? 0)} unit={paceUnitLabel()}
+        label={t("overview.stat.avgPace", "Avg pace")}
+        deltaText={showDiff ? comparisonTooltip(run.avg_pace ?? 0, prevRun.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`, undefined, /* invert */ true) : undefined}
+        deltaPositive={showDiff ? deltaPositive(run.avg_pace ?? 0, prevRun.avgPace, true) : undefined} />
+      <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
+        value={splitUnit(fmtKm(run.total_km * 1000)).main} unit={splitUnit(fmtKm(run.total_km * 1000)).unit}
+        label={t("overview.stat.distance", "Distance")}
+        deltaText={showDiff ? comparisonTooltip(run.total_km, prevRun.km || null, v => fmtKm(v * 1000)) : undefined}
+        deltaPositive={showDiff ? deltaPositive(run.total_km, prevRun.km || null) : undefined} />
+    </>
+  ) : undefined;
+  // The compare period's OWN totals — no delta (there's nothing further
+  // back to compare a reference period against) — explicit feedback: "even
+  // the second graph must have 'other metrics badges'."
+  const compareKpis = prevRun ? (
+    <>
+      <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
+        value={prevRun.avgPace ? fmtPace(prevRun.avgPace) : "—"} unit={paceUnitLabel()}
+        label={t("overview.stat.avgPace", "Avg pace")} />
+      <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
+        value={splitUnit(fmtKm(prevRun.km * 1000)).main} unit={splitUnit(fmtKm(prevRun.km * 1000)).unit}
+        label={t("overview.stat.distance", "Distance")} />
+    </>
+  ) : undefined;
+
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
-        <SectionTitle>{t("overview.trendSectionTitle", "Distance & pace/HR trend")}</SectionTitle>
-        <div className="hra-row" style={{ gap: 8 }}>
-          {compareEnabled && (
-            <div className="hra-segmented-group">
-              {(["overlap", "distinct"] as const).map(v => (
-                <button key={v}
-                  className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${viewMode === v ? "hra-pill-active" : ""}`}
-                  onClick={() => setViewMode(v)}>
-                  {v === "overlap" ? t("overview.view.overlap", "Overlapping") : t("overview.view.distinct", "Distinct")}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* One segmented container (polish pass) — a single bordered pill
-              housing all three modes, rather than three independently-bordered
-              buttons, so the group reads as one control. Inactive items are
-              identical (no per-item border/background), only the active one
-              gets the gradient pill; hover is the shared quiet bg-tint. */}
-          <div className="hra-segmented-group">
-            {GROUP_MODES.map(m => (
-              <button key={m}
-                className={`hra-pill hra-nav-pill hra-nav-pill--sm hra-nav-hover ${groupMode === m ? "hra-pill-active" : ""}`}
-                onClick={() => setGroupMode(m)}
-                disabled={!modeEnabled[m]}
-                title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}
-                style={{
-                  cursor: modeEnabled[m] ? "pointer" : "not-allowed",
-                  opacity: modeEnabled[m] ? 1 : 0.4,
-                }}>
-                {t(`overview.group.${m}`, GROUP_LABEL[m])}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+      {runningEntry ? (
+        // No outer section title/icon here (exact-layout spec: "do not put
+        // any other... section titles... between the KPI/legend row and the
+        // graph") — the icon+title now lives INSIDE the graph card's own
+        // header (SportTrendPair's `primary` render). "Other key metrics"
+        // is placed BESIDE each graph from inside SportTrendPair itself now
+        // (its `withSidebar` helper), not wrapped once around the whole
+        // pair here — explicit feedback: it must sit next to the second
+        // (comparison) graph too, not just the first.
+        <SportTrendPair sport={runningEntry[0]} activities={runningEntry[1]}
+          compareActivities={compareBySport.get(runningEntry[0]) ?? []}
+          mode={groupMode} minGroupSize={minGroupSize} compareEnabled={compareEnabled}
+          from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} viewMode={viewMode}
+          primary headerControls={modeControls} kpis={runningKpis} compareKpis={compareKpis}
+          otherKeyMetrics={otherKeyMetrics} compareOtherKeyMetrics={compareOtherKeyMetrics} />
+      ) : (
+        // No running trend chart to sit beside (no running activities this
+        // period, or activities still loading) — "Other key metrics" shows
+        // sitewide totals independent of any one sport's chart, so it still
+        // renders on its own rather than disappearing with the graph.
+        otherKeyMetrics
+      )}
       {/* Week/month enable/disable above is still driven by the CURRENT
           period's data only — the comparison window has no vote over which
           modes are offered, only over what its own chart shows once a mode
           is picked (per-side "too few" gating is SportTrendPair's job now,
           not this map). */}
-      {sportsSorted.map(([sport, acts]) => (
-        <SportTrendPair key={sport} sport={sport} activities={acts}
-          compareActivities={compareBySport.get(sport) ?? []}
-          mode={groupMode} minGroupSize={minGroupSize} compareEnabled={compareEnabled}
-          from={from} compareFrom={compareFrom} viewMode={viewMode} />
-      ))}
+      {otherEntries.length > 0 && (
+        <>
+          {!runningEntry && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+              <SectionTitle>{t("overview.trendSectionTitle", "Distance & pace/HR trend")}</SectionTitle>
+              {modeControls}
+            </div>
+          )}
+          {otherEntries.map(([sport, acts]) => (
+            <SportTrendPair key={sport} sport={sport} activities={acts}
+              compareActivities={compareBySport.get(sport) ?? []}
+              mode={groupMode} minGroupSize={minGroupSize} compareEnabled={compareEnabled}
+              from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} viewMode={viewMode} />
+          ))}
+        </>
+      )}
     </>
-  );
-}
-
-// ── Hero ring — the page's one signature visual (feature/temp-ui) ──────────
-// A static (non-percentage) glowing ring framing the period's headline
-// number. Deliberately not a progress/percentage gauge — this app has no
-// "readiness" or goal concept to measure a fill against, so the ring reads
-// as an instrument bezel around real totals rather than implying a target
-// that doesn't exist. Distance/Time sit beside it as the same numbers
-// already shown in the Total StatGrid below, just given one large, unmissable
-// read before the grid breaks them out individually.
-
-// Dual concentric rings, one per hero measurement (Activities/Distance/
-// Time) — the inner ring is this period's share, the outer ring the
-// previous period of equal length's share, BOTH normalized against
-// whichever of the two is larger (that one draws a full circle, "100%");
-// the smaller one draws its proportional arc against that same max. So the
-// pair together always show which period "won" at a glance, not just two
-// independent percentages. Gradient stroke is purely accent-derived — dark
-// (--accent-strong) to light (--accent-light) — never a neutral/black
-// stop, so it can't drift toward looking like a different, unrelated hue.
-function DualRingGauge({
-  id, current, previous, centerValue, unitLabel, comparisonText,
-  size = 179, stroke = 12, gap = 7,
-}: {
-  id: string; current: number; previous: number | null;
-  centerValue: string; unitLabel: string; comparisonText?: string | null;
-  size?: number; stroke?: number; gap?: number;
-}) {
-  const max = Math.max(current, previous ?? 0, 0.0001);
-  const innerPct = Math.max(0, Math.min(1, current / max));
-  const outerPct = previous != null ? Math.max(0, Math.min(1, previous / max)) : 0;
-  const rOuter = (size - stroke) / 2;
-  const rInner = rOuter - stroke - gap;
-  const c = size / 2;
-  const dash = (r: number, pct: number) => {
-    const circ = 2 * Math.PI * r;
-    return `${circ * pct} ${circ}`;
-  };
-  return (
-    // No .hra-tooltip class/data-tooltip here (removed) — the ring must
-    // never show a hover tooltip, even an empty one: .hra-tooltip::after
-    // always renders its bordered/padded box regardless of content, so an
-    // empty data-tooltip would leave a visible blank bubble on hover. The
-    // comparison figure is already shown inline (comparisonText below).
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flexShrink: 0 }}>
-      <svg className="hra-hero-ring-glow" width={size} height={size}>
-        <defs>
-          <linearGradient id={`ringGrad-${id}`} x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="var(--accent-strong)" />
-            <stop offset="100%" stopColor="var(--accent-light)" />
-          </linearGradient>
-        </defs>
-        <circle cx={c} cy={c} r={rOuter} fill="none" stroke="var(--border)" strokeWidth={stroke} />
-        <circle cx={c} cy={c} r={rInner} fill="none" stroke="var(--border)" strokeWidth={stroke} />
-        {/* Outer ring — previous period, fainter (a reference, not the headline) */}
-        {previous != null && (
-          <circle cx={c} cy={c} r={rOuter} fill="none" stroke={`url(#ringGrad-${id})`} strokeWidth={stroke}
-            strokeLinecap="round" strokeDasharray={dash(rOuter, outerPct)} strokeOpacity={0.5}
-            transform={`rotate(-90 ${c} ${c})`} />
-        )}
-        {/* Inner ring — this period, full strength */}
-        <circle cx={c} cy={c} r={rInner} fill="none" stroke={`url(#ringGrad-${id})`} strokeWidth={stroke}
-          strokeLinecap="round" strokeDasharray={dash(rInner, innerPct)}
-          transform={`rotate(-90 ${c} ${c})`} />
-        <text className="hra-ring-value" x={c} y={c - 3} textAnchor="middle">
-          {centerValue}
-        </text>
-        <text x={c} y={c + size * 0.14} textAnchor="middle" fontSize={size * 0.065} letterSpacing="0.1em" fill="var(--text-muted)">
-          {unitLabel}
-        </text>
-        {/* Previous-period value + delta — omitted entirely (not even an
-            empty line) when there isn't enough previous-period data to
-            compare against, per the "no comparison without data" rule; the
-            caller decides that, this just renders whatever string it's
-            given. */}
-        {comparisonText && (
-          <text className="hra-ring-compare" x={c} y={c + size * 0.14 + 14} textAnchor="middle">
-            {comparisonText}
-          </text>
-        )}
-      </svg>
-    </div>
   );
 }
 
@@ -777,84 +1104,35 @@ function pctChange(current: number, previous: number | null): number | null {
   return ((current - previous) / previous) * 100;
 }
 
-// "(previous value, ±N%)" for a ring's small comparison line. Module-level
-// (not a component), so it goes through the i18next singleton directly
-// rather than the useTranslation() hook — always called synchronously from
-// PeriodHeroRing/OverviewTab's own render body, both of which already
-// subscribe to language changes via their own t(), so this stays reactive.
-function ringComparison(current: number, previous: number | null, fmt: (v: number) => string): string | null {
-  const pct = pctChange(current, previous);
-  if (pct == null) return null;
-  const value = fmt(previous!), pctStr = `${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%`;
-  return i18next.t("overview.ringCompare", `(${value}, ${pctStr})`, { value, pct: pctStr });
-}
-
-// Same comparison, as a full sentence for a native `title` tooltip (Total
-// StatGrid, By-sport rows) rather than a ring's compact bracketed line.
-// `prefix` defaults to "vs previous period: " — the By-sport rows override it
-// ("sessions: "/"HR: "/"pace: ") by passing their own translated prefix
-// directly, rather than the old `.replace("vs previous period: ", ...)`
-// post-processing, which only ever matched the literal English string and
-// would silently no-op once this output is localized.
-function comparisonTooltip(current: number, previous: number | null, fmt: (v: number) => string, prefix?: string): string | undefined {
+// The ONE canonical difference format used everywhere on this tab (rule,
+// docs/frontend.md's "Metric card / difference convention"): the previous
+// value, then the signed percentage in brackets — e.g. "40.02 km (-7%)".
+// No connecting word ("vs", "vs previous period:", etc.) — explicit
+// feedback, twice now: "just show up or down arrow, value, percentage,"
+// nothing else. The arrow itself is rendered separately by Stat/
+// GraphKpiCard (see deltaPositive below), not part of this string.
+// `prefix` defaults to none — the By-sport rows are the one place that
+// still passes an explicit prefix ("sessions: "/"HR: "/"pace: "), since
+// there each figure sits inline in one combined sentence, not its own
+// badge. `invert`: for a measure where LOWER is better (pace), the raw
+// current-vs-previous percentage is negative when the metric actually
+// improved — negating it here is what makes "+3%" read as "3% faster,"
+// matching the up-arrow/green color instead of contradicting it.
+function comparisonTooltip(current: number, previous: number | null, fmt: (v: number) => string, prefix?: string, invert = false): string | undefined {
   const pct = pctChange(current, previous);
   if (pct == null) return undefined;
-  const p = prefix ?? i18next.t("overview.compareTooltip.defaultPrefix", "vs previous period: ");
-  return `${p}${fmt(previous!)} (${pct >= 0 ? "+" : ""}${pct.toFixed(0)}%)`;
+  const displayed = invert ? -pct : pct;
+  const p = prefix ?? "";
+  return `${p}${fmt(previous!)} (${displayed >= 0 ? "+" : ""}${displayed.toFixed(0)}%)`;
 }
 
-function PeriodHeroRing({
-  activities, prevActivities, km, prevKm, hours, prevHours, calories, prevCalories, title, linkedRace,
-}: {
-  activities: number; prevActivities: number | null;
-  km: number; prevKm: number | null;
-  hours: number; prevHours: number | null;
-  calories: number; prevCalories: number | null;
-  // Computed by the caller — "SUMMARY" alone with comparison off, or
-  // "SUMMARY - {current label} vs {compare label}" with it on, where each
-  // label is a linked named range's own name if one is selected for that
-  // side, else the plain formatted date span. See OverviewTab's summaryTitle.
-  title: string;
-  // The race a "compare to" NAMED range is linked to (null when unlinked, or
-  // the compare side isn't currently a named range at all) — shown as one
-  // extra row at the end of the card, using the exact same ActivityRow the
-  // Activities tab renders, incl. its expand/click behavior.
-  linkedRace: ReactNode | null;
-}) {
-  const { t } = useTranslation();
-  const distance = splitUnit(fmtKm(km * 1000));
-  return (
-    <>
-      {/* Title sits OUTSIDE the card, same as every other section's
-          SectionTitle above its content (Total/Running/By sport) — this
-          card used to carry its own header inside the tinted panel, which
-          read as though the whole section had gone missing since nothing
-          above the panel announced it. */}
-      <SectionTitle>{title}</SectionTitle>
-      <Card className="hra-hero-tint" style={{ padding: "20px 24px", marginBottom: 20 }}>
-        {/* justify-content: space-between — four rings spread evenly across
-            the card's full width rather than clumping with a fixed gap.
-            No `tooltip` on any ring — the comparison figure is already shown
-            inline (comparisonText, the small bracketed line under the
-            center value), so a hover tooltip would just repeat it. */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 20 }}>
-          <DualRingGauge id="acts" current={activities} previous={prevActivities} centerValue={String(activities)} unitLabel={t("overview.unit.activities", "ACTIVITIES")}
-            comparisonText={ringComparison(activities, prevActivities, v => String(v))} />
-          <DualRingGauge id="dist" current={km} previous={prevKm} centerValue={distance.main} unitLabel={distance.unit ?? t("overview.unit.km", "KM")}
-            comparisonText={ringComparison(km, prevKm, v => fmtKm(v * 1000))} />
-          <DualRingGauge id="time" current={hours} previous={prevHours} centerValue={hours.toFixed(1)} unitLabel={t("overview.unit.hours", "HOURS")}
-            comparisonText={ringComparison(hours, prevHours, v => `${v.toFixed(1)} h`)} />
-          <DualRingGauge id="cal" current={calories} previous={prevCalories} centerValue={String(Math.round(calories))} unitLabel={t("overview.unit.calories", "CALORIES")}
-            comparisonText={ringComparison(calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
-        </div>
-        {linkedRace && (
-          <div className="hra-border-top" style={{ marginTop: 16, paddingTop: 16 }}>
-            {linkedRace}
-          </div>
-        )}
-      </Card>
-    </>
-  );
+// The arrow/color half of the same comparison — kept separate from the text
+// above since Stat/GraphKpiCard render the arrow themselves (colored via
+// deltaPositive), not as part of the string.
+function deltaPositive(current: number, previous: number | null, invert = false): boolean | undefined {
+  const pct = pctChange(current, previous);
+  if (pct == null) return undefined;
+  return (invert ? -pct : pct) >= 0;
 }
 
 // Reduces one sport's previous-period activities into the same shape its
@@ -884,6 +1162,12 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // on its own (see that hook's defaultCompareRange) — no fallback needed.
   const compareFrom = compareRange.from;
   const compareTo = compareRange.to;
+
+  // Owned here (not inside TrendsBySport) so "Other key metrics" below can
+  // gate its own difference display on the same overlap/distinct state the
+  // main graph's KPI cards use — see showDiff below.
+  const [viewMode, setViewMode] = useState<TrendViewMode>("distinct");
+  const showDiff = compareRange.enabled && viewMode === "overlap";
 
   const { state } = useQuery(() => api.garmin.summary(from, to), [from, to]);
   const rangeQ = useQuery(() => api.garmin.range(), []);
@@ -915,20 +1199,10 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   );
   const linkedRaceActivity = linkedRaceQ.state.status === "success" ? linkedRaceQ.state.data : null;
 
-  // Summary card title: "SUMMARY" alone with comparison off; with it on,
-  // "SUMMARY - {current} vs {compare}" where each side is its matching named
-  // range's own name (same derivation as compareNamedRange above, applied to
-  // Current too) if one is selected, else the plain formatted date span —
-  // the REAL values, not a generic placeholder.
-  const currentNamedRange = savedRanges.find(r => r.from_date === from && r.to_date === to);
-  const currentLabel = currentNamedRange ? currentNamedRange.name : `${fmtDate(from)} → ${fmtDate(to)}`;
-  const compareLabel = compareNamedRange ? compareNamedRange.name : `${fmtDate(compareFrom)} → ${fmtDate(compareTo)}`;
-  const summaryTitle = compareRange.enabled
-    ? t("overview.summaryTitleCompare", `SUMMARY - ${currentLabel} vs ${compareLabel}`, { current: currentLabel, compare: compareLabel })
-    : t("overview.summaryTitle", "SUMMARY");
-
+  // Tightened from 20px (graph-first reorg, spec: "reduce unnecessary
+  // vertical spacing around the filters so the main graph appears sooner").
   const dateRangeBar = (
-    <div style={{ marginBottom: 20 }}>
+    <div style={{ marginBottom: 8 }}>
       <DateRangeBar {...range} compare={compareRange} savedRanges={savedRanges} />
     </div>
   );
@@ -981,8 +1255,16 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   const prevKm         = hasPrevData ? prevActivities.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0) : null;
   const prevHours       = hasPrevData ? prevActivities.reduce((s, a) => s + (a.duration_sec ?? 0) / 3600, 0) : null;
   const prevCalories = hasPrevData ? prevActivities.reduce((s, a) => s + (a.calories ?? 0), 0) : null;
-  const prevAscent   = hasPrevData ? prevActivities.reduce((s, a) => s + (a.ascent_m ?? 0), 0) : null;
+  // Avg distance = total km / total sessions — its own "previous" value is
+  // the SAME ratio computed over the previous period, not prevKm alone
+  // (explicit feedback: "Even when compared, AVG Distance missed the
+  // compared values" — it had no delta at all before).
+  const prevAvgDistance = hasPrevData && prevActs ? (prevKm ?? 0) / prevActs : null;
   const prevBySport = new Map(groupActivitiesBySport(prevActivities));
+  // Hoisted (was computed inline inside the old "Running" stat grid's IIFE)
+  // so both the main graph's KPI mini-cards and "Other key metrics" below can
+  // share this one prevSportStats() call instead of recomputing it twice.
+  const prevRun = run ? prevSportStats(prevBySport.get(run.sport ?? "other") ?? []) : null;
 
   const linkedRaceRow: ReactNode = linkedRaceActivity ? (
     <ActivityRow
@@ -996,63 +1278,86 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
     />
   ) : null;
 
+  // One consolidated column (was "Key metrics" + "Additional details", then
+  // "Other key metrics") — Distance and Avg pace are dropped here since the
+  // main graph's own KPI cards already show them; Elevation dropped per
+  // explicit spec. No section title (explicit feedback: "remove other key
+  // metrics title") — it's visually obvious as the graph's sidebar. Always
+  // ONE column, never a multi-column grid (explicit feedback: "correspondant
+  // metrics must be stacked in one column only") — this sidebar can be wider
+  // than StatGrid's own auto-fill breakpoint, so the column count is forced
+  // here rather than left to that grid's responsive default. Icon coloring
+  // rule (explicit feedback): heart matches the HR value's own color; flame
+  // is a filled dark orange; every other icon (runner/map-pin/timer) uses
+  // the plain accent color. Differences only show while overlap mode is
+  // active (showDiff) — explicit feedback: "do not show differences when
+  // they're distinct." Passed to TrendsBySport, which renders it as a
+  // vertical sidebar beside the main graph.
+  const otherKeyMetrics = (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={14} />} label={t("overview.stat.activities", "Activities")} value={totals.acts}
+        deltaText={showDiff ? comparisonTooltip(totals.acts, prevActs, v => String(v)) : undefined}
+        deltaPositive={showDiff ? deltaPositive(totals.acts, prevActs) : undefined} />
+      {totals.acts > 0 && (
+        <Stat icon={<MapPin size={14} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
+          deltaText={showDiff ? comparisonTooltip(totals.km / totals.acts, prevAvgDistance, v => fmtKm(v * 1000)) : undefined}
+          deltaPositive={showDiff ? deltaPositive(totals.km / totals.acts, prevAvgDistance) : undefined} />
+      )}
+      {run?.avg_hr && (
+        <Stat icon={<Heart size={14} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
+          deltaText={showDiff && prevRun ? comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`) : undefined}
+          deltaPositive={showDiff && prevRun ? deltaPositive(run.avg_hr, prevRun.avgHr) : undefined} />
+      )}
+      <Stat icon={<Timer size={14} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
+        deltaText={showDiff ? comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`) : undefined}
+        deltaPositive={showDiff ? deltaPositive(totals.hours, prevHours) : undefined} />
+      {totals.calories > 0 && (
+        <Stat icon={<Flame size={14} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+          label={t("overview.stat.calories", "Calories")} value={`${totals.calories.toLocaleString()} kcal`}
+          deltaText={showDiff ? comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`) : undefined}
+          deltaPositive={showDiff ? deltaPositive(totals.calories, prevCalories) : undefined} />
+      )}
+    </div>
+  );
+
+  // Same shape, but the COMPARE period's own totals — no delta (there's
+  // nothing further back to compare a reference period against, same
+  // reasoning as compareKpis) — explicit feedback: "data in the Other
+  // metric of the second graph must be the data of the second graph."
+  const compareOtherKeyMetrics = hasPrevData ? (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={14} />} label={t("overview.stat.activities", "Activities")} value={prevActs ?? 0} />
+      {prevActs ? (
+        <Stat icon={<MapPin size={14} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
+      ) : null}
+      {prevRun?.avgHr ? (
+        <Stat icon={<Heart size={14} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${Math.round(prevRun.avgHr)} bpm`} accent="var(--accent-red)" />
+      ) : null}
+      <Stat icon={<Timer size={14} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${(prevHours ?? 0).toFixed(1)} h`} />
+      {prevCalories ? (
+        <Stat icon={<Flame size={14} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+          label={t("overview.stat.calories", "Calories")} value={`${Math.round(prevCalories).toLocaleString()} kcal`} />
+      ) : null}
+    </div>
+  ) : undefined;
+
   return (
     <>
+      {/* Filters only in the sticky header now — graph-first reorg. The
+          hero-ring summary card (Activities/Distance/Time/Calories as
+          concentric gauges) is retired in favor of the flat "Key metrics"
+          row below, which shows the exact same four figures: keeping both
+          would just duplicate them in two different visual languages. A
+          linked race (if the compare-side named range points at one) still
+          gets its own small card, right under the filters, same as before. */}
       <div className="hra-sticky-summary">
         {dateRangeBar}
-        <PeriodHeroRing
-          activities={totals.acts} prevActivities={prevActs}
-          km={totals.km} prevKm={prevKm}
-          hours={totals.hours} prevHours={prevHours}
-          calories={totals.calories} prevCalories={prevCalories}
-          title={summaryTitle}
-          linkedRace={linkedRaceRow}
-        />
       </div>
+      {linkedRaceRow && <Card style={{ marginBottom: 20 }}>{linkedRaceRow}</Card>}
 
-      <SectionTitle>{t("overview.totalSectionTitle", "Total")}</SectionTitle>
-      <StatGrid>
-        <Stat label={t("overview.stat.activities", "Activities")} value={totals.acts} tooltip={comparisonTooltip(totals.acts, prevActs, v => String(v))} />
-        <Stat label={t("overview.stat.distance", "Distance")} value={fmtKm(totals.km * 1000)} accent="var(--accent-green)"
-          tooltip={comparisonTooltip(totals.km, prevKm, v => fmtKm(v * 1000))} />
-        <Stat label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
-          tooltip={comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`)} />
-        {totals.calories > 0 && (
-          <Stat label={t("overview.stat.calories", "Calories")} value={`${totals.calories.toLocaleString()} kcal`}
-            tooltip={comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`)} />
-        )}
-        {totals.ascent > 0 && (
-          <Stat label={t("overview.stat.elevationGain", "Elevation gain")} value={fmtElevation(totals.ascent)}
-            tooltip={comparisonTooltip(totals.ascent, prevAscent, v => fmtElevation(v))} />
-        )}
-      </StatGrid>
-
-      {run && (() => {
-        const prevRun = prevSportStats(prevBySport.get(run.sport ?? "other") ?? []);
-        return (
-          <>
-            <SectionTitle>{t("overview.runningSectionTitle", "Running")}</SectionTitle>
-            <StatGrid>
-              <Stat label={t("overview.stat.sessions", "Sessions")} value={run.total_activities}
-                tooltip={comparisonTooltip(run.total_activities, prevRun.sessions || null, v => String(v))} />
-              <Stat label={t("overview.stat.distance", "Distance")} value={fmtKm(run.total_km * 1000)} accent="var(--accent-green)"
-                tooltip={comparisonTooltip(run.total_km, prevRun.km || null, v => fmtKm(v * 1000))} />
-              {run.avg_hr && (
-                <Stat label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
-                  tooltip={comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`)} />
-              )}
-              {run.avg_pace && (
-                <Stat label={t("overview.stat.avgPace", "Avg pace")} value={fmtPace(run.avg_pace)} sub={paceUnitLabel()}
-                  tooltip={comparisonTooltip(run.avg_pace, prevRun.avgPace, v => `${fmtPace(v)}/${distanceUnitLabel()}`)} />
-              )}
-              {run.total_ascent && (
-                <Stat label={t("overview.stat.elevation", "Elevation")} value={fmtElevation(run.total_ascent)}
-                  tooltip={comparisonTooltip(run.total_ascent, prevRun.ascent, v => fmtElevation(v))} />
-              )}
-            </StatGrid>
-          </>
-        );
-      })()}
+      <TrendsBySport from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} compareEnabled={compareRange.enabled}
+        run={run} prevRun={prevRun} viewMode={viewMode} setViewMode={setViewMode}
+        otherKeyMetrics={otherKeyMetrics} compareOtherKeyMetrics={compareOtherKeyMetrics} />
 
       {sports.length > 1 && (
         <>
@@ -1093,8 +1398,6 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
           </div>
         </>
       )}
-
-      <TrendsBySport from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} compareEnabled={compareRange.enabled} />
 
       {raceModalOpen && linkedRaceActivity && (
         <ActivityModal

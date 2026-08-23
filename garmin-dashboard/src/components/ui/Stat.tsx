@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { Card } from "./Card";
 import { Label } from "./Label";
 
@@ -8,6 +8,19 @@ interface StatProps {
   sub?:   string;
   accent?: string;
   tooltip?: string;
+  // Optional leading icon (lucide-react component instance, sized by the
+  // caller) shown next to the label — added for the graph-first reorg
+  // (HRA dashboard reorg) so Stat can serve as the one shared "metric card"
+  // shape across Key metrics, Additional details, and a chart's own header
+  // KPIs, instead of a bespoke card per section.
+  icon?: ReactNode;
+  // Always-visible comparison line ("+12% vs previous period"), distinct
+  // from `tooltip` (hover-only, pre-existing). `deltaPositive` picks the
+  // arrow/color (undefined = neutral, per the "no comparison without data"
+  // rule elsewhere on this tab — callers simply omit deltaText when there's
+  // nothing to compare against).
+  deltaText?: string;
+  deltaPositive?: boolean;
 }
 
 // Splits a formatted "68.36 km" into a value/unit pair so the unit can render
@@ -23,11 +36,14 @@ export function splitUnit(value: string | number): { main: string; unit?: string
   return { main: m[1], unit: m[2] };
 }
 
-export function Stat({ label, value, sub, accent, tooltip }: StatProps) {
+export function Stat({ label, value, sub, accent, tooltip, icon, deltaText, deltaPositive }: StatProps) {
   const { main, unit } = splitUnit(value);
   return (
     <Card className="hra-lift" tooltip={tooltip}>
-      <Label style={{ marginBottom: 8 }}>{label}</Label>
+      <Label style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+        {icon && <span className="hra-stat-icon" aria-hidden="true">{icon}</span>}
+        {label}
+      </Label>
       {/* `accent` is a caller-supplied var() token (e.g. "var(--accent-green)"),
           threaded through as a --kpi-color custom-property hook rather than a
           style={{color}} — the actual color rule lives in .hra-kpi-value
@@ -37,6 +53,11 @@ export function Stat({ label, value, sub, accent, tooltip }: StatProps) {
         {unit && <span className="hra-kpi-unit"> {unit}</span>}
       </div>
       {sub && <div className="hra-kpi-sub">{sub}</div>}
+      {deltaText && (
+        <div className={deltaPositive == null ? "hra-stat-delta" : deltaPositive ? "hra-stat-delta hra-stat-delta-up" : "hra-stat-delta hra-stat-delta-down"}>
+          {deltaPositive != null && (deltaPositive ? "↗ " : "↘ ")}{deltaText}
+        </div>
+      )}
     </Card>
   );
 }

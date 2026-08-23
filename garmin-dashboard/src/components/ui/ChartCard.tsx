@@ -13,10 +13,19 @@ import { Card } from "./Card";
 interface ChartCardProps {
   title?: ReactNode;
   legend?: ReactNode;
+  // A dedicated row for view-mode switches/pills, below the title — kept
+  // separate from `title` (explicit feedback: the title must sit on its own
+  // row, apart from the switches/pills) rather than sharing row 1 with it.
+  controlsRow?: ReactNode;
+  // Series-legend + KPI mini-cards row, below title/controls — e.g. the main
+  // trend graph's row (dashboard graph-first reorg). Kept separate from
+  // `controlsRow` since the two serve different jobs: one is view controls,
+  // the other is series identification + summary numbers.
+  subHeader?: ReactNode;
   children: ReactNode;
 }
 
-export function ChartCard({ title, legend, children }: ChartCardProps) {
+export function ChartCard({ title, legend, controlsRow, subHeader, children }: ChartCardProps) {
   return (
     <Card style={{ padding: "16px 8px 8px" }}>
       {(title || legend) && (
@@ -25,6 +34,8 @@ export function ChartCard({ title, legend, children }: ChartCardProps) {
           {legend}
         </div>
       )}
+      {controlsRow && <div style={{ marginBottom: 8, padding: "0 8px" }}>{controlsRow}</div>}
+      {subHeader && <div style={{ marginBottom: 10, padding: "0 8px" }}>{subHeader}</div>}
       {children}
     </Card>
   );

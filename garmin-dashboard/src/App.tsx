@@ -84,9 +84,11 @@ function AppShell() {
           living in the header. Header keeps a little breathing room
           (.hra-header's padding) rather than shrinking to the bare minimum.
           `.hra-header-inner` still shares <main>'s own maxWidth/padding
-          (860px, 24px) so the nav tabs land in the same columns as the
-          content below — the header bar itself stays full-bleed
-          (background/blur/border), only its content is column-aligned. */}
+          (1240px, 24px — widened from 860px per the graph-first reorg, so
+          the main trend graph has real room to breathe) so the nav tabs
+          land in the same columns as the content below — the header bar
+          itself stays full-bleed (background/blur/border), only its content
+          is column-aligned. */}
       <header className="hra-header">
         <div className="hra-header-inner">
           <div className="hra-header-row">
@@ -128,7 +130,7 @@ function AppShell() {
       </header>
 
       {/* ── main ─────────────────────────────────────────────────────── */}
-      <main style={{ flex: 1, maxWidth: 860, width: "100%", margin: "0 auto", padding: "24px 24px 48px" }}>
+      <main style={{ flex: 1, maxWidth: 1240, width: "100%", margin: "0 auto", padding: "24px 24px 48px" }}>
 
         {online === false && (
           <div style={{ marginBottom: 20 }}>

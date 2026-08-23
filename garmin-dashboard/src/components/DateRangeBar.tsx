@@ -113,7 +113,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           layout that merely dims is preferred. */}
       {compare && (
         <div style={{ opacity: compare.enabled ? 1 : 0.4, pointerEvents: compare.enabled ? "auto" : "none" }}>
-          <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginTop: 12, marginBottom: 8 }}>{t("dateRange.comparedTo", "Compared to")}</div>
+          <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginTop: 8, marginBottom: 6 }}>{t("dateRange.comparedTo", "Compared to")}</div>
           <div className="hra-row-wrap">
             {/* Invisible placeholder matching Current's leading preset
                 dropdown + "or" (this row has no preset shortcuts of its

@@ -40,10 +40,7 @@ describe("OverviewTab", () => {
     });
     render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
 
-    expect(await screen.findByText("Total")).toBeInTheDocument();
-    expect(screen.getByText("Running")).toBeInTheDocument();
-    // Running avg-pace stat carries the unit label from the module unit system.
-    expect(screen.getByText("min/km")).toBeInTheDocument();
+    expect(await screen.findByText("Avg distance")).toBeInTheDocument();
   });
 
   it("shows the range-empty message when the range holds no activities", async () => {

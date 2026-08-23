@@ -317,6 +317,41 @@ Client-side pagination via `ui.tsx`'s `Pagination` component (per-page selector,
 ## Overview tab (OverviewTab.tsx, tab label "Overview & Trends")
 Absorbed the former `TrendsTab.tsx` (deleted — its monthly/weekly bar charts were superseded by this section, which is strictly more capable: per-sport, groupable, with pace/HR overlaid). `api.garmin.weekly`/`monthly` client methods were removed too (dead — no remaining caller); the backend `/api/weekly`/`/api/monthly` routes themselves were left in place, not in scope to remove.
 
+### ⚠️ Consistency rule — metric card layout and difference format (binding, whole app)
+Established after the graph-first reorg kept drifting between rounds because each metric card
+(`Stat`, `GraphKpiCard`, the old hero rings) had been styled slightly differently. **These two
+conventions are now the ONE canonical shape for any card showing a metric + a period-over-period
+comparison, anywhere in this app — not just this tab.** If a future ask seems to want a different
+shape for a *specific* card, that is very likely a misunderstanding, not a deliberate exception:
+**ask before building a one-off variant.**
+
+1. **Vertical order, top to bottom, always:** indicator (icon + label) → value → difference. The
+   indicator is never beside the value (that was tried and reverted — explicit feedback: "Metric
+   indicator must be ON TOP").
+2. **Difference format, always:** an arrow, then `{previous value} ({signed percentage})` — e.g.
+   `↗ 40.02 km (-7%)`. **No connecting word** — no "vs", no "vs previous period:", nothing between
+   the arrow and the value (explicit feedback, stated twice: "just show up or down arrow, value,
+   percentage"). Never omit the arrow, never omit the previous value, never show a bare percentage
+   with no context. (`comparisonTooltip()` in `OverviewTab.tsx` is the one function that builds this
+   string — reuse it, don't hand-roll a shorter or longer variant per card. Its `prefix` parameter
+   defaults to none; the By-sport row's inline combined tooltip is the one legitimate exception,
+   since there each figure needs its own word — "sessions:", "HR:" — to read as one sentence.)
+3. **A measure where LOWER is better (pace) still gets a positive percentage when it improved** — the
+   raw current-vs-previous percentage is negative in that case, and showing it unmodified would
+   contradict the (correctly green/up) arrow next to it. `comparisonTooltip()`'s `invert` parameter
+   exists for exactly this; use it for pace, not for anything where higher is better (distance,
+   activities, calories, HR-as-effort, etc.).
+4. **Icon coloring**: heart matches whatever color its own value uses (HR is `--accent-red`
+   app-wide); flame is a filled dark orange (`color-mix(in srgb, var(--accent-orange) 65%, black)`,
+   both `stroke` and `fill`); every other icon uses the plain `var(--accent)` token. Two
+   physiologically-themed exceptions, everything else uniform — not "whatever color felt right for
+   that metric."
+5. **Whether a difference shows at all is a single page-level `showDiff` flag**
+   (`compareEnabled && viewMode === "overlap"`), not a per-card decision. Distinct mode shows each
+   period's own numbers with no computed delta anywhere on the tab; overlap mode shows deltas
+   everywhere. A card that decides this on its own (e.g. always showing a delta regardless of mode)
+   is a bug, not a valid alternate reading.
+
 **The "compare to" range drives every comparison on this tab** (Hero Ring's outer ring, Total/Running/
 By-sport tooltips, AND each sport's second trend chart below) — one `prevActivitiesQ` fetch, reused for
 all of them, same as before. What changed: this range used to be computed unconditionally inside
