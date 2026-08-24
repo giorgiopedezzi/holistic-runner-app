@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select } from "@/components/ui";
 import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
+import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
 import { getUnitSystem } from "@/utils/units";
@@ -99,6 +100,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const { t } = useTranslation();
 
   const [mode, setMode] = useState<"list" | "editor">("list");
+  const [showHelp, setShowHelp] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [savedDslSource, setSavedDslSource] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -370,10 +372,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   if (mode === "list") {
     return (
       <Card>
-        <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.planTemplates.title", "Training-plan templates")}</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <div className="hra-block-title">{t("manage.planTemplates.title", "Training-plan templates")}</div>
+          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }} onClick={() => setShowHelp(true)}>
+            {t("manage.planTemplates.howToUse", "How to use it")}
+          </button>
+        </div>
         <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
           {t("manage.planTemplates.description", "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.")}
         </div>
+        {showHelp && <PlanTemplateHelpModal onClose={() => setShowHelp(false)} />}
         {templatesError && <ErrorBanner message={templatesError} />}
         {templates === null ? (
           <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
@@ -413,9 +421,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   return (
     <Card>
-      <div className="hra-block-title" style={{ marginBottom: 12 }}>
-        {editingId == null ? t("manage.planTemplates.createTitle", "New template") : t("manage.planTemplates.editTitle", "Edit template")}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div className="hra-block-title">
+          {editingId == null ? t("manage.planTemplates.createTitle", "New template") : t("manage.planTemplates.editTitle", "Edit template")}
+        </div>
+        <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }} onClick={() => setShowHelp(true)}>
+          {t("manage.planTemplates.howToUse", "How to use it")}
+        </button>
       </div>
+      {showHelp && <PlanTemplateHelpModal onClose={() => setShowHelp(false)} />}
 
       {/* Fixed widths, no flex-grow, on every field (CLAUDE.md's "no moving
           UI" rule). Distance/km-mi stay on screen at all times (not
