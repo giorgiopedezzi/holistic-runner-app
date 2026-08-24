@@ -40,6 +40,14 @@ function defaultDistanceUnit(): DistanceUnit {
   return getUnitSystem() === "imperial" ? "mi" : "km";
 }
 
+// Mirrors garmin-stats/src/controllers/plan-templates.controller.ts's own
+// STANDARD_DISTANCE_M — a known event type's distance is fixed and always
+// known upfront, unlike "custom" (no entry here), so the field can be
+// filled and locked read-only the moment the event type is picked.
+const STANDARD_DISTANCE_M: Partial<Record<EventType, number>> = {
+  "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195,
+};
+
 function metersToDistance(meters: number, unit: DistanceUnit): string {
   const value = unit === "km" ? meters / 1000 : meters / M_PER_MILE;
   return String(Math.round(value * 1000) / 1000);
@@ -121,12 +129,29 @@ export function PlanTemplatesSection() {
 
   // Switches which unit the (already-typed) distance value displays as,
   // converting through meters so the number itself doesn't change — only
-  // its presentation does.
+  // its presentation does. Read-only outside Custom — a known event's
+  // distance/unit are fixed the moment the event type is picked, not
+  // user-selectable (the toggle stays visually normal, just inert).
   function switchDistanceUnit(unit: DistanceUnit) {
+    if (event !== "custom") return;
     if (unit === distanceUnit) return;
     const meters = distanceToMeters(distanceValue, distanceUnit);
     setDistanceUnit(unit);
     setDistanceValue(meters != null ? metersToDistance(meters, unit) : "");
+  }
+
+  // A known event type's distance is fixed and always filled, read-only,
+  // the moment it's picked — Custom always resets Distance back to empty
+  // (never keeps a stale standard-event number around) and is the only
+  // event type where the field/toggle become writable.
+  function onEventChange(next: EventType) {
+    setEvent(next);
+    if (next === "custom") {
+      setDistanceValue("");
+      return;
+    }
+    const standard = STANDARD_DISTANCE_M[next];
+    if (standard != null) setDistanceValue(metersToDistance(standard, distanceUnit));
   }
 
   function startCreate() {
@@ -137,18 +162,27 @@ export function PlanTemplatesSection() {
   async function startEdit(template: PlanTemplate) {
     resetEditorState();
     setEditingId(template.id);
+    const tplEvent = (template.event as EventType | null) ?? "";
+    setEvent(tplEvent);
+    const unit = defaultDistanceUnit();
+    setDistanceUnit(unit);
+    const standard = tplEvent !== "" ? STANDARD_DISTANCE_M[tplEvent] : undefined;
+    if (standard != null) {
+      // A known event type's distance is always the fixed standard one —
+      // distance_m is never saved for these (the backend rejects it), so
+      // there's nothing to read from parsed_plan here.
+      setDistanceValue(metersToDistance(standard, unit));
+    } else {
+      // distance_m isn't a top-level template field — it lives inside the
+      // saved parsed_plan's metadata (HRA-120: sourced from the request
+      // body at save time, not DSL text).
+      try {
+        const parsed = JSON.parse(template.parsed_plan) as { metadata?: { distance_m?: number } };
+        const distM = parsed.metadata?.distance_m;
+        setDistanceValue(distM != null ? metersToDistance(distM, unit) : "");
+      } catch { setDistanceValue(""); }
+    }
     setName(template.name);
-    setEvent((template.event as EventType | null) ?? "");
-    // distance_m isn't a top-level template field — it lives inside the
-    // saved parsed_plan's metadata (HRA-120: sourced from the request body
-    // at save time, not DSL text).
-    try {
-      const parsed = JSON.parse(template.parsed_plan) as { metadata?: { distance_m?: number } };
-      const distM = parsed.metadata?.distance_m;
-      const unit = defaultDistanceUnit();
-      setDistanceUnit(unit);
-      setDistanceValue(distM != null ? metersToDistance(distM, unit) : "");
-    } catch { setDistanceValue(""); }
     setSavedDslSource(template.dsl_source);
     setEditor({ dslSource: template.dsl_source, sections: [] });
     setMode("editor");
@@ -396,7 +430,7 @@ export function PlanTemplatesSection() {
           <div style={{ marginTop: 4 }}>
             <Select
               value={event}
-              onValueChange={v => setEvent(v as EventType)}
+              onValueChange={v => onEventChange(v as EventType)}
               options={eventOptions}
               placeholder={eventPlaceholder}
               triggerStyle={{ width: `${eventSelectWidth}ch` }}
@@ -404,7 +438,13 @@ export function PlanTemplatesSection() {
           </div>
         </label>
 
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto", opacity: isCustomEvent ? 1 : 0.5 }}>
+        {/* Always shown, always full-opacity ("visually enabled") — a known
+            event type's distance is fixed and filled the instant it's
+            picked (onEventChange above); readOnly/an inert toggle just mean
+            it can be seen and selected/copied but not changed, unlike
+            disabled which would also dim it. Only Custom makes both
+            writable. */}
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
           {t("manage.planTemplates.distanceLabel", "Distance")}
           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
             <input
@@ -412,12 +452,12 @@ export function PlanTemplatesSection() {
               value={distanceValue}
               onChange={e => setDistanceValue(e.target.value)}
               type="number"
-              disabled={!isCustomEvent}
+              readOnly={!isCustomEvent}
               style={{ width: 100, padding: 6 }}
             />
             <div className="hra-segment">
-              <button className="hra-segment-item" data-active={distanceUnit === "km"} disabled={!isCustomEvent} onClick={() => switchDistanceUnit("km")}>km</button>
-              <button className="hra-segment-item" data-active={distanceUnit === "mi"} disabled={!isCustomEvent} onClick={() => switchDistanceUnit("mi")}>mi</button>
+              <button className="hra-segment-item" data-active={distanceUnit === "km"} onClick={() => switchDistanceUnit("km")}>km</button>
+              <button className="hra-segment-item" data-active={distanceUnit === "mi"} onClick={() => switchDistanceUnit("mi")}>mi</button>
             </div>
           </div>
         </label>
