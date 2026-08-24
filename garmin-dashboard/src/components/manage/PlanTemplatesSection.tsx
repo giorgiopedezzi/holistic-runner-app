@@ -51,6 +51,25 @@ function distanceToMeters(value: string, unit: DistanceUnit): number | undefined
   return unit === "km" ? n * 1000 : n * M_PER_MILE;
 }
 
+// A generated plan's own race day (tagged "[race]", the golden-fixture
+// convention documented in docs/runplan-dsl.md) is a strong signal for
+// "the event's actual distance" — only trusted when it's a real distance
+// literal (day.distance.approximate: false), never one estimated from a
+// duration target, since a duration-only plan gives no reliable distance to
+// guess from at all.
+function findRaceDayDistanceMeters(sections: SectionView[]): number | undefined {
+  for (const section of sections) {
+    for (const week of section.weeks) {
+      for (const day of week.days) {
+        if (day.category?.trim().toLowerCase() === "race" && !day.distance.approximate && day.distance.meters > 0) {
+          return day.distance.meters;
+        }
+      }
+    }
+  }
+  return undefined;
+}
+
 function hasOutstandingWarnings(editor: EditorState, planWarnings: ParseWarning[]): boolean {
   if (planWarnings.length > 0) return true;
   return editor.sections.some(s => s.weeks.some(w => w.days.some(d => d.needs_review)));
@@ -133,7 +152,7 @@ export function PlanTemplatesSection() {
     setSavedDslSource(template.dsl_source);
     setEditor({ dslSource: template.dsl_source, sections: [] });
     setMode("editor");
-    await runGenerate(template.dsl_source);
+    await runGenerate(template.dsl_source, { autoFillDistance: false });
   }
 
   async function onFileUpload(file: File) {
@@ -142,13 +161,37 @@ export function PlanTemplatesSection() {
     setPlanWarnings([]);
   }
 
-  async function runGenerate(dslSource: string) {
+  // autoFillDistance defaults to on (fresh create/paste/upload flows) but is
+  // explicitly off from startEdit: a saved template's distanceValue is set
+  // via setDistanceValue just before runGenerate is called there, and since
+  // that setState hasn't been applied to this render's closure yet (state
+  // updates aren't visible synchronously within the same callback that
+  // queued them), the check below would see the pre-update "" and clobber
+  // the just-loaded real distance with a re-guessed one — auto-fill is a
+  // create-time nicety only, never a substitute for the template's own
+  // saved value.
+  async function runGenerate(dslSource: string, opts: { autoFillDistance?: boolean } = {}) {
+    const autoFillDistance = opts.autoFillDistance ?? true;
     setGenLoading(true); setGenError(null); setPatchError(null);
     try {
       const { plan, warnings } = await api.planTemplates.generate(dslSource);
       lastGeneratedRef.current = dslSource;
       setPlanWarnings(warnings);
-      setEditor({ dslSource, sections: plan.sections.map(s => buildTemplateSectionView(s, plan.metadata.pace_policy)) });
+      const sections = plan.sections.map(s => buildTemplateSectionView(s, plan.metadata.pace_policy));
+      setEditor({ dslSource, sections });
+      // Auto-fill the custom-event distance from the plan's own race day the
+      // first time it generates with nothing typed yet — never overwrites a
+      // value the user already entered. The DSL's own UNIT declaration is a
+      // solid guess for which unit that distance was authored in — "almost
+      // sure", per the plan text itself, unless the plan has no real
+      // distance day to find at all (duration-only plans).
+      if (autoFillDistance && distanceValue.trim() === "") {
+        const raceMeters = findRaceDayDistanceMeters(sections);
+        if (raceMeters != null) {
+          setDistanceUnit(plan.metadata.unit);
+          setDistanceValue(metersToDistance(raceMeters, plan.metadata.unit));
+        }
+      }
     } catch (e) {
       setGenError(e instanceof Error ? e.message : t("manage.planTemplates.generateFailed", "Failed to parse the DSL text"));
     }
@@ -334,10 +377,11 @@ export function PlanTemplatesSection() {
       </div>
 
       {/* Fixed widths, no flex-grow, on every field (CLAUDE.md's "no moving
-          UI" rule) — Distance only shows for a Custom event, and it must
-          only extend the row to the right, never shift Name or Event type. */}
+          UI" rule). Distance/km-mi stay on screen at all times (not
+          conditionally mounted) — only their enabled state depends on
+          Event type — so nothing ever appears/disappears in this row. */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 240px" }}>
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 400px" }}>
           {t("manage.planTemplates.nameLabel", "Name")}
           <input
             className="hra-border-strong hra-bg-card hra-text-primary"
@@ -360,24 +404,23 @@ export function PlanTemplatesSection() {
           </div>
         </label>
 
-        {isCustomEvent && (
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-            {t("manage.planTemplates.distanceLabel", "Distance")}
-            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-              <input
-                className="hra-border-strong hra-bg-card hra-text-primary"
-                value={distanceValue}
-                onChange={e => setDistanceValue(e.target.value)}
-                type="number"
-                style={{ width: 100, padding: 6 }}
-              />
-              <div className="hra-segment">
-                <button className="hra-segment-item" data-active={distanceUnit === "km"} onClick={() => switchDistanceUnit("km")}>km</button>
-                <button className="hra-segment-item" data-active={distanceUnit === "mi"} onClick={() => switchDistanceUnit("mi")}>mi</button>
-              </div>
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto", opacity: isCustomEvent ? 1 : 0.5 }}>
+          {t("manage.planTemplates.distanceLabel", "Distance")}
+          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+            <input
+              className="hra-border-strong hra-bg-card hra-text-primary"
+              value={distanceValue}
+              onChange={e => setDistanceValue(e.target.value)}
+              type="number"
+              disabled={!isCustomEvent}
+              style={{ width: 100, padding: 6 }}
+            />
+            <div className="hra-segment">
+              <button className="hra-segment-item" data-active={distanceUnit === "km"} disabled={!isCustomEvent} onClick={() => switchDistanceUnit("km")}>km</button>
+              <button className="hra-segment-item" data-active={distanceUnit === "mi"} disabled={!isCustomEvent} onClick={() => switchDistanceUnit("mi")}>mi</button>
             </div>
-          </label>
-        )}
+          </div>
+        </label>
       </div>
 
       <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
