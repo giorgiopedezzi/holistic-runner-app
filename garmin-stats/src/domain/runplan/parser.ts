@@ -314,11 +314,20 @@ export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
     for (const intensity of intensities) {
       if (intensity.kind === "absolute" || intensity.kind === "unknown") continue;
       const result = resolveIntensityToPace(intensity, ctx.pacePolicy);
-      // A deliberately-unbound (TBD) anchor doesn't warn during template
-      // parsing (ctx.allowUnboundPace) — the whole point of a template is
-      // that some anchors stay symbolic until instantiation. The instance
-      // day-edit path (allowUnboundPace: false) gets no such leniency.
-      if (!result.ok && !(ctx.allowUnboundPace && result.deliberatelyUnbound)) {
+      // No anchor-resolution warning during template parsing at all
+      // (ctx.allowUnboundPace) — the whole point of a template is that
+      // anchors stay symbolic until instantiation, where any anchor (not
+      // only ones explicitly marked TBD) can be supplied via pace_overrides
+      // or converted from goal_time. A day still referencing a genuinely
+      // unresolved anchor surfaces as needs_review on the INSTANCE day at
+      // instantiate time instead (instantiate.ts's resolveDay) — the
+      // deferred requirement moves, it doesn't disappear. A real circular
+      // reference among anchors the template DOES define is still caught,
+      // independently of this per-day check, by detectCircularPaceRefs at
+      // each scope's close. The instance day-edit path (allowUnboundPace:
+      // false) gets no leniency at all — a real instance's pace must
+      // actually resolve.
+      if (!result.ok && !ctx.allowUnboundPace) {
         const anchor = (intensity as AnchorIntensity | OffsetIntensity).anchor;
         warn(`Pace anchor "${anchor}" could not be resolved against the effective pace policy.`);
       }

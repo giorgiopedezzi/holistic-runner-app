@@ -23,14 +23,16 @@ export interface OffsetPace {
   offset_sec_per_km: number;
 }
 
-// `PACE <ANCHOR>=TBD` — a deliberate placeholder: the anchor is real and
-// referenced by the plan, but its value isn't decided yet. Template-level
-// parsing (parseRunPlanDSL) treats a day whose only unresolved intensities
-// trace back to an unbound anchor as NOT needing review (the whole point of
-// a template is some anchors stay symbolic until instantiation) — but the
-// instance day-edit path (DayParseContext.allowUnboundPace: false) does NOT
-// get this leniency, since a real instance's pace must actually resolve.
-// See pace.ts's PaceResolutionResult.deliberatelyUnbound.
+// `PACE <ANCHOR>=TBD` — an explicit "not decided yet" placeholder. Documents
+// intent, but is no longer functionally special: template-level parsing
+// (parseRunPlanDSL, DayParseContext.allowUnboundPace: true) treats ANY
+// unresolved anchor — TBD-marked or simply never given a PACE line at all —
+// as not needing review, since the whole point of a template is that
+// anchors stay symbolic until instantiation, where any anchor can be
+// supplied via pace_overrides or converted from goal_time (see parser.ts's
+// day-level anchor check). The instance day-edit path
+// (DayParseContext.allowUnboundPace: false) gets none of this leniency,
+// since a real instance's pace must actually resolve.
 export interface UnboundPace {
   kind: "unbound";
 }

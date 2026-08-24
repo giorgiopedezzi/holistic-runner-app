@@ -89,20 +89,27 @@ back to the same `{kind:"unknown", raw: token}` shape as an explicit `?` — the
 special-cased in the grammar, it's just a token that fails every specific pattern the same way
 garbage input does.
 
-**The `TBD` pace placeholder (follow-up to HRA-118):** `PACE <ANCHOR>=TBD` (case-insensitive) marks
-an anchor as a deliberate, not-yet-decided value — distinct from the `?` placeholder above, and with
-different save-gate behavior. A day whose only unresolved intensities trace back to a `TBD` anchor
-does **not** produce a `ParseWarning` during **template** parsing (`parseRunPlanDSL`/`generate`/save)
-— the whole anchor-based-templating idea is that some paces stay symbolic until instantiation, so
-leaving one as `TBD` shouldn't block saving or approving the template. This leniency is
+**Unresolved pace anchors never warn at template-save time (broadened HRA-120, follow-up to
+HRA-118):** a day whose only unresolved intensities trace back to a pace anchor that isn't in the
+effective policy — whether explicitly marked `PACE <ANCHOR>=TBD` (case-insensitive) or simply never
+given a `PACE` line at all — does **not** produce a `ParseWarning` during **template** parsing
+(`parseRunPlanDSL`/`generate`/save). The whole anchor-based-templating idea is that paces stay
+symbolic until instantiation, where **any** anchor (not only ones explicitly marked `TBD`) can be
+supplied via `pace_overrides`, or converted from `goal_time` in the `RG` case — so requiring every
+symbolic anchor to be pre-declared as `TBD` was unnecessary DSL ceremony the parser no longer asks
+for. `TBD` still parses and still documents intent ("this one's deliberately not decided yet"), but
+is no longer functionally different from an anchor that's simply absent. This leniency is
 template-parsing-only (`DayParseContext.allowUnboundPace: true`): the **instance** day-edit path
 (`PUT /api/v1/plan-instances/:id`, HRA-115) parses with `allowUnboundPace: false` and gets no such
-pass — a real instance's pace must actually resolve, so a day still referencing an unbound `TBD`
-anchor there is rejected exactly like any other unresolved anchor. An offset anchor chained to a
-`TBD` base (`PACE FL=RG+45s/km` where `RG=TBD`) inherits the same leniency transitively. Instantiating
-a template with a `TBD` anchor and never supplying it via `pace_overrides`/`goal_time` produces
-instance days flagged `needs_review:true` — the deferred requirement surfaces at instantiate time,
-not template-save time, which is the whole point.
+pass — a real instance's pace must actually resolve, so a day still referencing an unresolved anchor
+there is rejected exactly like before. An offset anchor chained to an unresolved base (`PACE
+FL=RG+45s/km` where `RG` is `TBD` or simply undefined) inherits the same leniency transitively. A
+genuine **circular** reference among anchors the template *does* define is still caught — that's a
+separate, proactive per-scope check (`detectCircularPaceRefs`, run whenever a `SECTION`/`WEEK`/the
+whole plan closes), unaffected by this leniency. Instantiating a template with an anchor still
+unresolved and never supplying it via `pace_overrides`/`goal_time` produces instance days flagged
+`needs_review:true` — the deferred requirement surfaces at instantiate time, not template-save time,
+which is the whole point.
 
 ## Pace scoping (Plan → Section → Week)
 `PACE <ANCHOR>=<value>` lines are scoped by where they appear (§18): before any `SECTION`/`WEEK` →

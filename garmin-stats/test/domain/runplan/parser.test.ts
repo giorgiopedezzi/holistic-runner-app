@@ -388,10 +388,12 @@ test("interval with time rest + jog parses", () => {
 });
 
 test("interval with distance rest + anchor intensity parses", () => {
-  // FL is intentionally not in dayCtx.pacePolicy — needs_review is expected
-  // true here (the rest anchor can't resolve), the point of this test is the
-  // segment's *shape*, not pace resolution.
+  // FL is intentionally not in dayCtx.pacePolicy — an unresolved anchor
+  // during template parsing (allowUnboundPace: true) no longer produces a
+  // warning at all (HRA-120), so needs_review stays false here; the point
+  // of this test is the segment's *shape*, not pace resolution.
   const day = parseDayEntry("D3: 4x2000m @ RG-20 r:1km @ FL", dayCtx);
+  assert.equal(day.needs_review, false);
   const seg = day.segments[0] as IntervalSegment;
   assert.equal(seg.rest?.intensity?.kind, "anchor");
 });
@@ -643,13 +645,21 @@ test("intensity: anchor, offset (default/explicit s/km/s/mi), absolute km/mi all
   assert.ok(Math.abs(absMiPace - 415 / KM_PER_MILE) < 0.01);
 });
 
-test("intensity: unknown anchor parses but marks the day needs_review with a day-level warning", () => {
+test("intensity: an anchor undefined anywhere is treated as deliberately symbolic during template parsing — no warning, not needs_review (HRA-120)", () => {
   const result = parseRunPlanDSL("PLAN\nWEEK 1\nD1: 10km @ UNKNOWN_PACE\n");
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("unreachable");
   const day = result.plan.sections[0].weeks[0].days[0];
+  assert.equal(day.needs_review, false);
+  assert.equal(day.warnings.length, 0);
+});
+
+test("intensity: the same undefined anchor DOES warn outside template parsing (allowUnboundPace: false, the instance day-edit path)", () => {
+  const day = parseDayEntry("D1: 10km @ UNKNOWN_PACE", {
+    unit: "km", offset_unit: "s/km", default_rest: "jog", pacePolicy: {}, allowUnboundPace: false,
+  });
   assert.equal(day.needs_review, true);
-  assert.ok(day.warnings.length > 0, "an unresolved anchor produces a day-level warning");
+  assert.ok(day.warnings.some(w => w.message.includes("UNKNOWN_PACE")));
 });
 
 // ── Pace policy scoping / adjustment ────────────────────────────────────
