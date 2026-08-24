@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette } from "@/types/api";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette, StoredPalette } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { setResolvedTheme } from "@/utils/theme";
 import { setDateFormatSystem } from "@/utils/dateFormat";
@@ -29,6 +29,17 @@ function resolveLanguage(stored: StoredLanguage): Language {
   return stored === "auto" ? detectLanguageFromLocale() : stored;
 }
 
+// Same 'auto' pattern as resolveTheme/resolveLanguage above — a settings row
+// that's never had a palette explicitly PUT resolves by the ALREADY-resolved
+// theme: 'graphite' for dark, 'warm' for light (dashboard design-system
+// rework: "make graphite the default dark look, warm the default light
+// look"). Once a user picks any concrete palette it's explicit and always
+// wins, exactly like theme's own 'auto'.
+function resolvePalette(stored: StoredPalette, theme: Theme): Palette {
+  if (stored === "metal" || stored === "warm" || stored === "graphite") return stored;
+  return theme === "dark" ? "graphite" : "warm";
+}
+
 // Applies theme + unit system straight to the document/module state — a
 // data-theme attribute (matched by index.css's [data-theme="..."] blocks)
 // and utils/units.ts's module-level unit system. Called both on initial
@@ -46,10 +57,11 @@ function applyToDocument(settings: Settings) {
   document.documentElement.setAttribute("data-theme", theme);
   setResolvedTheme(theme);
   // Dashboard design-system rework: palette, compounded with data-theme above
-  // (see index.css's :root[data-theme="…"][data-palette="…"] blocks). No
-  // resolution needed — palette has no 'auto' concept, always a concrete
-  // value once the settings row loads (defaults to 'metal' server-side).
-  document.documentElement.setAttribute("data-palette", settings.palette);
+  // (see index.css's :root[data-theme="…"][data-palette="…"] blocks).
+  // resolvePalette() resolves the 'auto' sentinel by the theme just resolved
+  // above (defaults to 'auto' server-side) — see that function's own
+  // comment.
+  document.documentElement.setAttribute("data-palette", resolvePalette(settings.palette, theme));
 
   // --accent/--on-accent are no longer set from JS — each
   // [data-theme][data-palette] block in index.css defines its own fixed
@@ -111,6 +123,13 @@ export interface AppearanceMeta {
   // AppearanceApi stub (SettingsTab.pickers.test.tsx) keeps compiling
   // unmodified.
   resolvedLanguage?:   Language | null;
+  // Optional for the same reason resolvedLanguage is — keeps the
+  // pre-existing hand-written AppearanceApi stub (SettingsTab.pickers.
+  // test.tsx) valid without modification. The 'auto' sentinel resolved to a
+  // concrete Palette (see resolvePalette above) — PalettePicker/ThemePicker
+  // read this rather than the raw (possibly-'auto') settings.palette, same
+  // relationship resolvedTheme has with the raw settings.theme.
+  resolvedPalette?:    Palette | null;
 }
 export type AppearanceApi = AppearanceState & AppearanceActions & AppearanceMeta;
 
@@ -199,5 +218,6 @@ export function useAppearance(): AppearanceApi {
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
     resolvedLanguage: settings ? resolveLanguage(settings.language) : null,
+    resolvedPalette: settings ? resolvePalette(settings.palette, resolveTheme(settings.theme)) : null,
   };
 }

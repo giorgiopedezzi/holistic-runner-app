@@ -300,8 +300,19 @@ All persist in the SQLite `settings` table rather than `localStorage` (see Stack
   combinations.** `types/api.ts`'s `Palette` (`'metal' | 'warm' | 'graphite'`) is applied as a
   `data-palette` attribute on `<html>`, compounding with the existing `data-theme` attribute (except
   for Graphite, see above) — `SettingsTab`'s `PalettePicker` (3 swatches, same visual language as
-  `ThemePicker`'s) replaces the earlier `StylePackPicker` entirely. `'metal'` is the default
-  (cold/technical/minimal), matching Dark Metal's status as the primary theme.
+  `ThemePicker`'s) replaces the earlier `StylePackPicker` entirely.
+- **`'auto'` is the Palette DEFAULT, resolved by the (already-resolved) Theme — same pattern as
+  Theme's own `'auto'`.** `StoredPalette` (`Palette | 'auto'`) is the DB/`Settings`-field type;
+  `useAppearance.ts`'s `resolvePalette(stored, theme)` returns `stored` unchanged once a concrete
+  choice has been made, and otherwise resolves to `'graphite'` when the resolved Theme is dark,
+  `'warm'` when light ("make Graphite the default dark look, Warm the default light look" — a later
+  design-system pass than the 4-theme rework above, superseding its flat `'metal'`-default). `'auto'`
+  is never itself writable via `PUT /settings/palette` (`updatePalette` still only accepts
+  `metal`/`warm`/`graphite`) — exactly the same asymmetry Theme's own `'auto'` has with `setTheme`.
+  `PalettePicker`/`ThemePicker` both read `appearance.resolvedPalette` (not the raw, possibly-`'auto'`
+  `settings.palette`) for swatch highlighting and for `ThemePicker`'s Graphite-disables-Theme check —
+  a settings row that's never had a palette chosen can still resolve to Graphite, and the picker must
+  disable itself then too, not only once Graphite is explicitly persisted.
 - **AccentColor is no longer an independent user choice.** The earlier 6-hue curated `AccentPicker`
   (HRA-95) is gone — each palette bakes in its own exact accent. `AccentColor`
   (`'sky' | 'amber' | 'graphite'`) still exists as a `Settings` field, paired 1:1 with Palette

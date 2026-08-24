@@ -1,22 +1,26 @@
 /**
  * MetricRow.test.tsx  (HRA-75)
  * Pins the two independent toggle behaviours (line/card) through the
- * state+onToggle contract, and that the card checkbox only renders once the
- * metric is active. The "Axis" checkbox this once also covered is gone
- * (dashboard design-system rework, "reorganize activity layout" — per-metric
- * axis visibility is now a hardcoded rule, not a user toggle, see
- * ActivityChartSection.tsx).
+ * state+onToggle contract, and that the card checkbox is always rendered but
+ * disabled/forced-unchecked while the metric is inactive (dashboard
+ * design-system rework: "card checkbox are always visible, unchecked if
+ * metric is not selected to be shown"). The "Axis" checkbox this once also
+ * covered is gone (an earlier dashboard design-system rework pass,
+ * "reorganize activity layout" — per-metric axis visibility is now a
+ * hardcoded rule, not a user toggle, see ActivityChartSection.tsx).
  */
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { MetricRow } from "./MetricRow";
 
 describe("MetricRow", () => {
-  it("hides the card checkbox while the metric is inactive", () => {
+  it("shows the card checkbox disabled and unchecked while the metric is inactive", () => {
     render(<MetricRow mKey="heart_rate" label="Heart rate"
-      state={{ active: false, available: true, cardOn: false }} onToggle={vi.fn()} />);
+      state={{ active: false, available: true, cardOn: true }} onToggle={vi.fn()} />);
 
-    expect(screen.queryByText("Card")).not.toBeInTheDocument();
+    const checkbox = screen.getByLabelText("Card");
+    expect(checkbox).toBeDisabled();
+    expect(checkbox).not.toBeChecked();
   });
 
   it("clicking the pill fires onToggle('active') only", () => {

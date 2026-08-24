@@ -158,7 +158,7 @@ test("GET /api/v1/settings returns the seeded singleton with defaults", async ()
     assert.equal(row.unit_system, "auto");
     assert.equal(row.outlier_speed_delta_per_sec, 2.0);
     assert.equal(row.min_trend_group_size, 5);
-    assert.equal(row.palette, "metal");
+    assert.equal(row.palette, "auto");
   });
 });
 

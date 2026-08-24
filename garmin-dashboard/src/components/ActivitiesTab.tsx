@@ -38,7 +38,7 @@ export function ActivitiesTab({ from, to }: Props) {
   // If the total shrank (e.g. after a delete) clamp the page back into range.
   useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
 
-  if (state.status === "loading") return <LoadingSpinner />;
+  if (state.status === "loading") return <LoadingSpinner label={t("activities.loading", "Loading activities…")} />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;
   if (state.status !== "success") return null;
 
@@ -77,6 +77,7 @@ export function ActivitiesTab({ from, to }: Props) {
               onClick={() => detailView === "accordion"
                 ? setExpandedId(id => id === a.id ? null : a.id)
                 : setModalId(a.id)}
+              onDelete={() => { setExpandedId(null); refetch(); }}
               expandedContent={
                 <ActivityDetailBody
                   activityId={a.id}

@@ -212,7 +212,16 @@ export function initSchema(db: DatabaseSync): void {
       -- via a data-palette attribute (index.css), compounded with
       -- data-theme for metal/warm — see docs/frontend.md's Appearance
       -- section.
-      palette                       TEXT NOT NULL DEFAULT 'metal',
+      -- 'auto' is no longer just the pre-choice DEFAULT it always was —
+      -- it's now the same live sentinel pattern 'theme' uses above: a row
+      -- that's never had a palette explicitly PUT resolves, on the
+      -- frontend (useAppearance.ts's resolvePalette()), to 'graphite' when
+      -- the (already-resolved) theme is dark and 'warm' when it's light
+      -- ("make graphite the default dark look, warm the default light
+      -- look"). Once a concrete palette is explicitly chosen it always
+      -- wins, same relationship 'auto' has with theme — never itself
+      -- writable via PUT (see settings.controller.ts's updatePalette).
+      palette                       TEXT NOT NULL DEFAULT 'auto',
       updated_at                    TEXT DEFAULT (datetime('now'))
     );
 
@@ -481,7 +490,7 @@ export function initSchema(db: DatabaseSync): void {
     db.exec("ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT 'auto'");
   }
   if (!settingsCols.some(c => c.name === "palette")) {
-    db.exec("ALTER TABLE settings ADD COLUMN palette TEXT NOT NULL DEFAULT 'metal'");
+    db.exec("ALTER TABLE settings ADD COLUMN palette TEXT NOT NULL DEFAULT 'auto'");
   }
   if (settingsCols.some(c => c.name === "style_pack")) {
     db.exec("ALTER TABLE settings DROP COLUMN style_pack");

@@ -140,7 +140,7 @@ export function BodyTab({ from, to }: Props) {
   const list        = listQ.state.status        === "success" ? listQ.state.data        : [];
   const correlation = correlationQ.state.status === "success" ? correlationQ.state.data : null;
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <LoadingSpinner label={t("body.loading", "Loading body measurements…")} />;
   if (error)     return <ErrorBanner message={error.error} />;
 
   if (list.length === 0) {

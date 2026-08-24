@@ -7,6 +7,13 @@
  * the one HR badge left there; Avg HR moved inside the graph) plus the
  * "not enough data" message that stands in for the graph (and the
  * Distance/Speed-Pace/Avg HR KPIs that live inside it).
+ *
+ * Dashboard design-system rework ("keep every information at accordion
+ * wrap-up level"): ActivityDetailBody's own header (and its Delete button)
+ * now renders ONLY for the popup variant (onClose passed) — the accordion
+ * case gets all of this from ActivityRow instead (see ActivityRow.test.tsx
+ * for that flow). The soft-delete test below passes onClose to exercise the
+ * still-real popup path.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -50,9 +57,9 @@ describe("ActivityDetailBody", () => {
       "GET /api/v1/settings": settings(),
       [`DELETE /api/v1/activities/${ID}`]: json({ deleted: 1 }),
     });
-    render(<ActivityDetailBody activityId={ID} onDelete={onDelete} />);
+    render(<ActivityDetailBody activityId={ID} onDelete={onDelete} onClose={vi.fn()} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Delete activity/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Remove activity/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Yes, delete/i }));
 
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));

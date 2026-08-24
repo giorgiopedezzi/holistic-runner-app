@@ -1,24 +1,23 @@
 {
   "nav.overview": "Overview & Trends",
   "nav.activities": "Activities",
+  "activities.loading": "Loading activities…",
   "nav.body": "Body",
   "nav.manage": "Data & Sync",
   "nav.settings": "Settings",
-
   "common.entity.activities": "activities",
   "common.preset.7": "7d",
   "common.preset.30": "30d",
   "common.preset.90": "90d",
   "common.preset.365": "1y",
   "common.preset.9999": "All",
-
   "dateRange.current": "Current",
   "dateRange.enableComparison": "Enable comparison",
   "dateRange.customRange": "Custom range",
   "dateRange.pickNamedRange": "Pick a named date range…",
+  "dateRange.pickRace": "Pick a race…",
   "dateRange.noneOption": "— none —",
   "dateRange.comparedTo": "Compared to",
-
   "overview.chartTooltip.pace": "pace",
   "overview.chartTooltip.hr": "HR",
   "overview.legend.current": "(current)",
@@ -59,12 +58,13 @@
   "overview.stat.avgPace": "Avg pace",
   "overview.legend.paceAxis": "Avg pace ({{unit}})",
   "overview.legend.hrAxis": "Avg HR (bpm)",
+  "overview.loading": "Loading overview…",
+  "overview.trendsLoading": "Loading trends…",
   "overview.bySportSectionTitle": "By sport",
   "overview.bySportSessionsLabel": "{{count}} sessions",
   "overview.compareTooltip.sessionsPrefix": "sessions: ",
   "overview.compareTooltip.hrPrefix": "HR: ",
   "overview.compareTooltip.pacePrefix": "pace: ",
-
   "common.cancel": "Cancel",
   "common.save": "Save",
   "common.submit": "Submit",
@@ -74,13 +74,11 @@
   "common.delete": "Delete",
   "common.confirm": "Confirm",
   "common.entity.bodyMeasurements": "body measurements",
-
   "manage.syncSectionTitle": "Sync",
   "manage.dateRangesSectionTitle": "Named date ranges",
   "manage.classifySectionTitle": "AI workout classification",
   "manage.deleteSectionTitle": "Delete — local database only",
   "manage.trashSectionTitle": "Trash",
-
   "manage.upload.title": "Sync Garmin activities",
   "manage.upload.description": "Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB. Connect the watch via USB first. Pulls every new file on the device — there's no date range to set here, since the device is diffed against what's already imported, not queried by date.",
   "manage.upload.checkingDevice": "Checking device…",
@@ -95,11 +93,9 @@
   "manage.upload.activityFolderInaccessible": "Device connected, but its Activity folder isn't accessible",
   "manage.upload.deviceCheckTimeout": "Device check timed out — try again",
   "manage.upload.deviceCheckFailed": "Couldn't check device status",
-
   "manage.sync.doneMessage": "Done — {{imported}} imported, {{skipped}} skipped, {{errors}} errors.",
   "manage.sync.syncFailed": "Sync failed",
   "manage.sync.syncingEllipsis": "Syncing…",
-
   "manage.oauth.withings.noun": "measurements",
   "manage.oauth.withings.description": "Pulls weight and body composition measurements from the Withings API for the range below (defaults to since your last sync if you leave it alone).",
   "manage.oauth.strava.noun": "activities",
@@ -121,7 +117,6 @@
   "manage.oauth.syncFromButton": "↓ Sync from {{label}}",
   "manage.oauth.expirySoon": "soon",
   "manage.oauth.expiryIn": "in {{value}}",
-
   "manage.syncAll.title": "Sync all",
   "manage.syncAll.description": "Runs every sync below in one go — skips whichever source isn't ready (device unplugged, not logged in).",
   "manage.syncAll.button": "⚡ Sync all",
@@ -132,7 +127,7 @@
   "manage.syncAll.skipReasonLogin": "not logged in",
   "manage.syncAll.failed": "{{source}}: failed — {{msg}}",
   "manage.syncAll.genericError": "sync error",
-
+  "manage.classify.loading": "Loading activities…",
   "manage.classify.title": "AI workout classification",
   "manage.classify.description": "Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata / Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.",
   "manage.classify.loadFailed": "Failed to load activities",
@@ -150,7 +145,6 @@
   "manage.classify.confirmTooltip": "Bulk-approves the {{method}} classification for already-classified selected activities, no reason needed — same as thumbs-up per activity",
   "manage.classify.confirmSelected": "Confirm selected ({{method}})",
   "manage.classify.classifyingProgress": "Classifying {{current}}/{{total}}…",
-
   "manage.dateRanges.title": "Named date ranges",
   "manage.dateRanges.description": "Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only races that took place after the range's end date are selectable.",
   "manage.dateRanges.loadFailed": "Failed to load date ranges",
@@ -166,7 +160,6 @@
   "manage.dateRanges.pickFirstTooltip": "Pick a saved range above first",
   "manage.dateRanges.pickToDelete": "Pick a saved range to delete…",
   "manage.dateRanges.confirmDeleteQuestion": "Delete this range?",
-
   "manage.delete.title": "Delete data range",
   "manage.delete.localOnly": "local database only",
   "manage.delete.description": "Moves records to the local database's trash (below) rather than removing them outright — restore them any time, or empty the trash to permanently reclaim the space. Nothing is touched on your Garmin watch, Strava, or Withings account either way, and a resync won't bring a trashed (or permanently deleted) item back on its own.",
@@ -185,7 +178,6 @@
   "manage.delete.noMeasurementsInRange": "No measurements in this range.",
   "manage.delete.moveToTrashButton": "Move to trash…",
   "manage.delete.moveToTrashConfirm": "Move to trash, {{from}} to {{to}}?",
-
   "manage.trash.title": "Trash",
   "manage.trash.refreshTooltip": "Refresh — e.g. after deleting something above",
   "manage.trash.description": "Items deleted above land here first. Restore brings them straight back; emptying the trash permanently deletes them (their data is wiped to reclaim space, but enough is kept internally that a resync still won't reimport them).",
@@ -198,34 +190,28 @@
   "manage.trash.purgeTooltip": "Permanently deletes the selected item(s) — this can't be undone. The filename/date is still kept internally so a resync won't bring it back.",
   "manage.trash.deletePermanently": "Delete permanently…",
   "manage.trash.confirmPurge": "Permanently delete {{n}} item(s)? This can't be undone.",
-
   "settings.currentLabel": "current:",
   "settings.savingEllipsis": "Saving…",
   "settings.saved": "Saved",
   "settings.saveFailed": "Failed to save settings",
-
   "settings.theme.dark": "Dark",
   "settings.theme.light": "Light",
   "settings.theme.disabledForGraphite": "Graphite is a fixed dark look — Theme doesn't apply while it's selected",
-
   "settings.palette.metal": "Metal",
   "settings.palette.warm": "Warm",
   "settings.palette.graphite": "Graphite",
-
   "settings.units.auto": "Auto",
   "settings.units.metric": "Metric (km, kg)",
   "settings.units.imperial": "Imperial (mi, lb)",
   "settings.units.currentlyNote": "currently: {{system}} (from your browser's locale — there's no direct way to read the OS's actual measurement-system setting)",
   "settings.units.title": "Units",
   "settings.units.description": "Applies to distance, pace, speed, elevation and weight everywhere in the app. \"Auto\" guesses from your browser's language/region (e.g. a US locale defaults to imperial) — there's no direct way for a web page to read the OS's actual measurement-system setting, so this is a best-effort default you can always override.",
-
   "settings.dateFormat.numeric_uk": "Numeric (UK)",
   "settings.dateFormat.numeric_us": "Numeric (US)",
   "settings.dateFormat.literal_uk": "Literal (UK)",
   "settings.dateFormat.literal_us": "Literal (US)",
   "settings.dateFormat.title": "Date format",
   "settings.dateFormat.description": "Applies to every date shown in the app. \"Numeric\" is dd/mm or mm/dd depending on region; \"Literal\" spells the month out. Overview & Trends' chart axes always stay numeric (no room for a spelled-out month on a compact axis tick) but still follow the region here.",
-
   "settings.appearance.title": "Appearance",
   "settings.appearance.themeLabel": "Theme",
   "settings.appearance.paletteDescription": "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.",
@@ -233,31 +219,26 @@
   "settings.appearance.previewActivePill": "Active pill",
   "settings.appearance.previewLink": "Link",
   "settings.appearance.previewFocusRing": "Focus ring",
-
   "settings.activityDetails.title": "Activity details",
   "settings.activityDetails.description": "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.",
   "settings.activityDetails.accordion": "Accordion (inline)",
   "settings.activityDetails.popup": "Popup",
-
   "settings.overviewTrends.title": "Overview & Trends",
   "settings.overviewTrends.description": "Minimum activities needed before a sport's trend chart is shown (in \"Single\" mode), or before \"Week\"/\"Month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.",
   "settings.overviewTrends.fieldLabel": "Minimum activities/groups for a trend",
-
+  "settings.loading": "Loading settings…",
   "settings.outliers.title": "Outlier detection",
   "settings.outliers.description": "Used by the activity chart's \"Remove outliers\" checkbox. Two independent rules: an isolated-spike filter (a point is flagged only when it jumps away and back from its neighbors faster than the rate below, so a genuine sustained change like a real sprint isn't affected), and an absolute floor for Speed/Pace — any sample slower than the walking-pace threshold is dropped outright, for a \"running only\" view.",
   "settings.outliers.speedFieldLabel": "Max speed change (m/s per second)",
   "settings.outliers.cadenceFieldLabel": "Max cadence change (steps/min per second)",
   "settings.outliers.minSpeedFieldLabel": "Min speed to count as running (km/h)",
   "settings.outliers.off": "off",
-
   "app.serverConnected": "Server connected",
   "app.serverOffline": "Server offline",
   "app.serverUnreachable": "API server unreachable — run: cd garmin-stats && node src/server.ts",
-
   "api.gatewayError": "Couldn't reach the API server ({{status}}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.",
   "api.genericError": "API error {{status}}: {{path}}",
   "api.networkError": "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted — the operation may still have finished, so wait a moment and try again.",
-
   "common.noDataDefault": "No data in this range.",
   "common.selectDate": "Select date",
   "common.perPage": "Per page",
@@ -269,7 +250,7 @@
   "common.recheck": "Recheck",
   "common.settingsLoadFailed": "Failed to load settings",
   "common.changeLanguage": "Change language",
-
+  "body.loading": "Loading body measurements…",
   "body.chart.chartView": "Chart",
   "body.chart.tableView": "Table",
   "body.chart.selectMetric": "Select at least one metric above to plot.",
@@ -296,18 +277,17 @@
   "body.metric.hydration_kg": "Hydration",
   "body.metric.bmi": "BMI",
   "body.metric.heart_rate": "Heart rate",
-
   "classification.recoveryRun": "Recovery Run",
   "classification.longSession": "Long Session",
   "classification.repeatsIntervals": "Repeats/Intervals",
   "classification.progressiveRun": "Progressive Run",
   "classification.fartlek": "Fartlek",
   "classification.tapasciata": "Tapasciata / Light Maintenance",
-
   "activity.detail.deleteFailed": "Delete failed",
   "activity.detail.viaSource": "via {{source}}",
+  "activity.detail.loading": "Loading activity…",
   "activity.detail.deleteTooltip": "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.",
-  "activity.detail.deleteButton": "Delete activity (locally)",
+  "activity.detail.deleteButton": "Remove activity",
   "activity.detail.moveToTrash": "Move to trash?",
   "activity.stat.distance": "Distance",
   "activity.stat.movingTime": "Moving time",
@@ -317,7 +297,6 @@
   "activity.stat.avgHr": "Avg HR",
   "activity.stat.maxHr": "Max HR",
   "activity.stat.elevation": "Elevation",
-
   "activity.metric.noData": "No data for this metric",
   "activity.metric.card": "Card",
   "activity.metric.speedLabel": "Speed",
@@ -331,17 +310,14 @@
   "activity.metricShort.altitude_m": "Alt",
   "activity.metricShort.cadence": "Cad",
   "activity.metricShort.power": "Pwr",
-
   "activity.play.pause": "Pause",
   "activity.play.replay": "Replay",
   "activity.play.play": "Play",
   "activity.play.stop": "Stop",
-
   "activity.runner.paused": "⏸ Paused {{duration}}",
   "activity.runner.hrRecovery": "HR {{before}}→{{after}} ({{delta}})",
   "activity.readout.speed": "speed",
   "activity.readout.pace": "pace",
-
   "activity.chart.distance": "Distance",
   "activity.chart.time": "Time",
   "activity.chart.highlightPauses": "Highlight pauses ≥",
@@ -351,15 +327,17 @@
   "activity.chart.paceUnit": "Pace (mm:ss)",
   "activity.chart.hrRecoveryFlagsNote": "flags show HR recovery across each pause",
   "activity.chart.notEnoughData": "Not enough track data to plot a chart.",
-
+  "activity.chart.preparingRunner": "Preparing the runner…",
   "activity.typePicker.saveFailed": "Failed to save activity type",
   "activity.typePicker.typePlaceholder": "Type",
-  "activity.typePicker.saveTooltip": "Save the selected activity type",
-  "activity.typePicker.noChangeTooltip": "No change to save",
+  "activity.typePicker.saveButton": "Save & name",
+  "activity.typePicker.renameButton": "Rename",
+  "activity.typePicker.saveTooltip": "Save the selected type and optionally name this activity",
+  "activity.typePicker.renameTooltip": "Change this activity's saved name",
   "activity.typePicker.nameThis": "Name this {{type}}",
+  "activity.typePicker.renameThis": "Rename this {{type}}",
   "activity.typePicker.sessionFallback": "session",
   "activity.typePicker.namePlaceholder": "e.g. Berlin Marathon",
-
   "activity.classify.title": "Classification",
   "activity.classify.summaryAi": "AI: {{classification}}",
   "activity.classify.summaryStatistical": "Statistical: {{classification}}",
@@ -387,7 +365,6 @@
   "activity.classify.splitTooltip": "Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out",
   "activity.classify.split1km": "1km",
   "activity.classify.split05km": "0.5km",
-
   "runplan.accordion.totalDays": "{{n}} days",
   "runplan.accordion.activeDays": "{{n}} active",
   "runplan.accordion.runningDays": "{{n}} running",
@@ -402,7 +379,6 @@
   "runplan.accordion.dslLabel": "Workout (DSL)",
   "runplan.accordion.needsReview": "This day needs review before it can be saved.",
   "runplan.accordion.needsReviewBadge": "Needs review",
-
   "manage.planTemplatesSectionTitle": "Training-plan templates",
   "manage.planTemplates.title": "Training-plan templates",
   "manage.planTemplates.description": "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.",
@@ -429,7 +405,6 @@
   "manage.planTemplates.untitled": "Untitled plan",
   "common.edit": "Edit",
   "common.saving": "Saving…",
-
   "manage.planInstancesSectionTitle": "Training-plan instances",
   "manage.planInstances.title": "Training-plan instances",
   "manage.planInstances.description": "A concrete instantiation of a template for one race — resolved paces, a start date, and (optionally) a linked race activity.",

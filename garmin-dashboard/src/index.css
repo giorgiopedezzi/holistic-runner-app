@@ -299,22 +299,22 @@
      Ambient-glow mix percentages — not given; reused the existing dark-
        theme defaults. */
 :root[data-palette="graphite"] {
-  --bg:             #050505;
-  --bg-card:        #0C0C0C;
-  --bg-surface:     #141414;
-  --bg-surface-2:   #1B1B1B;
-  --bg-danger:      #B86A6A18;
-  --border:         #292929;
-  --border-strong:  #3D3D3D;
-  --text-primary:   #F2F2F2;
-  --text-secondary: #A3A3A3;
-  --text-muted:     #6B6B6B;
-  --accent:         #D4D4D4;
-  --on-accent:      #0A0A0A;
+  --bg:             #050608;
+  --bg-card:        #0A0C10;
+  --bg-surface:     #12151A;
+  --bg-surface-2:   #191C22;
+  --bg-danger:      #C94F5A22;
+  --border:         #272B31;
+  --border-strong:  #3A3F47;
+  --text-primary:   #F1F3F4;
+  --text-secondary: #A5ABB0;
+  --text-muted:     #6D747A;
+  --accent:         #D2D7DA;
+  --on-accent:      #090B0C;
   --accent-green:   #8FAF9A;
-  --accent-blue:    #D4D4D4;
-  --accent-red:     #B86A6A;
-  --accent-orange:  #B8A26A;
+  --accent-blue:    #D2D7DA;
+  --accent-red:     #C94F5A;
+  --accent-orange:  #C47A55;
   --ambient-accent-mix: 8%; --ambient-dark-mix: 30%;
   --card-accent-mix:    9%; --card-dark-mix:    12%;
   color-scheme: dark;
@@ -697,6 +697,72 @@ body {
     color-mix(in srgb, var(--text-primary) 20%, transparent) 0%, transparent 100%);
 }
 
+/* The one loading experience app-wide (ui/LoadingSpinner.tsx, dashboard
+   design-system rework: "use the same loading experience everywhere") — an
+   indeterminate sweep, not a real percentage bar (there's nothing granular
+   to report anywhere it's used), built from the same restrained "gradient =
+   subject, not decoration" language as the ambient shimmer/hover-glow above:
+   a bright accent-toned band sweeping a dim hairline track, not a generic
+   browser progress bar. `data-compact` (LoadingSpinner's `compact` prop) is
+   for tight, already-explicit-height spots — e.g. ActivityChartSection's
+   runner row — where the normal section-loading padding would overflow;
+   `height:100%` there fills whatever height the parent (which DOES set an
+   explicit height in that case) already reserves. */
+.hra-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 40px 0;
+}
+.hra-loading[data-compact="true"] { padding: 0; height: 100%; }
+.hra-loading-track {
+  position: relative; width: 55%; max-width: 320px; height: 4px;
+  border-radius: 999px; overflow: hidden;
+  /* Deliberately plain/dim (not accent-tinted) — the whole point is
+     contrast against the bright sweep below; an accent-tinted track was
+     what made the very first version read as static instead of animated. */
+  background: color-mix(in srgb, var(--border) 70%, var(--bg));
+}
+.hra-loading-bar {
+  /* Base position is STATIC (left: -28%, set once, never touched by the
+     animation) — only `transform` animates below. Animating `left` directly
+     (the earlier version) requires the browser to redo LAYOUT on the main
+     thread every single frame to actually paint progress; a bare CSS
+     reproduction with nothing else running looked perfectly smooth, but in
+     the real app this loading bar is specifically shown WHILE something
+     else is doing real main-thread work (a large activity's chart mounting,
+     etc.) — exactly the scenario where a layout-triggering animation's
+     internal clock keeps ticking but the browser never gets spare main-
+     thread time to actually repaint its progress, so it reads as frozen.
+     `transform` is compositor-only: the GPU animates it independently of
+     whatever else the main thread is doing, which is the whole reason this
+     loading bar needs it and a plain page usually doesn't. */
+  position: absolute; top: 0; bottom: 0; left: -28%; width: 28%;
+  border-radius: 999px;
+  /* A narrow, bright streak (near-white core at its center) fading to
+     transparent at both edges — a genuine glint against the dim track,
+     not a broad hazy band. `linear` (not ease-in-out) so the slide reads as
+     one continuous, constant-speed sweep rather than one that lingers at
+     the edges and only briefly speeds up in the middle — the earlier
+     version's easing was what made it read as barely-moving/static. */
+  background: linear-gradient(90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 30%,
+    color-mix(in srgb, var(--accent) 95%, white 35%) 50%,
+    color-mix(in srgb, var(--accent) 70%, transparent) 70%,
+    transparent 100%);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 60%, transparent);
+  animation: hra-loading-sweep 1.1s linear infinite;
+  will-change: transform;
+}
+@keyframes hra-loading-sweep {
+  /* translateX() percentages are relative to THIS element's own width
+     (28% of the track), not the track's — 457.14% = (100% + 28%) / 28%,
+     i.e. the same "off-screen left to off-screen right of the track" span
+     the old left:-28%→100% keyframes covered, just expressed as a multiple
+     of the bar's own width instead of the track's. */
+  0%   { transform: translateX(0%); }
+  100% { transform: translateX(457.14%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hra-lift, .hra-nav-hover, .hra-swatch, .card, .hra-btn {
     transition: none !important;
@@ -706,6 +772,7 @@ body {
   }
   body::before { animation: none !important; }
   .hra-chart-hover-dim, .hra-chart-hover-glow { transition: none !important; }
+  .hra-loading-bar { animation: none !important; left: 0; width: 100%; opacity: 0.5; }
 }
 
 /* Automatic ambient (corrected 2026-08-16, then again 2026-08-17 — replaces

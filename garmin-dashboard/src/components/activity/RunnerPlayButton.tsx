@@ -4,12 +4,12 @@ export type PlayStatus = "idle" | "playing" | "paused" | "finished";
 
 // One YouTube-style control: play↔pause while active, replay once the
 // runner reaches the end. The icon alone communicates the current state.
-export function RunnerPlayButton({ status, onClick }: { status: PlayStatus; onClick: () => void }) {
+export function RunnerPlayButton({ status, onClick, disabled }: { status: PlayStatus; onClick: () => void; disabled?: boolean }) {
   const { t } = useTranslation();
   const label = status === "playing" ? t("activity.play.pause", "Pause")
     : status === "finished" ? t("activity.play.replay", "Replay") : t("activity.play.play", "Play");
   return (
-    <button type="button" className="hra-runner-playbtn" onClick={onClick} aria-label={label} title={label}>
+    <button type="button" className="hra-runner-playbtn" onClick={onClick} disabled={disabled} aria-label={label} title={label}>
       <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
         {status === "playing" ? (
           <><rect x="6" y="5" width="4" height="14" /><rect x="14" y="5" width="4" height="14" /></>

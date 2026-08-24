@@ -4,16 +4,11 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, Select, DatePicker } from "@/components/ui";
 import type { RaceActivity, SavedDateRange } from "@/types/api";
-import { fmtKm, fmtDate } from "@/utils/fmt";
+import { fmtDate, fmtRaceLabel } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 
 const NO_RACE = "none";
 const NO_SELECTION = "";
-
-function raceLabel(r: RaceActivity): string {
-  const name = r.activity_name ? ` — ${r.activity_name}` : "";
-  return `${fmtDate(r.date_only)}${name} (${fmtKm(r.distance_m)})`;
-}
 
 function rangeLabel(r: SavedDateRange): string {
   return `${r.name} (${fmtDate(r.from_date)} → ${fmtDate(r.to_date)})`;
@@ -198,7 +193,7 @@ export function DateRangesSection() {
           onValueChange={setCreateRaceId}
           placeholder={t("manage.dateRanges.linkRacePlaceholder", "Link a race (optional)")}
           triggerStyle={{ flex: "1.5 1 100px", minWidth: 0 }}
-          options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: raceLabel(r) }))]}
+          options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
           className="hra-btn"
@@ -229,7 +224,7 @@ export function DateRangesSection() {
           onValueChange={setUpdateRaceId}
           placeholder={t("manage.dateRanges.linkRacePlaceholder", "Link a race (optional)")}
           triggerStyle={{ flex: "1.5 1 100px", minWidth: 0 }}
-          options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: raceLabel(r) }))]}
+          options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
           className="hra-btn"

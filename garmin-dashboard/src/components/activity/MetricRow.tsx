@@ -47,11 +47,15 @@ export function MetricRow({ mKey, label, state, onToggle }: {
       >
         {label}
       </button>
-      {active && (
-        <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: "pointer" }}>
-          <Checkbox size={11} checked={cardOn} onCheckedChange={() => onToggle("card")} /> {t("activity.metric.card", "Card")}
-        </label>
-      )}
+      {/* Always rendered, not just while active (dashboard design-system
+          rework: "card checkbox are always visible, unchecked if metric is
+          not selected to be shown") — disabled + forced unchecked while the
+          metric itself is off, since its standalone card never renders
+          regardless of cardOn's stored value in that state (see
+          ActivityChartSection.tsx's effectiveActive.filter(showCard) gate). */}
+      <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: active ? "pointer" : "not-allowed", opacity: active ? 1 : 0.4 }}>
+        <Checkbox size={11} checked={active && cardOn} onCheckedChange={() => onToggle("card")} disabled={!active} /> {t("activity.metric.card", "Card")}
+      </label>
     </div>
   );
 }

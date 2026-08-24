@@ -64,16 +64,30 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
     speed: false, heart_rate: true, altitude_m: false, cadence: false, power: false,
   });
 
+  // `ignore` guards against a stale response landing after a newer request
+  // already started (e.g. activityId changing again before the first fetch
+  // resolves). It does NOT stop React 19 StrictMode's dev-only double-invoke
+  // of this effect (mount → cleanup → mount again, specifically to surface
+  // effects that aren't idempotent) — that's why activityId/id/track show up
+  // twice in the Network tab in development; it's intentional, app-wide
+  // (every data-fetching effect in this app does it, not just this one), and
+  // stripped entirely in a production build. This guard is still worth
+  // having on its own merits: without it, the FIRST (soon-to-be-discarded)
+  // call's response can still land after the second and overwrite it with
+  // stale data.
   useEffect(() => {
+    let ignore = false;
     setLoading(true);
     Promise.all([
       api.garmin.activity(activityId),
       api.garmin.track(activityId),
     ]).then(([act, trk]) => {
+      if (ignore) return;
       setActivity(act);
       setTrack(trk);
-    }).catch(e => setError(e.message))
-      .finally(() => setLoading(false));
+    }).catch(e => { if (!ignore) setError(e.message); })
+      .finally(() => { if (!ignore) setLoading(false); });
+    return () => { ignore = true; };
   }, [activityId]);
 
   async function handleDelete() {
@@ -163,7 +177,15 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
 
   return (
     <>
-        {/* header */}
+        {/* header — popup (ActivityModal) variant ONLY. The accordion variant
+            (onClose undefined) has no header here at all any more: all of
+            this — sport/date/via, the ActivityTypePicker, Delete — now lives
+            on ActivityRow's own row instead (dashboard design-system rework:
+            "keep every information at accordion wrap-up level" — opening an
+            accordion row used to repeat almost everything its own collapsed
+            summary already showed). Left untouched for the popup, which has
+            no ActivityRow wrapping it to show this instead. */}
+        {onClose && (
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
           {activity && (
             <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][activity.sport ?? "other"] ?? "#888"} />
@@ -182,7 +204,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
               onClick={() => setConfirmDelete(true)}
               title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
             >
-              {t("activity.detail.deleteButton", "Delete activity (locally)")}
+              {t("activity.detail.deleteButton", "Remove activity")}
             </button>
           ) : (
             <div className="hra-row" style={{ gap: 6 }}>
@@ -201,16 +223,15 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
               </button>
             </div>
           )}
-          {onClose && (
-            <button onClick={onClose}
-              className="hra-text-muted"
-              style={{ fontSize: 18, border: "none", background: "none", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>
-              ×
-            </button>
-          )}
+          <button onClick={onClose}
+            className="hra-text-muted"
+            style={{ fontSize: 18, border: "none", background: "none", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>
+            ×
+          </button>
         </div>
+        )}
 
-        {loading && <LoadingSpinner />}
+        {loading && <LoadingSpinner label={t("activity.detail.loading", "Loading activity…")} />}
         {error   && <ErrorBanner message={error} />}
 
         {activity && !loading && (
@@ -265,7 +286,12 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                 (docs/frontend.md's "Icon coloring" rule): heart matches its
                 own interpolated HR color, flame is the one filled
                 dark-orange exception, everything else is the plain accent
-                token. */}
+                token. Full width, matching the Classification accordion
+                above it (dashboard design-system rework: this row and the
+                chart section's own selector row both match Classification's
+                width — only the row INSIDE the graph card itself narrows in
+                to the chart's actual plot width, see
+                ActivityChartSection.tsx's CHART_HEADER_EXTRA_LEFT/RIGHT). */}
             <StatGrid>
               {activity.moving_time_sec != null && <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("activity.stat.movingTime", "Moving time")} value={fmtDuration(activity.moving_time_sec)} />}
               <Stat icon={<Clock size={18} color="var(--accent)" />} label={t("activity.stat.duration", "Duration")} value={fmtDuration(activity.duration_sec)} />

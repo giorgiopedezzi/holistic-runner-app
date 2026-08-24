@@ -135,7 +135,7 @@ export function ClassifySection() {
         <DatePicker value={to} onChange={setTo} min={from} />
       </div>
 
-      {loading && <LoadingSpinner />}
+      {loading && <LoadingSpinner label={t("manage.classify.loading", "Loading activities…")} />}
       {loadError && <ErrorBanner message={loadError} />}
 
       {!loading && !loadError && activities && (

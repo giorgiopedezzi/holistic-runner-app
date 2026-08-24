@@ -78,8 +78,11 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   // Graphite is dark-only and standalone (matches on data-palette alone,
   // ignoring data-theme entirely) — Theme has no effect while it's active,
   // so the picker disables itself rather than silently doing nothing when
-  // clicked.
-  const graphiteActive = appearance.settings?.palette === "graphite";
+  // clicked. Checked against the RESOLVED palette, not the raw stored
+  // value — a never-explicitly-chosen ('auto') row can still resolve to
+  // 'graphite' (see resolvePalette), and the picker must disable itself
+  // then too, not just once graphite is explicitly persisted.
+  const graphiteActive = appearance.resolvedPalette === "graphite";
   const disabledTitle = translate("settings.theme.disabledForGraphite", "Graphite is a fixed dark look — Theme doesn't apply while it's selected");
 
   return (
@@ -139,6 +142,10 @@ function PaletteSwatch({ palette, label, selected, onClick }: {
 export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
   const { t: translate } = useTranslation();
   const current = appearance.settings?.palette;
+  // Same "no explicit choice yet" pattern as ThemePicker above — a settings
+  // row that's never had a palette explicitly PUT (still 'auto') highlights
+  // whichever swatch the resolved palette matches instead of none at all.
+  const hasExplicitChoice = current === "metal" || current === "warm" || current === "graphite";
   return (
     <div className="hra-chip-row" style={{ gap: 10 }}>
       {PALETTE_NAMES.map(p => (
@@ -146,7 +153,7 @@ export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
           key={p}
           palette={p}
           label={translate(`settings.palette.${p}`, PALETTE_LABEL[p])}
-          selected={current === p}
+          selected={hasExplicitChoice ? current === p : appearance.resolvedPalette === p}
           onClick={() => appearance.setPalette?.(p)}
         />
       ))}
@@ -454,7 +461,7 @@ export function SettingsTab({ appearance }: Props) {
           {t("settings.outliers.description", "Used by the activity chart's \"Remove outliers\" checkbox. Two independent rules: an isolated-spike filter (a point is flagged only when it jumps away and back from its neighbors faster than the rate below, so a genuine sustained change like a real sprint isn't affected), and an absolute floor for Speed/Pace — any sample slower than the walking-pace threshold is dropped outright, for a \"running only\" view.")}
         </p>
 
-        {loading && <LoadingSpinner />}
+        {loading && <LoadingSpinner label={t("settings.loading", "Loading settings…")} />}
         {error && <div style={{ marginBottom: 12 }}><ErrorBanner message={error} /></div>}
 
         {draft && saved && (

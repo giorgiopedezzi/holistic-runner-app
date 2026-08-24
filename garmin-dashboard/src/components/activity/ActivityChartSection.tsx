@@ -1,21 +1,17 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { MapPin, Gauge, Heart } from "lucide-react";
-import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
-  fmtMetricValue, axisDomainMinMax, xTickFormatter, distanceTicks, timeTicks,
+  axisDomainMinMax, distanceTicks, timeTicks,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
 import type { TrackPoint } from "@/types/api";
 import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
-import { axisStyle, gridStyle, METRIC_DEFS, OPTIONAL_METRIC_ORDER, AXIS_SIDE, SPEED_AXIS_TEXT_COLOR, hrRunnerColor, metricStroke } from "./shared";
-import { Label, ChartCard, Checkbox, GraphKpiCard, splitUnit } from "@/components/ui";
+import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH } from "./shared";
+import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
-import { TrackTooltip } from "./TrackTooltip";
-import { PauseFlagShape } from "./PauseFlagShape";
-import { HrRecoveryFlagShape } from "./HrRecoveryFlagShape";
-import { MetricGradientDefs } from "./MetricGradient";
+import { MainOverlayChart, MetricStandaloneCard } from "./OverlayCharts";
 import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
@@ -25,23 +21,31 @@ import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type 
 
 const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
 const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
-const AXIS_WIDTH = 42;              // must match the YAxis `width` props below
-const MARGIN_LEFT = 5;
-const MARGIN_RIGHT = 5;
-// The right side ALWAYS reserves this fixed total (dashboard design-system
-// rework: "reserve space for the right axis without adding them if not
-// required — the chart must never shrink or widen"). Per-metric axis
-// visibility is now a hardcoded rule, not a user toggle (see the per-metric
-// YAxis rendering below): Heart rate's axis is always shown when HR is
-// active, Cadence/Power's never is — so HR is the ONLY metric that can ever
-// occupy the right side, and this constant is exactly one axis-width, not
-// one per optional metric. The real (only ever 0-or-1) axis width in use
-// right now is topped up to this constant via the chart's own `margin.right`
-// — never via an extra "spacer" axis with no series bound to it (tried
-// once, reverted: Recharts doesn't reserve width for an axis nothing plots
-// against, so that axis's `width` was silently a no-op — `margin` is always
-// honored, unconditionally, which is why it's used instead).
-const RIGHT_AXES_WIDTH = AXIS_WIDTH;
+// How far the actual plotted line sits from this section's own outer edge,
+// on each side: ChartCard's own padding ("16px 8px 8px", see ui/ChartCard.tsx)
+// plus this chart's own margin+axis-width inset (AXIS_WIDTH etc., see
+// shared.ts). `children` (the terrain row, the plot area) sit directly in
+// that 8px — no extra wrapper — so this is their real inset from the card's
+// outer edge.
+const CHART_CARD_PADDING_X = 8;
+const CHART_PLOT_INSET_LEFT = CHART_CARD_PADDING_X + MARGIN_LEFT + AXIS_WIDTH;
+const CHART_PLOT_INSET_RIGHT = CHART_CARD_PADDING_X + MARGIN_RIGHT + RIGHT_AXES_WIDTH;
+// `controlsRow`, unlike `children` above, gets an EXTRA "0 8px" wrapper div
+// of its own on top of the card's padding (ChartCard.tsx) — 16px baseline
+// before any padding a caller adds. The row inside this graph card
+// (Play/Stop + the Distance/Speed-Pace/Avg HR KPI badges) must span exactly
+// the terrain/plotted-line width (dashboard design-system rework: "the row
+// INSIDE the graph card must be the same width as the terrain/graph
+// lines"), so this is topped up to CHART_PLOT_INSET_LEFT/RIGHT rather than
+// reusing those directly.
+const CHART_CONTROLS_ROW_BASELINE = 16;
+const CHART_HEADER_EXTRA_LEFT = CHART_PLOT_INSET_LEFT - CHART_CONTROLS_ROW_BASELINE;
+const CHART_HEADER_EXTRA_RIGHT = CHART_PLOT_INSET_RIGHT - CHART_CONTROLS_ROW_BASELINE;
+// MainOverlayChart's own <ResponsiveContainer height={220}> (OverlayCharts.tsx)
+// — duplicated here only for sizing the deferred-mount placeholder (see
+// chartMounted) to the same total height, so nothing visibly jumps once the
+// real runner-row + chart mount a frame later.
+const MAIN_CHART_HEIGHT = 220;
 // Shown standing, before/after any hover or playback (the "beginning and
 // end" pose) — the same pale pink hrRunnerColor(80) itself uses for an
 // easy 80bpm effort, not a literal/theme color, so it reads identically in
@@ -64,6 +68,14 @@ const RUNNER_ROW_HEIGHT = RUNNER_BAND_HEIGHT + 2 * RUNNER_ELEVATION_MAX_PX;
 function xToPixel(x: number, domainMin: number, domainMax: number, width: number, leftInset: number, rightInset: number): number {
   const inner = Math.max(0, width - leftInset - rightInset);
   return leftInset + ((x - domainMin) / (domainMax - domainMin || 1)) * inner;
+}
+
+// Module-level (not a closure) — takes everything it needs as a parameter,
+// so its identity never needs to be threaded through a useCallback dependency
+// list just to keep handleChartMouseMove's own identity stable (see below).
+function rowColor(row: ChartRow): string {
+  const hr = row.heart_rate;
+  return typeof hr === "number" ? hrRunnerColor(hr) : "var(--data-hr)";
 }
 
 // Chart controls + the main multi-metric overlay chart + per-metric
@@ -121,10 +133,13 @@ export function ActivityChartSection({
   // imperative-ref pattern as RunnerIcon above, for the same reason — a
   // mousemove-driven setState here would re-render the whole chart. Purely
   // visual (CSS `--hover-x` position + a `data-active` toggle); never
-  // touches the Line's own data-driven colors.
+  // touches the Line's own data-driven colors. useCallback'd with an empty
+  // dependency array (it only ever reads refs, which are stable by
+  // definition) so ITS identity never changes either — see the perf-split
+  // comment on handleChartMouseMove below for why that matters now.
   const hoverDimRef = useRef<HTMLDivElement>(null);
   const hoverGlowRef = useRef<HTMLDivElement>(null);
-  function setHoverHighlight(cx: number | null) {
+  const setHoverHighlight = useCallback((cx: number | null) => {
     for (const ref of [hoverDimRef, hoverGlowRef]) {
       const el = ref.current;
       if (!el) continue;
@@ -135,11 +150,47 @@ export function ActivityChartSection({
         el.dataset.active = "true";
       }
     }
-  }
+  }, []);
+
+  // Defers MainOverlayChart's very FIRST mount by (at least) one real paint
+  // (playback-lag investigation, mount-time half of the same issue): on
+  // first mount, <ComposedChart> hasn't rendered even once yet, so there's
+  // nothing for React.memo to skip — that first render is unavoidably as
+  // expensive as any of the ones memoization now protects Play/Pause from,
+  // and bundling it into the SAME commit as ActivityDetailBody's own
+  // "loading" flag flipping false meant the "Preparing the runner…" bar
+  // below never got a chance to actually PAINT before that heavy work
+  // started — it was computed but never shown, same class of bug as the
+  // play-click one, just at mount instead of a click.
+  //
+  // A plain useEffect looked sufficient here (React documents passive
+  // effects as running after paint) and even measured as two separate
+  // commits in a jsdom test — but jsdom has no real paint/compositor at all,
+  // so that only proved React committed the DOM change twice, not that a
+  // BROWSER actually painted the first one before starting the second's
+  // heavy work; in practice this still produced no visible loading state at
+  // all. Nested requestAnimationFrame is the one guarantee that's actually
+  // spec-defined rather than a React scheduling heuristic — the exact same
+  // fix handlePlayClick already relies on, for the identical reason.
+  const [chartMounted, setChartMounted] = useState(false);
+  const chartMountRaf2Ref = useRef<number | null>(null);
+  useEffect(() => {
+    const raf1 = requestAnimationFrame(() => {
+      chartMountRaf2Ref.current = requestAnimationFrame(() => setChartMounted(true));
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (chartMountRaf2Ref.current != null) cancelAnimationFrame(chartMountRaf2Ref.current);
+    };
+  }, []);
 
   // Plot width for both RunnerReadout's edge math and the autoplay loop's
   // own x-domain→pixel conversion below — measured off the chart's own
-  // wrapping div (ResponsiveContainer exposes no size itself).
+  // wrapping div (ResponsiveContainer exposes no size itself). Depends on
+  // chartMounted (not `[]`) because plotRef's own div doesn't exist in the
+  // DOM until the deferred mount above actually renders it — the first
+  // attempt (chartMounted still false) finds plotRef.current null and bails
+  // out, same as always; this re-runs once the div is real.
   const plotRef = useRef<HTMLDivElement>(null);
   const [plotWidth, setPlotWidth] = useState(0);
   useEffect(() => {
@@ -148,12 +199,7 @@ export function ActivityChartSection({
     const ro = new ResizeObserver(entries => setPlotWidth(entries[0].contentRect.width));
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-
-  function rowColor(row: ChartRow): string {
-    const hr = row.heart_rate;
-    return typeof hr === "number" ? hrRunnerColor(hr) : "var(--data-hr)";
-  }
+  }, [chartMounted]);
 
   // HR right before stopping / right after resuming, for a pause break row
   // — `pauseAfterIndex` is the displayTrack index the pause immediately
@@ -177,12 +223,21 @@ export function ActivityChartSection({
   );
 
   const [playStatus, setPlayStatus] = useState<PlayStatus>("idle");
+  // handleChartMouseMove/Leave below are useCallback'd so THEIR identity
+  // stays stable across playStatus changes (a stable onMouseMove/onMouseLeave
+  // prop is what lets MainOverlayChart's React.memo actually skip re-
+  // rendering on Play/Pause — see OverlayCharts.tsx). That means they can't
+  // close over the `playStatus` state value directly (closing over it would
+  // require listing it as a dependency, which would defeat the point) — a
+  // ref mirrors it instead, read at call time.
+  const playStatusRef = useRef(playStatus);
+  useEffect(() => { playStatusRef.current = playStatus; });
 
   // Hover is simply off while autoplay is running — the two drive the same
   // display and fighting over it (whichever wins on a given frame) reads as
   // broken, not helpful.
-  function handleChartMouseMove(state: { activeCoordinate?: { x: number; y: number }; activeTooltipIndex?: number | string | null }) {
-    if (playStatus === "playing" || !state?.activeCoordinate) return;
+  const handleChartMouseMove = useCallback((state: { activeCoordinate?: { x: number; y: number }; activeTooltipIndex?: number | string | null }) => {
+    if (playStatusRef.current === "playing" || !state?.activeCoordinate) return;
     const rawIdx = state.activeTooltipIndex;
     const idx = typeof rawIdx === "string" ? Number(rawIdx) : rawIdx;
     if (typeof idx !== "number" || Number.isNaN(idx)) return;
@@ -192,21 +247,31 @@ export function ActivityChartSection({
     runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, false, rowDynamics[idx]);
     runnerReadoutRef.current?.show(row);
     setHoverHighlight(cx);
-  }
-  function handleChartMouseLeave() {
-    if (playStatus === "playing") return;
-    showIdleStand(chartData[0]?.x ?? 0);
+  }, [chartData, rowDynamics, setHoverHighlight]);
+  const handleChartMouseLeave = useCallback(() => {
+    if (playStatusRef.current === "playing") return;
+    showIdleStand(chartData[0]?.x ?? 0, rowDynamics[0]);
     runnerReadoutRef.current?.hide();
     setHoverHighlight(null);
-  }
+    // showIdleStand/pixelX read playCtxRef (a ref) and take everything else
+    // as parameters — they never need to be in this list for correctness.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartData, rowDynamics, setHoverHighlight]);
 
   // White, standing — shown at rest (before any hover/play, on mouse-leave,
   // stop, and once autoplay finishes) rather than disappearing entirely, so
   // the chart never reads as "broken" between interactions. `0` as the
   // pause-duration argument reads as a short pause below LONG_PAUSE_SEC, so
-  // RunnerIcon renders its plain standing pose (not bent-over).
-  function showIdleStand(x: number) {
-    runnerIconRef.current?.show(pixelX(x), RUNNER_IDLE_COLOR, 0);
+  // RunnerIcon renders its plain standing pose (not bent-over). `dynamics`
+  // must be passed explicitly — RunnerIcon.show() only defaults it to
+  // NEUTRAL_DYNAMICS (elevationPx: 0, dead center) when omitted, which is
+  // what put the runner in the middle of its row instead of resting on the
+  // terrain at a course's actual starting/ending elevation (a course that
+  // starts well above its finish, e.g. Boston, made this obvious — every
+  // OTHER call site already threads a real dynamics value, this was the one
+  // that didn't).
+  function showIdleStand(x: number, dynamics: RunnerDynamics = NEUTRAL_DYNAMICS) {
+    runnerIconRef.current?.show(pixelX(x), RUNNER_IDLE_COLOR, 0, false, dynamics);
   }
 
   // ── Autoplay ──────────────────────────────────────────────────────────
@@ -221,7 +286,8 @@ export function ActivityChartSection({
   // in the same time, which is precisely backwards. This still keeps a 60fps
   // loop from ever re-rendering the ComposedChart: nothing here touches React
   // state past playStatus itself, which only changes at play/pause/finish,
-  // not per frame.
+  // not per frame — and now that MainOverlayChart is memoized (see
+  // OverlayCharts.tsx), even THAT no longer costs a full chart re-render.
   const rafRef = useRef<number | null>(null);
   const clockRef = useRef(0);
   const rowIdxRef = useRef(0);
@@ -239,8 +305,8 @@ export function ActivityChartSection({
   // in-progress/finished play (those set their own runner state directly).
   useEffect(() => {
     if (playStatus !== "idle" || plotWidth === 0 || chartData.length === 0) return;
-    showIdleStand(chartData[0].x);
-  }, [playStatus, plotWidth, chartData]);
+    showIdleStand(chartData[0].x, rowDynamics[0]);
+  }, [playStatus, plotWidth, chartData, rowDynamics]);
 
   // Advance the row cursor to wherever the moving clock has reached, and
   // stop the moment it steps ONTO a pause row.
@@ -287,6 +353,12 @@ export function ActivityChartSection({
     const dynamics = playCtxRef.current.rowDynamics[idx] ?? NEUTRAL_DYNAMICS;
     runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, dwelling, dynamics);
     runnerReadoutRef.current?.show(row);
+    // Same hover-dim/glow the real mouse drives (dashboard design-system
+    // rework: "while animation plays, use the same effect as hovering,
+    // following exactly the runner position") — driven by the runner's own
+    // cx instead of a mouse event. Real mouse hover stays disabled during
+    // playback (see handleChartMouseMove), so the two never fight.
+    setHoverHighlight(cx);
   }
 
   function step(ts: number) {
@@ -314,8 +386,9 @@ export function ActivityChartSection({
     if (clockRef.current >= totalSec) {
       clockRef.current = totalSec;
       const lastRow = data[data.length - 1];
-      showIdleStand(lastRow.x);
+      showIdleStand(lastRow.x, dyn[data.length - 1] ?? NEUTRAL_DYNAMICS);
       runnerReadoutRef.current?.show(lastRow);
+      setHoverHighlight(null);
       setPlayStatus("finished");
       rafRef.current = null;
       return;
@@ -366,8 +439,9 @@ export function ActivityChartSection({
     lastDwellIdxRef.current = null;
     clockRef.current = 0;
     rowIdxRef.current = 0;
-    showIdleStand(playCtxRef.current.chartData[0]?.x ?? 0);
+    showIdleStand(playCtxRef.current.chartData[0]?.x ?? 0, playCtxRef.current.rowDynamics[0] ?? NEUTRAL_DYNAMICS);
     runnerReadoutRef.current?.hide();
+    setHoverHighlight(null);
     setPlayStatus("idle");
   }
 
@@ -387,86 +461,129 @@ export function ActivityChartSection({
     [xMode, chartData],
   );
 
+  // Per-metric Y-domain for each shown standalone card — memoized (perf
+  // split, playback-lag fix) so its ARRAY reference stays stable across
+  // renders that don't actually change it. Computing this inline in the
+  // render loop below (as `axisDomainMinMax(...)` directly) was exactly what
+  // broke MetricStandaloneCard's React.memo: a fresh `domain` array every
+  // render is a fresh prop reference every render, which fails memo's
+  // shallow comparison even though MainOverlayChart's OWN memo (whose props
+  // didn't have this problem) was working correctly — the standalone HR
+  // card (shown by default) was the one still re-rendering on every
+  // Play/Pause click.
+  const cardDomains = useMemo(() => {
+    const domains: Partial<Record<MetricKey, [number, number]>> = {};
+    for (const key of effectiveActive) {
+      if (showCard[key]) domains[key] = axisDomainMinMax(displayTrack, key, speedMode);
+    }
+    return domains;
+  }, [effectiveActive, showCard, displayTrack, speedMode]);
+
   // Heart rate is the only optional metric that can ever show a Y-axis
-  // (Cadence/Power never do — see the per-metric YAxis rendering below), so
-  // it's the only thing that ever needs real right-side width. `margin.right`
-  // tops up whatever's left of RIGHT_AXES_WIDTH so the main chart's total
-  // right-side reservation is always the same constant, whether HR is
-  // active or not (dashboard design-system rework: "the chart must never
-  // shrink or widen").
+  // (Cadence/Power never do — see MainOverlayChart's per-metric YAxis
+  // rendering), so it's the only thing that ever needs real right-side
+  // width. `margin.right` tops up whatever's left of RIGHT_AXES_WIDTH so the
+  // main chart's total right-side reservation is always the same constant,
+  // whether HR is active or not (dashboard design-system rework: "the chart
+  // must never shrink or widen").
   const hrAxisShown = activeMetrics.includes("heart_rate");
   const mainChartRightMargin = MARGIN_RIGHT + (hrAxisShown ? 0 : RIGHT_AXES_WIDTH);
 
+  // Same condition the idle-stand effect above already gates on — the
+  // runner has no real geometry to be placed at until the chart's actual
+  // plot width is measured (ResizeObserver, one render behind mount) and
+  // chartData itself exists.
+  const runnerReady = plotWidth !== 0 && chartData.length > 0;
+
   return (
     <div style={{ marginTop: 24 }}>
-      {/* One row of selectors (dashboard design-system rework, "reorganize
-          activity layout") — Distance/Time and Speed/Pace switches, the
-          pause-threshold input, the outlier checkbox, AND the Heart
-          rate/Cadence/Power toggles all share one row now: dropping the
-          per-metric "Axis" checkbox (see MetricRow.tsx) freed up enough
-          room to fold what used to be a separate row into this one. */}
-      <div className="hra-control-row" style={{ gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
-        <div className="hra-segment">
-          {(["distance", "time"] as XMode[]).map(m => (
-            <button key={m} onClick={() => setXMode(m)}
-              className="hra-segment-item" data-active={xMode === m}>
-              {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
-            </button>
+      {/* Three-column selector row (dashboard design-system rework,
+          "reorganize activity layout"): left = Distance/Time + Speed/Pace
+          switches; center = pause-threshold + outlier checkbox; right =
+          Heart rate/Cadence/Power toggles, right-aligned to the same edge as
+          the badge row above (both are full-width, matching the
+          Classification accordion above them — no chart-plot inset here;
+          only the controlsRow INSIDE the graph card below gets that, see
+          CHART_HEADER_EXTRA_LEFT/RIGHT). A 1fr/auto/1fr grid, not flex —
+          centers the middle column independent of how wide the two side
+          groups are, which justify-content: space-between can't guarantee
+          for a 3-child row. */}
+      <div style={{
+        display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center",
+        gap: 16, marginBottom: 12,
+      }}>
+        <div className="hra-row-wrap" style={{ gap: 16 }}>
+          <div className="hra-segment">
+            {(["distance", "time"] as XMode[]).map(m => (
+              <button key={m} onClick={() => setXMode(m)}
+                className="hra-segment-item" data-active={xMode === m}>
+                {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
+              </button>
+            ))}
+          </div>
+          {/* Speed/Pace: always active, axis always visible (mandatory
+              metric — no on/off toggle, unlike the optional metrics below).
+              Tinted to the metric's own color via --segment-color rather
+              than the app accent — the one switch app-wide with a
+              per-instance tint. */}
+          <div className="hra-segment" style={{ "--segment-color": METRIC_DEFS.speed.color } as CSSProperties}>
+            {(["speed", "pace"] as SpeedMode[]).map(m => (
+              <button key={m} onClick={() => setSpeedMode(m)}
+                className="hra-segment-item" data-active={speedMode === m}>
+                {m === "speed"
+                  ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
+                  : t("activity.chart.paceUnit", "Pace (mm:ss)")}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="hra-row-wrap" style={{ gap: 16, justifyContent: "center" }}>
+          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+            {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
+            <input type="number" min={5} step={5} value={pauseThreshold}
+              onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
+              style={{ width: 56, fontSize: 11, padding: "2px 6px" }} />
+            sec
+          </label>
+          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}
+            title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
+            <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
+            {t("activity.chart.removeOutliers", "Remove outliers")}
+          </label>
+        </div>
+        <div className="hra-row-wrap" style={{ gap: 16, justifyContent: "flex-end" }}>
+          {OPTIONAL_METRIC_ORDER.map(key => (
+            <MetricRow
+              key={key}
+              mKey={key}
+              label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+              state={{
+                active:    activeMetrics.includes(key),
+                available: availableMetrics[key],
+                cardOn:    showCard[key],
+              }}
+              onToggle={field => {
+                if (field === "active") toggleMetric(key);
+                else toggleCard(key);
+              }}
+            />
           ))}
         </div>
-        {/* Speed/Pace: always active, axis always visible (mandatory
-            metric — no on/off toggle, unlike the optional metrics below).
-            Tinted to the metric's own color via --segment-color rather
-            than the app accent — the one switch app-wide with a
-            per-instance tint. */}
-        <div className="hra-segment" style={{ "--segment-color": METRIC_DEFS.speed.color } as CSSProperties}>
-          {(["speed", "pace"] as SpeedMode[]).map(m => (
-            <button key={m} onClick={() => setSpeedMode(m)}
-              className="hra-segment-item" data-active={speedMode === m}>
-              {m === "speed"
-                ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
-                : t("activity.chart.paceUnit", "Pace (mm:ss)")}
-            </button>
-          ))}
-        </div>
-        <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
-          {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
-          <input type="number" min={5} step={5} value={pauseThreshold}
-            onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
-            style={{ width: 56, fontSize: 11, padding: "2px 6px" }} />
-          sec
-        </label>
-        <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}
-          title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
-          <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
-          {t("activity.chart.removeOutliers", "Remove outliers")}
-        </label>
-        {OPTIONAL_METRIC_ORDER.map(key => (
-          <MetricRow
-            key={key}
-            mKey={key}
-            label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
-            state={{
-              active:    activeMetrics.includes(key),
-              available: availableMetrics[key],
-              cardOn:    showCard[key],
-            }}
-            onToggle={field => {
-              if (field === "active") toggleMetric(key);
-              else toggleCard(key);
-            }}
-          />
-        ))}
       </div>
 
       {/* Play/Stop moved inside the graph's own controlsRow (dashboard
           design-system rework) — pinned left, badges pinned right via
           justify-content: space-between, so the badge group stays
-          right-aligned as a unit regardless of how many badges it holds. */}
+          right-aligned as a unit regardless of how many badges it holds.
+          Left/right-padded by CHART_HEADER_EXTRA_LEFT/RIGHT so Play/Stop and
+          the badge group line up with the terrain/plotted-line width below,
+          not just ChartCard's own baseline padding (dashboard design-system
+          rework: "the row INSIDE the graph card must be the same width as
+          the terrain/graph lines"). */}
       <ChartCard controlsRow={
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingLeft: CHART_HEADER_EXTRA_LEFT, paddingRight: CHART_HEADER_EXTRA_RIGHT }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <RunnerPlayButton status={playStatus} onClick={handlePlayClick} />
+            <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
             <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
           </div>
           <div className="hra-row-wrap" style={{ gap: 8, justifyContent: "flex-end" }}>
@@ -492,113 +609,54 @@ export function ActivityChartSection({
           1px and needs the row's full reserved travel
           (RUNNER_ELEVATION_MAX_PX either side of its center) without a
           glyph clipping at a summit or a valley. */}
-      <div style={{ position: "relative", height: RUNNER_ROW_HEIGHT, marginBottom: 4 }}>
-        <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
-        <RunnerIcon ref={runnerIconRef} />
-      </div>
-      <div ref={plotRef} style={{ position: "relative" }}>
-      <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
-      <ResponsiveContainer width="100%" height={220}>
-        {/* top:16 gives the pause-flag pill (a 14px-tall shape
-            centered exactly on the y=1 point at the very top of
-            its own [0,1] axis) room to render fully — Recharts'
-            default ~5px top margin put half the pill above the
-            SVG's own top edge, silently clipping it. */}
-        <ComposedChart
-          data={chartData} margin={{ top: 16, right: mainChartRightMargin, bottom: 5, left: 5 }}
-          onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
-        >
-          {/* Speed/Pace and HR are drawn with value-mapped gradients rather
-              than a flat stroke — see MetricGradient.tsx. The overlay
-              chart's speed axis is reversed in pace mode, so faster is at
-              the top in both modes here. */}
-          <MetricGradientDefs id="overlay" rows={chartData} speedFastAtTop fasterIsHigherValue={speedMode === "speed"} />
-          <CartesianGrid {...gridStyle} />
-          <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={xTicks}
-            tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
-          {/* Speed/Pace's axis is never conditionally
-              hidden/zero-width — it's the one mandatory metric, so
-              it must never depend on any toggle state (a previous
-              version tied its width to a checkbox's state; that
-              checkbox is gone now). It renders on the LEFT, alone —
-              every optional metric is on the right (see AXIS_SIDE's
-              comment) so Speed never shares a side with anything,
-              under any toggle combination. Reversed for pace: lower
-              (faster) reads toward the top, matching Speed's own
-              "up = faster" feel — on a normal ascending axis,
-              pace's inverted units (lower number = faster) would
-              make "up" mean speeding up for Speed but slowing down
-              for Pace. */}
-          <YAxis yAxisId="speed" hide={false} orientation={AXIS_SIDE.speed}
-            domain={speedDomain} reversed={speedMode === "pace"}
-            tick={{ fill: SPEED_AXIS_TEXT_COLOR, fontSize: 9 }}
-            tickFormatter={(v: number) => fmtMetricValue("speed", v, speedMode)}
-            width={42} />
-          {/* Optional metrics' axes — all on the right (AXIS_SIDE), never
-              sharing Speed's side on the left. Only rendered for metrics
-              that are actually active (a Line still needs a scale to bind
-              to, even one that never shows). Per-metric axis VISIBILITY is
-              now a hardcoded rule, not a user toggle: Heart rate's axis is
-              always shown while HR is active; Cadence/Power's is never
-              shown, full stop — see MetricRow.tsx (the "Axis" checkbox is
-              gone) and mainChartRightMargin above (which is what actually
-              keeps the total right-side width constant, not this axis's
-              own width toggling). */}
-          {activeMetrics.map(key => (
-            <YAxis key={key} yAxisId={key} hide={key !== "heart_rate"} orientation={AXIS_SIDE[key]}
-              domain={axisDomainMinMax(displayTrack, key, speedMode)}
-              tick={{ fill: METRIC_DEFS[key].color, fontSize: 9 }}
-              tickFormatter={(v: number) => fmtMetricValue(key, v, speedMode)}
-              width={key === "heart_rate" ? AXIS_WIDTH : 0} />
-          ))}
-          {effectiveActive.map(key => (
-            <Line key={key} yAxisId={key} dataKey={key} stroke={metricStroke(key, "overlay")}
-              strokeWidth={1.5} dot={false} isAnimationActive={false} name={METRIC_DEFS[key].label} />
-          ))}
-          {/* Pause flags get their own fixed, never-reversed,
-              hidden [0,1] axis instead of piggybacking on Speed's
-              (mean-centered, sometimes-reversed-for-pace) axis —
-              an earlier version tried to derive the flags' Y
-              position from Speed's domain (domain[1] normally,
-              domain[0] when pace's axis is reversed), but that
-              still rendered them mid-chart in practice. Plotting
-              at a fixed y=1 on a dedicated [0,1] domain removes
-              every dependency on Speed's scale/reversal, so the
-              flags are guaranteed to sit at the exact top
-              regardless of speed/pace mode. Pulls straight off the
-              shared chart-level `data` (a dataKey accessor, no
-              separate `data` override) so it shares the exact same
-              index space as the Line series — a Scatter with its
-              own shorter `data` array risked mismatched
-              hover/tooltip lookups against them. `width={0}` is
-              required despite `hide` — Recharts' YAxis defaults to
-              orientation="left"/width=60 when unset, and a hidden
-              axis still reserves that width in the left-side axis
-              stack, which was silently pushing Speed's real axis
-              60px further left than the plot's own left margin —
-              off the edge of the container, so it never appeared
-              on screen even though it was rendering in the DOM. */}
-          <YAxis yAxisId="pauseFlag" domain={[0, 1]} hide width={0} />
-          <Scatter
-            yAxisId="pauseFlag"
-            dataKey={(row: ChartRow) => (row.pauseDurationSec != null ? 1 : null)}
-            shape={PauseFlagShape}
-            isAnimationActive={false}
+      {chartMounted ? (
+        <>
+          <div style={{ position: "relative", height: RUNNER_ROW_HEIGHT, marginBottom: 4 }}>
+            {runnerReady ? (
+              <>
+                <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
+                <RunnerIcon ref={runnerIconRef} />
+              </>
+            ) : (
+              // Stands in for the terrain/runner while plotWidth/chartData
+              // aren't ready yet (dashboard design-system rework) — an
+              // indeterminate sweep, not a real percentage (there's nothing
+              // granular to report).
+              <LoadingSpinner compact label={t("activity.chart.preparingRunner", "Preparing the runner…")} />
+            )}
+          </div>
+          <div ref={plotRef} style={{ position: "relative" }}>
+          <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
+          <MainOverlayChart
+            chartData={chartData} displayTrack={displayTrack} xTicks={xTicks} xMode={xMode}
+            speedDomain={speedDomain} speedMode={speedMode} activeMetrics={activeMetrics} effectiveActive={effectiveActive}
+            rightMargin={mainChartRightMargin} onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
           />
-        </ComposedChart>
-      </ResponsiveContainer>
-      {/* Hover-highlight overlay — two plain CSS layers on top of the SVG,
-          not part of it, so the chart's own data-driven colors are never
-          touched. Position tracks the cursor via --hover-x, set
-          imperatively in handleChartMouseMove/Leave above (see
-          setHoverHighlight) — no React re-render per mouse event. */}
-      <div ref={hoverDimRef} className="hra-chart-hover-dim" data-active="false" />
-      <div ref={hoverGlowRef} className="hra-chart-hover-glow" data-active="false" />
-      </div>
+          {/* Hover-highlight overlay — two plain CSS layers on top of the SVG,
+              not part of it, so the chart's own data-driven colors are never
+              touched. Position tracks the cursor via --hover-x, set
+              imperatively in handleChartMouseMove/Leave above (see
+              setHoverHighlight) — no React re-render per mouse event. */}
+          <div ref={hoverDimRef} className="hra-chart-hover-dim" data-active="false" />
+          <div ref={hoverGlowRef} className="hra-chart-hover-glow" data-active="false" />
+          </div>
+        </>
+      ) : (
+        // The deferred-mount placeholder (see chartMounted's own comment
+        // above) — sized to the combined runner-row + chart height so
+        // nothing visibly jumps once the real content mounts a frame later.
+        // MAIN_CHART_HEIGHT matches MainOverlayChart's own
+        // ResponsiveContainer height (220) — the one place that number
+        // exists outside OverlayCharts.tsx, so it's named here rather than
+        // repeated as a bare literal.
+        <div style={{ height: RUNNER_ROW_HEIGHT + 4 + MAIN_CHART_HEIGHT }}>
+          <LoadingSpinner compact label={t("activity.chart.preparingRunner", "Preparing the runner…")} />
+        </div>
+      )}
       </ChartCard>
 
       {effectiveActive.filter(key => showCard[key]).map(key => {
-        const domain = axisDomainMinMax(displayTrack, key, speedMode);
+        const domain = cardDomains[key]!;
         // Pause flags render only on the main overlay chart above —
         // repeating them on every standalone card was noise. The
         // one exception is Heart rate, which gets its own
@@ -613,47 +671,10 @@ export function ActivityChartSection({
                 : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
               {key === "heart_rate" && <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
             </Label>
-            <ChartCard>
-            <ResponsiveContainer width="100%" height={110}>
-              {/* Same top-margin fix as the main overlay chart —
-                  the HR recovery flag plots at the axis's own max
-                  value, which sits at the very top pixel row
-                  regardless of the domain's data-space padding. */}
-              {/* right: a fixed constant, not a spacer axis — a standalone
-                  card never has a real right-side axis of its own (always
-                  exactly one "main" axis, on the left), so its right margin
-                  can just BE the same total the main chart always reserves
-                  (RIGHT_AXES_WIDTH), matching it unconditionally. This is
-                  `margin`, not an extra hidden YAxis with no series bound to
-                  it — that was tried once and reverted (see
-                  RIGHT_AXES_WIDTH's own comment): Recharts doesn't reserve
-                  width for an axis nothing plots against, so `margin` is
-                  what's actually honored. */}
-              <ComposedChart data={cardData} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 5, left: 5 }}>
-                {/* Own gradient ids per card — one <svg> each, and a
-                    url(#…) may not reach across them. Unlike the overlay
-                    chart, this axis is never reversed, so in pace mode the
-                    faster (lower) values sit at the BOTTOM. */}
-                <MetricGradientDefs id={`card-${key}`} rows={cardData} speedFastAtTop={speedMode === "speed"}
-                  fasterIsHigherValue={speedMode === "speed"} />
-                <CartesianGrid {...gridStyle} />
-                <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={xTicks}
-                  tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
-                <YAxis yAxisId="main" domain={domain} tick={axisStyle} tickLine={false} axisLine={false} width={42}
-                  tickFormatter={(v: number) => fmtMetricValue(key, v, speedMode)} />
-                <Tooltip content={<TrackTooltip xMode={xMode} metrics={[key]} speedMode={speedMode} />} />
-                <Line yAxisId="main" dataKey={key} stroke={metricStroke(key, `card-${key}`)} strokeWidth={1.5} dot={false} isAnimationActive={false} />
-                {key === "heart_rate" && (
-                  <Scatter
-                    yAxisId="main"
-                    dataKey={(row: ChartRow & { hrRecoveryDelta?: number }) => (row.hrRecoveryDelta != null ? domain[1] : null)}
-                    shape={HrRecoveryFlagShape}
-                    isAnimationActive={false}
-                  />
-                )}
-              </ComposedChart>
-            </ResponsiveContainer>
-            </ChartCard>
+            <MetricStandaloneCard
+              metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}
+              mainChartData={chartData}
+            />
           </div>
         );
       })}

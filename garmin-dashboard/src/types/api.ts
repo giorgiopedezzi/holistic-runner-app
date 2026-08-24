@@ -306,6 +306,13 @@ export type StoredLanguage = Language | "auto";
 // 4-way StylePack (HRA-119: boomer/genz/millennial/minimal) entirely.
 export type Palette = "metal" | "warm" | "graphite";
 export const PALETTE_NAMES: Palette[] = ["metal", "warm", "graphite"];
+// Same 'auto' pattern as StoredTheme — a settings row that's never had a
+// palette explicitly chosen resolves via useAppearance.ts's resolvePalette()
+// to 'graphite' when the (already-resolved) theme is dark, 'warm' when
+// light ("make graphite the default dark look, warm the default light
+// look"). Never itself PUT-able — PalettePicker only ever writes a concrete
+// Palette, exactly like ThemePicker only ever writes a concrete Theme.
+export type StoredPalette = Palette | "auto";
 
 export interface Settings {
   outlier_speed_delta_per_sec:   number;
@@ -322,7 +329,7 @@ export interface Settings {
   accent_color: AccentColor;
   date_format: DateFormat;
   language: StoredLanguage;
-  palette: Palette;
+  palette: StoredPalette;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

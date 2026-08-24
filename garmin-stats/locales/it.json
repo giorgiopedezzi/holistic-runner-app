@@ -1,24 +1,23 @@
 {
   "nav.overview": "Panoramica e tendenze",
   "nav.activities": "Attività",
+  "activities.loading": "Caricamento attività…",
   "nav.body": "Corpo",
   "nav.manage": "Dati e sincronizzazione",
   "nav.settings": "Impostazioni",
-
   "common.entity.activities": "attività",
   "common.preset.7": "7g",
   "common.preset.30": "30g",
   "common.preset.90": "90g",
   "common.preset.365": "1a",
   "common.preset.9999": "Tutto",
-
   "dateRange.current": "Attuale",
   "dateRange.enableComparison": "Abilita confronto",
   "dateRange.customRange": "Intervallo personalizzato",
   "dateRange.pickNamedRange": "Scegli un intervallo salvato…",
+  "dateRange.pickRace": "Scegli una gara…",
   "dateRange.noneOption": "— nessuno —",
   "dateRange.comparedTo": "Confrontato con",
-
   "overview.chartTooltip.pace": "ritmo",
   "overview.chartTooltip.hr": "FC",
   "overview.legend.current": "(attuale)",
@@ -59,12 +58,13 @@
   "overview.stat.avgPace": "Ritmo medio",
   "overview.legend.paceAxis": "Ritmo medio ({{unit}})",
   "overview.legend.hrAxis": "FC media (bpm)",
+  "overview.loading": "Caricamento panoramica…",
+  "overview.trendsLoading": "Caricamento tendenze…",
   "overview.bySportSectionTitle": "Per sport",
   "overview.bySportSessionsLabel": "{{count}} sessioni",
   "overview.compareTooltip.sessionsPrefix": "sessioni: ",
   "overview.compareTooltip.hrPrefix": "FC: ",
   "overview.compareTooltip.pacePrefix": "ritmo: ",
-
   "common.cancel": "Annulla",
   "common.save": "Salva",
   "common.submit": "Invia",
@@ -74,13 +74,11 @@
   "common.delete": "Elimina",
   "common.confirm": "Conferma",
   "common.entity.bodyMeasurements": "misurazioni corporee",
-
   "manage.syncSectionTitle": "Sincronizzazione",
   "manage.dateRangesSectionTitle": "Intervalli di date salvati",
   "manage.classifySectionTitle": "Classificazione allenamenti IA",
   "manage.deleteSectionTitle": "Elimina — solo database locale",
   "manage.trashSectionTitle": "Cestino",
-
   "manage.upload.title": "Sincronizza attività Garmin",
   "manage.upload.description": "Esegue il bridge PowerShell MTP per scaricare nuovi file .FIT dal tuo Forerunner 965 e importarli nel database. Collega prima l'orologio via USB. Scarica ogni nuovo file presente sul dispositivo — non c'è un intervallo di date da impostare qui, poiché il dispositivo viene confrontato con quanto già importato, non interrogato per data.",
   "manage.upload.checkingDevice": "Verifica dispositivo…",
@@ -95,11 +93,9 @@
   "manage.upload.activityFolderInaccessible": "Dispositivo connesso, ma la sua cartella Activity non è accessibile",
   "manage.upload.deviceCheckTimeout": "Verifica del dispositivo scaduta — riprova",
   "manage.upload.deviceCheckFailed": "Impossibile verificare lo stato del dispositivo",
-
   "manage.sync.doneMessage": "Fatto — {{imported}} importate, {{skipped}} saltate, {{errors}} errori.",
   "manage.sync.syncFailed": "Sincronizzazione non riuscita",
   "manage.sync.syncingEllipsis": "Sincronizzazione…",
-
   "manage.oauth.withings.noun": "misurazioni",
   "manage.oauth.withings.description": "Scarica peso e misurazioni della composizione corporea dall'API Withings per l'intervallo qui sotto (parte dall'ultima sincronizzazione se lasciato invariato).",
   "manage.oauth.strava.noun": "attività",
@@ -121,7 +117,6 @@
   "manage.oauth.syncFromButton": "↓ Sincronizza da {{label}}",
   "manage.oauth.expirySoon": "a breve",
   "manage.oauth.expiryIn": "tra {{value}}",
-
   "manage.syncAll.title": "Sincronizza tutto",
   "manage.syncAll.description": "Esegue tutte le sincronizzazioni sottostanti in un colpo solo — salta qualsiasi fonte non pronta (dispositivo scollegato, non connesso).",
   "manage.syncAll.button": "⚡ Sincronizza tutto",
@@ -132,7 +127,7 @@
   "manage.syncAll.skipReasonLogin": "non connesso",
   "manage.syncAll.failed": "{{source}}: non riuscito — {{msg}}",
   "manage.syncAll.genericError": "errore di sincronizzazione",
-
+  "manage.classify.loading": "Caricamento attività…",
   "manage.classify.title": "Classificazione allenamenti IA",
   "manage.classify.description": "Classifica le attività di corsa (Corsa di recupero, Sessione lunga, Ripetute/Intervalli, Corsa progressiva, Fartlek, Tapasciata / Mantenimento leggero) usando un modello Ollama locale oppure regole deterministiche istantanee — in entrambi i casi nulla lascia questo computer. Ogni esecuzione in blocco qui usa un solo metodo (interruttore sotto); la vista dettaglio della singola attività può eseguire e confrontare entrambi. La riclassificazione è sempre consentita, anche su un'attività già confermata, e la riporta in attesa di revisione.",
   "manage.classify.loadFailed": "Caricamento attività non riuscito",
@@ -150,7 +145,6 @@
   "manage.classify.confirmTooltip": "Approva in blocco la classificazione {{method}} per le attività selezionate già classificate, senza bisogno di un motivo — come il pollice in su per singola attività",
   "manage.classify.confirmSelected": "Conferma selezionate ({{method}})",
   "manage.classify.classifyingProgress": "Classificazione {{current}}/{{total}}…",
-
   "manage.dateRanges.title": "Intervalli di date salvati",
   "manage.dateRanges.description": "Salva una finestra di blocco di allenamento da richiamare e confrontare in seguito — es. settimana 2 vs settimana 3 della preparazione alla maratona di Boston, oppure la preparazione di una gara vs un'altra. Puoi collegare opzionalmente la gara a cui ha portato; sono selezionabili solo le gare svolte dopo la data di fine dell'intervallo.",
   "manage.dateRanges.loadFailed": "Caricamento intervalli di date non riuscito",
@@ -166,7 +160,6 @@
   "manage.dateRanges.pickFirstTooltip": "Scegli prima un intervallo salvato sopra",
   "manage.dateRanges.pickToDelete": "Scegli un intervallo salvato da eliminare…",
   "manage.dateRanges.confirmDeleteQuestion": "Eliminare questo intervallo?",
-
   "manage.delete.title": "Elimina intervallo di dati",
   "manage.delete.localOnly": "solo database locale",
   "manage.delete.description": "Sposta i record nel cestino del database locale (sotto) anziché rimuoverli definitivamente — ripristinali in qualsiasi momento, oppure svuota il cestino per recuperare definitivamente lo spazio. In entrambi i casi nulla viene toccato sul tuo orologio Garmin, Strava o account Withings, e una nuova sincronizzazione non riporterà indietro da sola un elemento nel cestino (o eliminato definitivamente).",
@@ -185,7 +178,6 @@
   "manage.delete.noMeasurementsInRange": "Nessuna misurazione in questo periodo.",
   "manage.delete.moveToTrashButton": "Sposta nel cestino…",
   "manage.delete.moveToTrashConfirm": "Spostare nel cestino, {{from}} - {{to}}?",
-
   "manage.trash.title": "Cestino",
   "manage.trash.refreshTooltip": "Aggiorna — es. dopo aver eliminato qualcosa sopra",
   "manage.trash.description": "Gli elementi eliminati sopra atterrano prima qui. Ripristina li riporta subito indietro; svuotare il cestino li elimina definitivamente (i loro dati vengono cancellati per recuperare spazio, ma abbastanza viene mantenuto internamente perché una nuova sincronizzazione non li reimporti comunque).",
@@ -198,34 +190,28 @@
   "manage.trash.purgeTooltip": "Elimina definitivamente gli elementi selezionati — non può essere annullato. Il nome file/data viene comunque mantenuto internamente così una nuova sincronizzazione non lo riporterà indietro.",
   "manage.trash.deletePermanently": "Elimina definitivamente…",
   "manage.trash.confirmPurge": "Eliminare definitivamente {{n}} elemento/i? Non può essere annullato.",
-
   "settings.currentLabel": "attuale:",
   "settings.savingEllipsis": "Salvataggio…",
   "settings.saved": "Salvato",
   "settings.saveFailed": "Salvataggio delle impostazioni non riuscito",
-
   "settings.theme.dark": "Scuro",
   "settings.theme.light": "Chiaro",
   "settings.theme.disabledForGraphite": "Graphite è un look scuro fisso: il Tema non si applica finché è selezionato",
-
   "settings.palette.metal": "Metallico",
   "settings.palette.warm": "Caldo",
   "settings.palette.graphite": "Graphite",
-
   "settings.units.auto": "Automatico",
   "settings.units.metric": "Metrico (km, kg)",
   "settings.units.imperial": "Imperiale (mi, lb)",
   "settings.units.currentlyNote": "attualmente: {{system}} (dalla lingua del browser — non c'è un modo diretto per leggere l'impostazione di sistema effettiva)",
   "settings.units.title": "Unità",
   "settings.units.description": "Si applica a distanza, ritmo, velocità, dislivello e peso in tutta l'app. \"Automatico\" indovina dalla lingua/regione del browser (es. una localizzazione USA imposta di default l'imperiale) — non c'è un modo diretto per una pagina web di leggere l'impostazione di sistema effettiva, quindi è un valore predefinito best-effort che puoi sempre sovrascrivere.",
-
   "settings.dateFormat.numeric_uk": "Numerico (UK)",
   "settings.dateFormat.numeric_us": "Numerico (US)",
   "settings.dateFormat.literal_uk": "Esteso (UK)",
   "settings.dateFormat.literal_us": "Esteso (US)",
   "settings.dateFormat.title": "Formato data",
   "settings.dateFormat.description": "Si applica a ogni data mostrata nell'app. \"Numerico\" è gg/mm o mm/gg a seconda della regione; \"Esteso\" scrive il mese per esteso. Gli assi dei grafici di Panoramica e tendenze restano sempre numerici (non c'è spazio per un mese scritto per esteso su un asse compatto) ma seguono comunque la regione qui impostata.",
-
   "settings.appearance.title": "Aspetto",
   "settings.appearance.themeLabel": "Tema",
   "settings.appearance.paletteDescription": "Palette — un intero look (sfondo, card, bordo, testo, accento), incrociata con il tema per 4 combinazioni totali. Non influisce mai sui colori dei grafici/dati.",
@@ -233,31 +219,26 @@
   "settings.appearance.previewActivePill": "Pillola attiva",
   "settings.appearance.previewLink": "Link",
   "settings.appearance.previewFocusRing": "Anello di focus",
-
   "settings.activityDetails.title": "Dettagli attività",
   "settings.activityDetails.description": "Come si apre il dettaglio cliccando un'attività nella scheda Attività — espansione in linea nell'elenco, oppure apertura come popup.",
   "settings.activityDetails.accordion": "Fisarmonica (in linea)",
   "settings.activityDetails.popup": "Popup",
-
   "settings.overviewTrends.title": "Panoramica e tendenze",
   "settings.overviewTrends.description": "Numero minimo di attività prima che venga mostrato il grafico di tendenza di uno sport (in modalità \"Singola\"), o prima che venga offerto il raggruppamento \"Settimana\"/\"Mese\" — sotto questa soglia viene mostrato un messaggio \"troppo poche attività\" invece di un grafico con solo un paio di barre.",
   "settings.overviewTrends.fieldLabel": "Minimo di attività/gruppi per una tendenza",
-
+  "settings.loading": "Caricamento impostazioni…",
   "settings.outliers.title": "Rilevamento valori anomali",
   "settings.outliers.description": "Usato dalla casella \"Rimuovi valori anomali\" del grafico attività. Due regole indipendenti: un filtro per picchi isolati (un punto viene segnalato solo se si allontana e poi ritorna dai vicini più velocemente della soglia sotto, così un cambiamento reale e prolungato come uno scatto genuino non viene toccato), e una soglia minima assoluta per Velocità/Ritmo — qualsiasi campione più lento della soglia del passo di camminata viene scartato, per una vista \"solo corsa\".",
   "settings.outliers.speedFieldLabel": "Variazione massima di velocità (m/s al secondo)",
   "settings.outliers.cadenceFieldLabel": "Variazione massima di cadenza (passi/min al secondo)",
   "settings.outliers.minSpeedFieldLabel": "Velocità minima per contare come corsa (km/h)",
   "settings.outliers.off": "disattivato",
-
   "app.serverConnected": "Server connesso",
   "app.serverOffline": "Server offline",
   "app.serverUnreachable": "Server API non raggiungibile — esegui: cd garmin-stats && node src/server.ts",
-
   "api.gatewayError": "Impossibile raggiungere il server API ({{status}}). Potrebbe essere occupato, in riavvio, oppure una richiesta lunga (es. il classificatore IA) è scaduta — l'operazione potrebbe essersi comunque completata, attendi un momento e riprova.",
   "api.genericError": "Errore API {{status}}: {{path}}",
   "api.networkError": "Impossibile raggiungere il server API. Potrebbe essere spento, in riavvio, oppure una richiesta lunga è stata interrotta — l'operazione potrebbe essersi comunque completata, attendi un momento e riprova.",
-
   "common.noDataDefault": "Nessun dato in questo periodo.",
   "common.selectDate": "Seleziona data",
   "common.perPage": "Per pagina",
@@ -269,7 +250,7 @@
   "common.recheck": "Riverifica",
   "common.settingsLoadFailed": "Caricamento impostazioni non riuscito",
   "common.changeLanguage": "Cambia lingua",
-
+  "body.loading": "Caricamento misurazioni corporee…",
   "body.chart.chartView": "Grafico",
   "body.chart.tableView": "Tabella",
   "body.chart.selectMetric": "Seleziona almeno una metrica sopra per visualizzarla.",
@@ -296,18 +277,17 @@
   "body.metric.hydration_kg": "Idratazione",
   "body.metric.bmi": "BMI",
   "body.metric.heart_rate": "Frequenza cardiaca",
-
   "classification.recoveryRun": "Corsa di recupero",
   "classification.longSession": "Sessione lunga",
   "classification.repeatsIntervals": "Ripetute/Intervalli",
   "classification.progressiveRun": "Corsa progressiva",
   "classification.fartlek": "Fartlek",
   "classification.tapasciata": "Tapasciata / Mantenimento leggero",
-
   "activity.detail.deleteFailed": "Eliminazione non riuscita",
   "activity.detail.viaSource": "via {{source}}",
+  "activity.detail.loading": "Caricamento attività…",
   "activity.detail.deleteTooltip": "Sposta questa attività nel cestino del database locale (scheda Dati e sincronizzazione) — non viene toccata sul dispositivo Garmin, Strava o sull'account Withings, e può essere ripristinata in seguito. Una nuova sincronizzazione non la riporterà indietro da sola.",
-  "activity.detail.deleteButton": "Elimina attività (localmente)",
+  "activity.detail.deleteButton": "Rimuovi attività",
   "activity.detail.moveToTrash": "Spostare nel cestino?",
   "activity.stat.distance": "Distanza",
   "activity.stat.movingTime": "Tempo in movimento",
@@ -317,7 +297,6 @@
   "activity.stat.avgHr": "FC media",
   "activity.stat.maxHr": "FC massima",
   "activity.stat.elevation": "Dislivello",
-
   "activity.metric.noData": "Nessun dato per questa metrica",
   "activity.metric.card": "Scheda",
   "activity.metric.speedLabel": "Velocità",
@@ -331,17 +310,14 @@
   "activity.metricShort.altitude_m": "Alt",
   "activity.metricShort.cadence": "Cad",
   "activity.metricShort.power": "Pot",
-
   "activity.play.pause": "Pausa",
   "activity.play.replay": "Riproduci di nuovo",
   "activity.play.play": "Riproduci",
   "activity.play.stop": "Stop",
-
   "activity.runner.paused": "⏸ In pausa {{duration}}",
   "activity.runner.hrRecovery": "FC {{before}}→{{after}} ({{delta}})",
   "activity.readout.speed": "velocità",
   "activity.readout.pace": "ritmo",
-
   "activity.chart.distance": "Distanza",
   "activity.chart.time": "Tempo",
   "activity.chart.highlightPauses": "Evidenzia pause ≥",
@@ -351,15 +327,17 @@
   "activity.chart.paceUnit": "Ritmo (mm:ss)",
   "activity.chart.hrRecoveryFlagsNote": "i contrassegni mostrano il recupero della FC durante ogni pausa",
   "activity.chart.notEnoughData": "Dati di tracciamento insufficienti per tracciare un grafico.",
-
+  "activity.chart.preparingRunner": "Preparazione del runner…",
   "activity.typePicker.saveFailed": "Salvataggio del tipo di attività non riuscito",
   "activity.typePicker.typePlaceholder": "Tipo",
-  "activity.typePicker.saveTooltip": "Salva il tipo di attività selezionato",
-  "activity.typePicker.noChangeTooltip": "Nessuna modifica da salvare",
+  "activity.typePicker.saveButton": "Salva e assegna nome",
+  "activity.typePicker.renameButton": "Rinomina",
+  "activity.typePicker.saveTooltip": "Salva il tipo selezionato e, se vuoi, assegna un nome a questa attività",
+  "activity.typePicker.renameTooltip": "Modifica il nome salvato di questa attività",
   "activity.typePicker.nameThis": "Assegna un nome a questo {{type}}",
+  "activity.typePicker.renameThis": "Rinomina questo {{type}}",
   "activity.typePicker.sessionFallback": "sessione",
   "activity.typePicker.namePlaceholder": "es. Maratona di Berlino",
-
   "activity.classify.title": "Classificazione",
   "activity.classify.summaryAi": "IA: {{classification}}",
   "activity.classify.summaryStatistical": "Statistico: {{classification}}",
@@ -387,7 +365,6 @@
   "activity.classify.splitTooltip": "Granularità delle frazioni usata per (ri)classificare — frazioni più fini possono far emergere una struttura a intervalli che una frazione più grossolana appiattisce",
   "activity.classify.split1km": "1km",
   "activity.classify.split05km": "0.5km",
-
   "runplan.accordion.totalDays": "{{n}} giorni",
   "runplan.accordion.activeDays": "{{n}} attivi",
   "runplan.accordion.runningDays": "{{n}} di corsa",
@@ -402,7 +379,6 @@
   "runplan.accordion.dslLabel": "Allenamento (DSL)",
   "runplan.accordion.needsReview": "Questo giorno richiede una revisione prima di poter essere salvato.",
   "runplan.accordion.needsReviewBadge": "Richiede revisione",
-
   "manage.planTemplatesSectionTitle": "Modelli di piano di allenamento",
   "manage.planTemplates.title": "Modelli di piano di allenamento",
   "manage.planTemplates.description": "Modelli RunPlan DSL v1 riutilizzabili — con ritmi generici (ancore simboliche come RG), istanziati per ogni gara con ritmi concreti e una data di inizio.",
@@ -429,7 +405,6 @@
   "manage.planTemplates.untitled": "Piano senza titolo",
   "common.edit": "Modifica",
   "common.saving": "Salvataggio…",
-
   "manage.planInstancesSectionTitle": "Istanze di piano di allenamento",
   "manage.planInstances.title": "Istanze di piano di allenamento",
   "manage.planInstances.description": "Un'istanza concreta di un modello per una gara — ritmi risolti, una data di inizio e (facoltativamente) un'attività gara collegata.",

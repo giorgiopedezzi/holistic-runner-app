@@ -210,7 +210,7 @@
           "accent_color": { "type": "string", "enum": ["sky", "amber", "graphite"], "description": "Paired 1:1 with palette (sky=metal, amber=warm, graphite=graphite) — no longer independently settable, see the /palette endpoint." },
           "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
           "language": { "type": "string", "enum": ["auto", "en", "it"] },
-          "palette": { "type": "string", "enum": ["metal", "warm", "graphite"], "description": "Dashboard palette flavor. 'metal'/'warm' cross with theme (dark/light) for 4 total looks; 'graphite' is a third, standalone, dark-only palette (no light counterpart). Replaces the earlier style_pack (HRA-119)." }
+          "palette": { "type": "string", "enum": ["metal", "warm", "graphite", "auto"], "description": "Dashboard palette flavor. 'metal'/'warm' cross with theme (dark/light) for 4 total looks; 'graphite' is a third, standalone, dark-only palette (no light counterpart). 'auto' is the DEFAULT sentinel for 'never explicitly chosen' (same relationship 'auto' has with theme) — the client resolves it to 'graphite' when the resolved theme is dark, 'warm' when light; never accepted by PUT /palette. Replaces the earlier style_pack (HRA-119)." }
         }
       },
       "SyncResult": {

@@ -1,6 +1,7 @@
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
-import type { CompareRangeState } from "@/hooks/useCompareRange";
+import { defaultCompareRange, type CompareRangeState } from "@/hooks/useCompareRange";
 import { DatePicker, Select, Switch } from "@/components/ui";
 import type { SavedDateRange } from "@/types/api";
 import { fmtDate } from "@/utils/fmt";
@@ -11,8 +12,12 @@ import { fmtDate } from "@/utils/fmt";
 // where it originated. `compare`/`savedRanges` are optional: without
 // `compare` this renders just the one row (Activities/Body, Manage's sync
 // sections); with it, Overview & Trends also gets the "Current" title, the
-// comparison toggle, and the second "Compared to" row.
-type Props = DateRangeState & { compare?: CompareRangeState; savedRanges?: SavedDateRange[] };
+// comparison toggle, and the second "Compared to" row. `racePicker` is
+// likewise optional — an extra control rendered right after the named-range
+// Select, in the same row; only App.tsx's Activities-tab usage passes one
+// (a "pick a race" dropdown that jumps from/to to that race's own day), so
+// every other consumer of this shared bar is unaffected.
+type Props = DateRangeState & { compare?: CompareRangeState; savedRanges?: SavedDateRange[]; racePicker?: ReactNode };
 
 const NO_NAMED_RANGE = "";
 const orStyle = { fontSize: 12 };
@@ -21,7 +26,7 @@ function savedRangeLabel(r: SavedDateRange): string {
   return `${r.name} (${fmtDate(r.from_date)} → ${fmtDate(r.to_date)})`;
 }
 
-export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, savedRanges = [] }: Props) {
+export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, savedRanges = [], racePicker }: Props) {
   const { t } = useTranslation();
   function isActive(days: number) {
     const target = days >= 9999 ? "2000-01-01"
@@ -44,13 +49,24 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
   const eligibleForCompare = compare ? savedRanges.filter(r => r.to_date < from) : [];
   const compareNamedId = compare ? savedRanges.find(r => r.from_date === compare.from && r.to_date === compare.to)?.id : undefined;
 
+  // Picking "— none —" actively clears the filter (resets to the app's own
+  // default 30-day window) rather than being a no-op — previously the only
+  // way to back out of a named-range/race pick was to touch some OTHER
+  // control (a preset, a manual date), which worked but wasn't discoverable:
+  // the first/"none" option in a dropdown should itself be a real, selectable
+  // action (explicit user feedback).
   function pickCurrent(idStr: string) {
-    if (idStr === NO_NAMED_RANGE) return;
+    if (idStr === NO_NAMED_RANGE) { setPreset(30); return; }
     const r = savedRanges.find(x => String(x.id) === idStr);
     if (r) { setFrom(r.from_date); setTo(r.to_date); }
   }
   function pickCompare(idStr: string) {
-    if (idStr === NO_NAMED_RANGE || !compare) return;
+    if (!compare) return;
+    if (idStr === NO_NAMED_RANGE) {
+      const def = defaultCompareRange(from, to);
+      compare.setFrom(def.from); compare.setTo(def.to);
+      return;
+    }
     const r = eligibleForCompare.find(x => String(x.id) === idStr);
     if (r) { compare.setFrom(r.from_date); compare.setTo(r.to_date); }
   }
@@ -102,6 +118,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
             ...savedRanges.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
           ]}
         />
+        {racePicker}
       </div>
 
       {/* Compare heading + row — only present at all when `compare` is

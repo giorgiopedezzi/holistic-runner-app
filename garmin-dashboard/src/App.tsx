@@ -8,6 +8,8 @@ import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
 import { SettingsProvider } from "@/hooks/useSettings";
 import { DateRangeBar } from "@/components/DateRangeBar";
+import { Select } from "@/components/ui";
+import { fmtRaceLabel } from "@/utils/fmt";
 import { OverviewTab }  from "@/components/OverviewTab";
 import { ActivitiesTab } from "@/components/ActivitiesTab";
 import { BodyTab }      from "@/components/BodyTab";
@@ -60,6 +62,12 @@ function AppShell() {
   // rather than a refetch on every tab switch.
   const savedRangesQ = useQuery(() => api.dateRanges.list(), []);
   const savedRanges = savedRangesQ.state.status === "success" ? savedRangesQ.state.data : [];
+  // Race picker (DateRangeBar, Activities tab only) — fetched here for the
+  // same reason as savedRanges above: AppShell never unmounts, so this is
+  // one fetch for the whole session rather than a refetch per tab switch,
+  // even though only the Activities branch below ever renders the picker.
+  const racesQ = useQuery(() => api.garmin.races(), []);
+  const races = racesQ.state.status === "success" ? racesQ.state.data : [];
   const appearance = useAppearance();
   const { t } = useTranslation();
   const [tab, setTab] = useState<TabId>("overview");
@@ -72,6 +80,32 @@ function AppShell() {
   }, []);
 
   const showDateRange = TABS_WITH_DATERANGE.includes(tab as typeof TABS_WITH_DATERANGE[number]);
+
+  // Activities-only "pick a race" control — jumps from/to to that race's own
+  // single day, the same mechanic the named-range Select above it already
+  // uses. NO_RACE mirrors DateRangeBar's own NO_NAMED_RANGE sentinel.
+  const NO_RACE = "";
+  const currentRaceId = races.find(r => r.date_only === range.from && range.from === range.to)?.id;
+  // "— none —" actively resets to the default 30-day window rather than
+  // being a no-op — see DateRangeBar.tsx's pickCurrent/pickCompare for the
+  // same fix and its rationale.
+  function pickRace(idStr: string) {
+    if (idStr === NO_RACE) { range.setPreset(30); return; }
+    const r = races.find(x => String(x.id) === idStr);
+    if (r) { range.setFrom(r.date_only); range.setTo(r.date_only); }
+  }
+  const racePicker = (
+    <Select
+      value={currentRaceId != null ? String(currentRaceId) : NO_RACE}
+      onValueChange={pickRace}
+      placeholder={t("dateRange.pickRace", "Pick a race…")}
+      triggerStyle={{ flex: "1 1 220px", minWidth: 0 }}
+      options={[
+        { value: NO_RACE, label: t("dateRange.noneOption", "— none —") },
+        ...races.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) })),
+      ]}
+    />
+  );
 
   return (
     <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
@@ -145,7 +179,7 @@ function AppShell() {
             duplicate bar. */}
         {showDateRange && tab !== "overview" && (
           <div style={{ marginBottom: 20 }}>
-            <DateRangeBar {...range} savedRanges={savedRanges} />
+            <DateRangeBar {...range} savedRanges={savedRanges} racePicker={tab === "activities" ? racePicker : undefined} />
           </div>
         )}
 

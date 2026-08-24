@@ -654,21 +654,28 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
       {kpis && <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{kpis}</div>}
     </div>
   ) : undefined;
-  // Compare card's own equivalent row — badges only, no switches (explicit
-  // feedback, separately: the compare card must show its own totals but
-  // must NOT show the mode-toggle pills).
-  const compareBadgesRow = primary && compareKpis ? (
-    <div style={{ display: "flex", justifyContent: "flex-end", paddingRight: HEADER_EXTRA_RIGHT }}>
-      <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{compareKpis}</div>
-    </div>
-  ) : undefined;
-  // Row 2 (subHeader): the "graph legend" — Avg pace / Avg HR curve
-  // identity, left-aligned (explicit feedback: distinct from the row-1 KPI
-  // cluster, which is a different concern — "axis legend" values). Padding
-  // to align with the first bar's left edge is applied where this is
-  // consumed (SportTrendChart/SportTrendOverlapChart), same as before.
+  // Row 2 (subHeader) for the CURRENT/overlap chart: the "graph legend" —
+  // Avg pace / Avg HR curve identity, left-aligned (explicit feedback:
+  // distinct from the row-1 KPI cluster, which is a different concern —
+  // "axis legend" values). Padding to align with the first bar's left edge
+  // is applied where this is consumed (SportTrendChart/SportTrendOverlapChart),
+  // same as before.
   const subHeader = primary ? (
     <TrendSeriesLegend paceUnit={isSwimmingUnit ? "/100m" : paceUnitLabel()} />
+  ) : undefined;
+  // Compare card's own equivalent row — badges + its OWN copy of the graph
+  // legend sharing one row (dashboard design-system rework: "put graph
+  // legends in the same row of the widget in the compared to graph"), no
+  // switches (explicit feedback, separately: the compare card must show its
+  // own totals but must NOT show the mode-toggle pills). Unlike the primary
+  // chart's own two-row header (graphControlsRow's pills leave no spare room
+  // for the legend beside the KPI cards), this row only ever holds
+  // legend+badges, so it fits both without wrapping.
+  const compareBadgesRow = primary && (subHeader || compareKpis) ? (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, paddingRight: HEADER_EXTRA_RIGHT }}>
+      {subHeader}
+      {compareKpis && <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{compareKpis}</div>}
+    </div>
   ) : undefined;
 
   return (
@@ -719,7 +726,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
         // MUST have graph legend [avg HR, avg pace]").
         const compareCard = !compareEnabled ? null : tooFew(compareActivities) ? (
           primary ? (
-            <ChartCard title={compareGraphTitle} controlsRow={compareBadgesRow} subHeader={subHeader}>
+            <ChartCard title={compareGraphTitle} controlsRow={compareBadgesRow}>
               <Empty message={t("overview.tooFewCompare", `Too few ${sport} activities in the compare range to determine a trend (${compareActivities.length} of ${minGroupSize} needed).`, { sport, count: compareActivities.length, min: minGroupSize })} />
             </ChartCard>
           ) : (
@@ -728,7 +735,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
         ) : (
           <SportTrendChart sport={sport} title={primary ? compareGraphTitle : `${label} - comparison`} points={scaledCmp}
             kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
-            size={primary ? "lg" : undefined} controlsRow={compareBadgesRow} subHeader={subHeader} />
+            size={primary ? "lg" : undefined} controlsRow={compareBadgesRow} />
         );
         const overlapChart = (
           <SportTrendOverlapChart sport={sport} title={primary ? graphTitle : label} points={scaledOverlap} compareEnabled={compareEnabled}
@@ -941,7 +948,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   // still render through every one of this query's own states, not just
   // "success with data," or it would flicker/disappear on every load and
   // vanish entirely on a genuinely activity-less period.
-  if (state.status === "loading") return <>{otherKeyMetrics}<LoadingSpinner /></>;
+  if (state.status === "loading") return <>{otherKeyMetrics}<LoadingSpinner label={t("overview.trendsLoading", "Loading trends…")} /></>;
   if (state.status === "error")   return <>{otherKeyMetrics}<ErrorBanner message={state.error} /></>;
   if (state.status !== "success" || state.data.length === 0) return <>{otherKeyMetrics}</>;
 
@@ -1002,6 +1009,14 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
         label={t("overview.stat.distance", "Distance")}
         deltaText={showDiff ? comparisonTooltip(run.total_km, prevRun.km || null, v => fmtKm(v * 1000)) : undefined}
         deltaPositive={showDiff ? deltaPositive(run.total_km, prevRun.km || null) : undefined} />
+      {/* 3rd position (dashboard design-system rework: "move Activities
+          badge inside the graph") — moved out of the otherKeyMetrics
+          sidebar below, which used to be the only place it showed. */}
+      <GraphKpiCard icon={<RunnerGlyph pose="a" size={16} />} iconColor="var(--accent)"
+        value={String(run.total_activities)}
+        label={t("overview.stat.activities", "Activities")}
+        deltaText={showDiff ? comparisonTooltip(run.total_activities, prevRun.sessions, v => String(v)) : undefined}
+        deltaPositive={showDiff ? deltaPositive(run.total_activities, prevRun.sessions) : undefined} />
     </>
   ) : undefined;
   // The compare period's OWN totals — no delta (there's nothing further
@@ -1015,6 +1030,9 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
       <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
         value={splitUnit(fmtKm(prevRun.km * 1000)).main} unit={splitUnit(fmtKm(prevRun.km * 1000)).unit}
         label={t("overview.stat.distance", "Distance")} />
+      <GraphKpiCard icon={<RunnerGlyph pose="a" size={16} />} iconColor="var(--accent)"
+        value={String(prevRun.sessions)}
+        label={t("overview.stat.activities", "Activities")} />
     </>
   ) : undefined;
 
@@ -1184,7 +1202,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // as the success case below — through loading/error/empty too, so the
   // range can still be changed out of any of those states.
   if (state.status === "loading") {
-    return <><div className="hra-sticky-summary">{dateRangeBar}</div><LoadingSpinner /></>;
+    return <><div className="hra-sticky-summary">{dateRangeBar}</div><LoadingSpinner label={t("overview.loading", "Loading overview…")} /></>;
   }
   if (state.status === "error") {
     return <><div className="hra-sticky-summary">{dateRangeBar}</div><ErrorBanner message={state.error} /></>;
@@ -1245,6 +1263,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
       expanded={detailView === "accordion" && raceExpanded}
       expandIndicator={detailView}
       onClick={() => detailView === "accordion" ? setRaceExpanded(e => !e) : setRaceModalOpen(true)}
+      onDelete={() => setRaceExpanded(false)}
       expandedContent={
         <ActivityDetailBody activityId={linkedRaceActivity.id} onDelete={() => setRaceExpanded(false)} />
       }
@@ -1254,23 +1273,22 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // One consolidated column (was "Key metrics" + "Additional details", then
   // "Other key metrics") — Distance and Avg pace are dropped here since the
   // main graph's own KPI cards already show them; Elevation dropped per
-  // explicit spec. No section title (explicit feedback: "remove other key
-  // metrics title") — it's visually obvious as the graph's sidebar. Always
-  // ONE column, never a multi-column grid (explicit feedback: "correspondant
+  // explicit spec; Activities moved into the graph's own KPI row too
+  // (dashboard design-system rework, 3rd position, see runningKpis/compareKpis
+  // above). No section title (explicit feedback: "remove other key metrics
+  // title") — it's visually obvious as the graph's sidebar. Always ONE
+  // column, never a multi-column grid (explicit feedback: "correspondant
   // metrics must be stacked in one column only") — this sidebar can be wider
   // than StatGrid's own auto-fill breakpoint, so the column count is forced
   // here rather than left to that grid's responsive default. Icon coloring
   // rule (explicit feedback): heart matches the HR value's own color; flame
-  // is a filled dark orange; every other icon (runner/map-pin/timer) uses
-  // the plain accent color. Differences only show while overlap mode is
-  // active (showDiff) — explicit feedback: "do not show differences when
-  // they're distinct." Passed to TrendsBySport, which renders it as a
-  // vertical sidebar beside the main graph.
+  // is a filled dark orange; every other icon (map-pin/timer) uses the plain
+  // accent color. Differences only show while overlap mode is active
+  // (showDiff) — explicit feedback: "do not show differences when they're
+  // distinct." Passed to TrendsBySport, which renders it as a vertical
+  // sidebar beside the main graph.
   const otherKeyMetrics = (
     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={18} />} label={t("overview.stat.activities", "Activities")} value={totals.acts}
-        deltaText={showDiff ? comparisonTooltip(totals.acts, prevActs, v => String(v)) : undefined}
-        deltaPositive={showDiff ? deltaPositive(totals.acts, prevActs) : undefined} />
       {totals.acts > 0 && (
         <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
           deltaText={showDiff ? comparisonTooltip(totals.km / totals.acts, prevAvgDistance, v => fmtKm(v * 1000)) : undefined}
@@ -1299,7 +1317,6 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // metric of the second graph must be the data of the second graph."
   const compareOtherKeyMetrics = hasPrevData ? (
     <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
-      <Stat icon={<RunnerGlyph pose="a" color="var(--accent)" size={18} />} label={t("overview.stat.activities", "Activities")} value={prevActs ?? 0} />
       {prevActs ? (
         <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
       ) : null}

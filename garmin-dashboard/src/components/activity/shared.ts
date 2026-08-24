@@ -12,6 +12,17 @@ export const axisStyle = chartTick;
 export const gridStyle = chartGrid;
 export const ttStyle   = { contentStyle: chartTooltipStyle };
 
+// ── Chart geometry (shared between ActivityChartSection and the memoized
+// chart components in OverlayCharts.tsx — perf split, playback-lag fix) ────
+export const AXIS_WIDTH = 42;        // must match the YAxis `width` props on the charts
+export const MARGIN_LEFT = 5;
+export const MARGIN_RIGHT = 5;
+// The right side ALWAYS reserves this fixed total (dashboard design-system
+// rework: "reserve space for the right axis without adding them if not
+// required — the chart must never shrink or widen") — see
+// ActivityChartSection.tsx's mainChartRightMargin for how it's topped up.
+export const RIGHT_AXES_WIDTH = AXIS_WIDTH;
+
 // ── Metric definitions ───────────────────────────────────────────────────
 // Colors are the same validated-for-this-dark-surface set used in BodyTab.tsx
 // (heart_rate/altitude reuse the exact accents established there; speed/

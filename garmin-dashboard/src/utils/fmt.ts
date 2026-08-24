@@ -172,3 +172,12 @@ export function fmtDateChart(iso: string): string {
   const date = parseIsoDateLocal(iso);
   return date ? NUMERIC_CHART_FORMATTERS[dateFormatRegion()].format(date) : iso;
 }
+
+// A race activity's label for any "pick a race" dropdown — originally local
+// to manage/DateRangesSection.tsx's "link a race" picker, moved here once
+// App.tsx's Activities-tab race picker needed the exact same format, so both
+// stay in sync by construction rather than by two hand-kept copies.
+export function fmtRaceLabel(r: { date_only: string; activity_name: string | null; distance_m: number | null }): string {
+  const name = r.activity_name ? ` — ${r.activity_name}` : "";
+  return `${fmtDate(r.date_only)}${name} (${fmtKm(r.distance_m)})`;
+}
