@@ -15,6 +15,7 @@ import type { RunPlan } from "../domain/runplan/types.ts";
 export function createPlanInstancesService(db: DatabaseSync, instances: PlanInstancesRepo) {
   function instantiate(
     templateId: number, plan: RunPlan, options: InstantiateOptions, targetActivityId: number | null, name: string,
+    raceName: string | null, raceDate: string | null,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     const resolvedDays = instantiatePlan(plan, options);
 
@@ -29,6 +30,10 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         // Denormalized copy of the template's event at creation time
         // (docs/runplan-dsl-future-notes.md §6) — never independently set.
         event: plan.metadata.event ?? null,
+        // HRA-121: the instance's own free-text race description —
+        // independent of target_activity_id.
+        race_name: raceName,
+        race_date: raceDate,
       });
       for (const day of resolvedDays) {
         instances.createDay({

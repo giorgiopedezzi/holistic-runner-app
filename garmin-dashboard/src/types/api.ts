@@ -123,6 +123,10 @@ export interface PlanInstance {
   approved_at:         string | null;
   name:                string | null;
   event:               string | null;
+  // HRA-121: free-text description of the race this instance targets —
+  // independent of target_activity_id (an actual linked activity row).
+  race_name:           string | null;
+  race_date:           string | null;
   created_at:          string;
 }
 

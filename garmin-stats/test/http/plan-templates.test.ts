@@ -84,7 +84,7 @@ test("Instantiating a custom-event template with goal_time and no explicit dista
     // 00:40:00 over the template's own 10000m -> RG = 240 sec/km.
     const usingTemplateDistance = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Race A", start_date: "2026-09-01", goal_time: "00:40:00" }),
+      body: JSON.stringify({ name: "Race A", start_date: "2026-09-01", goal_time: "00:40:00", race_pace_anchor: "RG" }),
     });
     assert.equal(usingTemplateDistance.status, 201, JSON.stringify(usingTemplateDistance.json));
     const days1 = (usingTemplateDistance.json as any).days;
@@ -93,11 +93,102 @@ test("Instantiating a custom-event template with goal_time and no explicit dista
     // Same goal_time, explicit distance_m=5000 overrides the template's own -> RG = 480 sec/km.
     const withOverride = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Race B", start_date: "2026-09-01", goal_time: "00:40:00", distance_m: 5000 }),
+      body: JSON.stringify({ name: "Race B", start_date: "2026-09-01", goal_time: "00:40:00", distance_m: 5000, race_pace_anchor: "RG" }),
     });
     assert.equal(withOverride.status, 201, JSON.stringify(withOverride.json));
     const days2 = (withOverride.json as any).days;
     assert.equal(JSON.parse(days2[0].segments)[0].resolved_pace_sec_per_km, 480);
+  } finally {
+    await server.close();
+  }
+});
+
+// HRA-121: race_pace_anchor generalizes goal_time — it's no longer hardcoded
+// to RG, and is required (no default) whenever goal_time is supplied.
+const DSL_FM = `PACE FM=TBD
+SECTION "Base" WEEKS 1
+WEEK 1
+D1: 5km @ FM
+`;
+
+test("POST .../instantiate: race_pace_anchor is required when goal_time is supplied (no default)", async () => {
+  const server = await startTestServer();
+  try {
+    const created = await server.api("/api/v1/plan-templates", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Marathon plan", event: "marathon", dsl_source: DSL_FM }),
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const templateId = (created.json as any).id;
+
+    const missingAnchor = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Race A", start_date: "2026-09-01", goal_time: "03:30:00" }),
+    });
+    assert.equal(missingAnchor.status, 422, JSON.stringify(missingAnchor.json));
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../instantiate: goal_time converts to whichever anchor race_pace_anchor names, not hardcoded RG", async () => {
+  const server = await startTestServer();
+  try {
+    const created = await server.api("/api/v1/plan-templates", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Marathon plan", event: "marathon", dsl_source: DSL_FM }),
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.json));
+    const templateId = (created.json as any).id;
+
+    // 03:30:00 over the marathon's standard 42195m -> FM = 298.75 sec/km.
+    const instantiated = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Race A", start_date: "2026-09-01", goal_time: "03:30:00", race_pace_anchor: "FM" }),
+    });
+    assert.equal(instantiated.status, 201, JSON.stringify(instantiated.json));
+    const days = (instantiated.json as any).days;
+    const resolved = JSON.parse(days[0].segments)[0].resolved_pace_sec_per_km;
+    assert.ok(Math.abs(resolved - 12600 / 42.195) < 0.01, `expected ~298.75, got ${resolved}`);
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../instantiate: race_name/race_date persist and round-trip, independent of target_activity_id", async () => {
+  const server = await startTestServer();
+  try {
+    const created = await server.api("/api/v1/plan-templates", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Marathon plan", event: "marathon", dsl_source: DSL_FM }),
+    });
+    const templateId = (created.json as any).id;
+
+    const instantiated = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Race A", start_date: "2026-09-01", goal_time: "03:30:00", race_pace_anchor: "FM",
+        race_name: "Boston Marathon", race_date: "2026-04-20",
+      }),
+    });
+    assert.equal(instantiated.status, 201, JSON.stringify(instantiated.json));
+    assert.equal((instantiated.json as any).race_name, "Boston Marathon");
+    assert.equal((instantiated.json as any).race_date, "2026-04-20");
+
+    const instanceId = (instantiated.json as any).id;
+    const fetched = await server.api(`/api/v1/plan-instances/${instanceId}`);
+    assert.equal(fetched.status, 200);
+    assert.equal((fetched.json as any).race_name, "Boston Marathon");
+    assert.equal((fetched.json as any).race_date, "2026-04-20");
+
+    // Both optional: omitting them entirely still succeeds, with null back.
+    const withoutRace = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Race B", start_date: "2026-09-01", goal_time: "03:30:00", race_pace_anchor: "FM" }),
+    });
+    assert.equal(withoutRace.status, 201, JSON.stringify(withoutRace.json));
+    assert.equal((withoutRace.json as any).race_name, null);
+    assert.equal((withoutRace.json as any).race_date, null);
   } finally {
     await server.close();
   }

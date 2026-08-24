@@ -48,8 +48,11 @@ type TemplateBody = Partial<{ name: string; event: string; distance_m: number; d
 type GenerateBody = Partial<{ dsl_source: string }>;
 type InstantiateBody = Partial<{
   name: string; start_date: string; pace_overrides: Record<string, string>;
-  goal_time: string; distance_m: number;
+  goal_time: string; distance_m: number; race_pace_anchor: string;
   target_activity_id: number | null;
+  // HRA-121: the instance's own free-text race description — independent of
+  // target_activity_id (an actual linked activity row).
+  race_name: string; race_date: string;
 }>;
 // HRA-115: a day edit is now its raw DSL text (same grammar as a template's
 // D-line) plus the section/week/date scope it lives in — not pre-resolved
@@ -201,8 +204,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return sendNoContent(res);
   };
 
-  // Resolves the distance used to convert a goal_time into an RG pace
-  // (docs/runplan-dsl-future-notes.md §6): an explicit distance_m on the
+  // Resolves the distance used to convert a goal_time into the
+  // race_pace_anchor's pace (docs/runplan-dsl-future-notes.md §6, HRA-121:
+  // generalized from a hardcoded RG anchor): an explicit distance_m on the
   // instantiate call wins, then the template's own distance_m (HRA-120:
   // always set on a custom-event template, from its create/update request
   // body), then the event's fixed standard distance. custom has no standard
@@ -232,6 +236,14 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (!body.start_date || !ISO_DATE.test(body.start_date)) {
       throw unprocessable("start_date is required in YYYY-MM-DD format.");
     }
+    // HRA-121: both optional, independent of target_activity_id below — a
+    // free-text description of the race this instance targets, for a race
+    // that hasn't happened yet and may not have any activity row at all.
+    if (body.race_date != null && !ISO_DATE.test(body.race_date)) {
+      throw unprocessable("race_date must be in YYYY-MM-DD format.");
+    }
+    const raceName = body.race_name?.trim() || null;
+    const raceDate = body.race_date ?? null;
 
     const plan = JSON.parse(template.parsed_plan) as RunPlan;
 
@@ -245,19 +257,23 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     }
 
-    // goal_time: an alternate input for the RG anchor, converted via distance
-    // at instantiation time (never part of template parsing). Explicit RG
-    // and goal_time together are ambiguous — reject rather than silently
-    // picking a winner.
+    // goal_time: an alternate input for whichever anchor race_pace_anchor
+    // names, converted via distance at instantiation time (never part of
+    // template parsing). HRA-121: race_pace_anchor is now required whenever
+    // goal_time is supplied — no default (it used to be hardcoded to RG).
+    // Explicit override + goal_time for the same anchor are ambiguous —
+    // reject rather than silently picking a winner.
     if (body.goal_time) {
-      if (paceOverrides?.RG) {
-        throw unprocessable("Provide either goal_time or an explicit RG pace_overrides value, not both.");
+      const racePaceAnchor = body.race_pace_anchor?.trim();
+      if (!racePaceAnchor) throw unprocessable("race_pace_anchor is required when goal_time is supplied.");
+      if (paceOverrides?.[racePaceAnchor]) {
+        throw unprocessable(`Provide either goal_time or an explicit "${racePaceAnchor}" pace_overrides value, not both.`);
       }
       const m = GOAL_TIME_RE.exec(body.goal_time);
       if (!m) throw unprocessable("goal_time must be in HH:MM:SS format.");
       const goalSec = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
       const distanceM = resolveGoalConversionDistance(plan, body.distance_m);
-      paceOverrides = { ...paceOverrides, RG: { kind: "absolute", pace_sec_per_km: goalSec / (distanceM / 1000) } };
+      paceOverrides = { ...paceOverrides, [racePaceAnchor]: { kind: "absolute", pace_sec_per_km: goalSec / (distanceM / 1000) } };
     }
 
     // target_activity_id: same rule as date_ranges.activity_id — race-typed,
@@ -281,7 +297,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     }
 
-    const { instance, days } = instancesService.instantiate(templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId, name);
+    const { instance, days } = instancesService.instantiate(
+      templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId, name, raceName, raceDate,
+    );
 
     res.setHeader("Location", `/api/v1/plan-instances/${instance.id}`);
     return send(res, { ...instance, days }, 201);

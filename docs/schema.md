@@ -108,7 +108,10 @@ name, genuinely distinct from its source template's, e.g. template "Albanesi 12 
 → instance "...for Boston 2028"; required by the application on create/`PUT`, nullable at the DB
 level only because a migration can't invent a real name for pre-existing rows), `event` (nullable
 TEXT — HRA-114: a denormalized copy of the template's `event` at instantiation time, for read
-convenience; never independently settable, always the same event type as its template), `created_at`.
+convenience; never independently settable, always the same event type as its template), `race_name`
+/ `race_date` (nullable TEXT — HRA-121: the instance's own free-text description of the race it
+targets, both optional and independent of `target_activity_id` — a race that hasn't happened yet may
+have no linkable activity row at all), `created_at`.
 
 **`name`/`event` migration (HRA-114):** rows created before this Story had neither column. The
 migration backfills them from the source template (`name` ← template's `name`, `event` ← template's
@@ -120,18 +123,21 @@ request body requires `name` (string, 422 if missing/blank) — the instance's o
 never a request parameter; it's always auto-populated as a denormalized copy of the template's
 `event` at creation time.
 
-**Instantiation-time pace input (HRA-113, distance source updated HRA-120):** the instantiate call
-accepts pace anchors two ways — `pace_overrides` (explicit `PacePolicy`-shaped values, as before) or
-a `goal_time` (`HH:MM:SS`), converted to the `RG` anchor via `goal_time_sec / (distance_m / 1000)`.
-The distance used is, in order: an explicit `distance_m` on the instantiate call, then the
-template's own `distance_m` (HRA-120: always set on a `custom`-event template, from its
-create/update request body — no longer a DSL `DISTANCE` line), then the event's fixed standard
-distance (5k/10k/half/marathon, mirroring `activity_types.min_distance_m`'s seed values). `custom`
-has no standard distance, but since `distance_m` is mandatory at save time for a `custom`-event
-template, a `goal_time` call for one always has a distance to fall back to without supplying
-`distance_m` explicitly — the instantiate-call override still exists for a race with a different
-distance than the template's own. Supplying both `goal_time` and an explicit `RG` in
-`pace_overrides` is rejected as ambiguous.
+**Instantiation-time pace input (HRA-113, distance source updated HRA-120, anchor generalized
+HRA-121):** the instantiate call accepts pace anchors two ways — `pace_overrides` (explicit
+`PacePolicy`-shaped values, as before) or a `goal_time` (`HH:MM:SS`) paired with a **required**
+`race_pace_anchor` naming which anchor it resolves to (`goal_time_sec / (distance_m / 1000)`) — no
+default; `race_pace_anchor` was hardcoded to `RG` before HRA-121, so a `goal_time` request without it
+is now rejected (422) rather than silently assuming `RG`. The distance used is, in order: an
+explicit `distance_m` on the instantiate call, then the template's own `distance_m` (HRA-120: always
+set on a `custom`-event template, from its create/update request body — no longer a DSL `DISTANCE`
+line), then the event's fixed standard distance (5k/10k/half/marathon, mirroring
+`activity_types.min_distance_m`'s seed values). `custom` has no standard distance, but since
+`distance_m` is mandatory at save time for a `custom`-event template, a `goal_time` call for one
+always has a distance to fall back to without supplying `distance_m` explicitly — the
+instantiate-call override still exists for a race with a different distance than the template's own.
+Supplying both `goal_time` and an explicit `pace_overrides` value for the same `race_pace_anchor` is
+rejected as ambiguous.
 
 **Editing an instance (HRA-113, extended HRA-114, HRA-115):** `PUT /api/v1/plan-instances/:id`
 replaces the instance's `name` and resolved days wholesale (`{name, days: [...]}`). `name` is

@@ -298,6 +298,11 @@ export function initSchema(db: DatabaseSync): void {
       -- instantiation time, for read convenience — never independently set.
       name               TEXT,
       event              TEXT,
+      -- HRA-121: an instance's own free-text description of the race it
+      -- targets — independent of target_activity_id (an actual *linked*
+      -- activity row). Both optional; neither implies the other.
+      race_name          TEXT,
+      race_date          TEXT,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -528,6 +533,16 @@ export function initSchema(db: DatabaseSync): void {
       WHERE name IS NULL
     `);
   }
+
+  // HRA-121: race_name/race_date, added after plan_instances already existed.
+  // Both nullable, no backfill needed (pre-existing rows simply have neither
+  // set — there's no source data to derive them from).
+  if (!planInstanceCols.some(c => c.name === "race_name")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN race_name TEXT");
+  }
+  if (!planInstanceCols.some(c => c.name === "race_date")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN race_date TEXT");
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -645,6 +660,10 @@ export interface PlanInstanceRow {
   name: string | null;
   // HRA-114: denormalized copy of the template's event at instantiation time.
   event: string | null;
+  // HRA-121: the instance's own free-text race description — independent of
+  // target_activity_id (an actual linked activity row). Both optional.
+  race_name: string | null;
+  race_date: string | null;
   created_at: string;
 }
 

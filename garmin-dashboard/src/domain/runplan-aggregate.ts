@@ -18,7 +18,7 @@
 //     intensity's resolved pace (not an average of start/end, and not the
 //     end pace) — the simplest defensible single-pace choice.
 import type {
-  DayEntry, Intensity, PacePolicy, ResolvedDay, ResolvedSegment, Section, Target, Week, WorkoutSegment, WorkoutType,
+  DayEntry, Intensity, PacePolicy, ResolvedDay, ResolvedSegment, RunPlan, Section, Target, Week, WorkoutSegment, WorkoutType,
 } from "../types/runplan";
 
 // ── pace resolution (mirrors garmin-stats/src/domain/runplan/pace.ts) ──────
@@ -44,6 +44,41 @@ export function resolveIntensityPaceSecPerKm(intensity: Intensity, policy: PaceP
 // backend's getEffectivePacePolicy (Plan → Section → Week).
 export function getEffectivePacePolicy(planPolicy: PacePolicy, sectionPolicy: PacePolicy, weekPolicy: PacePolicy): PacePolicy {
   return { ...planPolicy, ...sectionPolicy, ...weekPolicy };
+}
+
+// Every pace anchor a template's DSL references, anywhere — every name given
+// a value via a PACE line at any scope (plan/section/week), plus every
+// anchor name actually referenced by an intensity in a day's segments (HRA-
+// 120 made an anchor with no PACE line at all perfectly legal — "resolved
+// later, at instantiate time" — so a referenced-but-undefined anchor must
+// still show up here to be resolved by the instantiate form). Sorted, deduped.
+export function collectPlanAnchors(plan: RunPlan): string[] {
+  const names = new Set<string>();
+  const addPolicy = (policy: PacePolicy) => { for (const key of Object.keys(policy)) names.add(key); };
+  const addIntensity = (intensity: Intensity) => {
+    if (intensity.kind === "anchor" || intensity.kind === "offset") names.add(intensity.anchor);
+  };
+  addPolicy(plan.metadata.pace_policy);
+  for (const section of plan.sections) {
+    addPolicy(section.pace_policy);
+    for (const week of section.weeks) {
+      addPolicy(week.pace_policy);
+      for (const day of week.days) {
+        for (const seg of day.segments) {
+          if (seg.type === "continuous") addIntensity(seg.intensity);
+          else if (seg.type === "interval") {
+            addIntensity(seg.work_intensity);
+            if (seg.rest?.intensity) addIntensity(seg.rest.intensity);
+          } else if (seg.type === "progression") {
+            addIntensity(seg.start_intensity);
+            addIntensity(seg.end_intensity);
+          }
+          // rest_block never carries an intensity.
+        }
+      }
+    }
+  }
+  return [...names].sort();
 }
 
 // ── distance ─────────────────────────────────────────────────────────────

@@ -236,10 +236,14 @@ export const api = {
     remove: (id: number) => request<null>(`/api/v1/plan-templates/${id}`, "DELETE"),
     // POST /api/v1/plan-templates/:id/instantiate (HRA-112/HRA-113/HRA-114) —
     // pace_overrides is {anchor: "pace string"}, same grammar as a PACE
-    // line's right-hand side; goal_time is the alternate RG-anchor input.
+    // line's right-hand side; goal_time is an alternate input for whichever
+    // anchor race_pace_anchor names (HRA-121 — required whenever goal_time is
+    // supplied, no default). race_name/race_date (HRA-121) are independent of
+    // target_activity_id.
     instantiate: (templateId: number, body: {
       name: string; start_date: string; pace_overrides?: Record<string, string>;
-      goal_time?: string; distance_m?: number; target_activity_id?: number | null;
+      goal_time?: string; race_pace_anchor?: string; distance_m?: number; target_activity_id?: number | null;
+      race_name?: string; race_date?: string;
     }) => request<PlanInstanceWithDays>(`/api/v1/plan-templates/${templateId}/instantiate`, "POST", undefined, body),
   },
   planInstances: {
