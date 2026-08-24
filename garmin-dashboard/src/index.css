@@ -95,7 +95,7 @@
      The flat --data-pace/--data-hr tokens above remain each series'
      identity color for legend, axis ticks and tooltip text. */
 
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
   --font-mono: "JetBrains Mono", "Fira Code", monospace;
 
   --radius-sm: 6px;
@@ -965,10 +965,16 @@ input:focus, select:focus { border-color: var(--accent); }
    mismatch happened (HRA-121 follow-up). Scoped to .hra-instantiate-form
    rather than changing any of these classes' global defaults, which are
    shared by unrelated forms elsewhere in the app. */
+/* font-size explicit here (not just inherited from body's --fs-body) so a
+   raw <input> renders at the same size as .hra-select-trigger/.hra-date-
+   trigger (both already set font-size: var(--fs-label) themselves) — and so
+   the ::placeholder rule below, which doesn't set its own font-size and
+   just inherits from the input, actually matches the real value text
+   instead of body's larger default. */
 .hra-instantiate-form input,
 .hra-instantiate-form .hra-date-trigger,
 .hra-instantiate-form .hra-select-trigger,
-.hra-instantiate-form .hra-segment { height: var(--hra-field-h); }
+.hra-instantiate-form .hra-segment { height: var(--hra-field-h); font-size: var(--fs-label); }
 .hra-instantiate-form .hra-anchor-table input,
 .hra-instantiate-form .hra-anchor-table .hra-select-trigger,
 .hra-instantiate-form .hra-anchor-table .hra-segment { height: 28px; }
@@ -1000,9 +1006,12 @@ input:focus, select:focus { border-color: var(--accent); }
 /* Goal time as three small H/M/S fields (HRA-121 follow-up) instead of one
    free-text HH:MM:SS input — each one a fixed-width number field so the
    triplet reads as a clock, not three arbitrary boxes. */
-.hra-goal-time-fields { display: flex; align-items: center; gap: 4px; height: var(--hra-field-h); }
-.hra-goal-time-fields input { width: 44px; text-align: center; padding: 0; }
-.hra-goal-time-fields span { color: var(--text-muted); font-weight: 600; }
+.hra-goal-time-fields { display: flex; align-items: center; gap: 2px; height: var(--hra-field-h); }
+.hra-goal-time-fields input { width: 40px; text-align: center; padding: 0; }
+/* Unit suffix mask (hh"h" mm"m" ss"s") instead of colon separators — each
+   number is self-labeled, so "03" next to "h" reads unambiguously without
+   a legend. */
+.hra-goal-time-fields .hra-goal-time-unit { color: var(--text-muted); font-weight: 600; font-size: var(--fs-label); margin-right: 6px; }
 
 .hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }

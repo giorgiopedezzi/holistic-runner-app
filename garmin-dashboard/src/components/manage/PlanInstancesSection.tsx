@@ -585,10 +585,11 @@ export function PlanInstancesSection({ templates }: Props) {
             <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
               <div className="hra-goal-time-fields">
                 <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={!formEnabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
-                <span>:</span>
+                <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeHoursUnit", "h")}</span>
                 <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={!formEnabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
-                <span>:</span>
+                <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeMinutesUnit", "m")}</span>
                 <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={!formEnabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
+                <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeSecondsUnit", "s")}</span>
               </div>
             </Field>
             {showDistanceOverride && (
