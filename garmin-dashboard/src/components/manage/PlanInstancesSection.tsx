@@ -24,7 +24,6 @@ import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan
 import { isoToday } from "@/utils/date";
 
 const NONE_ANCHOR = "__none__";
-const FIELD_H = 32;
 
 // Mirrors garmin-stats/src/controllers/plan-templates.controller.ts's own
 // STANDARD_DISTANCE_M — used only for the live client-side resolution
@@ -44,10 +43,22 @@ function addDaysISO(dateISO: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-function parseGoalTimeSec(raw: string): number | null {
-  const m = /^(\d{2}):(\d{2}):(\d{2})$/.exec(raw.trim());
-  if (!m) return null;
-  return parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+// Goal time is entered as three small H/M/S number fields (each defaults to
+// "0", never a free-text HH:MM:SS string) — this combines them into total
+// seconds, or null while any field isn't a valid non-negative number.
+function goalTimeToSec(h: string, m: string, s: string): number | null {
+  const hn = Number(h), mn = Number(m), sn = Number(s);
+  if (![hn, mn, sn].every(n => Number.isFinite(n) && n >= 0)) return null;
+  return hn * 3600 + mn * 60 + sn;
+}
+function pad2(n: string): string {
+  return String(Math.max(0, Number(n) || 0)).padStart(2, "0");
+}
+function formatPaceSecPerKm(sec: number): string {
+  const total = Math.round(sec);
+  const min = Math.floor(total / 60);
+  const s = total % 60;
+  return `${min}:${String(s).padStart(2, "0")}/km`;
 }
 // Same grammar as a PACE line's right-hand side (garmin-stats/src/domain/
 // runplan/parser.ts's ABS_PACE_RE/OFFSET_RE) — for the live client-side
@@ -84,7 +95,7 @@ function anchorRowIsEmpty(row: AnchorRowState): boolean {
 function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-      <span className="hra-text-muted" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".03em" }}>
+      <span className="hra-field-label">
         {label}{required && <span className="hra-text-danger"> *</span>}
       </span>
       {children}
@@ -122,12 +133,16 @@ export function PlanInstancesSection({ templates }: Props) {
   // onDaysBeforeRaceChange/onRaceDateChange below).
   const [startDate, setStartDate] = useState(isoToday());
   const [daysBeforeRace, setDaysBeforeRace] = useState("");
-  // row 3 (pace) — racePaceAnchor is one of the template's own anchors, or
-  // NONE_ANCHOR; paceMode is forced to "anchor" whenever it's NONE_ANCHOR
-  // (Goal time has nothing to convert to without a designated anchor).
+  // row 3 (pace) — racePaceAnchor defaults to NONE_ANCHOR (never auto-picks
+  // one of the template's anchors); paceMode is forced to "anchor" whenever
+  // it's NONE_ANCHOR (Goal time has nothing to convert to without a
+  // designated anchor). Goal time is three small H/M/S fields, not one
+  // free-text string — each defaults to "0".
   const [racePaceAnchor, setRacePaceAnchor] = useState(NONE_ANCHOR);
-  const [paceMode, setPaceMode] = useState<"anchor" | "goalTime">("goalTime");
-  const [goalTime, setGoalTime] = useState("");
+  const [paceMode, setPaceMode] = useState<"anchor" | "goalTime">("anchor");
+  const [goalH, setGoalH] = useState("0");
+  const [goalM, setGoalM] = useState("0");
+  const [goalS, setGoalS] = useState("0");
   const [distanceM, setDistanceM] = useState("");
   // One row per template anchor (HRA-121: a table, not add/remove rows) —
   // keyed by anchor name, synced whenever the template changes.
@@ -155,8 +170,8 @@ export function PlanInstancesSection({ templates }: Props) {
   function resetInstantiateForm() {
     setTemplateId(""); setInstName(""); setRaceName(""); setRaceDate(""); setRaceUrl("");
     setStartDate(isoToday()); setDaysBeforeRace("");
-    setRacePaceAnchor(NONE_ANCHOR); setPaceMode("goalTime");
-    setGoalTime(""); setDistanceM(""); setAnchorRows({});
+    setRacePaceAnchor(NONE_ANCHOR); setPaceMode("anchor");
+    setGoalH("0"); setGoalM("0"); setGoalS("0"); setDistanceM(""); setAnchorRows({});
     setPendingTemplateId(null);
     setInstantiateError(null);
   }
@@ -192,9 +207,9 @@ export function PlanInstancesSection({ templates }: Props) {
   function applyTemplateChange(id: string) {
     setTemplateId(id);
     const anchors = collectPlanAnchors(parsePlan(templates?.find(tpl => String(tpl.id) === id)) ?? { metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} }, sections: [] });
-    setRacePaceAnchor(anchors.length > 0 ? anchors[0] : NONE_ANCHOR);
-    setPaceMode("goalTime");
-    setGoalTime(""); setDistanceM("");
+    setRacePaceAnchor(NONE_ANCHOR);
+    setPaceMode("anchor");
+    setGoalH("0"); setGoalM("0"); setGoalS("0"); setDistanceM("");
     setAnchorRows(Object.fromEntries(anchors.map(a => [a, emptyAnchorRow()])));
   }
 
@@ -270,8 +285,8 @@ export function PlanInstancesSection({ templates }: Props) {
     const policy: PacePolicy = {};
     if (hasRacePaceAnchor && paceMode === "goalTime") {
       const distM = previewGoalDistanceM();
-      const goalSec = parseGoalTimeSec(goalTime);
-      if (distM != null && goalSec != null) policy[racePaceAnchor] = { kind: "absolute", pace_sec_per_km: goalSec / (distM / 1000) };
+      const goalSec = goalTimeToSec(goalH, goalM, goalS);
+      if (distM != null && goalSec != null && goalSec > 0) policy[racePaceAnchor] = { kind: "absolute", pace_sec_per_km: goalSec / (distM / 1000) };
     }
     for (const anchor of templateAnchors) {
       if (hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor) continue; // derived above, not from its table row
@@ -295,6 +310,18 @@ export function PlanInstancesSection({ templates }: Props) {
   const unresolvedAnchors = resolution.filter(r => r.secPerKm == null).map(r => r.anchor);
   const allResolved = unresolvedAnchors.length === 0;
 
+  // The actual resolved pace for the race-pace anchor when it's derived from
+  // Goal time (HRA-121 follow-up) — shown in the table alongside the "(from
+  // goal time)" note, not replaced by it; null while goal time is still 0 or
+  // the distance can't be determined (unresolved).
+  const derivedPaceSecPerKm = (() => {
+    if (!(hasRacePaceAnchor && paceMode === "goalTime")) return null;
+    const distM = previewGoalDistanceM();
+    const goalSec = goalTimeToSec(goalH, goalM, goalS);
+    if (distM == null || goalSec == null || goalSec <= 0) return null;
+    return goalSec / (distM / 1000);
+  })();
+
   const canInstantiate = templateId !== "" && instName.trim() !== "" && startDate !== "" && allResolved;
 
   // HRA-121: "non-default data" gating the template-switch warning — start
@@ -303,7 +330,8 @@ export function PlanInstancesSection({ templates }: Props) {
     if (instName.trim() !== "" || raceName.trim() !== "" || raceDate !== "" || raceUrl.trim() !== "") return true;
     if (startDate !== isoToday()) return true;
     if (daysBeforeRace.trim() !== "") return true;
-    if (goalTime.trim() !== "" || distanceM.trim() !== "") return true;
+    if (goalH !== "0" || goalM !== "0" || goalS !== "0" || distanceM.trim() !== "") return true;
+    if (racePaceAnchor !== NONE_ANCHOR) return true;
     return Object.values(anchorRows).some(row => !anchorRowIsEmpty(row));
   }
 
@@ -324,7 +352,7 @@ export function PlanInstancesSection({ templates }: Props) {
         else if (row.relativeTo !== "" && row.seconds.trim() !== "") overrides[anchor] = `${row.relativeTo}${row.sign}${row.seconds.trim()}`;
       }
       if (hasRacePaceAnchor && paceMode === "goalTime") {
-        body.goal_time = goalTime.trim();
+        body.goal_time = `${pad2(goalH)}:${pad2(goalM)}:${pad2(goalS)}`;
         body.race_pace_anchor = racePaceAnchor;
         if (distanceM.trim() !== "") body.distance_m = Number(distanceM);
       }
@@ -490,7 +518,7 @@ export function PlanInstancesSection({ templates }: Props) {
               value={templateId} onValueChange={onTemplateSelectChange}
               options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
               placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
-              triggerStyle={{ height: FIELD_H, width: "100%" }}
+              triggerStyle={{ width: "100%" }}
             />
           </Field>
           <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
@@ -503,7 +531,7 @@ export function PlanInstancesSection({ templates }: Props) {
             <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={!formEnabled} />
           </Field>
           <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={!formEnabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "Optional — race URL")} style={{ width: "100%", padding: "0 10px" }} />
+            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={!formEnabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
           </Field>
         </div>
         <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
@@ -534,7 +562,7 @@ export function PlanInstancesSection({ templates }: Props) {
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
           <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
             <div className="hra-segment">
-              {[...templateAnchors, NONE_ANCHOR].map(a => (
+              {[NONE_ANCHOR, ...templateAnchors].map(a => (
                 <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={!formEnabled} onClick={() => onRacePaceAnchorChange(a)}>
                   {a === NONE_ANCHOR ? t("manage.planInstances.racePaceAnchorNone", "None") : a}
                 </button>
@@ -553,13 +581,19 @@ export function PlanInstancesSection({ templates }: Props) {
         </div>
 
         {hasRacePaceAnchor && paceMode === "goalTime" && (
-          <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "160px 200px" : "160px", gap: 10, marginBottom: 16 }}>
-            <Field label={t("manage.planInstances.goalTimeLabel", "Goal time (HH:MM:SS)")}>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalTime} onChange={e => setGoalTime(e.target.value)} disabled={!formEnabled} placeholder="03:30:00" style={{ width: "100%", padding: "0 10px", fontFamily: "monospace" }} />
+          <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "auto 200px" : "auto", gap: 10, marginBottom: 16 }}>
+            <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
+              <div className="hra-goal-time-fields">
+                <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={!formEnabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
+                <span>:</span>
+                <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={!formEnabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
+                <span>:</span>
+                <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={!formEnabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
+              </div>
             </Field>
             {showDistanceOverride && (
               <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
-                <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={!formEnabled} type="number" style={{ width: "100%", padding: "0 10px" }} />
+                <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={!formEnabled} type="number" style={{ width: "100%", padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
               </Field>
             )}
           </div>
@@ -607,12 +641,24 @@ export function PlanInstancesSection({ templates }: Props) {
                   const resolved = resolution.find(r => r.anchor === anchor)?.secPerKm ?? null;
                   return (
                     <tr key={anchor}>
-                      <td className="hra-anchor-name">{anchor}</td>
+                      <td className="hra-anchor-name">
+                        {anchor}
+                        {anchor === racePaceAnchor && (
+                          <span className="hra-anchor-tag">{t("manage.planInstances.racePaceTag", "(race pace)")}</span>
+                        )}
+                      </td>
                       <td className="hra-anchor-group-start">
                         {derived ? (
-                          <span className="hra-anchor-derived">{t("manage.planInstances.derivedFromGoalTime", "from goal time")}</span>
+                          derivedPaceSecPerKm != null ? (
+                            <>
+                              {formatPaceSecPerKm(derivedPaceSecPerKm)}
+                              <span className="hra-anchor-tag">{t("manage.planInstances.derivedFromGoalTime", "(from goal time)")}</span>
+                            </>
+                          ) : (
+                            <span className="hra-anchor-derived">—</span>
+                          )
                         ) : (
-                          <input value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder="5:10/km" style={{ width: "100%" }} />
+                          <input value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%" }} />
                         )}
                       </td>
                       <td className="hra-anchor-group-start">
@@ -620,11 +666,11 @@ export function PlanInstancesSection({ templates }: Props) {
                           value={row.relativeTo} onValueChange={v => setAnchorRelativeTo(anchor, v)}
                           options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
                           placeholder="—"
-                          triggerStyle={{ height: 28, width: "100%" }}
+                          triggerStyle={{ width: "100%" }}
                         />
                       </td>
                       <td>
-                        <div className="hra-segment" style={{ height: 28 }}>
+                        <div className="hra-segment">
                           <button className="hra-segment-item" data-active={row.sign === "+"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "+")}>+</button>
                           <button className="hra-segment-item" data-active={row.sign === "-"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "-")}>−</button>
                         </div>

@@ -939,13 +939,20 @@ input:focus, select:focus { border-color: var(--accent); }
   background: var(--bg-inset); color: var(--text-muted); font-weight: 700; font-size: var(--fs-meta);
   text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border-strong);
 }
-.hra-anchor-table thead tr.hra-anchor-sub th { color: var(--text-secondary); font-weight: 600; text-transform: none; letter-spacing: normal; }
+/* Sub-header row keeps the same uppercase/letter-spacing as the main
+   header row (HRA-121 follow-up) — a field label must look identical
+   everywhere it appears, never uppercase in one place and Capitalized in
+   another; only weight/color differentiate the tiers. */
+.hra-anchor-table thead tr.hra-anchor-sub th { color: var(--text-secondary); font-weight: 600; }
 .hra-anchor-table th.hra-anchor-group-start,
 .hra-anchor-table td.hra-anchor-group-start { border-left: 1px solid var(--border-strong); }
 .hra-anchor-table th.hra-anchor-group { text-align: center; }
 .hra-anchor-table tbody tr:last-child td { border-bottom: none; }
 .hra-anchor-table td.hra-anchor-name { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 600; color: var(--text-primary); }
 .hra-anchor-derived { font-size: var(--fs-meta); color: var(--text-muted); font-style: italic; }
+/* "(race pace)" / "(from goal time)" annotations — always italic 11px,
+   always parenthesized in the copy itself, never restyled per call site. */
+.hra-anchor-tag { font-size: var(--fs-meta); color: var(--text-muted); font-style: italic; margin-left: 6px; }
 
 /* Scoped height unification for the New Instance form (manage/
    PlanInstancesSection.tsx) — every editable control type (text/number
@@ -962,6 +969,33 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-instantiate-form .hra-anchor-table input[type="number"],
 .hra-instantiate-form .hra-anchor-table .hra-select-trigger,
 .hra-instantiate-form .hra-anchor-table .hra-segment { height: 28px; }
+
+/* One label class for every field in this form — same casing/size/weight
+   everywhere, so it's never uppercase in one place and Capitalized in
+   another (HRA-121 follow-up). */
+.hra-field-label {
+  font-size: var(--fs-meta); font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: .03em;
+}
+/* One placeholder style for every field in this form: italic, muted — the
+   visual cue that the text is an example/hint, not a real value. Pair with
+   an "e.g. " prefix in the copy itself whenever the placeholder shows a
+   concrete example value (not for purely instructional placeholders like
+   "Optional" or "Set a race date above"). */
+.hra-instantiate-form input::placeholder { font-style: italic; color: var(--text-muted); opacity: 1; }
+/* Remove native number-input spinners app-wide inside this form — replaced
+   by nothing (the up/down affordance isn't needed on any of these fields:
+   short numeric entry, not a range a user scrubs through). */
+.hra-instantiate-form input[type="number"]::-webkit-outer-spin-button,
+.hra-instantiate-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.hra-instantiate-form input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* Goal time as three small H/M/S fields (HRA-121 follow-up) instead of one
+   free-text HH:MM:SS input — each one a fixed-width number field so the
+   triplet reads as a clock, not three arbitrary boxes. */
+.hra-goal-time-fields { display: flex; align-items: center; gap: 4px; height: var(--hra-field-h); }
+.hra-goal-time-fields input { width: 44px; text-align: center; padding: 0; }
+.hra-goal-time-fields span { color: var(--text-muted); font-weight: 600; }
 
 .hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
