@@ -16,6 +16,7 @@ import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
 import { getUnitSystem } from "@/utils/units";
+import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
 import type { EventType, ParseWarning } from "@/types/runplan";
 
@@ -83,10 +84,19 @@ function hasOutstandingWarnings(editor: EditorState, planWarnings: ParseWarning[
   return editor.sections.some(s => s.weeks.some(w => w.days.some(d => d.needs_review)));
 }
 
-export function PlanTemplatesSection() {
+interface Props {
+  // Lifted to ManageTab (not fetched here) so PlanInstancesSection's own
+  // template picker/list stays in sync with a save/delete happening in this
+  // card — both are siblings mounted on the same tab, each independently
+  // fetching its own copy would otherwise go stale the moment the other one
+  // changes something.
+  templates: PlanTemplate[] | null;
+  templatesError: string | null;
+  refreshTemplates: () => Promise<void>;
+}
+
+export function PlanTemplatesSection({ templates, templatesError, refreshTemplates }: Props) {
   const { t } = useTranslation();
-  const [templates, setTemplates] = useState<PlanTemplate[] | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
 
   const [mode, setMode] = useState<"list" | "editor">("list");
   const [editingId, setEditingId] = useState<number | null>(null);
@@ -112,12 +122,6 @@ export function PlanTemplatesSection() {
   // there's actually anything new to preview, without re-triggering itself
   // off its own setEditor call (which doesn't change dslSource).
   const lastGeneratedRef = useRef<string | null>(null);
-
-  function refreshList() {
-    return api.planTemplates.list().then(setTemplates).catch(e => setListError(e instanceof Error ? e.message : t("manage.planTemplates.loadFailed", "Failed to load templates")));
-  }
-
-  useEffect(() => { refreshList(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetEditorState() {
     setEditingId(null); setSavedDslSource(null); setName(""); setEvent("");
@@ -329,7 +333,8 @@ export function PlanTemplatesSection() {
         : await api.planTemplates.create(name, event, editor.dslSource, distance);
       setEditingId(saved.id);
       setSavedDslSource(saved.dsl_source);
-      await refreshList();
+      await refreshTemplates();
+      notify(t("manage.planTemplates.saveSucceeded", "Template saved."));
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t("manage.planTemplates.saveFailed", "Failed to save template"));
     }
@@ -341,7 +346,8 @@ export function PlanTemplatesSection() {
     setApproveLoading(true);
     try {
       await api.planTemplates.approve(editingId);
-      await refreshList();
+      await refreshTemplates();
+      notify(t("manage.planTemplates.approveSucceeded", "Template approved."));
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t("manage.planTemplates.approveFailed", "Failed to approve template"));
     }
@@ -354,7 +360,8 @@ export function PlanTemplatesSection() {
       await api.planTemplates.remove(id);
       setDeleteConfirmId(null);
       if (editingId === id) { resetEditorState(); setMode("list"); }
-      await refreshList();
+      await refreshTemplates();
+      notify(t("manage.planTemplates.deleteSucceeded", "Template deleted."));
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : t("manage.planTemplates.deleteFailed", "Failed to delete template"));
     }
@@ -367,7 +374,7 @@ export function PlanTemplatesSection() {
         <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
           {t("manage.planTemplates.description", "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.")}
         </div>
-        {listError && <ErrorBanner message={listError} />}
+        {templatesError && <ErrorBanner message={templatesError} />}
         {templates === null ? (
           <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
         ) : templates.length === 0 ? (

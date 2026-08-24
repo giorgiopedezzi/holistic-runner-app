@@ -354,6 +354,24 @@ each round. Naming rule from the Epic HRA-52 reorg: **module = noun**, **command
   Name/Event type/Distance row — Name and Event type are fixed-width; only Distance (shown for a
   Custom event) is conditional, so selecting Custom extends the row without moving Name or Event
   type at all.
+- **⚠️ Every CTA with no direct UI impact must show a notification.** A click whose only visible
+  effect is a state change the user has to notice for themselves (a list quietly re-rendering, a
+  badge flipping) leaves the user unsure whether it actually worked — fire a toast
+  (`utils/toast.ts`'s `notify(message, "success" | "error")`, rendered by the app-root-mounted
+  `<ToastContainer/>`) on success. A CTA that already has an obvious, immediate visual result (a row
+  vanishing on delete inside a list, an inline `ErrorBanner` on failure) doesn't strictly need one,
+  but firing one anyway is never wrong — err toward notifying. Added 2026-08-24 (HRA-120) for the
+  plan-templates/plan-instances save/approve/delete/instantiate actions specifically; **not yet
+  retrofitted app-wide** — apply it when next touching a CTA elsewhere, the way HRA-105 treated
+  hardcoded text (fix on touch, don't mass-retrofit unprompted).
+- **⚠️ Sibling cards on the same tab must share data they both mutate, not each fetch their own
+  copy.** `PlanTemplatesSection` and `PlanInstancesSection` are two independently-mounted components
+  on `ManageTab` — a template saved in one is invisible to the other until a full remount, because
+  each held its own `useState` + `useEffect` fetch of the same `/api/v1/plan-templates` list.
+  Confirmed 2026-08-24 (HRA-120): fixed by lifting the shared list (and its refresh function) up to
+  `ManageTab` and passing both down as props — the standard React fix, no new state layer needed.
+  **When two sibling components both read a list that only one of them can mutate, lift that list to
+  their nearest common parent** rather than letting each fetch its own stale copy.
 - **⚠️ No hardcoded user-facing text in components — every label, tooltip, placeholder, button,
   empty-state, and error message goes through i18next's `t()`.** This includes JSX text, `title=`/
   `placeholder=`/`aria-label=` attributes, and string fallbacks in `catch` blocks — not just the

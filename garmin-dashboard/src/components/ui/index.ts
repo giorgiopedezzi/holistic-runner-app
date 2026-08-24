@@ -20,3 +20,4 @@ export { Select } from "./Select";
 export { Popover, PopoverTrigger, PopoverContent } from "./Popover";
 export { Calendar } from "./Calendar";
 export { DatePicker } from "./DatePicker";
+export { ToastContainer } from "./ToastContainer";

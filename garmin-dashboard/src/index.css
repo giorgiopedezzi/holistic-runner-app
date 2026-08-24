@@ -898,6 +898,25 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-select-item[data-disabled] { opacity: 0.4; pointer-events: none; }
 .hra-select-item-indicator { color: var(--accent); display: flex; }
 
+/* Toast notifications (utils/toast.ts, components/ui/ToastContainer.tsx) —
+   the app-wide feedback for a CTA with no other direct UI impact (a save,
+   an approve, a background action). Fixed bottom-right, above everything
+   else (.hra-select-content tops out at z-index 50). */
+.hra-toast-stack {
+  position: fixed; bottom: 20px; right: 20px; z-index: 100;
+  display: flex; flex-direction: column; gap: 8px;
+  max-width: min(360px, calc(100vw - 40px));
+}
+.hra-toast {
+  background: var(--bg-card); border: 1px solid var(--border-strong);
+  border-left: 3px solid var(--text-muted); border-radius: var(--radius-sm);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  padding: 10px 14px; font-size: var(--fs-label); color: var(--text-primary);
+  cursor: pointer; animation: hra-fade-in 0.15s ease-out;
+}
+.hra-toast[data-variant="success"] { border-left-color: var(--accent-green); }
+.hra-toast[data-variant="error"]   { border-left-color: var(--accent-red); }
+
 .hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
 .hra-calendar .rdp-nav { display: flex; justify-content: space-between; }

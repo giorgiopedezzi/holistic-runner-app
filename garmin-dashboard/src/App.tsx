@@ -8,7 +8,7 @@ import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
 import { SettingsProvider } from "@/hooks/useSettings";
 import { DateRangeBar } from "@/components/DateRangeBar";
-import { Select } from "@/components/ui";
+import { Select, ToastContainer } from "@/components/ui";
 import { fmtRaceLabel } from "@/utils/fmt";
 import { OverviewTab }  from "@/components/OverviewTab";
 import { ActivitiesTab } from "@/components/ActivitiesTab";
@@ -191,6 +191,10 @@ function AppShell() {
         {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
         {tab === "settings"   && <SettingsTab appearance={appearance} />}
       </main>
+
+      {/* Global success/error notifications (utils/toast.ts) — mounted once
+          here so any component can call notify() without a Provider. */}
+      <ToastContainer />
     </div>
   );
 }

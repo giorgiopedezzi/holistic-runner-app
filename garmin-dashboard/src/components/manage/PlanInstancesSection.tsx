@@ -17,15 +17,23 @@ import {
   groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, type SectionView,
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
+import { notify } from "@/utils/toast";
 import type { PlanTemplate, PlanInstance, RaceActivity } from "@/types/api";
 import type { ResolvedDay, WorkoutType } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
 
 const NO_RACE = "__no_race__";
 
-export function PlanInstancesSection() {
+interface Props {
+  // Lifted to ManageTab (not fetched here) — a template saved in the
+  // sibling PlanTemplatesSection card must show up in this card's own
+  // picker/list immediately, including enabling "New instance" the moment
+  // the very first template exists.
+  templates: PlanTemplate[] | null;
+}
+
+export function PlanInstancesSection({ templates }: Props) {
   const { t } = useTranslation();
-  const [templates, setTemplates] = useState<PlanTemplate[] | null>(null);
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
   const [races, setRaces] = useState<RaceActivity[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -61,7 +69,6 @@ export function PlanInstancesSection() {
 
   useEffect(() => {
     refreshInstances();
-    api.planTemplates.list().then(setTemplates).catch(() => setTemplates([]));
     api.garmin.races().then(setRaces).catch(() => setRaces([]));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -100,6 +107,7 @@ export function PlanInstancesSection() {
       await refreshInstances();
       resetInstantiateForm();
       setMode("list");
+      notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
     } catch (e) {
       setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
     }
@@ -160,6 +168,7 @@ export function PlanInstancesSection() {
       }));
       setSections(sectionsFromDays(resolvedDays));
       await refreshInstances();
+      notify(t("manage.planInstances.saveSucceeded", "Instance saved."));
     } catch (e) {
       setEditError(e instanceof Error ? e.message : t("manage.planInstances.saveFailed", "Failed to save instance"));
     }
@@ -172,6 +181,7 @@ export function PlanInstancesSection() {
     try {
       await api.planInstances.approve(editingId);
       await refreshInstances();
+      notify(t("manage.planInstances.approveSucceeded", "Instance approved."));
     } catch (e) {
       setEditError(e instanceof Error ? e.message : t("manage.planInstances.approveFailed", "Failed to approve instance"));
     }
@@ -185,6 +195,7 @@ export function PlanInstancesSection() {
       setDeleteConfirmId(null);
       if (editingId === id) { resetEditor(); setMode("list"); }
       await refreshInstances();
+      notify(t("manage.planInstances.deleteSucceeded", "Instance deleted."));
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : t("manage.planInstances.deleteFailed", "Failed to delete instance"));
     }
