@@ -207,7 +207,7 @@ export function PlanInstancesSection() {
             {instances.map(inst => (
               <div key={inst.id} className="hra-border-strong" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8 }}>
                 <span className="hra-text-primary" style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{inst.name ?? t("manage.planInstances.untitled", "Untitled instance")}</span>
-                {inst.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{inst.event}</span>}
+                {inst.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${inst.event}`, inst.event)}</span>}
                 <span className="hra-text-muted" style={{ fontSize: 11 }}>{inst.start_date}</span>
                 <Badge
                   label={inst.approved_at ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}

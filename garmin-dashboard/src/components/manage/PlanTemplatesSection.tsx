@@ -188,6 +188,14 @@ export function PlanTemplatesSection() {
     });
   }
 
+  // Fixed width (the longest option in the current language, plus room for
+  // the trigger's icon/padding) so picking a shorter/longer event type never
+  // shifts the layout — computed from the live-translated labels rather than
+  // hardcoded per language.
+  const eventOptions = EVENT_OPTIONS.map(v => ({ value: v, label: t(`manage.planTemplates.event.${v}`, v) }));
+  const eventPlaceholder = t("manage.planTemplates.eventPlaceholder", "Pick an event type…");
+  const eventSelectWidth = Math.max(...eventOptions.map(o => o.label.length), eventPlaceholder.length) + 3;
+
   const generated = editor.sections.length > 0;
   const isCustomEvent = event === "custom";
   const canSave = generated && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== ""
@@ -252,7 +260,7 @@ export function PlanTemplatesSection() {
             {templates.map(tpl => (
               <div key={tpl.id} className="hra-border-strong" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8 }}>
                 <span className="hra-text-primary" style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{tpl.name}</span>
-                {tpl.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{tpl.event}</span>}
+                {tpl.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
                 <Badge
                   label={tpl.approved_at ? t("manage.planTemplates.approved", "Approved") : t("manage.planTemplates.notApproved", "Not approved")}
                   color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
@@ -285,40 +293,43 @@ export function PlanTemplatesSection() {
         {editingId == null ? t("manage.planTemplates.createTitle", "New template") : t("manage.planTemplates.editTitle", "Edit template")}
       </div>
 
-      <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
-        {t("manage.planTemplates.nameLabel", "Name")}
-        <input
-          className="hra-border-strong hra-bg-card hra-text-primary"
-          value={name}
-          onChange={e => setName(e.target.value)}
-          style={{ width: "100%", marginTop: 4, padding: 6 }}
-        />
-      </label>
-
-      <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
-        {t("manage.planTemplates.eventLabel", "Event")}
-        <div style={{ marginTop: 4 }}>
-          <Select
-            value={event}
-            onValueChange={v => setEvent(v as EventType)}
-            options={EVENT_OPTIONS.map(v => ({ value: v, label: t(`manage.planTemplates.event.${v}`, v) }))}
-            placeholder={t("manage.planTemplates.eventPlaceholder", "Pick an event…")}
-          />
-        </div>
-      </label>
-
-      {isCustomEvent && (
-        <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
-          {t("manage.planTemplates.distanceLabel", "Distance (m)")}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "2 1 160px" }}>
+          {t("manage.planTemplates.nameLabel", "Name")}
           <input
             className="hra-border-strong hra-bg-card hra-text-primary"
-            value={distanceM}
-            onChange={e => setDistanceM(e.target.value)}
-            type="number"
+            value={name}
+            onChange={e => setName(e.target.value)}
             style={{ width: "100%", marginTop: 4, padding: 6 }}
           />
         </label>
-      )}
+
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 0 auto" }}>
+          {t("manage.planTemplates.eventLabel", "Event type")}
+          <div style={{ marginTop: 4 }}>
+            <Select
+              value={event}
+              onValueChange={v => setEvent(v as EventType)}
+              options={eventOptions}
+              placeholder={eventPlaceholder}
+              triggerStyle={{ width: `${eventSelectWidth}ch` }}
+            />
+          </div>
+        </label>
+
+        {isCustomEvent && (
+          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 120px" }}>
+            {t("manage.planTemplates.distanceLabel", "Distance (m)")}
+            <input
+              className="hra-border-strong hra-bg-card hra-text-primary"
+              value={distanceM}
+              onChange={e => setDistanceM(e.target.value)}
+              type="number"
+              style={{ width: "100%", marginTop: 4, padding: 6 }}
+            />
+          </label>
+        )}
+      </div>
 
       <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
         {t("manage.planTemplates.dslSourceLabel", "DSL text")}
