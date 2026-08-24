@@ -333,12 +333,11 @@ export function PlanTemplatesSection() {
         {editingId == null ? t("manage.planTemplates.createTitle", "New template") : t("manage.planTemplates.editTitle", "Edit template")}
       </div>
 
-      {/* Name is the only field that grows — Event type and Distance are
-          fixed-width, so toggling Distance on/off (switching to/from Custom)
-          only ever changes Name's width by exactly the space Distance takes,
-          never a proportional-share jump across all three fields. */}
+      {/* Fixed widths, no flex-grow, on every field (CLAUDE.md's "no moving
+          UI" rule) — Distance only shows for a Custom event, and it must
+          only extend the row to the right, never shift Name or Event type. */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 200px" }}>
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 240px" }}>
           {t("manage.planTemplates.nameLabel", "Name")}
           <input
             className="hra-border-strong hra-bg-card hra-text-primary"

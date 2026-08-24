@@ -342,6 +342,18 @@ each round. Naming rule from the Epic HRA-52 reorg: **module = noun**, **command
   would silently break unit propagation with no test or type error to catch it. See Epic **HRA-65**,
   which forbids exactly this "optimisation" for the same reason.
 - **No `localStorage`** or browser storage APIs
+- **⚠️ No moving UI — a field that conditionally appears must not shift its stable siblings.**
+  When a control's presence depends on another control's value (a dropdown choice, a toggle), give
+  the siblings that stay on screen a **fixed width**, not `flex-grow`/proportional sizing — the new
+  field should only extend the row to the right (or wrap, if the row is genuinely out of room),
+  never reflow elements that were already there. A user should never see already-placed fields
+  visibly shift position or size as a side effect of picking something elsewhere on the form.
+  **Why:** `flex-grow` on multiple siblings recomputes every sibling's share the instant one more
+  item joins the flex layout — the visible symptom is a jarring snap, not a smooth resize, even
+  though nothing moved "far." Confirmed 2026-08-24 (HRA-120): `PlanTemplatesSection.tsx`'s
+  Name/Event type/Distance row — Name and Event type are fixed-width; only Distance (shown for a
+  Custom event) is conditional, so selecting Custom extends the row without moving Name or Event
+  type at all.
 - **⚠️ No hardcoded user-facing text in components — every label, tooltip, placeholder, button,
   empty-state, and error message goes through i18next's `t()`.** This includes JSX text, `title=`/
   `placeholder=`/`aria-label=` attributes, and string fallbacks in `catch` blocks — not just the
