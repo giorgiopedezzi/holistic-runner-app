@@ -7,7 +7,7 @@
 export type DisplayUnit = "km" | "mi";
 export type OffsetUnit = "s/km" | "s/mi";
 export type RestType = "stand" | "walk" | "jog";
-export type EventType = "5k" | "10k" | "half" | "marathon" | "ultra" | "custom";
+export type EventType = "5k" | "10k" | "half" | "marathon" | "custom";
 
 export type PacePolicy = Record<string, PaceValue>;
 export type PaceValue = AbsolutePace | OffsetPace | UnboundPace;

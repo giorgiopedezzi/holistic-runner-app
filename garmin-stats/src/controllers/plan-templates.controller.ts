@@ -16,6 +16,7 @@ import type { PlanTemplateRow } from "../db.ts";
 import { parseRunPlanDSL, parsePaceValue, parseDayEntry } from "../domain/runplan/parser.ts";
 import { instantiatePlan, resolveDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
+import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
 import type { DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
@@ -27,8 +28,9 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const GOAL_TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
 
 // Mirrors the standard-distance seed values in db.ts's activity_types table
-// (5k/10k/half/marathon) — ultra/custom have no fixed distance, hence AC10's
-// explicit distance_m requirement for those two event types.
+// (5k/10k/half/marathon) — custom has no fixed distance, which is why
+// distance_m is mandatory on create/update whenever event === "custom"
+// (HRA-120's resolveEventAndDistance below).
 const STANDARD_DISTANCE_M: Partial<Record<EventType, number>> = {
   "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195,
 };
@@ -42,7 +44,7 @@ function parseIdForAction(pathname: string): number {
   return Number(parts[parts.length - 2]);
 }
 
-type TemplateBody = Partial<{ name: string; dsl_source: string }>;
+type TemplateBody = Partial<{ name: string; event: string; distance_m: number; dsl_source: string }>;
 type GenerateBody = Partial<{ dsl_source: string }>;
 type InstantiateBody = Partial<{
   name: string; start_date: string; pace_overrides: Record<string, string>;
@@ -106,6 +108,29 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, { plan: result.plan, warnings: result.warnings });
   };
 
+  // HRA-120: event is now an explicit, validated request field (replacing
+  // free DSL text) — required, one of eventTypeSchema's 5 values;
+  // distance_m is required iff event === "custom", rejected for any other
+  // event (a standard event already has a fixed distance, see
+  // STANDARD_DISTANCE_M above).
+  function resolveEventAndDistance(body: TemplateBody): { event: EventType; distanceM: number | undefined } {
+    const parsedEvent = eventTypeSchema.safeParse(body.event);
+    if (!parsedEvent.success) {
+      throw unprocessable(`event is required and must be one of: ${eventTypeSchema.options.join(", ")}.`);
+    }
+    const event = parsedEvent.data;
+    if (event === "custom") {
+      if (typeof body.distance_m !== "number" || !(body.distance_m > 0)) {
+        throw unprocessable("distance_m is required and must be a positive number when event is custom.");
+      }
+      return { event, distanceM: body.distance_m };
+    }
+    if (body.distance_m != null) {
+      throw unprocessable("distance_m may only be supplied when event is custom.");
+    }
+    return { event, distanceM: undefined };
+  }
+
   // Shared by create/update: parse the DSL and require zero outstanding
   // warnings anywhere in the tree (HRA-113 gate 1) — a template can't be
   // saved while any day is still flagged, same rule the future accordion UI
@@ -114,6 +139,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const name = body.name?.trim();
     if (!name) throw unprocessable("name is required.");
     if (!body.dsl_source?.trim()) throw unprocessable("dsl_source is required.");
+    const { event, distanceM } = resolveEventAndDistance(body);
     const result = parseRunPlanDSL(body.dsl_source);
     if (!result.ok) {
       throw unprocessable("DSL failed to parse.", { errors: result.errors.map(e => ({ field: `line:${e.line}`, message: e.message })) });
@@ -122,6 +148,11 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (warnings.length > 0) {
       throw unprocessable("DSL parsed but has outstanding warnings — resolve every flagged item before saving.", { errors: warnings });
     }
+    // event/distance_m come from the request body, not DSL text (HRA-120) —
+    // unconditionally overwrite whatever the now-vestigial EVENT/DISTANCE
+    // lines the parser saw produced.
+    result.plan.metadata.event = event;
+    result.plan.metadata.distance_m = distanceM;
     return { name, dslSource: body.dsl_source, plan: result.plan };
   }
 
@@ -172,10 +203,11 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   // Resolves the distance used to convert a goal_time into an RG pace
   // (docs/runplan-dsl-future-notes.md §6): an explicit distance_m on the
-  // instantiate call wins, then the template's own DISTANCE metadata, then
-  // the event's fixed standard distance. ultra/custom have no standard
-  // distance, so a goal_time for those events requires distance_m explicitly
-  // (AC10) — surfaced as a 422, not a silent fallback.
+  // instantiate call wins, then the template's own distance_m (HRA-120:
+  // always set on a custom-event template, from its create/update request
+  // body), then the event's fixed standard distance. custom has no standard
+  // distance, so this only 422s if a custom-event template somehow has no
+  // distance_m at all — shouldn't happen given create/update's own gate.
   function resolveGoalConversionDistance(plan: RunPlan, explicitDistanceM: number | undefined): number {
     if (explicitDistanceM != null) return explicitDistanceM;
     if (plan.metadata.distance_m != null) return plan.metadata.distance_m;

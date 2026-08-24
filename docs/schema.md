@@ -68,13 +68,23 @@ specific race.
 
 `plan_templates`: `id`, `name`, `dsl_source` (TEXT, the original DSL text — kept so a structural
 edit can be re-parsed later), `parsed_plan` (TEXT, JSON-serialized pre-resolution `RunPlan` from
-`domain/runplan/parser.ts`), `event` (from `PlanMetadata.event`), `approved_at` (nullable TEXT —
+`domain/runplan/parser.ts`), `event`, `approved_at` (nullable TEXT —
 HRA-113 gate 2, see below), `created_at`. A template can only be saved if its DSL parses
 (`ParseResult.ok`) **and** has zero outstanding warnings anywhere in the tree (HRA-113 — replaces
 HRA-111's bottom-up `valid`/`errors` model, which no longer exists: nothing the parser encounters is
 a hard error anymore) — `POST`/`PUT` reject with 422 otherwise, walking the whole section→week→day
 tree to report every flagged day's own warnings plus any plan-scoped ones (unrecognized lines,
 circular pace refs).
+
+**`event`/`distance_m` are explicit request fields, not DSL text (HRA-120):** `POST`/`PUT
+/api/v1/plan-templates` require `event` (one of `5k | 10k | half | marathon | custom`) and, iff
+`event === "custom"`, `distance_m` (rejected with 422 if supplied for any other event). The
+controller sets `plan.metadata.event`/`plan.metadata.distance_m` from these fields **after**
+parsing, unconditionally overwriting whatever the DSL's now-vestigial `EVENT`/`DISTANCE` lines
+produced — `distance_m` still lives inside `parsed_plan.metadata.distance_m` (no dedicated column),
+just sourced from the request now. `PLAN`, `NAME`, plan-level `START`, `GOAL`, and
+`EVENT`/`EVENT_TYPE`/plan-level `DISTANCE` are all optional and vestigial in the DSL grammar itself
+— see `docs/runplan-dsl.md`.
 
 **Two independent save gates (HRA-113):** **gate 1** (automatic) is the zero-warning check above —
 it governs whether `POST`/`PUT` succeed at all. **Gate 2** (`approved_at`, deliberate) is a
@@ -110,15 +120,18 @@ request body requires `name` (string, 422 if missing/blank) — the instance's o
 never a request parameter; it's always auto-populated as a denormalized copy of the template's
 `event` at creation time.
 
-**Instantiation-time pace input (HRA-113):** the instantiate call accepts pace anchors two ways —
-`pace_overrides` (explicit `PacePolicy`-shaped values, as before) or a `goal_time` (`HH:MM:SS`),
-converted to the `RG` anchor via `goal_time_sec / (distance_m / 1000)`. The distance used is, in
-order: an explicit `distance_m` on the instantiate call, then the template's own `DISTANCE`
-metadata, then the event's fixed standard distance (5k/10k/half/marathon, mirroring
-`activity_types.min_distance_m`'s seed values). `ultra`/`custom` events have no standard distance,
-so a `goal_time` for those events requires an explicit `distance_m` on the instantiate call — a 422
-otherwise. Supplying both `goal_time` and an explicit `RG` in `pace_overrides` is rejected as
-ambiguous.
+**Instantiation-time pace input (HRA-113, distance source updated HRA-120):** the instantiate call
+accepts pace anchors two ways — `pace_overrides` (explicit `PacePolicy`-shaped values, as before) or
+a `goal_time` (`HH:MM:SS`), converted to the `RG` anchor via `goal_time_sec / (distance_m / 1000)`.
+The distance used is, in order: an explicit `distance_m` on the instantiate call, then the
+template's own `distance_m` (HRA-120: always set on a `custom`-event template, from its
+create/update request body — no longer a DSL `DISTANCE` line), then the event's fixed standard
+distance (5k/10k/half/marathon, mirroring `activity_types.min_distance_m`'s seed values). `custom`
+has no standard distance, but since `distance_m` is mandatory at save time for a `custom`-event
+template, a `goal_time` call for one always has a distance to fall back to without supplying
+`distance_m` explicitly — the instantiate-call override still exists for a race with a different
+distance than the template's own. Supplying both `goal_time` and an explicit `RG` in
+`pace_overrides` is rejected as ambiguous.
 
 **Editing an instance (HRA-113, extended HRA-114, HRA-115):** `PUT /api/v1/plan-instances/:id`
 replaces the instance's `name` and resolved days wholesale (`{name, days: [...]}`). `name` is

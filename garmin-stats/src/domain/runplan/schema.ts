@@ -9,7 +9,7 @@ import { z } from "zod";
 export const displayUnitSchema = z.enum(["km", "mi"]);
 export const offsetUnitSchema = z.enum(["s/km", "s/mi"]);
 export const restTypeSchema = z.enum(["stand", "walk", "jog"]);
-export const eventTypeSchema = z.enum(["5k", "10k", "half", "marathon", "ultra", "custom"]);
+export const eventTypeSchema = z.enum(["5k", "10k", "half", "marathon", "custom"]);
 
 export const absolutePaceSchema = z.object({
   kind: z.literal("absolute"),

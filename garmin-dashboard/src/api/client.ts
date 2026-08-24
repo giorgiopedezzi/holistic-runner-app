@@ -12,7 +12,7 @@ import type {
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, Palette,
 } from "@/types/api";
-import type { ParseWarning, RunPlan } from "@/types/runplan";
+import type { EventType, ParseWarning, RunPlan } from "@/types/runplan";
 
 // Sentinel "give me everything" limit for consumers that need the full set
 // (charts, previews, bulk actions) rather than a page — see HRA-38. The server
@@ -225,8 +225,13 @@ export const api = {
     // Parse-only preview, never persists (HRA-113) — what the create/edit
     // flow calls on every "Generate"/"Refresh preview" click.
     generate: (dsl_source: string) => request<{ plan: RunPlan; warnings: ParseWarning[] }>("/api/v1/plan-templates/generate", "POST", undefined, { dsl_source }),
-    create: (name: string, dsl_source: string) => request<PlanTemplate>("/api/v1/plan-templates", "POST", undefined, { name, dsl_source }),
-    update: (id: number, name: string, dsl_source: string) => request<PlanTemplate>(`/api/v1/plan-templates/${id}`, "PUT", undefined, { name, dsl_source }),
+    // event/distance_m (HRA-120): explicit request fields, replacing the old
+    // DSL-text EVENT/DISTANCE lines — distance_m only meaningful (and only
+    // sent) when event is "custom".
+    create: (name: string, event: EventType, dsl_source: string, distance_m?: number) =>
+      request<PlanTemplate>("/api/v1/plan-templates", "POST", undefined, { name, event, distance_m, dsl_source }),
+    update: (id: number, name: string, event: EventType, dsl_source: string, distance_m?: number) =>
+      request<PlanTemplate>(`/api/v1/plan-templates/${id}`, "PUT", undefined, { name, event, distance_m, dsl_source }),
     approve: (id: number) => request<PlanTemplate>(`/api/v1/plan-templates/${id}/approve`, "POST"),
     remove: (id: number) => request<null>(`/api/v1/plan-templates/${id}`, "DELETE"),
     // POST /api/v1/plan-templates/:id/instantiate (HRA-112/HRA-113/HRA-114) —

@@ -415,35 +415,47 @@ for (const bad of ["D3: 10x1000m @ RG-25", "D2: 6x1mi @ HMP", "D4: 5x4min @ RG-1
 
 // ── Metadata ─────────────────────────────────────────────────────────────
 
-test("metadata: PLAN header required — missing header returns ok:false", () => {
+test("metadata: omitting PLAN as the first line still parses successfully (HRA-120)", () => {
   const result = parseRunPlanDSL("NAME x\nWEEK 1\nD1: REST\n");
-  assert.equal(result.ok, false);
+  assert.equal(result.ok, true);
 });
 
-test("metadata: empty input returns ok:false", () => {
+test("metadata: empty input returns ok:false — the only remaining ok:false case (HRA-120)", () => {
   const result = parseRunPlanDSL("");
   assert.equal(result.ok, false);
 });
 
-test("metadata: NAME/EVENT/GOAL/DISTANCE/UNIT/OFFSET_UNIT/DEFAULT_REST parse", () => {
+test("metadata: UNIT/OFFSET_UNIT/DEFAULT_REST still parse and apply", () => {
   const plan = mustParse(`PLAN
-NAME Test Plan
-EVENT marathon
-DISTANCE 42.195km
-GOAL 03:00:00
 UNIT mi
 OFFSET_UNIT s/mi
 DEFAULT_REST stand
 WEEK 1
 D1: REST
 `);
-  assert.equal(plan.metadata.name, "Test Plan");
-  assert.equal(plan.metadata.event, "marathon");
-  assert.ok(Math.abs(plan.metadata.distance_m! - 42195) < 1);
-  assert.equal(plan.metadata.goal_time_sec, 3 * 3600);
   assert.equal(plan.metadata.unit, "mi");
   assert.equal(plan.metadata.offset_unit, "s/mi");
   assert.equal(plan.metadata.default_rest, "stand");
+});
+
+test("metadata (HRA-120): PLAN/NAME/plan-level START/GOAL/EVENT(_TYPE)/plan-level DISTANCE are vestigial — recognized with zero warnings, values discarded", () => {
+  const result = parseRunPlanDSL(`PLAN
+NAME Test Plan
+EVENT marathon
+DISTANCE 42.195km
+GOAL 03:00:00
+START 2026-01-01
+WEEK 1
+D1: REST
+`);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.equal(result.warnings.length, 0);
+  assert.equal(result.plan.metadata.name, undefined);
+  assert.equal(result.plan.metadata.event, undefined);
+  assert.equal(result.plan.metadata.distance_m, undefined);
+  assert.equal(result.plan.metadata.goal_time_sec, undefined);
+  assert.equal(result.plan.metadata.start_date, undefined);
 });
 
 test("metadata: missing fields fall back to documented defaults", () => {
@@ -454,12 +466,12 @@ test("metadata: missing fields fall back to documented defaults", () => {
   assert.deepEqual(plan.metadata.pace_policy, {});
 });
 
-test("metadata: unknown EVENT value stores 'custom' and warns", () => {
+test("metadata: an EVENT line with any content — recognized, unrecognized, whatever — is vestigial and produces zero warnings (HRA-120)", () => {
   const result = parseRunPlanDSL("PLAN\nEVENT triathlon\nWEEK 1\nD1: REST\n");
   assert.equal(result.ok, true);
   if (!result.ok) throw new Error("unreachable");
-  assert.equal(result.plan.metadata.event, "custom");
-  assert.ok(result.warnings.some(w => w.message.includes("triathlon")));
+  assert.equal(result.warnings.length, 0);
+  assert.equal(result.plan.metadata.event, undefined);
 });
 
 test("metadata: PACE absolute and relative parse at plan scope", () => {
@@ -699,9 +711,11 @@ D1: REST
   assert.ok(result.warnings.some(w => w.message.toLowerCase().includes("circular")));
 });
 
-test("EVENT_TYPE is accepted as an alias for EVENT", () => {
-  const plan = mustParse("PLAN\nEVENT_TYPE marathon\nWEEK 1\nD1: REST\n");
-  assert.equal(plan.metadata.event, "marathon");
+test("EVENT_TYPE is recognized as an alias for EVENT — vestigial, zero warnings (HRA-120)", () => {
+  const result = parseRunPlanDSL("PLAN\nEVENT_TYPE marathon\nWEEK 1\nD1: REST\n");
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.equal(result.warnings.length, 0);
 });
 
 test("PACE <ANCHOR>=TBD marks the anchor deliberately unbound: no plan-level warning, and a day using it does NOT need review during template parsing", () => {

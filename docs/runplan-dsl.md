@@ -29,18 +29,30 @@ it — see `docs/schema.md`'s `plan_templates`/`plan_instances`/`plan_instance_d
   symbolic paces into concrete `*_sec_per_km` values for one race (HRA-112).
 
 ## Grammar (line-based)
-A document is `PLAN`, then metadata lines (`NAME`/`EVENT`/`DISTANCE`/`GOAL`/`START`/`UNIT`/
-`OFFSET_UNIT`/`DEFAULT_REST`/`PACE`, only valid before the first `SECTION`/`WEEK`/`DAY` line;
-`EVENT_TYPE` is accepted as an alias for `EVENT` — same grammar, same recognized values below),
-then `SECTION "<name>" WEEKS <spec>` blocks (a default `{name:"Plan", week_spec:"*"}` section is
-created if none is declared), each containing `WEEK <n> [START <date>]` blocks, each containing
-`D<1-7><suffix?> [tag]?: <workout>` lines. Trailing `# note` is captured on `SECTION`/`WEEK`/`DAY`
-lines; full-line `#...` comments and blank lines are ignored everywhere.
+A document is an optional `PLAN` header, then metadata lines (`NAME`/`EVENT`/`DISTANCE`/`GOAL`/
+`START`/`UNIT`/`OFFSET_UNIT`/`DEFAULT_REST`/`PACE`, only valid before the first `SECTION`/`WEEK`/
+`DAY` line; `EVENT_TYPE` is accepted as an alias for `EVENT`), then `SECTION "<name>" WEEKS <spec>`
+blocks (a default `{name:"Plan", week_spec:"*"}` section is created if none is declared), each
+containing `WEEK <n> [START <date>]` blocks, each containing `D<1-7><suffix?> [tag]?: <workout>`
+lines. Trailing `# note` is captured on `SECTION`/`WEEK`/`DAY` lines; full-line `#...` comments and
+blank lines are ignored everywhere.
 
-**`EVENT`/`EVENT_TYPE <value>`** recognizes `5k`/`10k`/`half`/`marathon`/`ultra` (case-insensitive) —
-anything else is still accepted but stored as `custom` with a `ParseWarning`, which matters at
-instantiate time: `ultra`/`custom` have no standard distance, so converting a `goal_time` into the
-`RG` anchor then requires an explicit `distance_m` (see `docs/schema.md`'s instantiate section).
+**`PLAN`/`NAME`/plan-level `START`/`GOAL`/`EVENT`(`_TYPE`)/plan-level `DISTANCE` are all optional and
+vestigial (HRA-120):** a template only needs to describe reusable structure — weeks, days, workout
+DSL, and the pace-anchor definitions those workouts reference. These six keywords/lines don't earn
+a place there: `PLAN` is no longer a mandatory first-line header (its absence no longer fails the
+parse — empty input is now the *only* `ok:false` case); `NAME`/plan-level `START`/`GOAL` are
+recognized (so they don't trip an "unrecognized line" warning) but their values are simply discarded
+— nothing downstream reads them; `EVENT`/`EVENT_TYPE` and plan-level `DISTANCE` are recognized the
+same way, but `event`/`distance_m` are now explicit, validated fields on the `POST`/`PUT
+/api/v1/plan-templates` request body instead (`{name, event, distance_m?, dsl_source}` —
+`docs/api.md`) — the controller sets `plan.metadata.event`/`.distance_m` from those fields *after*
+parsing, unconditionally overwriting whatever a (now-vestigial) `EVENT`/`DISTANCE` line produced. A
+`dsl_source` containing any of these six always parses with **zero warnings**, whether or not it's
+present. `event` is one of exactly 5 values — `5k | 10k | half | marathon | custom` (`ultra` was
+removed everywhere: it was already functionally identical to `custom`, since neither has a
+standard-distance table entry — see `docs/schema.md`). `distance_m` is required iff
+`event === "custom"`, rejected (422) if supplied for any other event.
 
 A day's workout is one of `REST`, `TODO` (→ `needs_review:true`), `CROSS [<target>] <description>`,
 `STRENGTH [<target>] <description>`, or one or more `;`-separated segments:
@@ -103,13 +115,12 @@ overridden in a more specific scope** — this is the DSL's central feature (see
 tests below for worked examples).
 
 ## Warnings-only model (HRA-113 — no more hard parse errors)
-Everything the parser encounters short of two document-level cases degrades to a `ParseWarning`,
-never a rejection — reverses HRA-111's earlier bottom-up `valid`/`errors` model (`DayEntry`/`Week`/
-`Section`/`RunPlan` no longer carry `valid`/`errors` at all; those fields were removed, not just
-deprecated). `parseRunPlanDSL` still returns `ok:false` (no plan at all) for genuinely unparseable
-input — **empty input, or a document missing the `PLAN` header as its first line** — nothing
-broader; everything else returns a full plan tree, with problem days flagged instead of the parse
-failing.
+Everything the parser encounters degrades to a `ParseWarning`, never a rejection — reverses
+HRA-111's earlier bottom-up `valid`/`errors` model (`DayEntry`/`Week`/`Section`/`RunPlan` no longer
+carry `valid`/`errors` at all; those fields were removed, not just deprecated). `parseRunPlanDSL`
+still returns `ok:false` (no plan at all) for genuinely unparseable input — **empty input, the only
+remaining case (HRA-120 dropped the missing-`PLAN`-header case, since `PLAN` is now optional)** —
+everything else returns a full plan tree, with problem days flagged instead of the parse failing.
 
 **`DayEntry.warnings: ParseWarning[]`** holds every day-scoped issue (missing interval rest, an
 unresolved pace anchor, an unrecognized token, a `?` placeholder, invalid day-line syntax).

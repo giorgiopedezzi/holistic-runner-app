@@ -20,11 +20,11 @@ test("GET /api/v1/plan-instances lists all instances, optionally filtered by tem
   try {
     const t1 = await server.api("/api/v1/plan-templates", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Template A", dsl_source: DSL }),
+      body: JSON.stringify({ name: "Template A", event: "marathon", dsl_source: DSL }),
     });
     const t2 = await server.api("/api/v1/plan-templates", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "Template B", dsl_source: DSL }),
+      body: JSON.stringify({ name: "Template B", event: "marathon", dsl_source: DSL }),
     });
     const templateA = (t1.json as any).id;
     const templateB = (t2.json as any).id;

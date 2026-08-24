@@ -11,16 +11,20 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge } from "@/components/ui";
+import { Card, ErrorBanner, Badge, Select } from "@/components/ui";
 import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
 import type { PlanTemplate } from "@/types/api";
-import type { ParseWarning } from "@/types/runplan";
+import type { EventType, ParseWarning } from "@/types/runplan";
 
 interface EditorState { dslSource: string; sections: SectionView[] }
 
 const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [] };
+
+// HRA-120: event is now an explicit, required template field (replacing the
+// old DSL-text EVENT line); distance_m is required only for "custom".
+const EVENT_OPTIONS: readonly EventType[] = ["5k", "10k", "half", "marathon", "custom"];
 
 function hasOutstandingWarnings(editor: EditorState, planWarnings: ParseWarning[]): boolean {
   if (planWarnings.length > 0) return true;
@@ -36,6 +40,8 @@ export function PlanTemplatesSection() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [savedDslSource, setSavedDslSource] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [event, setEvent] = useState<EventType | "">("");
+  const [distanceM, setDistanceM] = useState("");
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
   const [planWarnings, setPlanWarnings] = useState<ParseWarning[]>([]);
 
@@ -61,7 +67,8 @@ export function PlanTemplatesSection() {
   useEffect(() => { refreshList(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetEditorState() {
-    setEditingId(null); setSavedDslSource(null); setName(""); setEditor(EMPTY_EDITOR);
+    setEditingId(null); setSavedDslSource(null); setName(""); setEvent(""); setDistanceM("");
+    setEditor(EMPTY_EDITOR);
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     lastGeneratedRef.current = null;
   }
@@ -75,6 +82,14 @@ export function PlanTemplatesSection() {
     resetEditorState();
     setEditingId(template.id);
     setName(template.name);
+    setEvent((template.event as EventType | null) ?? "");
+    // distance_m isn't a top-level template field — it lives inside the
+    // saved parsed_plan's metadata (HRA-120: sourced from the request body
+    // at save time, not DSL text).
+    try {
+      const parsed = JSON.parse(template.parsed_plan) as { metadata?: { distance_m?: number } };
+      setDistanceM(parsed.metadata?.distance_m != null ? String(parsed.metadata.distance_m) : "");
+    } catch { setDistanceM(""); }
     setSavedDslSource(template.dsl_source);
     setEditor({ dslSource: template.dsl_source, sections: [] });
     setMode("editor");
@@ -174,15 +189,19 @@ export function PlanTemplatesSection() {
   }
 
   const generated = editor.sections.length > 0;
-  const canSave = generated && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== "";
+  const isCustomEvent = event === "custom";
+  const canSave = generated && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== ""
+    && event !== "" && (!isCustomEvent || distanceM.trim() !== "");
   const canApprove = editingId != null && savedDslSource === editor.dslSource && !hasOutstandingWarnings(editor, planWarnings);
 
   async function onSave() {
+    if (event === "") return;
     setSaveLoading(true); setSaveError(null);
     try {
+      const distance = isCustomEvent && distanceM.trim() !== "" ? Number(distanceM) : undefined;
       const saved = editingId
-        ? await api.planTemplates.update(editingId, name, editor.dslSource)
-        : await api.planTemplates.create(name, editor.dslSource);
+        ? await api.planTemplates.update(editingId, name, event, editor.dslSource, distance)
+        : await api.planTemplates.create(name, event, editor.dslSource, distance);
       setEditingId(saved.id);
       setSavedDslSource(saved.dsl_source);
       await refreshList();
@@ -275,6 +294,31 @@ export function PlanTemplatesSection() {
           style={{ width: "100%", marginTop: 4, padding: 6 }}
         />
       </label>
+
+      <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
+        {t("manage.planTemplates.eventLabel", "Event")}
+        <div style={{ marginTop: 4 }}>
+          <Select
+            value={event}
+            onValueChange={v => setEvent(v as EventType)}
+            options={EVENT_OPTIONS.map(v => ({ value: v, label: t(`manage.planTemplates.event.${v}`, v) }))}
+            placeholder={t("manage.planTemplates.eventPlaceholder", "Pick an event…")}
+          />
+        </div>
+      </label>
+
+      {isCustomEvent && (
+        <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
+          {t("manage.planTemplates.distanceLabel", "Distance (m)")}
+          <input
+            className="hra-border-strong hra-bg-card hra-text-primary"
+            value={distanceM}
+            onChange={e => setDistanceM(e.target.value)}
+            type="number"
+            style={{ width: "100%", marginTop: 4, padding: 6 }}
+          />
+        </label>
+      )}
 
       <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
         {t("manage.planTemplates.dslSourceLabel", "DSL text")}

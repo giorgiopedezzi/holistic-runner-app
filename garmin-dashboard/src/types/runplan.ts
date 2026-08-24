@@ -105,7 +105,7 @@ export interface ResolvedDay {
   needs_review: boolean;
 }
 
-export type EventType = "5k" | "10k" | "half" | "marathon" | "ultra" | "custom";
+export type EventType = "5k" | "10k" | "half" | "marathon" | "custom";
 export type OffsetUnit = "s/km" | "s/mi";
 export type DisplayUnit = "km" | "mi";
 

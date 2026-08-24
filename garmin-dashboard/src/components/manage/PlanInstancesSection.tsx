@@ -22,7 +22,6 @@ import type { ResolvedDay, WorkoutType } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
 
 const NO_RACE = "__no_race__";
-const ULTRA_CUSTOM_EVENTS = new Set(["ultra", "custom"]);
 
 export function PlanInstancesSection() {
   const { t } = useTranslation();
@@ -78,9 +77,14 @@ export function PlanInstancesSection() {
   }
 
   const selectedTemplate = templates?.find(tpl => String(tpl.id) === templateId);
-  const needsDistance = paceMode === "goalTime" && !!selectedTemplate?.event && ULTRA_CUSTOM_EVENTS.has(selectedTemplate.event);
+  // HRA-120: a custom-event template always carries its own distance_m
+  // (mandatory at template save time) — this field is now an optional
+  // override, never required to instantiate. Precedence at instantiate time:
+  // this explicit value > the template's own distance_m > the event's
+  // standard distance (enforced server-side, controllers/plan-templates.controller.ts).
+  const showDistanceOverride = paceMode === "goalTime" && selectedTemplate?.event === "custom";
   const canInstantiate = templateId !== "" && instName.trim() !== "" && startDate !== ""
-    && (paceMode === "anchor" ? anchorName.trim() !== "" && anchorValue.trim() !== "" : goalTime.trim() !== "" && (!needsDistance || distanceM.trim() !== ""));
+    && (paceMode === "anchor" ? anchorName.trim() !== "" && anchorValue.trim() !== "" : goalTime.trim() !== "");
 
   async function onInstantiate() {
     setInstantiateLoading(true); setInstantiateError(null);
@@ -274,9 +278,9 @@ export function PlanInstancesSection() {
               {t("manage.planInstances.goalTimeLabel", "Goal time (HH:MM:SS)")}
               <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalTime} onChange={e => setGoalTime(e.target.value)} placeholder="03:30:00" style={{ width: "100%", marginTop: 4, padding: 6 }} />
             </label>
-            {needsDistance && (
+            {showDistanceOverride && (
               <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
-                {t("manage.planInstances.distanceLabel", "Distance (m) — required for ultra/custom events")}
+                {t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}
                 <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} type="number" style={{ width: "100%", marginTop: 4, padding: 6 }} />
               </label>
             )}

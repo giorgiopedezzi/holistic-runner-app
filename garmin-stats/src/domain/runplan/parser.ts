@@ -9,7 +9,7 @@
 // produces a full plan tree to review and fix, never a rejection.
 
 import type {
-  AbsolutePace, AnchorIntensity, DayEntry, DayParseContext, DisplayUnit, EventType,
+  AbsolutePace, AnchorIntensity, DayEntry, DayParseContext, DisplayUnit,
   Intensity, IntervalSegment, OffsetIntensity, OffsetPace, OffsetUnit, PacePolicy, ParseWarning,
   ProgressionSegment, RestBlockSegment, RestSpec, RestType, RunPlan, Section, Target, UnboundPace, Week,
   WorkoutSegment,
@@ -62,8 +62,6 @@ const INTERVAL_RE = /^(\d+|\?)\s*x\s*(\S+)\s*@\s*(\S+)(?:\s+r:\s*(\S+)(?:\s*@\s*
 const PROGRESSION_RE = /^(\S+)\s+PROG\s+(\S+)\s*->\s*(\S+)$/i;
 const REST_BLOCK_RE = /^REST\s+(\S+)(?:\s+(stand|walk|jog))?$/i;
 const CONTINUOUS_RE = /^(\S+)\s*@\s*(\S+)$/;
-
-const EVENT_VALUES: readonly EventType[] = ["5k", "10k", "half", "marathon", "ultra"];
 
 // ── low-level token parsers ─────────────────────────────────────────────────
 // Never fail (HRA-113) — anything unrecognized falls back to kind:"unknown",
@@ -344,13 +342,6 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
   if (lines.length === 0) {
     return { ok: false, errors: [{ line: 0, content: "", message: "Input is empty." }], warnings: [] };
   }
-  if (!PLAN_RE.test(lines[0].text)) {
-    return {
-      ok: false,
-      errors: [{ line: lines[0].n, content: lines[0].text, message: "The first non-empty line must be PLAN." }],
-      warnings: [],
-    };
-  }
 
   const plan: RunPlan = {
     metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
@@ -392,7 +383,12 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
     }
   }
 
-  for (let i = 1; i < lines.length; i++) {
+  // HRA-120: PLAN is now an optional, vestigial header — only consumed when
+  // it actually is the first line; its absence no longer fails the parse
+  // (empty input remains the only ok:false case).
+  const startIndex = PLAN_RE.test(lines[0].text) ? 1 : 0;
+
+  for (let i = startIndex; i < lines.length; i++) {
     const { n, text } = lines[i];
     const { main, note } = splitNote(text);
     if (!main) continue;
@@ -466,29 +462,20 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
 
     // Metadata (only before the first SECTION/WEEK/DAY)
     if (!metadataClosed) {
+      // HRA-120: NAME, EVENT/EVENT_TYPE, plan-level DISTANCE and GOAL, and a
+      // stray plan-level START are vestigial — still recognized (so they
+      // don't trip the "unrecognized line" warning below) but their values
+      // are discarded. name/event/distance_m no longer come from DSL text:
+      // event/distance_m are set by the plan-templates controller from the
+      // request body after parsing, name from plan_templates.name; goal_time
+      // and start_date are supplied at instantiate time instead.
+      if (NAME_RE.test(main)) continue;
+      if (EVENT_RE.test(main)) continue;
+      if (DISTANCE_META_RE.test(main)) continue;
+      if (GOAL_RE.test(main)) continue;
+      if (START_RE.test(main)) continue;
+
       let m: RegExpExecArray | null;
-      if ((m = NAME_RE.exec(main))) { plan.metadata.name = m[1]; continue; }
-      if ((m = EVENT_RE.exec(main))) {
-        const value = m[1].toLowerCase();
-        if ((EVENT_VALUES as readonly string[]).includes(value)) {
-          plan.metadata.event = value as EventType;
-        } else {
-          plan.metadata.event = "custom";
-          warnings.push({ line: n, content: text, message: `Unknown event type "${m[1]}", stored as custom.` });
-        }
-        continue;
-      }
-      if ((m = DISTANCE_META_RE.exec(main))) {
-        const target = parseTarget(m[1]);
-        if (target.kind === "distance") plan.metadata.distance_m = target.distance_m;
-        else warnings.push({ line: n, content: text, message: `Invalid DISTANCE value: ${m[1]}` });
-        continue;
-      }
-      if ((m = GOAL_RE.exec(main))) {
-        plan.metadata.goal_time_sec = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
-        continue;
-      }
-      if ((m = START_RE.exec(main))) { plan.metadata.start_date = m[1]; continue; }
       if ((m = UNIT_RE.exec(main))) { plan.metadata.unit = m[1].toLowerCase() as DisplayUnit; continue; }
       if ((m = OFFSET_UNIT_RE.exec(main))) { plan.metadata.offset_unit = m[1].toLowerCase() as OffsetUnit; continue; }
       if ((m = DEFAULT_REST_RE.exec(main))) { plan.metadata.default_rest = m[1].toLowerCase() as RestType; continue; }
