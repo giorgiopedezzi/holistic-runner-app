@@ -522,16 +522,16 @@ export function PlanInstancesSection({ templates }: Props) {
             />
           </Field>
           <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={!formEnabled} style={{ width: "100%", padding: "0 10px" }} />
+            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={!formEnabled} style={{ width: "100%", padding: "0 10px" }} />
           </Field>
           <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={!formEnabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
+            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={!formEnabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
           </Field>
           <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
             <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={!formEnabled} />
           </Field>
           <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={!formEnabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
+            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={!formEnabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
           </Field>
         </div>
         <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
@@ -658,7 +658,7 @@ export function PlanInstancesSection({ templates }: Props) {
                             <span className="hra-anchor-derived">—</span>
                           )
                         ) : (
-                          <input value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%" }} />
+                          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%", padding: "0 8px" }} />
                         )}
                       </td>
                       <td className="hra-anchor-group-start">
@@ -676,7 +676,7 @@ export function PlanInstancesSection({ templates }: Props) {
                         </div>
                       </td>
                       <td>
-                        <input value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" style={{ width: "100%" }} />
+                        <input className="hra-border-strong hra-bg-card hra-text-primary" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" style={{ width: "100%", padding: "0 8px" }} />
                       </td>
                       <td>
                         <button

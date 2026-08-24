@@ -708,6 +708,50 @@ Per-instance custom-property hooks declared in :root (2026-08-17) — --swatch-c
 --accent-glow removed (2026-08-17) — the fixed cyan pairing token existed for the two-glow ambient and the pill's second gradient stop; both went single-hue/monochromatic on 2026-08-17, so the token was deleted. --accent-light now serves both the hero ring (--accent-strong → --accent-light) and the active pill gradient.
 Action-button primitive .hra-btn (2026-08-17) — filled/outline action buttons get a hover glow tinted to their own semantic color via a --btn-glow hook (same philosophy as .hra-swatch's per-swatch glow): data-variant="accent" | "green" | "danger" | "outline". Call sites to migrate: ManageTab's three sync buttons (green), SettingsTab Save (green), Delete/Restore/Purge (danger), .hra-chrome-preview-button (accent). The quiet hover glow was also extended to .hra-toggle-pill, .hra-date-trigger, .hra-select-trigger (box-shadow added to their transitions). All of it lives in index.css per the "styles live in index.css" rule; .hra-btn is included in the prefers-reduced-motion transition-none list.
 
+## Form fields (canonical classes — check this before styling a new form)
+Written after two consistency bugs on the same form (HRA-121's New Instance redesign) both came from
+the same root cause: styling a field locally instead of checking what the rest of the app already
+does. Read this section before adding or restyling a form — the goal is "look it up," not
+"reconstruct it from the mockup."
+
+- **Label text: Capital Case, never uppercase.** This is the one app-wide rule that actually matters —
+  every label in the app (`PlanTemplatesSection.tsx`'s `<label>`s, `BodyTab.tsx`'s only `<table>`
+  header) renders as plain Capital Case (`Name`, `Event type`, `Date`), never `text-transform:
+  uppercase`. `PlanInstancesSection.tsx`'s `.hra-field-label` class (`font-size: 12px; font-weight:
+  400; color: var(--text-secondary);`, no transform) is the canonical field-label style — reuse it,
+  don't invent a per-form label style from a mockup's visual design. The same casing rule applies to
+  table column headers, not just field labels — `.hra-anchor-table`'s two-tier header used to disagree
+  with itself (uppercase main row vs Capitalized sub row) *and* with `BodyTab`'s plain headers; both
+  are now Capital Case throughout.
+- **Row height: target bare `input`, never `input[type="text"]` / `input[type="number"]`.** A CSS
+  attribute selector only matches an attribute that is actually present in the rendered DOM — a
+  `<input value={x} onChange={...} />` with no explicit `type=` prop still behaves as text, but
+  `input[type="text"]` will never match it. This is exactly how three fields in the New Instance
+  form's Row 1 silently fell through the height rule and rendered at the browser's unstyled default
+  height next to fields that did match. Scope height rules to plain `input` (`.hra-instantiate-form
+  input { height: var(--hra-field-h); }`), and still add an explicit `type="text"`/`type="number"` to
+  every input in the JSX for its own sake (semantics, mobile keyboards) — but never let a selector's
+  correctness *depend* on that attribute being remembered at every call site.
+- **`DatePicker`'s trigger has a fixed 128px width by default** (`.hra-date-trigger`, sized for
+  `DateRangeBar`'s own column-alignment needs) — it will not stretch to fill a grid/flex cell on its
+  own. A form that wants its date field to span its column like every other field needs its own scoped
+  override, e.g. `.hra-instantiate-form .hra-date-trigger { width: 100%; }` — don't assume a `Select`-
+  or `input`-style `triggerStyle`/inline `width: "100%"` is enough; `DatePicker` doesn't expose a style
+  prop, so the fix has to be a CSS rule, not a per-call-site prop.
+- **Placeholders: one italic/muted style app-wide, `::placeholder` on the input, not per-field
+  inline styling.** Prefix the placeholder text itself with `"e.g. "` only when it shows a concrete
+  example value (`"e.g. 5:10/km"`, `"e.g. https://…"`) — leave purely instructional placeholders
+  (`"Optional"`, `"Set a race date above"`) as plain text.
+- **Number-input spinners**: removed via `-webkit-appearance: none` on the spin buttons +
+  `-moz-appearance: textfield` / `appearance: textfield` on the input itself, scoped per form
+  (`.hra-instantiate-form input[type="number"]::-webkit-outer-spin-button, ...`) — copy this rule into
+  any new form that uses `type="number"` fields rather than re-deriving it.
+- **Before adding a new field-styling rule to any form, grep for the pattern first**
+  (`grep -rn "text-transform\|hra-field-label\|<label" garmin-dashboard/src` is a reasonable start) —
+  the two bugs above both existed because the new form's styles were derived from a standalone mockup
+  instead of from what `PlanTemplatesSection.tsx` / `BodyTab.tsx` already do. A mockup fixes layout and
+  interaction; it is not the source of truth for typography/casing once real classes already exist.
+
 ## Training-plan accordion (`TrainingPlanAccordion.tsx`, `domain/runplan-aggregate.ts`, `types/runplan.ts`)
 Shared Section → Week → Day review/edit UI for the RunPlan DSL v1 (`docs/runplan-dsl.md`), built once
 (HRA-116) so the two Data & Sync cards — template CRUD (HRA-117) and instance CRUD (HRA-118) — don't

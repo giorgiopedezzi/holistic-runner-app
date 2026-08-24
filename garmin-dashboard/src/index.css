@@ -935,14 +935,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-anchor-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
 .hra-anchor-table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); min-width: 640px; }
 .hra-anchor-table th, .hra-anchor-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+/* Capital Case, not uppercase — matches the app's only other table header
+   (BodyTab.tsx's <th>Date</th>) and every other label in the app. An
+   earlier pass used text-transform: uppercase here, which was inconsistent
+   with that convention, not just internally with its own sub-header row. */
 .hra-anchor-table thead th {
   background: var(--bg-inset); color: var(--text-muted); font-weight: 700; font-size: var(--fs-meta);
-  text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
 }
-/* Sub-header row keeps the same uppercase/letter-spacing as the main
-   header row (HRA-121 follow-up) — a field label must look identical
-   everywhere it appears, never uppercase in one place and Capitalized in
-   another; only weight/color differentiate the tiers. */
 .hra-anchor-table thead tr.hra-anchor-sub th { color: var(--text-secondary); font-weight: 600; }
 .hra-anchor-table th.hra-anchor-group-start,
 .hra-anchor-table td.hra-anchor-group-start { border-left: 1px solid var(--border-strong); }
@@ -957,25 +957,32 @@ input:focus, select:focus { border-color: var(--accent); }
 /* Scoped height unification for the New Instance form (manage/
    PlanInstancesSection.tsx) — every editable control type (text/number
    input, Select trigger, DatePicker trigger, segmented switch) shares
-   --hra-field-h so a row mixing them still lines up edge to edge. Scoped to
-   .hra-instantiate-form rather than changing any of these classes' global
-   defaults, which are shared by unrelated forms elsewhere in the app. */
-.hra-instantiate-form input[type="text"],
-.hra-instantiate-form input[type="number"],
+   --hra-field-h so a row mixing them still lines up edge to edge. Targets
+   bare "input" rather than "input[type=text]"/"input[type=number]"
+   deliberately — an attribute selector only matches when that attribute is
+   actually present in the JSX, and a plain <input> with no type= attribute
+   silently fell through both rules, which is exactly how the row-1 height
+   mismatch happened (HRA-121 follow-up). Scoped to .hra-instantiate-form
+   rather than changing any of these classes' global defaults, which are
+   shared by unrelated forms elsewhere in the app. */
+.hra-instantiate-form input,
 .hra-instantiate-form .hra-date-trigger,
 .hra-instantiate-form .hra-select-trigger,
 .hra-instantiate-form .hra-segment { height: var(--hra-field-h); }
-.hra-instantiate-form .hra-anchor-table input[type="text"],
-.hra-instantiate-form .hra-anchor-table input[type="number"],
+.hra-instantiate-form .hra-anchor-table input,
 .hra-instantiate-form .hra-anchor-table .hra-select-trigger,
 .hra-instantiate-form .hra-anchor-table .hra-segment { height: 28px; }
+/* .hra-date-trigger's own default width (128px, fixed for a different call
+   site — see index.css's DateRangeBar comment) doesn't stretch on its own;
+   DatePicker's style prop must be passed { width: "100%" } at any call site
+   inside a row that should fill its column, same as every other field. */
+.hra-instantiate-form .hra-date-trigger { width: 100%; }
 
-/* One label class for every field in this form — same casing/size/weight
-   everywhere, so it's never uppercase in one place and Capitalized in
-   another (HRA-121 follow-up). */
+/* One label class for every field in this form — Capital Case, matching
+   the sibling PlanTemplatesSection's <label> convention (and the rest of
+   the app), not a new uppercase style invented for this form alone. */
 .hra-field-label {
-  font-size: var(--fs-meta); font-weight: 600; color: var(--text-muted);
-  text-transform: uppercase; letter-spacing: .03em;
+  font-size: 12px; font-weight: 400; color: var(--text-secondary);
 }
 /* One placeholder style for every field in this form: italic, muted — the
    visual cue that the text is an example/hint, not a real value. Pair with
