@@ -15,6 +15,7 @@ import { Card, ErrorBanner, Badge, Select } from "@/components/ui";
 import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
+import { getUnitSystem } from "@/utils/units";
 import type { PlanTemplate } from "@/types/api";
 import type { EventType, ParseWarning } from "@/types/runplan";
 
@@ -25,6 +26,30 @@ const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [] };
 // HRA-120: event is now an explicit, required template field (replacing the
 // old DSL-text EVENT line); distance_m is required only for "custom".
 const EVENT_OPTIONS: readonly EventType[] = ["5k", "10k", "half", "marathon", "custom"];
+
+// Custom-event distance can be entered in km or mi (a custom event covers
+// anything from a 50km ultra to a 100-mile one) — the input holds the raw
+// typed value in whichever unit is active; distance_m (what the API wants)
+// is only derived at the load/submit boundary, never on every keystroke, so
+// switching units mid-typing can't mangle a half-typed decimal.
+type DistanceUnit = "km" | "mi";
+// Mirrors garmin-stats/src/domain/runplan/parser.ts's M_PER_MILE.
+const M_PER_MILE = 1609.34;
+
+function defaultDistanceUnit(): DistanceUnit {
+  return getUnitSystem() === "imperial" ? "mi" : "km";
+}
+
+function metersToDistance(meters: number, unit: DistanceUnit): string {
+  const value = unit === "km" ? meters / 1000 : meters / M_PER_MILE;
+  return String(Math.round(value * 1000) / 1000);
+}
+
+function distanceToMeters(value: string, unit: DistanceUnit): number | undefined {
+  const n = Number(value);
+  if (value.trim() === "" || !Number.isFinite(n)) return undefined;
+  return unit === "km" ? n * 1000 : n * M_PER_MILE;
+}
 
 function hasOutstandingWarnings(editor: EditorState, planWarnings: ParseWarning[]): boolean {
   if (planWarnings.length > 0) return true;
@@ -41,7 +66,8 @@ export function PlanTemplatesSection() {
   const [savedDslSource, setSavedDslSource] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [event, setEvent] = useState<EventType | "">("");
-  const [distanceM, setDistanceM] = useState("");
+  const [distanceValue, setDistanceValue] = useState("");
+  const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(defaultDistanceUnit());
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
   const [planWarnings, setPlanWarnings] = useState<ParseWarning[]>([]);
 
@@ -67,10 +93,21 @@ export function PlanTemplatesSection() {
   useEffect(() => { refreshList(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetEditorState() {
-    setEditingId(null); setSavedDslSource(null); setName(""); setEvent(""); setDistanceM("");
+    setEditingId(null); setSavedDslSource(null); setName(""); setEvent("");
+    setDistanceValue(""); setDistanceUnit(defaultDistanceUnit());
     setEditor(EMPTY_EDITOR);
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     lastGeneratedRef.current = null;
+  }
+
+  // Switches which unit the (already-typed) distance value displays as,
+  // converting through meters so the number itself doesn't change — only
+  // its presentation does.
+  function switchDistanceUnit(unit: DistanceUnit) {
+    if (unit === distanceUnit) return;
+    const meters = distanceToMeters(distanceValue, distanceUnit);
+    setDistanceUnit(unit);
+    setDistanceValue(meters != null ? metersToDistance(meters, unit) : "");
   }
 
   function startCreate() {
@@ -88,8 +125,11 @@ export function PlanTemplatesSection() {
     // at save time, not DSL text).
     try {
       const parsed = JSON.parse(template.parsed_plan) as { metadata?: { distance_m?: number } };
-      setDistanceM(parsed.metadata?.distance_m != null ? String(parsed.metadata.distance_m) : "");
-    } catch { setDistanceM(""); }
+      const distM = parsed.metadata?.distance_m;
+      const unit = defaultDistanceUnit();
+      setDistanceUnit(unit);
+      setDistanceValue(distM != null ? metersToDistance(distM, unit) : "");
+    } catch { setDistanceValue(""); }
     setSavedDslSource(template.dsl_source);
     setEditor({ dslSource: template.dsl_source, sections: [] });
     setMode("editor");
@@ -199,14 +239,14 @@ export function PlanTemplatesSection() {
   const generated = editor.sections.length > 0;
   const isCustomEvent = event === "custom";
   const canSave = generated && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== ""
-    && event !== "" && (!isCustomEvent || distanceM.trim() !== "");
+    && event !== "" && (!isCustomEvent || distanceValue.trim() !== "");
   const canApprove = editingId != null && savedDslSource === editor.dslSource && !hasOutstandingWarnings(editor, planWarnings);
 
   async function onSave() {
     if (event === "") return;
     setSaveLoading(true); setSaveError(null);
     try {
-      const distance = isCustomEvent && distanceM.trim() !== "" ? Number(distanceM) : undefined;
+      const distance = isCustomEvent ? distanceToMeters(distanceValue, distanceUnit) : undefined;
       const saved = editingId
         ? await api.planTemplates.update(editingId, name, event, editor.dslSource, distance)
         : await api.planTemplates.create(name, event, editor.dslSource, distance);
@@ -293,8 +333,12 @@ export function PlanTemplatesSection() {
         {editingId == null ? t("manage.planTemplates.createTitle", "New template") : t("manage.planTemplates.editTitle", "Edit template")}
       </div>
 
+      {/* Name is the only field that grows — Event type and Distance are
+          fixed-width, so toggling Distance on/off (switching to/from Custom)
+          only ever changes Name's width by exactly the space Distance takes,
+          never a proportional-share jump across all three fields. */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "2 1 160px" }}>
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 200px" }}>
           {t("manage.planTemplates.nameLabel", "Name")}
           <input
             className="hra-border-strong hra-bg-card hra-text-primary"
@@ -304,7 +348,7 @@ export function PlanTemplatesSection() {
           />
         </label>
 
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 0 auto" }}>
+        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
           {t("manage.planTemplates.eventLabel", "Event type")}
           <div style={{ marginTop: 4 }}>
             <Select
@@ -318,15 +362,21 @@ export function PlanTemplatesSection() {
         </label>
 
         {isCustomEvent && (
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 120px" }}>
-            {t("manage.planTemplates.distanceLabel", "Distance (m)")}
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              value={distanceM}
-              onChange={e => setDistanceM(e.target.value)}
-              type="number"
-              style={{ width: "100%", marginTop: 4, padding: 6 }}
-            />
+          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
+            {t("manage.planTemplates.distanceLabel", "Distance")}
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <input
+                className="hra-border-strong hra-bg-card hra-text-primary"
+                value={distanceValue}
+                onChange={e => setDistanceValue(e.target.value)}
+                type="number"
+                style={{ width: 100, padding: 6 }}
+              />
+              <div className="hra-segment">
+                <button className="hra-segment-item" data-active={distanceUnit === "km"} onClick={() => switchDistanceUnit("km")}>km</button>
+                <button className="hra-segment-item" data-active={distanceUnit === "mi"} onClick={() => switchDistanceUnit("mi")}>mi</button>
+              </div>
+            </div>
           </label>
         )}
       </div>

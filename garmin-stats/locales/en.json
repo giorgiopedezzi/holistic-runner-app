@@ -399,7 +399,7 @@
   "manage.planTemplates.event.half": "Half-Marathon",
   "manage.planTemplates.event.marathon": "Marathon",
   "manage.planTemplates.event.custom": "Custom",
-  "manage.planTemplates.distanceLabel": "Distance (m)",
+  "manage.planTemplates.distanceLabel": "Distance",
   "manage.planTemplates.dslSourceLabel": "DSL text",
   "manage.planTemplates.uploadFile": "Upload .txt/.csv…",
   "manage.planTemplates.generating": "Parsing…",
