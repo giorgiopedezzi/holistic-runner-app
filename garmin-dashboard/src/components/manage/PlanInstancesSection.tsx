@@ -1,14 +1,14 @@
 /**
- * PlanInstancesSection.tsx (HRA-118)
+ * PlanInstancesSection.tsx (HRA-118, redesigned HRA-121)
  * Data & Sync card: instantiate/edit/approve/delete plan instances, on top
  * of the shared accordion (HRA-116) and the plan-instances backend (HRA-112
- * through HRA-115, plus this Story's own GET /api/v1/plan-instances list
- * route). Structural sibling of PlanTemplatesSection (HRA-117), but simpler
- * at save time: each day PUTs its own {section_name, week_number, date, dsl}
- * directly (HRA-115) — there's no whole-document dsl_source to
- * content-anchor-patch here, unlike the template card.
+ * through HRA-115, HRA-118's own list route, HRA-121's redesign). Structural
+ * sibling of PlanTemplatesSection (HRA-117), but simpler at save time: each
+ * day PUTs its own {section_name, week_number, date, dsl} directly (HRA-115)
+ * — there's no whole-document dsl_source to content-anchor-patch here,
+ * unlike the template card.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, DatePicker, Select } from "@/components/ui";
@@ -19,18 +19,18 @@ import {
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
 import { notify } from "@/utils/toast";
-import type { PlanTemplate, PlanInstance, RaceActivity } from "@/types/api";
+import type { PlanTemplate, PlanInstance } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
 
-const NO_RACE = "__no_race__";
 const NONE_ANCHOR = "__none__";
+const FIELD_H = 32;
 
 // Mirrors garmin-stats/src/controllers/plan-templates.controller.ts's own
 // STANDARD_DISTANCE_M — used only for the live client-side resolution
-// preview below (Row 4); the real distance resolution for goal_time still
-// happens server-side, this just needs to match it closely enough to show
-// an accurate preview.
+// preview below (the anchor table); the real distance resolution for
+// goal_time still happens server-side, this just needs to match it closely
+// enough to show an accurate preview.
 const STANDARD_DISTANCE_M: Partial<Record<EventType, number>> = {
   "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195,
 };
@@ -70,25 +70,26 @@ function parsePaceOverrideInput(raw: string, offsetUnit: OffsetUnit): PaceValue 
   }
   return null;
 }
-function formatPaceSecPerKm(sec: number): string {
-  const total = Math.round(sec);
-  const min = Math.floor(total / 60);
-  const s = total % 60;
-  return `${min}:${String(s).padStart(2, "0")}/km`;
+interface AnchorRowState { absoluteValue: string; relativeTo: string; sign: "+" | "-"; seconds: string }
+function emptyAnchorRow(): AnchorRowState {
+  return { absoluteValue: "", relativeTo: "", sign: "+", seconds: "" };
+}
+function anchorRowIsEmpty(row: AnchorRowState): boolean {
+  return row.absoluteValue.trim() === "" && row.relativeTo === "" && row.seconds.trim() === "";
 }
 
-interface PolicyRow {
-  id: number;
-  anchor: string;
-  mode: "absolute" | "relative";
-  absoluteValue: string;
-  relativeTo: string;
-  sign: "+" | "-";
-  seconds: string;
-}
-let nextPolicyRowId = 1;
-function emptyPolicyRow(): PolicyRow {
-  return { id: nextPolicyRowId++, anchor: "", mode: "absolute", absoluteValue: "", relativeTo: "", sign: "+", seconds: "" };
+// Every field in the instantiate form goes through this — label is always a
+// block above its control (never beside it), enforced structurally by the
+// column flex layout rather than left to each call site to get right.
+function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <span className="hra-text-muted" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: ".03em" }}>
+        {label}{required && <span className="hra-text-danger"> *</span>}
+      </span>
+      {children}
+    </div>
+  );
 }
 
 interface Props {
@@ -102,19 +103,20 @@ interface Props {
 export function PlanInstancesSection({ templates }: Props) {
   const { t } = useTranslation();
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
-  const [races, setRaces] = useState<RaceActivity[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
 
   const [mode, setMode] = useState<"list" | "instantiate" | "editor">("list");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // instantiate form — row 1 (identity)
+  // instantiate form — row 1 (identity). Link a race (HRA-121) is a plain
+  // free-text URL, not a picker over existing activities — target_activity_id
+  // stays a valid backend capability, just no longer surfaced by this form.
   const [templateId, setTemplateId] = useState("");
   const [instName, setInstName] = useState("");
   const [raceName, setRaceName] = useState("");
   const [raceDate, setRaceDate] = useState("");
-  const [targetActivityId, setTargetActivityId] = useState(NO_RACE);
+  const [raceUrl, setRaceUrl] = useState("");
   // row 2 (timing) — startDate and daysBeforeRace are two views of one
   // relationship once raceDate is set (see onStartDateChange/
   // onDaysBeforeRaceChange/onRaceDateChange below).
@@ -127,8 +129,12 @@ export function PlanInstancesSection({ templates }: Props) {
   const [paceMode, setPaceMode] = useState<"anchor" | "goalTime">("goalTime");
   const [goalTime, setGoalTime] = useState("");
   const [distanceM, setDistanceM] = useState("");
-  const [anchorOverrideValue, setAnchorOverrideValue] = useState("");
-  const [policyRows, setPolicyRows] = useState<PolicyRow[]>([]);
+  // One row per template anchor (HRA-121: a table, not add/remove rows) —
+  // keyed by anchor name, synced whenever the template changes.
+  const [anchorRows, setAnchorRows] = useState<Record<string, AnchorRowState>>({});
+  // Set while a template switch is pending confirmation (HRA-121: switching
+  // templates after real data has been entered warns before discarding it).
+  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
   const [instantiateLoading, setInstantiateLoading] = useState(false);
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
 
@@ -144,17 +150,14 @@ export function PlanInstancesSection({ templates }: Props) {
     return api.planInstances.list().then(setInstances).catch(e => setListError(e instanceof Error ? e.message : t("manage.planInstances.loadFailed", "Failed to load instances")));
   }
 
-  useEffect(() => {
-    refreshInstances();
-    api.garmin.races().then(setRaces).catch(() => setRaces([]));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { refreshInstances(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function resetInstantiateForm() {
-    setTemplateId(""); setInstName(""); setRaceName(""); setRaceDate("");
+    setTemplateId(""); setInstName(""); setRaceName(""); setRaceDate(""); setRaceUrl("");
     setStartDate(isoToday()); setDaysBeforeRace("");
     setRacePaceAnchor(NONE_ANCHOR); setPaceMode("goalTime");
-    setGoalTime(""); setDistanceM(""); setAnchorOverrideValue(""); setPolicyRows([]);
-    setTargetActivityId(NO_RACE);
+    setGoalTime(""); setDistanceM(""); setAnchorRows({});
+    setPendingTemplateId(null);
     setInstantiateError(null);
   }
 
@@ -179,16 +182,38 @@ export function PlanInstancesSection({ templates }: Props) {
     setDaysBeforeRace(v ? String(daysBetween(startDate, v)) : "");
   }
 
-  function onTemplateChange(id: string) {
+  function parsePlan(tpl: PlanTemplate | undefined): RunPlan | null {
+    if (!tpl) return null;
+    try { return JSON.parse(tpl.parsed_plan) as RunPlan; } catch { return null; }
+  }
+
+  // The actual template switch, once nothing needs confirming (or the user
+  // just confirmed discarding what was there).
+  function applyTemplateChange(id: string) {
     setTemplateId(id);
-    const tpl = templates?.find(t => String(t.id) === id);
-    let plan: RunPlan | null = null;
-    if (tpl) { try { plan = JSON.parse(tpl.parsed_plan) as RunPlan; } catch { plan = null; } }
-    const anchors = plan ? collectPlanAnchors(plan) : [];
+    const anchors = collectPlanAnchors(parsePlan(templates?.find(tpl => String(tpl.id) === id)) ?? { metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} }, sections: [] });
     setRacePaceAnchor(anchors.length > 0 ? anchors[0] : NONE_ANCHOR);
     setPaceMode("goalTime");
-    setGoalTime(""); setDistanceM(""); setAnchorOverrideValue(""); setPolicyRows([]);
+    setGoalTime(""); setDistanceM("");
+    setAnchorRows(Object.fromEntries(anchors.map(a => [a, emptyAnchorRow()])));
   }
+
+  // HRA-121: picking a different template while real (non-default) data is
+  // already in the form would silently discard it — this instance hasn't
+  // been created yet, so nothing is actually saved anywhere until Create is
+  // clicked. Confirm first via the modal below instead.
+  function onTemplateSelectChange(id: string) {
+    if (templateId !== "" && id !== templateId && hasEnteredData()) {
+      setPendingTemplateId(id);
+      return;
+    }
+    applyTemplateChange(id);
+  }
+  function confirmSwitchTemplate() {
+    if (pendingTemplateId != null) applyTemplateChange(pendingTemplateId);
+    setPendingTemplateId(null);
+  }
+  function cancelSwitchTemplate() { setPendingTemplateId(null); }
 
   // Goal time is only selectable while a race pace anchor is chosen — with
   // NONE_ANCHOR there's no anchor for it to convert to, so switching to
@@ -198,17 +223,29 @@ export function PlanInstancesSection({ templates }: Props) {
     if (v === NONE_ANCHOR && paceMode === "goalTime") setPaceMode("anchor");
   }
 
-  function addPolicyRow() { setPolicyRows(prev => [...prev, emptyPolicyRow()]); }
-  function removePolicyRow(id: number) { setPolicyRows(prev => prev.filter(r => r.id !== id)); }
-  function updatePolicyRow(id: number, patch: Partial<PolicyRow>) {
-    setPolicyRows(prev => prev.map(r => (r.id === id ? { ...r, ...patch } : r)));
+  // Fill exactly one of Absolute or Relative per anchor row — typing into
+  // one side clears the other, rather than a separate mode toggle.
+  function setAnchorAbsolute(anchor: string, value: string) {
+    setAnchorRows(prev => ({ ...prev, [anchor]: { ...(prev[anchor] ?? emptyAnchorRow()), absoluteValue: value, relativeTo: "", seconds: "" } }));
+  }
+  function setAnchorRelativeTo(anchor: string, value: string) {
+    setAnchorRows(prev => ({ ...prev, [anchor]: { ...(prev[anchor] ?? emptyAnchorRow()), relativeTo: value, absoluteValue: "" } }));
+  }
+  function setAnchorSign(anchor: string, sign: "+" | "-") {
+    setAnchorRows(prev => ({ ...prev, [anchor]: { ...(prev[anchor] ?? emptyAnchorRow()), sign, absoluteValue: "" } }));
+  }
+  function setAnchorSeconds(anchor: string, value: string) {
+    setAnchorRows(prev => ({ ...prev, [anchor]: { ...(prev[anchor] ?? emptyAnchorRow()), seconds: value, absoluteValue: "" } }));
+  }
+  function clearAnchorRow(anchor: string) {
+    setAnchorRows(prev => ({ ...prev, [anchor]: emptyAnchorRow() }));
   }
 
   const selectedTemplate = templates?.find(tpl => String(tpl.id) === templateId);
-  let selectedPlan: RunPlan | null = null;
-  if (selectedTemplate) { try { selectedPlan = JSON.parse(selectedTemplate.parsed_plan) as RunPlan; } catch { selectedPlan = null; } }
+  const selectedPlan = parsePlan(selectedTemplate);
   const templateAnchors = selectedPlan ? collectPlanAnchors(selectedPlan) : [];
   const hasRacePaceAnchor = racePaceAnchor !== NONE_ANCHOR;
+  const formEnabled = templateId !== "";
 
   // HRA-120: a custom-event template always carries its own distance_m
   // (mandatory at template save time) — this field is now an optional
@@ -217,12 +254,12 @@ export function PlanInstancesSection({ templates }: Props) {
   // standard distance (enforced server-side, controllers/plan-templates.controller.ts).
   const showDistanceOverride = paceMode === "goalTime" && selectedTemplate?.event === "custom";
 
-  // Row 4 — live, client-side resolution preview (HRA-121): reuses the same
-  // pure resolveIntensityPaceSecPerKm the template accordion already relies
-  // on (domain/runplan-aggregate.ts) — no new preview endpoint. Anchors not
-  // covered by the race pace anchor or a Race policy row simply resolve
-  // against the template's own plan-level pace_policy, same precedence
-  // instantiatePlan itself applies server-side.
+  // Live, client-side resolution preview (HRA-121): reuses the same pure
+  // resolveIntensityPaceSecPerKm the template accordion already relies on
+  // (domain/runplan-aggregate.ts) — no new preview endpoint. Every anchor
+  // not covered by the race pace anchor or its own table row simply
+  // resolves against the template's own plan-level pace_policy, same
+  // precedence instantiatePlan itself applies server-side.
   function previewGoalDistanceM(): number | null {
     if (distanceM.trim() !== "") return Number(distanceM);
     if (selectedPlan?.metadata.distance_m != null) return selectedPlan.metadata.distance_m;
@@ -231,24 +268,21 @@ export function PlanInstancesSection({ templates }: Props) {
   }
   function buildOverridePolicy(offsetUnit: OffsetUnit): PacePolicy {
     const policy: PacePolicy = {};
-    if (hasRacePaceAnchor) {
-      if (paceMode === "goalTime") {
-        const distM = previewGoalDistanceM();
-        const goalSec = parseGoalTimeSec(goalTime);
-        if (distM != null && goalSec != null) policy[racePaceAnchor] = { kind: "absolute", pace_sec_per_km: goalSec / (distM / 1000) };
-      } else if (anchorOverrideValue.trim() !== "") {
-        const parsed = parsePaceOverrideInput(anchorOverrideValue, offsetUnit);
-        if (parsed) policy[racePaceAnchor] = parsed;
-      }
+    if (hasRacePaceAnchor && paceMode === "goalTime") {
+      const distM = previewGoalDistanceM();
+      const goalSec = parseGoalTimeSec(goalTime);
+      if (distM != null && goalSec != null) policy[racePaceAnchor] = { kind: "absolute", pace_sec_per_km: goalSec / (distM / 1000) };
     }
-    for (const row of policyRows) {
-      if (row.anchor === "") continue;
-      if (row.mode === "absolute" && row.absoluteValue.trim() !== "") {
+    for (const anchor of templateAnchors) {
+      if (hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor) continue; // derived above, not from its table row
+      const row = anchorRows[anchor];
+      if (!row) continue;
+      if (row.absoluteValue.trim() !== "") {
         const parsed = parsePaceOverrideInput(row.absoluteValue, offsetUnit);
-        if (parsed) policy[row.anchor] = parsed;
-      } else if (row.mode === "relative" && row.relativeTo !== "" && row.seconds.trim() !== "") {
+        if (parsed) policy[anchor] = parsed;
+      } else if (row.relativeTo !== "" && row.seconds.trim() !== "") {
         const secs = Number(row.seconds);
-        if (Number.isFinite(secs)) policy[row.anchor] = { kind: "offset", anchor: row.relativeTo, offset_sec_per_km: row.sign === "+" ? secs : -secs };
+        if (Number.isFinite(secs)) policy[anchor] = { kind: "offset", anchor: row.relativeTo, offset_sec_per_km: row.sign === "+" ? secs : -secs };
       }
     }
     return policy;
@@ -263,31 +297,39 @@ export function PlanInstancesSection({ templates }: Props) {
 
   const canInstantiate = templateId !== "" && instName.trim() !== "" && startDate !== "" && allResolved;
 
+  // HRA-121: "non-default data" gating the template-switch warning — start
+  // date at today counts as default (nothing was deliberately typed there).
+  function hasEnteredData(): boolean {
+    if (instName.trim() !== "" || raceName.trim() !== "" || raceDate !== "" || raceUrl.trim() !== "") return true;
+    if (startDate !== isoToday()) return true;
+    if (daysBeforeRace.trim() !== "") return true;
+    if (goalTime.trim() !== "" || distanceM.trim() !== "") return true;
+    return Object.values(anchorRows).some(row => !anchorRowIsEmpty(row));
+  }
+
   async function onInstantiate() {
     setInstantiateLoading(true); setInstantiateError(null);
     try {
       const body: Parameters<typeof api.planTemplates.instantiate>[1] = { name: instName.trim(), start_date: startDate };
       if (raceName.trim() !== "") body.race_name = raceName.trim();
       if (raceDate.trim() !== "") body.race_date = raceDate.trim();
+      if (raceUrl.trim() !== "") body.race_url = raceUrl.trim();
 
       const overrides: Record<string, string> = {};
-      for (const row of policyRows) {
-        if (row.anchor === "") continue;
-        if (row.mode === "absolute" && row.absoluteValue.trim() !== "") overrides[row.anchor] = row.absoluteValue.trim();
-        else if (row.mode === "relative" && row.relativeTo !== "" && row.seconds.trim() !== "") overrides[row.anchor] = `${row.relativeTo}${row.sign}${row.seconds.trim()}`;
+      for (const anchor of templateAnchors) {
+        if (hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor) continue;
+        const row = anchorRows[anchor];
+        if (!row) continue;
+        if (row.absoluteValue.trim() !== "") overrides[anchor] = row.absoluteValue.trim();
+        else if (row.relativeTo !== "" && row.seconds.trim() !== "") overrides[anchor] = `${row.relativeTo}${row.sign}${row.seconds.trim()}`;
       }
-      if (hasRacePaceAnchor) {
-        if (paceMode === "goalTime") {
-          body.goal_time = goalTime.trim();
-          body.race_pace_anchor = racePaceAnchor;
-          if (distanceM.trim() !== "") body.distance_m = Number(distanceM);
-        } else if (anchorOverrideValue.trim() !== "") {
-          overrides[racePaceAnchor] = anchorOverrideValue.trim();
-        }
+      if (hasRacePaceAnchor && paceMode === "goalTime") {
+        body.goal_time = goalTime.trim();
+        body.race_pace_anchor = racePaceAnchor;
+        if (distanceM.trim() !== "") body.distance_m = Number(distanceM);
       }
       if (Object.keys(overrides).length > 0) body.pace_overrides = overrides;
 
-      if (targetActivityId !== NO_RACE) body.target_activity_id = Number(targetActivityId);
       await api.planTemplates.instantiate(Number(templateId), body);
       await refreshInstances();
       resetInstantiateForm();
@@ -395,7 +437,7 @@ export function PlanInstancesSection({ templates }: Props) {
         </div>
         {listError && <ErrorBanner message={listError} />}
         {instances === null ? (
-          <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
+          <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.loading", "Loading…")}</div>
         ) : instances.length === 0 ? (
           <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>{t("manage.planInstances.empty", "No instances created yet.")}</div>
         ) : (
@@ -435,200 +477,191 @@ export function PlanInstancesSection({ templates }: Props) {
   }
 
   if (mode === "instantiate") {
-    const raceOptions = [
-      { value: NO_RACE, label: t("manage.planInstances.noRace", "No linked race") },
-      ...(races ?? []).map(r => ({ value: String(r.id), label: `${r.activity_name ?? r.date_only} (${r.date_only})` })),
-    ];
-    const racePaceAnchorOptions = [
-      ...templateAnchors.map(a => ({ value: a, label: a })),
-      { value: NONE_ANCHOR, label: t("manage.planInstances.racePaceAnchorNone", "None") },
-    ];
-    const usedPolicyAnchors = new Set(policyRows.map(r => r.anchor).filter(a => a !== ""));
-
     return (
-      <Card>
+      <Card className="hra-instantiate-form">
         <div className="hra-block-title" style={{ marginBottom: 12 }}>{t("manage.planInstances.instantiateTitle", "New instance")}</div>
 
-        {/* Row 1 — identity: Template/Name required, Race name/Race date/Race
-            link independently optional. */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 200px" }}>
-            {t("manage.planInstances.templateLabel", "Template")}
-            <div style={{ marginTop: 4 }}>
-              <Select
-                value={templateId} onValueChange={onTemplateChange}
-                options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
-                placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
-              />
-            </div>
-          </label>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 160px" }}>
-            {t("manage.planTemplates.nameLabel", "Name")}
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} style={{ width: "100%", marginTop: 4, padding: 6 }} />
-          </label>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 160px" }}>
-            {t("manage.planInstances.raceNameLabel", "Race name")}
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} placeholder={t("common.optional", "Optional")} style={{ width: "100%", marginTop: 4, padding: 6 }} />
-          </label>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-            {t("manage.planInstances.raceDateLabel", "Race date")}
-            <div style={{ marginTop: 4 }}><DatePicker value={raceDate} onChange={onRaceDateChange} /></div>
-          </label>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "1 1 200px" }}>
-            {t("manage.planInstances.linkRaceLabel", "Link a race (optional)")}
-            <div style={{ marginTop: 4 }}><Select value={targetActivityId} onValueChange={setTargetActivityId} options={raceOptions} /></div>
-          </label>
+        {/* Row 1 — identity. Template gates the whole form below; Name is
+            required; Race name/Race date/Link a race are independently
+            optional. Equal-width grid, not ad hoc flex-basis guessing. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 6 }}>
+          <Field label={t("manage.planInstances.templateLabel", "Template")} required>
+            <Select
+              value={templateId} onValueChange={onTemplateSelectChange}
+              options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
+              placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
+              triggerStyle={{ height: FIELD_H, width: "100%" }}
+            />
+          </Field>
+          <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
+            <input className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={!formEnabled} style={{ width: "100%", padding: "0 10px" }} />
+          </Field>
+          <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
+            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={!formEnabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
+          </Field>
+          <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
+            <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={!formEnabled} />
+          </Field>
+          <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
+            <input className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={!formEnabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "Optional — race URL")} style={{ width: "100%", padding: "0 10px" }} />
+          </Field>
+        </div>
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+          <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
+          {!formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
         </div>
 
-        {/* Row 2 — timing: Start date <-> Days before race, linked once Race
-            date is set. Hints always visible, not hover-only. */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 6 }}>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-            {t("manage.planInstances.startDateLabel", "Start date")}
-            <div style={{ marginTop: 4 }}><DatePicker value={startDate} onChange={onStartDateChange} /></div>
-          </label>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-            {t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}
+        {/* Row 2 — timing. */}
+        <div style={{ display: "grid", gridTemplateColumns: "160px 160px", gap: 10, marginBottom: 6 }}>
+          <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
+            <DatePicker value={startDate} onChange={onStartDateChange} disabled={!formEnabled} />
+          </Field>
+          <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
             <input
               className="hra-border-strong hra-bg-card hra-text-primary"
               value={daysBeforeRace} onChange={e => onDaysBeforeRaceChange(e.target.value)}
-              type="number" disabled={!raceDate}
-              placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above to use this")}
-              style={{ width: raceDate ? 100 : 260, marginTop: 4, padding: 6 }}
+              type="number" disabled={!formEnabled || !raceDate}
+              placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above")}
+              style={{ width: "100%", padding: "0 10px" }}
             />
-          </label>
+          </Field>
         </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
           {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
         </div>
 
         {/* Row 3 — pace: Race pace anchor + Pace input mode on one line. */}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
-          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-            {t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}
-            <div className="hra-segment" style={{ marginTop: 4 }}>
-              {racePaceAnchorOptions.map(opt => (
-                <button key={opt.value} className="hra-segment-item" data-active={racePaceAnchor === opt.value} onClick={() => onRacePaceAnchorChange(opt.value)}>
-                  {opt.label}
+          <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
+            <div className="hra-segment">
+              {[...templateAnchors, NONE_ANCHOR].map(a => (
+                <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={!formEnabled} onClick={() => onRacePaceAnchorChange(a)}>
+                  {a === NONE_ANCHOR ? t("manage.planInstances.racePaceAnchorNone", "None") : a}
                 </button>
               ))}
             </div>
-          </label>
-          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-            {t("manage.planInstances.paceLabel", "Pace input")}
-            <div className="hra-segment" style={{ marginTop: 4 }}>
-              <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={!hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
-              <button className="hra-segment-item" data-active={paceMode === "anchor"} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
+          </Field>
+          <Field label={t("manage.planInstances.paceLabel", "Pace input")}>
+            <div className="hra-segment">
+              <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={!formEnabled || !hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
+              <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={!formEnabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
             </div>
-          </label>
+          </Field>
         </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 12 }}>
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
           {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
         </div>
 
-        {hasRacePaceAnchor && (paceMode === "goalTime" ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
-            <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-              {t("manage.planInstances.goalTimeLabel", "Goal time (HH:MM:SS)")}
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalTime} onChange={e => setGoalTime(e.target.value)} placeholder="03:30:00" style={{ width: 130, marginTop: 4, padding: 6, fontFamily: "monospace" }} />
-            </label>
+        {hasRacePaceAnchor && paceMode === "goalTime" && (
+          <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "160px 200px" : "160px", gap: 10, marginBottom: 16 }}>
+            <Field label={t("manage.planInstances.goalTimeLabel", "Goal time (HH:MM:SS)")}>
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalTime} onChange={e => setGoalTime(e.target.value)} disabled={!formEnabled} placeholder="03:30:00" style={{ width: "100%", padding: "0 10px", fontFamily: "monospace" }} />
+            </Field>
             {showDistanceOverride && (
-              <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-                {t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}
-                <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} type="number" style={{ width: 140, marginTop: 4, padding: 6 }} />
-              </label>
+              <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
+                <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={!formEnabled} type="number" style={{ width: "100%", padding: "0 10px" }} />
+              </Field>
             )}
           </div>
-        ) : (
-          <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 14 }}>
-            {t("manage.planInstances.anchorValueLabel", "Pace")} ({racePaceAnchor})
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={anchorOverrideValue} onChange={e => setAnchorOverrideValue(e.target.value)} placeholder="6:40/mi" style={{ width: 160, marginTop: 4, padding: 6 }} />
-          </label>
-        ))}
-
-        <div style={{ marginBottom: 16 }}>
-          <div className="hra-text-secondary" style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-            {t("manage.planInstances.racePolicyTitle", "Race policy — override any other anchor")}
-          </div>
-          {policyRows.map(row => {
-            const anchorOptions = templateAnchors.filter(a => a !== racePaceAnchor && (a === row.anchor || !usedPolicyAnchors.has(a)));
-            const relativeToOptions = templateAnchors.filter(a => a !== row.anchor);
-            return (
-              <div key={row.id} className="hra-row-wrap" style={{ marginBottom: 8, alignItems: "flex-end" }}>
-                <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-                  {t("manage.planInstances.policyAnchorLabel", "Anchor")}
-                  <div style={{ marginTop: 4 }}>
-                    <Select value={row.anchor} onValueChange={v => updatePolicyRow(row.id, { anchor: v })} options={anchorOptions.map(a => ({ value: a, label: a }))} placeholder="—" />
-                  </div>
-                </label>
-                <div className="hra-segment" style={{ alignSelf: "flex-end" }}>
-                  <button className="hra-segment-item" data-active={row.mode === "absolute"} onClick={() => updatePolicyRow(row.id, { mode: "absolute" })}>{t("manage.planInstances.policyModeAbsolute", "Absolute")}</button>
-                  <button className="hra-segment-item" data-active={row.mode === "relative"} onClick={() => updatePolicyRow(row.id, { mode: "relative" })}>{t("manage.planInstances.policyModeRelative", "Relative")}</button>
-                </div>
-                {row.mode === "absolute" ? (
-                  <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-                    {t("manage.planInstances.policyAbsoluteLabel", "Absolute pace")}
-                    <input className="hra-border-strong hra-bg-card hra-text-primary" value={row.absoluteValue} onChange={e => updatePolicyRow(row.id, { absoluteValue: e.target.value })} placeholder="5:10/km" style={{ width: 100, marginTop: 4, padding: 6 }} />
-                  </label>
-                ) : (
-                  <>
-                    <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-                      {t("manage.planInstances.policyRelativeToLabel", "Relative to")}
-                      <div style={{ marginTop: 4 }}>
-                        <Select value={row.relativeTo} onValueChange={v => updatePolicyRow(row.id, { relativeTo: v })} options={relativeToOptions.map(a => ({ value: a, label: a }))} placeholder="—" />
-                      </div>
-                    </label>
-                    <div className="hra-segment" style={{ alignSelf: "flex-end" }}>
-                      <button className="hra-segment-item" data-active={row.sign === "+"} onClick={() => updatePolicyRow(row.id, { sign: "+" })}>+</button>
-                      <button className="hra-segment-item" data-active={row.sign === "-"} onClick={() => updatePolicyRow(row.id, { sign: "-" })}>−</button>
-                    </div>
-                    <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-                      {t("manage.planInstances.policySecondsLabel", "Seconds")}
-                      <input className="hra-border-strong hra-bg-card hra-text-primary" value={row.seconds} onChange={e => updatePolicyRow(row.id, { seconds: e.target.value })} type="number" style={{ width: 80, marginTop: 4, padding: 6 }} />
-                    </label>
-                  </>
-                )}
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 12px", fontSize: 12, cursor: "pointer" }} onClick={() => removePolicyRow(row.id)}>
-                  {t("common.delete", "Delete")}
-                </button>
-              </div>
-            );
-          })}
-          <button
-            className="hra-border-strong hra-text-secondary"
-            style={{ background: "none", border: "1px dashed var(--border-strong)", borderRadius: 6, padding: "8px 14px", fontSize: 12, cursor: "pointer", width: "100%" }}
-            onClick={addPolicyRow}
-            disabled={templateAnchors.length === 0}
-          >
-            {t("manage.planInstances.addPolicyRow", "+ Add anchor override")}
-          </button>
-        </div>
-
-        {/* Row 4 — resolution, read only. */}
-        <div className="hra-text-secondary" style={{ fontSize: 12, fontWeight: 600, marginBottom: 8 }}>
-          {t("manage.planInstances.resolutionTitle", "Resolution")}
-        </div>
-        {resolution.length === 0 ? (
-          <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>{t("manage.planInstances.resolutionEmpty", "This template references no symbolic pace anchors — nothing to resolve.")}</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 8 }}>
-            {resolution.map(r => (
-              <div key={r.anchor} className="hra-border-strong" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8 }}>
-                <span style={{ width: 64, fontWeight: 600, fontFamily: "monospace" }}>{r.anchor}</span>
-                <span className="hra-text-secondary" style={{ flex: 1, fontFamily: "monospace", fontStyle: r.secPerKm == null ? "italic" : undefined }}>
-                  {r.secPerKm != null ? formatPaceSecPerKm(r.secPerKm) : t("manage.planInstances.resolutionNotSet", "— not set —")}
-                </span>
-                <Badge
-                  label={r.secPerKm != null ? t("manage.planInstances.resolutionResolved", "Resolved") : t("manage.planInstances.resolutionUnresolved", "Unresolved")}
-                  color={r.secPerKm != null ? "var(--accent-green)" : "var(--accent-red)"}
-                />
-              </div>
-            ))}
+        )}
+        {hasRacePaceAnchor && paceMode === "anchor" && (
+          <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+            {t("manage.planInstances.anchorModeHint", "Set {{anchor}}'s pace directly in its row in the table below.", { anchor: racePaceAnchor })}
           </div>
         )}
+
+        {/* Anchor table (HRA-121) — replaces the earlier separate Race
+            policy + Resolution sections: one row per template anchor,
+            Absolute/Relative as two grouped column sets, Resolved/
+            Unresolved as the last column. */}
+        {templateAnchors.length === 0 ? (
+          <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+            {formEnabled
+              ? t("manage.planInstances.resolutionEmpty", "This template references no symbolic pace anchors — nothing to resolve.")
+              : t("manage.planInstances.resolutionNoTemplate", "Pick a template above to see its pace anchors.")}
+          </div>
+        ) : (
+          <div className="hra-anchor-table-wrap" style={{ marginBottom: 8 }}>
+            <table className="hra-anchor-table">
+              <thead>
+                <tr>
+                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colAnchor", "Anchor")}</th>
+                  <th className="hra-anchor-group hra-anchor-group-start">{t("manage.planInstances.colAbsolute", "Absolute")}</th>
+                  <th className="hra-anchor-group" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
+                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}></th>
+                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colStatus", "Status")}</th>
+                </tr>
+                <tr className="hra-anchor-sub">
+                  <th className="hra-anchor-group-start">{t("manage.planInstances.colPace", "Pace")}</th>
+                  <th className="hra-anchor-group-start">{t("manage.planInstances.policyRelativeToLabel", "Relative to")}</th>
+                  <th>{t("manage.planInstances.colSign", "±")}</th>
+                  <th>{t("manage.planInstances.policySecondsLabel", "Seconds")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {templateAnchors.map(anchor => {
+                  const derived = hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor;
+                  const row = anchorRows[anchor] ?? emptyAnchorRow();
+                  const relativeDisabled = derived || !formEnabled || row.absoluteValue.trim() !== "";
+                  const absoluteDisabled = derived || !formEnabled || row.relativeTo !== "" || row.seconds.trim() !== "";
+                  const resolved = resolution.find(r => r.anchor === anchor)?.secPerKm ?? null;
+                  return (
+                    <tr key={anchor}>
+                      <td className="hra-anchor-name">{anchor}</td>
+                      <td className="hra-anchor-group-start">
+                        {derived ? (
+                          <span className="hra-anchor-derived">{t("manage.planInstances.derivedFromGoalTime", "from goal time")}</span>
+                        ) : (
+                          <input value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder="5:10/km" style={{ width: "100%" }} />
+                        )}
+                      </td>
+                      <td className="hra-anchor-group-start">
+                        <Select
+                          value={row.relativeTo} onValueChange={v => setAnchorRelativeTo(anchor, v)}
+                          options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
+                          placeholder="—"
+                          triggerStyle={{ height: 28, width: "100%" }}
+                        />
+                      </td>
+                      <td>
+                        <div className="hra-segment" style={{ height: 28 }}>
+                          <button className="hra-segment-item" data-active={row.sign === "+"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "+")}>+</button>
+                          <button className="hra-segment-item" data-active={row.sign === "-"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "-")}>−</button>
+                        </div>
+                      </td>
+                      <td>
+                        <input value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" style={{ width: "100%" }} />
+                      </td>
+                      <td>
+                        <button
+                          className="hra-border-strong hra-text-secondary"
+                          style={{ background: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+                          disabled={derived || !formEnabled || anchorRowIsEmpty(row)}
+                          onClick={() => clearAnchorRow(anchor)}
+                        >
+                          {t("manage.planInstances.clearButton", "Clear")}
+                        </button>
+                      </td>
+                      <td>
+                        <Badge
+                          label={resolved != null ? t("manage.planInstances.resolutionResolved", "Resolved") : t("manage.planInstances.resolutionUnresolved", "Unresolved")}
+                          color={resolved != null ? "var(--accent-green)" : "var(--accent-red)"}
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+          {t("manage.planInstances.tableFillHint", "Fill exactly one of Absolute or Relative per row — the other disables once you start typing.")}
+        </div>
+
         <div style={{ fontSize: 11, color: unresolvedAnchors.length > 0 ? "var(--accent-red)" : "var(--text-muted)", marginBottom: 14 }}>
           {unresolvedAnchors.length > 0
-            ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — add an override above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
+            ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — fill in Absolute or Relative for it above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
             : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}
         </div>
 
@@ -642,6 +675,27 @@ export function PlanInstancesSection({ templates }: Props) {
             {t("common.cancel", "Cancel")}
           </button>
         </div>
+
+        {pendingTemplateId != null && (
+          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelSwitchTemplate}>
+            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+                {t("manage.planInstances.switchTemplateTitle", "Discard current instance data?")}
+              </div>
+              <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
+                {t("manage.planInstances.switchTemplateBody", "This instance hasn't been created yet. Picking a different template will lose the name, dates, and pace values you've already entered.")}
+              </div>
+              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelSwitchTemplate}>
+                  {t("common.cancel", "Cancel")}
+                </button>
+                <button className="hra-btn" data-variant="danger" onClick={confirmSwitchTemplate}>
+                  {t("manage.planInstances.switchTemplateConfirm", "Switch template")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </Card>
     );
   }

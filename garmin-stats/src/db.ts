@@ -300,9 +300,13 @@ export function initSchema(db: DatabaseSync): void {
       event              TEXT,
       -- HRA-121: an instance's own free-text description of the race it
       -- targets — independent of target_activity_id (an actual *linked*
-      -- activity row). Both optional; neither implies the other.
+      -- activity row). All optional; none implies any other. race_url is a
+      -- plain free-text link (e.g. the race's registration/info page) —
+      -- deliberately NOT validated as a well-formed URL server-side, same
+      -- "trust the user" treatment as race_name.
       race_name          TEXT,
       race_date          TEXT,
+      race_url           TEXT,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -534,14 +538,17 @@ export function initSchema(db: DatabaseSync): void {
     `);
   }
 
-  // HRA-121: race_name/race_date, added after plan_instances already existed.
-  // Both nullable, no backfill needed (pre-existing rows simply have neither
-  // set — there's no source data to derive them from).
+  // HRA-121: race_name/race_date/race_url, added after plan_instances
+  // already existed. All nullable, no backfill needed (pre-existing rows
+  // simply have none set — there's no source data to derive them from).
   if (!planInstanceCols.some(c => c.name === "race_name")) {
     db.exec("ALTER TABLE plan_instances ADD COLUMN race_name TEXT");
   }
   if (!planInstanceCols.some(c => c.name === "race_date")) {
     db.exec("ALTER TABLE plan_instances ADD COLUMN race_date TEXT");
+  }
+  if (!planInstanceCols.some(c => c.name === "race_url")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN race_url TEXT");
   }
 }
 
@@ -661,9 +668,10 @@ export interface PlanInstanceRow {
   // HRA-114: denormalized copy of the template's event at instantiation time.
   event: string | null;
   // HRA-121: the instance's own free-text race description — independent of
-  // target_activity_id (an actual linked activity row). Both optional.
+  // target_activity_id (an actual linked activity row). All optional.
   race_name: string | null;
   race_date: string | null;
+  race_url: string | null;
   created_at: string;
 }
 

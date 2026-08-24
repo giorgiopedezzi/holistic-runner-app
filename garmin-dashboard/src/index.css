@@ -102,6 +102,13 @@
   --radius-md: 10px;
   --radius-lg: 16px;
 
+  /* Uniform control height (manage/PlanInstancesSection.tsx's instantiate
+     form) — applied to every editable control in a row (text input, Select
+     trigger, DatePicker trigger, segmented switch) so mixed control types
+     still line up edge to edge, per the row's own label-above/no-beside
+     convention. Not a color/theme token — same value in both themes. */
+  --hra-field-h: 32px;
+
   /* Card surface tokens (HRA-96) — alias the existing per-theme --bg-card/
      --border rather than hardcoding a value here, so --card-bg/--card-border
      stay correct under every [data-theme] block automatically (CSS custom
@@ -866,6 +873,8 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-date-trigger-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .hra-date-trigger:hover { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 .hra-date-trigger[data-state="open"] { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+.hra-date-trigger:disabled { opacity: 0.4; cursor: not-allowed; }
+.hra-date-trigger:disabled:hover { border-color: var(--border-strong); box-shadow: none; }
 
 .hra-popover-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
@@ -916,6 +925,43 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-toast[data-variant="success"] { border-left-color: var(--accent-green); }
 .hra-toast[data-variant="error"]   { border-left-color: var(--accent-red); }
+
+/* Per-anchor pace table (manage/PlanInstancesSection.tsx) — one row per
+   template anchor; Absolute/Relative render as two grouped "supercolumns"
+   under a two-tier <thead>, Resolved/Unresolved is deliberately the last
+   column. Every field inside shares --hra-field-h with the rest of the
+   instantiate form so mixed control types (input/select/segment) still
+   line up row to row. */
+.hra-anchor-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.hra-anchor-table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); min-width: 640px; }
+.hra-anchor-table th, .hra-anchor-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.hra-anchor-table thead th {
+  background: var(--bg-inset); color: var(--text-muted); font-weight: 700; font-size: var(--fs-meta);
+  text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--border-strong);
+}
+.hra-anchor-table thead tr.hra-anchor-sub th { color: var(--text-secondary); font-weight: 600; text-transform: none; letter-spacing: normal; }
+.hra-anchor-table th.hra-anchor-group-start,
+.hra-anchor-table td.hra-anchor-group-start { border-left: 1px solid var(--border-strong); }
+.hra-anchor-table th.hra-anchor-group { text-align: center; }
+.hra-anchor-table tbody tr:last-child td { border-bottom: none; }
+.hra-anchor-table td.hra-anchor-name { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 600; color: var(--text-primary); }
+.hra-anchor-derived { font-size: var(--fs-meta); color: var(--text-muted); font-style: italic; }
+
+/* Scoped height unification for the New Instance form (manage/
+   PlanInstancesSection.tsx) — every editable control type (text/number
+   input, Select trigger, DatePicker trigger, segmented switch) shares
+   --hra-field-h so a row mixing them still lines up edge to edge. Scoped to
+   .hra-instantiate-form rather than changing any of these classes' global
+   defaults, which are shared by unrelated forms elsewhere in the app. */
+.hra-instantiate-form input[type="text"],
+.hra-instantiate-form input[type="number"],
+.hra-instantiate-form .hra-date-trigger,
+.hra-instantiate-form .hra-select-trigger,
+.hra-instantiate-form .hra-segment { height: var(--hra-field-h); }
+.hra-instantiate-form .hra-anchor-table input[type="text"],
+.hra-instantiate-form .hra-anchor-table input[type="number"],
+.hra-instantiate-form .hra-anchor-table .hra-select-trigger,
+.hra-instantiate-form .hra-anchor-table .hra-segment { height: 28px; }
 
 .hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }

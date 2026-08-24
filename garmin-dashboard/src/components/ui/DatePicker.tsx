@@ -10,6 +10,7 @@ interface DatePickerProps {
   onChange: (v: string) => void;
   min?: string;
   max?: string;
+  disabled?: boolean;
 }
 
 // Parses/formats local calendar dates only (no timezone shift) — matches
@@ -29,7 +30,7 @@ function toIso(d: Date): string {
 // shadcn Popover+Calendar date picker (HRA-98) — drop-in replacement for
 // <input type="date" value min max onChange>, same value/onChange contract
 // so every call site's own state and side effects are unchanged.
-export function DatePicker({ value, onChange, min, max }: DatePickerProps) {
+export function DatePicker({ value, onChange, min, max, disabled }: DatePickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const selected = parseIso(value);
@@ -37,8 +38,8 @@ export function DatePicker({ value, onChange, min, max }: DatePickerProps) {
   const maxDate = parseIso(max);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="hra-date-trigger">
+    <Popover open={disabled ? false : open} onOpenChange={setOpen}>
+      <PopoverTrigger className="hra-date-trigger" disabled={disabled}>
         <CalendarIcon size={13} />
         {/* fmtDate (utils/fmt.ts) — the single locale-aware date formatter
             every displayed date in the app now goes through, not a local

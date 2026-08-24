@@ -155,7 +155,7 @@ test("POST .../instantiate: goal_time converts to whichever anchor race_pace_anc
   }
 });
 
-test("POST .../instantiate: race_name/race_date persist and round-trip, independent of target_activity_id", async () => {
+test("POST .../instantiate: race_name/race_date/race_url persist and round-trip, independent of target_activity_id", async () => {
   const server = await startTestServer();
   try {
     const created = await server.api("/api/v1/plan-templates", {
@@ -168,20 +168,22 @@ test("POST .../instantiate: race_name/race_date persist and round-trip, independ
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: "Race A", start_date: "2026-09-01", goal_time: "03:30:00", race_pace_anchor: "FM",
-        race_name: "Boston Marathon", race_date: "2026-04-20",
+        race_name: "Boston Marathon", race_date: "2026-04-20", race_url: "https://www.baa.org/races/boston-marathon",
       }),
     });
     assert.equal(instantiated.status, 201, JSON.stringify(instantiated.json));
     assert.equal((instantiated.json as any).race_name, "Boston Marathon");
     assert.equal((instantiated.json as any).race_date, "2026-04-20");
+    assert.equal((instantiated.json as any).race_url, "https://www.baa.org/races/boston-marathon");
 
     const instanceId = (instantiated.json as any).id;
     const fetched = await server.api(`/api/v1/plan-instances/${instanceId}`);
     assert.equal(fetched.status, 200);
     assert.equal((fetched.json as any).race_name, "Boston Marathon");
     assert.equal((fetched.json as any).race_date, "2026-04-20");
+    assert.equal((fetched.json as any).race_url, "https://www.baa.org/races/boston-marathon");
 
-    // Both optional: omitting them entirely still succeeds, with null back.
+    // All optional: omitting them entirely still succeeds, with null back.
     const withoutRace = await server.api(`/api/v1/plan-templates/${templateId}/instantiate`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "Race B", start_date: "2026-09-01", goal_time: "03:30:00", race_pace_anchor: "FM" }),
@@ -189,6 +191,7 @@ test("POST .../instantiate: race_name/race_date persist and round-trip, independ
     assert.equal(withoutRace.status, 201, JSON.stringify(withoutRace.json));
     assert.equal((withoutRace.json as any).race_name, null);
     assert.equal((withoutRace.json as any).race_date, null);
+    assert.equal((withoutRace.json as any).race_url, null);
   } finally {
     await server.close();
   }

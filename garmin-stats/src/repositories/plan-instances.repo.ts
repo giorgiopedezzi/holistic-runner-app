@@ -7,7 +7,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
-const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, created_at FROM plan_instances";
+const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, created_at FROM plan_instances";
 const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review FROM plan_instance_days";
 
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
@@ -25,7 +25,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const listByTemplateStmt = db.prepare(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
   const countByTemplateStmt = db.prepare("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
   const insertInstance = db.prepare(
-    "INSERT INTO plan_instances (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date) VALUES ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date)",
+    "INSERT INTO plan_instances (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date, race_url) VALUES ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date, $race_url)",
   );
   const findDaysByInstance = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
   const insertDay = db.prepare(`
@@ -54,7 +54,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       const info = insertInstance.run({
         $template_id: i.template_id, $start_date: i.start_date,
         $pace_overrides: i.pace_overrides, $target_activity_id: i.target_activity_id,
-        $name: i.name, $event: i.event, $race_name: i.race_name, $race_date: i.race_date,
+        $name: i.name, $event: i.event, $race_name: i.race_name, $race_date: i.race_date, $race_url: i.race_url,
       });
       return findInstanceById.get(Number(info.lastInsertRowid)) as unknown as PlanInstanceRow;
     },

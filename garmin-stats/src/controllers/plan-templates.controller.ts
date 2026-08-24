@@ -51,8 +51,11 @@ type InstantiateBody = Partial<{
   goal_time: string; distance_m: number; race_pace_anchor: string;
   target_activity_id: number | null;
   // HRA-121: the instance's own free-text race description — independent of
-  // target_activity_id (an actual linked activity row).
-  race_name: string; race_date: string;
+  // target_activity_id (an actual linked activity row). race_url is a plain
+  // free-text link (e.g. the race's registration page), not validated as a
+  // well-formed URL server-side — same "trust the user" treatment as
+  // race_name.
+  race_name: string; race_date: string; race_url: string;
 }>;
 // HRA-115: a day edit is now its raw DSL text (same grammar as a template's
 // D-line) plus the section/week/date scope it lives in — not pre-resolved
@@ -244,6 +247,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
     const raceName = body.race_name?.trim() || null;
     const raceDate = body.race_date ?? null;
+    const raceUrl = body.race_url?.trim() || null;
 
     const plan = JSON.parse(template.parsed_plan) as RunPlan;
 
@@ -298,7 +302,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
 
     const { instance, days } = instancesService.instantiate(
-      templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId, name, raceName, raceDate,
+      templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId, name, raceName, raceDate, raceUrl,
     );
 
     res.setHeader("Location", `/api/v1/plan-instances/${instance.id}`);

@@ -15,7 +15,7 @@ import type { RunPlan } from "../domain/runplan/types.ts";
 export function createPlanInstancesService(db: DatabaseSync, instances: PlanInstancesRepo) {
   function instantiate(
     templateId: number, plan: RunPlan, options: InstantiateOptions, targetActivityId: number | null, name: string,
-    raceName: string | null, raceDate: string | null,
+    raceName: string | null, raceDate: string | null, raceUrl: string | null,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     const resolvedDays = instantiatePlan(plan, options);
 
@@ -34,6 +34,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         // independent of target_activity_id.
         race_name: raceName,
         race_date: raceDate,
+        race_url: raceUrl,
       });
       for (const day of resolvedDays) {
         instances.createDay({

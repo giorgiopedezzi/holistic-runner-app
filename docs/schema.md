@@ -109,9 +109,11 @@ name, genuinely distinct from its source template's, e.g. template "Albanesi 12 
 level only because a migration can't invent a real name for pre-existing rows), `event` (nullable
 TEXT — HRA-114: a denormalized copy of the template's `event` at instantiation time, for read
 convenience; never independently settable, always the same event type as its template), `race_name`
-/ `race_date` (nullable TEXT — HRA-121: the instance's own free-text description of the race it
-targets, both optional and independent of `target_activity_id` — a race that hasn't happened yet may
-have no linkable activity row at all), `created_at`.
+/ `race_date` / `race_url` (nullable TEXT — HRA-121: the instance's own free-text description of the
+race it targets, all optional and independent of `target_activity_id` — a race that hasn't happened
+yet may have no linkable activity row at all. `race_url` is a plain free-text link, e.g. the race's
+registration page — not validated as a well-formed URL server-side, same "trust the user" treatment
+as `race_name`), `created_at`.
 
 **`name`/`event` migration (HRA-114):** rows created before this Story had neither column. The
 migration backfills them from the source template (`name` ← template's `name`, `event` ← template's

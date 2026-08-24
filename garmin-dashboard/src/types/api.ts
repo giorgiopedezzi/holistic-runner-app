@@ -125,8 +125,11 @@ export interface PlanInstance {
   event:               string | null;
   // HRA-121: free-text description of the race this instance targets —
   // independent of target_activity_id (an actual linked activity row).
+  // race_url is a plain free-text link (e.g. a registration page), not
+  // validated as a well-formed URL.
   race_name:           string | null;
   race_date:           string | null;
+  race_url:            string | null;
   created_at:          string;
 }
 

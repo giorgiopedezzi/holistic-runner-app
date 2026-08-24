@@ -243,7 +243,7 @@ export const api = {
     instantiate: (templateId: number, body: {
       name: string; start_date: string; pace_overrides?: Record<string, string>;
       goal_time?: string; race_pace_anchor?: string; distance_m?: number; target_activity_id?: number | null;
-      race_name?: string; race_date?: string;
+      race_name?: string; race_date?: string; race_url?: string;
     }) => request<PlanInstanceWithDays>(`/api/v1/plan-templates/${templateId}/instantiate`, "POST", undefined, body),
   },
   planInstances: {
