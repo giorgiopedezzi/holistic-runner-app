@@ -39,9 +39,11 @@ export interface ResolvedDay {
   needs_review: boolean;
 }
 
-// Week N's date = startDate + (N-1)*7 days, UNLESS the template's own source
-// already gave that week an explicit START — the explicit date wins (HRA-112,
-// confirmed at Refinement).
+// Week N's baseline date = startDate + (N-1)*7 days, UNLESS the template's own
+// source already gave that week an explicit START — the explicit date wins
+// (HRA-112, confirmed at Refinement). Each day within the week then offsets
+// from that baseline by (day.day - 1) days (D1=baseline ... D7=baseline+6) —
+// HRA-122: previously every day in a week shared the identical baseline date.
 function addDays(dateOnly: string, days: number): string {
   const [y, m, d] = dateOnly.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
@@ -123,7 +125,8 @@ export function instantiatePlan(plan: RunPlan, options: InstantiateOptions): Res
       const policy = getEffectivePacePolicy(overriddenPlan, section, week);
       const weekDate = week.start_date ?? addDays(options.startDate, (week.number - 1) * 7);
       for (const day of week.days) {
-        days.push(resolveDay(day, section.name, week.number, weekDate, policy));
+        const dayDate = addDays(weekDate, day.day - 1);
+        days.push(resolveDay(day, section.name, week.number, dayDate, policy));
       }
     }
   }

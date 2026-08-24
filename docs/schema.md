@@ -176,7 +176,10 @@ time, or if any of its resolved intensities failed to resolve against the overri
 **Week-date derivation rule** (confirmed at Refinement for HRA-112): `week.start_date =
 instantiation_start_date + (week.number - 1) × 7 days`, **unless** that week already carries an
 explicit `WEEK ... START <date>` in the template's own DSL source, in which case the explicit date
-wins. Implemented in `domain/runplan/instantiate.ts`'s `instantiatePlan()`.
+wins. **Per-day date (HRA-122):** each day's concrete `date` is `week.start_date + (day.day - 1)`
+days (`D1` = the week's start date, `D7` = 6 days later) — before HRA-122 every day in a week was
+persisted with the identical `week.start_date`, a bug. Implemented in
+`domain/runplan/instantiate.ts`'s `instantiatePlan()`.
 
 ## Soft delete & trash
 `activities` and `body_measurements` both have `deleted_at` (TEXT, nullable) and `purged` (INTEGER, default 0). Three states per row:
