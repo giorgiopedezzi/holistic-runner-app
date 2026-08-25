@@ -154,13 +154,26 @@ export function PlanInstancesSection({ templates }: Props) {
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
 
-  const [mode, setMode] = useState<"list" | "instantiate" | "editor">("list");
+  // HRA-133: "instantiate" and "editor" used to be two structurally separate
+  // screens — merged into one "plan" mode (see the unified render below),
+  // so any field beyond day dsl/notes (start date, pace policy) has one
+  // shared UI surface whether the instance is fresh or already exists. This
+  // Story is a pure UI/state restructuring — no new editable capability
+  // (that's the follow-up HRA-134): once an instance exists (editingId set,
+  // `fieldsLocked` below), the shared top fields render populated but
+  // disabled, same as before this Story they simply didn't exist in editor
+  // mode at all.
+  const [mode, setMode] = useState<"list" | "plan">("list");
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // instantiate form — row 1 (identity). Link a race (HRA-121) is a plain
-  // free-text URL, not a picker over existing activities — target_activity_id
-  // stays a valid backend capability, just no longer surfaced by this form.
+  // Shared "plan" screen fields — row 1 (identity). Link a race (HRA-121) is
+  // a plain free-text URL, not a picker over existing activities —
+  // target_activity_id stays a valid backend capability, just no longer
+  // surfaced by this form. `instName` is now the ONE name field for both
+  // creating a fresh instance and displaying an existing one's name (HRA-133
+  // unification — previously a separate `editName` existed purely because
+  // editor mode was a disjoint screen).
   const [templateId, setTemplateId] = useState("");
   const [instName, setInstName] = useState("");
   const [raceName, setRaceName] = useState("");
@@ -194,9 +207,10 @@ export function PlanInstancesSection({ templates }: Props) {
   const [instantiateLoading, setInstantiateLoading] = useState(false);
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
 
-  // editor
+  // Set once an instance exists (freshly created this session, or loaded via
+  // startEdit) — governs `fieldsLocked` below. `instName` above now doubles
+  // as this instance's name field (HRA-133).
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editName, setEditName] = useState("");
   const [sections, setSections] = useState<SectionView[]>([]);
   const [editError, setEditError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -239,8 +253,17 @@ export function PlanInstancesSection({ templates }: Props) {
   }
 
   function resetEditor() {
-    setEditingId(null); setEditName(""); setSections([]); setEditError(null); setEditApprovedAt(null);
+    setEditingId(null); setSections([]); setEditError(null); setEditApprovedAt(null);
     setSwapDayA(""); setSwapDayB(""); setSwapWeekA(""); setSwapWeekB("");
+  }
+
+  // HRA-133: the unified "plan" screen's own reset — both the shared top
+  // fields and the editor's own day-level state, since they now render
+  // together. Used whenever leaving the screen entirely (Cancel, back to
+  // list) or starting completely fresh (New instance).
+  function resetPlanScreen() {
+    resetInstantiateForm();
+    resetEditor();
   }
 
   // Row 2: Start date and Days-before-race are two views of one relationship
@@ -431,14 +454,16 @@ export function PlanInstancesSection({ templates }: Props) {
 
       const created = await api.planTemplates.instantiate(Number(templateId), body);
       await refreshInstances();
-      resetInstantiateForm();
-      // HRA-123: open straight into the generated instance's plan view
-      // instead of dropping back to the list — created already carries
-      // {..., days} (PlanInstanceWithDays), same shape startEdit() fetches
-      // via getById, so no extra round-trip is needed.
-      resetEditor();
+      // HRA-123: stay on the same unified plan screen instead of dropping
+      // back to the list — created already carries {..., days}
+      // (PlanInstanceWithDays), same shape startEdit() fetches via getById,
+      // so no extra round-trip is needed. HRA-133: the shared top fields
+      // (templateId, instName, startDate, race info, pace anchors) are
+      // deliberately NOT reset here — they already hold exactly what was
+      // just submitted, and now stay visible (locked) as this same
+      // instance's own values, per the unified screen shape.
       setEditingId(created.id);
-      setEditName(created.name ?? "");
+      setInstName(created.name ?? "");
       const days: ResolvedDay[] = created.days.map(d => ({
         section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
@@ -446,7 +471,6 @@ export function PlanInstancesSection({ templates }: Props) {
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
       }));
       setSections(sectionsFromDays(days));
-      setMode("editor");
       notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
     } catch (e) {
       setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
@@ -458,12 +482,44 @@ export function PlanInstancesSection({ templates }: Props) {
     return groupResolvedDaysIntoSectionViews(days.map(d => ({ ...d, dsl: reconstructDslFromResolvedDay(d) })));
   }
 
+  // HRA-133: a stored PaceValue (JSON on plan_instances.pace_overrides) has
+  // the same absolute/offset shape parsePaceOverrideInput already parses raw
+  // text into — this is the reverse direction, formatting one back into the
+  // anchor table row's own display fields. Note: goal_time is collapsed into
+  // a plain absolute PaceValue at instantiate time (garmin-stats controller)
+  // — there is no persisted way to tell "this came from goal_time" apart
+  // from a raw absolute override, so a loaded instance always shows every
+  // override as an Anchor-override-style row, never Goal time (known,
+  // unavoidable display limitation — flagged in this Story's review).
+  function paceValueToAnchorRow(pv: PaceValue): AnchorRowState {
+    if (pv.kind === "absolute") return { absoluteValue: formatPaceSecPerKm(pv.pace_sec_per_km), relativeTo: "", sign: "+", seconds: "" };
+    return { absoluteValue: "", relativeTo: pv.anchor, sign: pv.offset_sec_per_km >= 0 ? "+" : "-", seconds: String(Math.abs(pv.offset_sec_per_km)) };
+  }
+
+  // HRA-133: populates the same shared top fields the create flow uses, from
+  // the loaded instance's own persisted values — this is what makes "same
+  // screen shape whether fresh or existing" (AC1) true, not just a layout
+  // coincidence. Fields with no persisted equivalent (restDayLabel, the
+  // goal_time/race_pace_anchor split — see paceValueToAnchorRow above) stay
+  // at resetPlanScreen()'s defaults. Populating alone doesn't make them
+  // editable — `fieldsLocked` (below) disables every one of them; that's
+  // this Story's own explicit scope boundary, left to HRA-134.
   async function startEdit(instance: PlanInstance) {
-    resetEditor();
+    resetPlanScreen();
     setEditingId(instance.id);
-    setEditName(instance.name ?? "");
+    setInstName(instance.name ?? "");
     setEditApprovedAt(instance.approved_at);
-    setMode("editor");
+    setTemplateId(String(instance.template_id));
+    setStartDate(instance.start_date);
+    setRaceName(instance.race_name ?? "");
+    setRaceDate(instance.race_date ?? "");
+    setRaceUrl(instance.race_url ?? "");
+    setDaysBeforeRace(instance.race_date ? String(daysBetween(instance.start_date, instance.race_date)) : "");
+    const plan = parsePlan(templates?.find(tpl => String(tpl.id) === String(instance.template_id)));
+    const anchors = plan ? collectPlanAnchors(plan) : [];
+    const overrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
+    setAnchorRows(Object.fromEntries(anchors.map(a => [a, overrides[a] ? paceValueToAnchorRow(overrides[a]) : emptyAnchorRow()])));
+    setMode("plan");
     try {
       const full = await api.planInstances.getById(instance.id);
       const days: ResolvedDay[] = full.days.map(d => ({
@@ -616,7 +672,7 @@ export function PlanInstancesSection({ templates }: Props) {
       section_name: s.name, week_number: w.number, date: d.date!, dsl: d.dsl,
     }))));
     try {
-      const updated = await api.planInstances.update(editingId, editName, days);
+      const updated = await api.planInstances.update(editingId, instName, days);
       const resolvedDays: ResolvedDay[] = updated.days.map(d => ({
         section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
@@ -652,7 +708,7 @@ export function PlanInstancesSection({ templates }: Props) {
     try {
       await api.planInstances.remove(id);
       setDeleteConfirmId(null);
-      if (editingId === id) { resetEditor(); setMode("list"); }
+      if (editingId === id) { resetPlanScreen(); setMode("list"); }
       await refreshInstances();
       notify(t("manage.planInstances.deleteSucceeded", "Instance deleted."));
     } catch (e) {
@@ -698,270 +754,11 @@ export function PlanInstancesSection({ templates }: Props) {
           </div>
         )}
         {deleteError && <ErrorBanner message={deleteError} />}
-        <button className="hra-btn" data-variant="accent" onClick={() => { resetInstantiateForm(); setMode("instantiate"); }} disabled={!templates || templates.length === 0}>
+        <button className="hra-btn" data-variant="accent" onClick={() => { resetPlanScreen(); setMode("plan"); }} disabled={!templates || templates.length === 0}>
           {t("manage.planInstances.newInstance", "New instance")}
         </button>
         {templates && templates.length === 0 && (
           <div className="hra-text-muted" style={{ fontSize: 11, marginTop: 6 }}>{t("manage.planInstances.noTemplates", "Save a template first — an instance is always created from one.")}</div>
-        )}
-      </Card>
-    );
-  }
-
-  if (mode === "instantiate") {
-    return (
-      <Card className="hra-instantiate-form">
-        <div className="hra-block-title" style={{ marginBottom: 12 }}>{t("manage.planInstances.instantiateTitle", "New instance")}</div>
-
-        {/* Row 1 — identity. Template gates the whole form below; Name is
-            required; Race name/Race date/Link a race are independently
-            optional. Equal-width grid, not ad hoc flex-basis guessing. */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 6 }}>
-          <Field label={t("manage.planInstances.templateLabel", "Template")} required>
-            <Select
-              value={templateId} onValueChange={onTemplateSelectChange}
-              options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
-              placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
-              triggerStyle={{ width: "100%" }}
-            />
-          </Field>
-          <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
-            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={!formEnabled} style={{ width: "100%", padding: "0 10px" }} />
-          </Field>
-          <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
-            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={!formEnabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
-          </Field>
-          <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
-            <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={!formEnabled} />
-          </Field>
-          <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
-            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={!formEnabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
-          </Field>
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
-          <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
-          {!formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
-        </div>
-
-        {/* Row 2 — timing. */}
-        <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
-          <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
-            <DatePicker value={startDate} onChange={onStartDateChange} disabled={!formEnabled} />
-          </Field>
-          <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              value={daysBeforeRace} onChange={e => onDaysBeforeRaceChange(e.target.value)}
-              type="number" disabled={!formEnabled || !raceDate}
-              placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above")}
-              style={{ width: "100%", padding: "0 10px" }}
-            />
-          </Field>
-          <Field label={t("manage.planInstances.restDayLabelLabel", "Rest day label")}>
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              value={restDayLabel} onChange={e => setRestDayLabel(e.target.value)}
-              disabled={!formEnabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
-              style={{ width: "100%", padding: "0 10px" }}
-            />
-          </Field>
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
-          {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
-          {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
-        </div>
-        {week1AnchorMismatch && (
-          <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 16 }}>
-            {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
-          </div>
-        )}
-
-        {/* Row 3 — pace: Race pace anchor + Pace input mode on one line. */}
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
-          <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
-            <div className="hra-segment">
-              {[NONE_ANCHOR, ...templateAnchors].map(a => (
-                <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={!formEnabled} onClick={() => onRacePaceAnchorChange(a)}>
-                  {a === NONE_ANCHOR ? t("manage.planInstances.racePaceAnchorNone", "None") : a}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <Field label={t("manage.planInstances.paceLabel", "Pace input")}>
-            <div className="hra-segment">
-              <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={!formEnabled || !hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
-              <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={!formEnabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
-            </div>
-          </Field>
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
-          {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
-        </div>
-
-        {hasRacePaceAnchor && paceMode === "goalTime" && (
-          <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "auto 200px" : "auto", gap: 10, marginBottom: 16 }}>
-            <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
-              <div className="hra-goal-time-fields">
-                <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={!formEnabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
-                <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeHoursUnit", "h")}</span>
-                <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={!formEnabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
-                <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeMinutesUnit", "m")}</span>
-                <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={!formEnabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
-                <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeSecondsUnit", "s")}</span>
-              </div>
-            </Field>
-            {showDistanceOverride && (
-              <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
-                <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={!formEnabled} type="number" style={{ width: "100%", padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
-              </Field>
-            )}
-          </div>
-        )}
-        {hasRacePaceAnchor && paceMode === "anchor" && (
-          <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
-            {t("manage.planInstances.anchorModeHint", "Set {{anchor}}'s pace directly in its row in the table below.", { anchor: racePaceAnchor })}
-          </div>
-        )}
-
-        {/* Anchor table (HRA-121) — replaces the earlier separate Race
-            policy + Resolution sections: one row per template anchor,
-            Absolute/Relative as two grouped column sets, Resolved/
-            Unresolved as the last column. */}
-        {templateAnchors.length === 0 ? (
-          <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
-            {formEnabled
-              ? t("manage.planInstances.resolutionEmpty", "This template references no symbolic pace anchors — nothing to resolve.")
-              : t("manage.planInstances.resolutionNoTemplate", "Pick a template above to see its pace anchors.")}
-          </div>
-        ) : (
-          <div className="hra-anchor-table-wrap" style={{ marginBottom: 8 }}>
-            <table className="hra-anchor-table">
-              <thead>
-                <tr>
-                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colAnchor", "Anchor")}</th>
-                  <th className="hra-anchor-group hra-anchor-group-start">{t("manage.planInstances.colAbsolute", "Absolute")}</th>
-                  <th className="hra-anchor-group" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
-                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}></th>
-                  <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colStatus", "Status")}</th>
-                </tr>
-                <tr className="hra-anchor-sub">
-                  <th className="hra-anchor-group-start">{t("manage.planInstances.colPace", "Pace")}</th>
-                  <th className="hra-anchor-group-start">{t("manage.planInstances.policyRelativeToLabel", "Relative to")}</th>
-                  <th>{t("manage.planInstances.colSign", "±")}</th>
-                  <th>{t("manage.planInstances.policySecondsLabel", "Seconds")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {templateAnchors.map(anchor => {
-                  const derived = hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor;
-                  const row = anchorRows[anchor] ?? emptyAnchorRow();
-                  const relativeDisabled = derived || !formEnabled || row.absoluteValue.trim() !== "";
-                  const absoluteDisabled = derived || !formEnabled || row.relativeTo !== "" || row.seconds.trim() !== "";
-                  const resolved = resolution.find(r => r.anchor === anchor)?.secPerKm ?? null;
-                  return (
-                    <tr key={anchor}>
-                      <td className="hra-anchor-name">
-                        {anchor}
-                        {anchor === racePaceAnchor && (
-                          <span className="hra-anchor-tag">{t("manage.planInstances.racePaceTag", "(race pace)")}</span>
-                        )}
-                      </td>
-                      <td className="hra-anchor-group-start">
-                        {derived ? (
-                          derivedPaceSecPerKm != null ? (
-                            <>
-                              {formatPaceSecPerKm(derivedPaceSecPerKm)}
-                              <span className="hra-anchor-tag">{t("manage.planInstances.derivedFromGoalTime", "(from goal time)")}</span>
-                            </>
-                          ) : (
-                            <span className="hra-anchor-derived">—</span>
-                          )
-                        ) : (
-                          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%", padding: "0 8px" }} />
-                        )}
-                      </td>
-                      <td className="hra-anchor-group-start">
-                        <Select
-                          value={row.relativeTo} onValueChange={v => setAnchorRelativeTo(anchor, v)}
-                          options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
-                          placeholder="—"
-                          triggerStyle={{ width: "100%" }}
-                        />
-                      </td>
-                      <td>
-                        <div className="hra-segment">
-                          <button className="hra-segment-item" data-active={row.sign === "+"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "+")}>+</button>
-                          <button className="hra-segment-item" data-active={row.sign === "-"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "-")}>−</button>
-                        </div>
-                      </td>
-                      <td>
-                        <input className="hra-border-strong hra-bg-card hra-text-primary" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" style={{ width: "100%", padding: "0 8px" }} />
-                      </td>
-                      <td>
-                        <button
-                          className="hra-border-strong hra-text-secondary"
-                          style={{ background: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
-                          disabled={derived || !formEnabled || anchorRowIsEmpty(row)}
-                          onClick={() => clearAnchorRow(anchor)}
-                        >
-                          {t("manage.planInstances.clearButton", "Clear")}
-                        </button>
-                      </td>
-                      <td>
-                        <Badge
-                          label={resolved != null ? t("manage.planInstances.resolutionResolved", "Resolved") : t("manage.planInstances.resolutionUnresolved", "Unresolved")}
-                          color={resolved != null ? "var(--accent-green)" : "var(--accent-red)"}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
-          {t("manage.planInstances.tableFillHint", "Fill exactly one of Absolute or Relative per row — the other disables once you start typing.")}
-        </div>
-
-        <div style={{ fontSize: 11, color: unresolvedAnchors.length > 0 ? "var(--accent-red)" : "var(--text-muted)", marginBottom: 14 }}>
-          {unresolvedAnchors.length > 0
-            ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — fill in Absolute or Relative for it above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
-            : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}
-        </div>
-
-        {instantiateError && <ErrorBanner message={instantiateError} />}
-
-        <div className="hra-row-wrap">
-          <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
-            {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
-          </button>
-          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => { resetInstantiateForm(); setMode("list"); }}>
-            {t("common.cancel", "Cancel")}
-          </button>
-        </div>
-
-        {pendingTemplateId != null && (
-          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelSwitchTemplate}>
-            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                {t("manage.planInstances.switchTemplateTitle", "Discard current instance data?")}
-              </div>
-              <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
-                {t("manage.planInstances.switchTemplateBody", "This instance hasn't been created yet. Picking a different template will lose the name, dates, and pace values you've already entered.")}
-              </div>
-              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelSwitchTemplate}>
-                  {t("common.cancel", "Cancel")}
-                </button>
-                <button className="hra-btn" data-variant="danger" onClick={confirmSwitchTemplate}>
-                  {t("manage.planInstances.switchTemplateConfirm", "Switch template")}
-                </button>
-              </div>
-            </div>
-          </div>
         )}
       </Card>
     );
@@ -973,42 +770,305 @@ export function PlanInstancesSection({ templates }: Props) {
   // go away.
   const isApproved = editApprovedAt != null;
   const editWeek1AnchorMismatch = editorWeek1AnchorMismatch(sections);
+  // HRA-133: once an instance exists (freshly created this session, or
+  // loaded via startEdit), the shared top fields below lock — populated
+  // with the instance's real values (startEdit above), but not yet wired
+  // for editing, per this Story's own explicit scope boundary (HRA-134 is
+  // the follow-up that makes them actually editable). `nameDisabled` is the
+  // one exception: Name was already editable in the pre-unification editor
+  // (governed only by isApproved) and must not regress, so it keeps that
+  // exact rule instead of falling under the new fieldsLocked gate.
+  const fieldsLocked = editingId != null;
+  const fieldsDisabled = fieldsLocked || !formEnabled;
+  const nameDisabled = fieldsLocked ? isApproved : !formEnabled;
+  const showWeek1AnchorWarning = week1AnchorMismatch || editWeek1AnchorMismatch;
 
   return (
-    <Card>
+    <Card className="hra-instantiate-form">
       <div className="hra-row-wrap" style={{ alignItems: "center", marginBottom: 12 }}>
-        <div className="hra-block-title">{t("manage.planInstances.editTitle", "Edit instance")}</div>
-        <Badge
-          label={isApproved ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}
-          color={isApproved ? "var(--accent-green)" : "var(--text-muted)"}
-        />
+        <div className="hra-block-title">
+          {fieldsLocked ? t("manage.planInstances.editTitle", "Edit instance") : t("manage.planInstances.instantiateTitle", "New instance")}
+        </div>
+        {fieldsLocked && (
+          <Badge
+            label={isApproved ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}
+            color={isApproved ? "var(--accent-green)" : "var(--text-muted)"}
+          />
+        )}
       </div>
-      <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
-        {t("manage.planTemplates.nameLabel", "Name")}
-        <input className="hra-border-strong hra-bg-card hra-text-primary" value={editName} onChange={e => setEditName(e.target.value)} disabled={isApproved} style={{ width: "100%", marginTop: 4, padding: 6 }} />
-      </label>
+
+      {/* Row 1 — identity. Template gates the whole form below; Name is
+          required; Race name/Race date/Link a race are independently
+          optional. Equal-width grid, not ad hoc flex-basis guessing.
+          HRA-133: same row whether creating fresh or viewing an existing
+          instance — startEdit() populates every field from the instance's
+          own persisted values, fieldsLocked/fieldsDisabled just gate
+          interactivity, not visibility (AC1's "same screen shape"). */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 6 }}>
+        <Field label={t("manage.planInstances.templateLabel", "Template")} required>
+          <Select
+            value={templateId} onValueChange={onTemplateSelectChange}
+            options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
+            placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
+            triggerStyle={{ width: "100%" }}
+            disabled={fieldsLocked}
+          />
+        </Field>
+        <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={nameDisabled} style={{ width: "100%", padding: "0 10px" }} />
+        </Field>
+        <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={fieldsDisabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
+        </Field>
+        <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
+          <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={fieldsDisabled} />
+        </Field>
+        <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldsDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
+        </Field>
+      </div>
+      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+        <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
+        {!fieldsLocked && !formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
+      </div>
+
+      {/* Row 2 — timing. */}
+      <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
+        <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
+          <DatePicker value={startDate} onChange={onStartDateChange} disabled={fieldsDisabled} />
+        </Field>
+        <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
+          <input
+            className="hra-border-strong hra-bg-card hra-text-primary"
+            value={daysBeforeRace} onChange={e => onDaysBeforeRaceChange(e.target.value)}
+            type="number" disabled={fieldsDisabled || !raceDate}
+            placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above")}
+            style={{ width: "100%", padding: "0 10px" }}
+          />
+        </Field>
+        <Field label={t("manage.planInstances.restDayLabelLabel", "Rest day label")}>
+          <input
+            className="hra-border-strong hra-bg-card hra-text-primary"
+            value={restDayLabel} onChange={e => setRestDayLabel(e.target.value)}
+            disabled={fieldsDisabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
+            style={{ width: "100%", padding: "0 10px" }}
+          />
+        </Field>
+      </div>
+      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
+        {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
+      </div>
+      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+        {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
+      </div>
+      {/* HRA-130/HRA-133: the fresh-form check (week1AnchorMismatch, live
+          templateId/startDate) and the loaded-instance check
+          (editWeek1AnchorMismatch, real persisted day dates) now both apply
+          to the same unified screen — either firing is enough to warn. */}
+      {showWeek1AnchorWarning && (
+        <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 16 }}>
+          {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
+        </div>
+      )}
+
+      {/* Row 3 — pace: Race pace anchor + Pace input mode on one line. */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
+        <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
+          <div className="hra-segment">
+            {[NONE_ANCHOR, ...templateAnchors].map(a => (
+              <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={fieldsDisabled} onClick={() => onRacePaceAnchorChange(a)}>
+                {a === NONE_ANCHOR ? t("manage.planInstances.racePaceAnchorNone", "None") : a}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label={t("manage.planInstances.paceLabel", "Pace input")}>
+          <div className="hra-segment">
+            <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={fieldsDisabled || !hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
+            <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={fieldsDisabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
+          </div>
+        </Field>
+      </div>
+      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+        {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
+      </div>
+
+      {hasRacePaceAnchor && paceMode === "goalTime" && (
+        <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "auto 200px" : "auto", gap: 10, marginBottom: 16 }}>
+          <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
+            <div className="hra-goal-time-fields">
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={fieldsDisabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
+              <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeHoursUnit", "h")}</span>
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={fieldsDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
+              <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeMinutesUnit", "m")}</span>
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={fieldsDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
+              <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeSecondsUnit", "s")}</span>
+            </div>
+          </Field>
+          {showDistanceOverride && (
+            <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldsDisabled} type="number" style={{ width: "100%", padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
+            </Field>
+          )}
+        </div>
+      )}
+      {hasRacePaceAnchor && paceMode === "anchor" && (
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+          {t("manage.planInstances.anchorModeHint", "Set {{anchor}}'s pace directly in its row in the table below.", { anchor: racePaceAnchor })}
+        </div>
+      )}
+
+      {/* Anchor table (HRA-121) — replaces the earlier separate Race
+          policy + Resolution sections: one row per template anchor,
+          Absolute/Relative as two grouped column sets, Resolved/
+          Unresolved as the last column. HRA-133: for a loaded instance,
+          rows are populated from pace_overrides (startEdit's
+          paceValueToAnchorRow) — still just a display, not yet editable. */}
+      {templateAnchors.length === 0 ? (
+        <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+          {formEnabled
+            ? t("manage.planInstances.resolutionEmpty", "This template references no symbolic pace anchors — nothing to resolve.")
+            : t("manage.planInstances.resolutionNoTemplate", "Pick a template above to see its pace anchors.")}
+        </div>
+      ) : (
+        <div className="hra-anchor-table-wrap" style={{ marginBottom: 8 }}>
+          <table className="hra-anchor-table">
+            <thead>
+              <tr>
+                <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colAnchor", "Anchor")}</th>
+                <th className="hra-anchor-group hra-anchor-group-start">{t("manage.planInstances.colAbsolute", "Absolute")}</th>
+                <th className="hra-anchor-group" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
+                <th rowSpan={2} style={{ verticalAlign: "bottom" }}></th>
+                <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colStatus", "Status")}</th>
+              </tr>
+              <tr className="hra-anchor-sub">
+                <th className="hra-anchor-group-start">{t("manage.planInstances.colPace", "Pace")}</th>
+                <th className="hra-anchor-group-start">{t("manage.planInstances.policyRelativeToLabel", "Relative to")}</th>
+                <th>{t("manage.planInstances.colSign", "±")}</th>
+                <th>{t("manage.planInstances.policySecondsLabel", "Seconds")}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {templateAnchors.map(anchor => {
+                const derived = hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor;
+                const row = anchorRows[anchor] ?? emptyAnchorRow();
+                const relativeDisabled = derived || fieldsDisabled || row.absoluteValue.trim() !== "";
+                const absoluteDisabled = derived || fieldsDisabled || row.relativeTo !== "" || row.seconds.trim() !== "";
+                const resolved = resolution.find(r => r.anchor === anchor)?.secPerKm ?? null;
+                return (
+                  <tr key={anchor}>
+                    <td className="hra-anchor-name">
+                      {anchor}
+                      {anchor === racePaceAnchor && (
+                        <span className="hra-anchor-tag">{t("manage.planInstances.racePaceTag", "(race pace)")}</span>
+                      )}
+                    </td>
+                    <td className="hra-anchor-group-start">
+                      {derived ? (
+                        derivedPaceSecPerKm != null ? (
+                          <>
+                            {formatPaceSecPerKm(derivedPaceSecPerKm)}
+                            <span className="hra-anchor-tag">{t("manage.planInstances.derivedFromGoalTime", "(from goal time)")}</span>
+                          </>
+                        ) : (
+                          <span className="hra-anchor-derived">—</span>
+                        )
+                      ) : (
+                        <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%", padding: "0 8px" }} />
+                      )}
+                    </td>
+                    <td className="hra-anchor-group-start">
+                      <Select
+                        value={row.relativeTo} onValueChange={v => setAnchorRelativeTo(anchor, v)}
+                        options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
+                        placeholder="—"
+                        triggerStyle={{ width: "100%" }}
+                        disabled={fieldsDisabled}
+                      />
+                    </td>
+                    <td>
+                      <div className="hra-segment">
+                        <button className="hra-segment-item" data-active={row.sign === "+"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "+")}>+</button>
+                        <button className="hra-segment-item" data-active={row.sign === "-"} disabled={relativeDisabled} onClick={() => setAnchorSign(anchor, "-")}>−</button>
+                      </div>
+                    </td>
+                    <td>
+                      <input className="hra-border-strong hra-bg-card hra-text-primary" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" style={{ width: "100%", padding: "0 8px" }} />
+                    </td>
+                    <td>
+                      <button
+                        className="hra-border-strong hra-text-secondary"
+                        style={{ background: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+                        disabled={derived || fieldsDisabled || anchorRowIsEmpty(row)}
+                        onClick={() => clearAnchorRow(anchor)}
+                      >
+                        {t("manage.planInstances.clearButton", "Clear")}
+                      </button>
+                    </td>
+                    <td>
+                      <Badge
+                        label={resolved != null ? t("manage.planInstances.resolutionResolved", "Resolved") : t("manage.planInstances.resolutionUnresolved", "Unresolved")}
+                        color={resolved != null ? "var(--accent-green)" : "var(--accent-red)"}
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+        {t("manage.planInstances.tableFillHint", "Fill exactly one of Absolute or Relative per row — the other disables once you start typing.")}
+      </div>
+
+      <div style={{ fontSize: 11, color: unresolvedAnchors.length > 0 ? "var(--accent-red)" : "var(--text-muted)", marginBottom: 14 }}>
+        {unresolvedAnchors.length > 0
+          ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — fill in Absolute or Relative for it above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
+          : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}
+      </div>
+
+      {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
+      {fieldsLocked && editError && <ErrorBanner message={editError} />}
 
       <div className="hra-row-wrap" style={{ marginBottom: 12 }}>
-        <button className="hra-btn" data-variant="green" onClick={onSave} disabled={saveLoading || sections.length === 0 || isApproved}>
-          {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
-        </button>
-        <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
-          {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
-        </button>
-        <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => { resetEditor(); setMode("list"); }}>
+        {!fieldsLocked ? (
+          <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
+            {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
+          </button>
+        ) : (
+          <>
+            <button className="hra-btn" data-variant="green" onClick={onSave} disabled={saveLoading || sections.length === 0 || isApproved}>
+              {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+            </button>
+            <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
+              {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
+            </button>
+          </>
+        )}
+        <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => { resetPlanScreen(); setMode("list"); }}>
           {t("common.cancel", "Cancel")}
         </button>
       </div>
 
-      {editError && <ErrorBanner message={editError} />}
-
-      {/* HRA-130: same (non-blocking) warning/style the instantiate form
-          shows, recomputed from this instance's own loaded days — visible
-          regardless of approval state, since it's informational only and
-          never gates Save/Approve (isApproved already governs those). */}
-      {editWeek1AnchorMismatch && (
-        <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 12 }}>
-          {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
+      {pendingTemplateId != null && (
+        <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelSwitchTemplate}>
+          <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              {t("manage.planInstances.switchTemplateTitle", "Discard current instance data?")}
+            </div>
+            <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
+              {t("manage.planInstances.switchTemplateBody", "This instance hasn't been created yet. Picking a different template will lose the name, dates, and pace values you've already entered.")}
+            </div>
+            <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+              <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelSwitchTemplate}>
+                {t("common.cancel", "Cancel")}
+              </button>
+              <button className="hra-btn" data-variant="danger" onClick={confirmSwitchTemplate}>
+                {t("manage.planInstances.switchTemplateConfirm", "Switch template")}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1050,7 +1110,7 @@ export function PlanInstancesSection({ templates }: Props) {
 
       {sections.length > 0 && (
         <TrainingPlanAccordion
-          ownerName={editName || t("manage.planTemplates.untitled", "Untitled plan")}
+          ownerName={instName || t("manage.planTemplates.untitled", "Untitled plan")}
           sections={sections}
           onSectionEdit={() => {}}
           onWeekEdit={() => {}}
