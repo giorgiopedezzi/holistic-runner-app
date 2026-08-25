@@ -19,6 +19,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AccordionCard } from "./ui/AccordionCard";
+import { fmtDate, fmtWeekdayShort } from "@/utils/fmt";
 import type { AggregateTotals, DayView, DistanceTotal, SectionView, WeekView } from "../domain/runplan-aggregate";
 
 interface TrainingPlanAccordionProps {
@@ -59,6 +60,23 @@ function compactTotals(totals: AggregateTotals, t: Translate): string {
     t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays }),
     fmtDistance(totals.distance, t),
   ].join(" · ");
+}
+
+// D<n>[suffix][ [tag]]: — the whole D-line prefix up to and including the
+// colon (garmin-stats/src/domain/runplan/parser.ts's DAY_RE), stripped so
+// only the workout description text after it remains.
+const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
+
+// HRA-125: an instance day's title shows its real calendar date + weekday
+// instead of the "D<n>" placeholder — templates have no calendar dates
+// (day.date is only ever set for instance days, runplan-aggregate.ts's
+// buildInstanceSectionView), so template mode keeps day.dsl unchanged (AC3).
+// Only the D<n> prefix is replaced — the workout text after the colon (and
+// any trailing "# note" the DSL line already carries) stays visible (AC2).
+function dayLabel(day: DayView): string {
+  if (day.date == null) return day.dsl;
+  const workoutText = day.dsl.replace(DAY_PREFIX_RE, "");
+  return `${fmtDate(day.date)} ${fmtWeekdayShort(day.date)} ${workoutText}`;
 }
 
 function weekHasWarnings(week: WeekView): boolean {
@@ -112,12 +130,14 @@ function DayEditor({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  // day.dsl is already the whole raw line ("D3: 5km @ RG") — using it
-  // directly as the label (ellipsis-truncated by TitleRow) reports the
-  // actual workout at a glance, instead of a redundant bare "D3".
+  // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
+  // the label (ellipsis-truncated by TitleRow) reports the actual workout
+  // at a glance, instead of a redundant bare "D3". For an instance day
+  // (day.date set), dayLabel() swaps the "D3" placeholder for the real
+  // calendar date + weekday instead (HRA-125) — template days are unaffected.
   return (
     <AccordionCard
-      title={<TitleRow label={day.dsl} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
+      title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import { setUnitSystem } from "./units";
-import { fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed, fmtMinSecRaw, fmtDate } from "./fmt";
+import { fmtPace, fmtDuration, fmtKm, fmtWeight, fmtElevation, fmtSpeed, fmtMinSecRaw, fmtDate, fmtWeekdayShort } from "./fmt";
 
 afterEach(() => setUnitSystem("metric"));
 
@@ -89,6 +89,20 @@ describe("fmtDate", () => {
     expect(fmtDate(null)).toBe("—");
     expect(fmtDate(undefined)).toBe("—");
     expect(fmtDate("")).toBe("—");
+  });
+});
+
+describe("fmtWeekdayShort (HRA-125, training-plan instance day labels)", () => {
+  it("returns the fixed 3-letter English abbreviation, regardless of app language", () => {
+    expect(fmtWeekdayShort("2026-08-24")).toBe("Mon"); // Monday
+    expect(fmtWeekdayShort("2026-08-25")).toBe("Tue");
+    expect(fmtWeekdayShort("2026-08-30")).toBe("Sun");
+  });
+  it("parses as a LOCAL calendar date, not UTC — no timezone day-shift", () => {
+    expect(fmtWeekdayShort("2026-01-01")).toBe("Thu");
+  });
+  it("returns empty string for an unparseable date", () => {
+    expect(fmtWeekdayShort("")).toBe("");
   });
 });
 

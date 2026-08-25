@@ -166,6 +166,17 @@ export function fmtDate(iso: string | null | undefined): string {
     : DATE_FORMATTERS[format].format(date);
 }
 
+// 3-letter weekday abbreviation (HRA-125, training-plan instance day rows) —
+// deliberately fixed English (Mon..Sun) regardless of app language or the
+// date_format setting's region, same "compact label, not a spelled-out
+// sentence" reasoning as fmtDateChart's numeric-only axis ticks above.
+const WEEKDAY_SHORT_FORMATTER = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+
+export function fmtWeekdayShort(iso: string): string {
+  const date = parseIsoDateLocal(iso);
+  return date ? WEEKDAY_SHORT_FORMATTER.format(date) : "";
+}
+
 // Numeric-only "dd/mm" or "mm/dd" (no year) — see NUMERIC_CHART_FORMATTERS
 // above. Used by domain/trends.ts's per-point chart labels.
 export function fmtDateChart(iso: string): string {

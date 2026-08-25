@@ -844,6 +844,16 @@ the day's full warning list, or actually editing a field.
   report the DSL too") — `day.dsl` is already the whole raw line (`"D3: 5km @ RG"`, `DayEntry.raw_dsl`
   carries the full original text including the `D`-prefix), so a separate label would only have been
   redundant; `TitleRow`'s existing ellipsis truncation handles a long workout line gracefully.
+  **For an instance day (HRA-125), the `D<n>` placeholder prefix is swapped for the day's real
+  calendar date + a fixed-English 3-letter weekday abbreviation** (`TrainingPlanAccordion.tsx`'s
+  `dayLabel()`, e.g. `"24/08/2026 Mon 5km @ RG"`) — `day.date` (`DayView.date`) is only ever set for
+  instance days (`buildInstanceSectionView`), so template days (`day.date == null`) keep the
+  unmodified `day.dsl` label exactly as before; only the prefix up to the D-line's colon is replaced,
+  the workout text (and any trailing `# note`) after it stays untouched. Date formatting reuses
+  `utils/fmt.ts`'s `fmtDate()` (the app's one date-format-setting-aware formatter); the weekday
+  abbreviation is a new `fmtWeekdayShort()` in the same file, deliberately NOT localized (`Mon`..`Sun`
+  always) — a fixed, compact label rather than a spelled-out, language-dependent one, same reasoning
+  as `fmtDateChart`'s numeric-only chart-axis ticks.
 
 **i18n**: every label goes through `t()` (`runplan.accordion.*` keys, `garmin-stats/locales/en.json`/
 `it.json`). ⚠️ Every dynamic label's `defaultValue` is a pre-substituted JS template literal, never a
