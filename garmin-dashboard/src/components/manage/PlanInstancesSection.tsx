@@ -245,6 +245,42 @@ export function PlanInstancesSection({ templates }: Props) {
   // paceValueToAnchorRow for why that reverse mapping already exists).
   const [baselineStartDate, setBaselineStartDate] = useState("");
   const [baselineAnchorRows, setBaselineAnchorRows] = useState<Record<string, AnchorRowState>>({});
+  // HRA-136: the rest of the Regenerate-bucket's own baselines — the Story's
+  // dirty-bucket rule names "the goal-time/anchor-override toggle" and "the
+  // race-pace-anchor selection" as pace-anchor fields alongside the anchor
+  // table itself, so paceMode/racePaceAnchor need the same
+  // snapshot-then-diff treatment startDate/anchorRows already get. Goal
+  // time's own H/M/S + distance override aren't named individually in the
+  // Story's bucket list, but they're the only inputs behind "the goal-time
+  // toggle" when it's active — untracked, editing them wouldn't ever surface
+  // as Regenerate-bucket-dirty, so they get baselines too, only consulted
+  // while paceMode === "goalTime" (see regenerateBucketDirty below).
+  const [baselineRacePaceAnchor, setBaselineRacePaceAnchor] = useState(NONE_ANCHOR);
+  const [baselinePaceMode, setBaselinePaceMode] = useState<"anchor" | "goalTime">("anchor");
+  const [baselineGoalH, setBaselineGoalH] = useState("0");
+  const [baselineGoalM, setBaselineGoalM] = useState("0");
+  const [baselineGoalS, setBaselineGoalS] = useState("0");
+  const [baselineDistanceM, setBaselineDistanceM] = useState("");
+  // HRA-136: the Save-bucket's own baselines — Name/Race name/date/url. Day
+  // content's own baseline is `persistedDsl` (already existed for HRA-134's
+  // manual-edit count) — reused below for the Save-bucket's day-dirty check.
+  const [baselineInstName, setBaselineInstName] = useState("");
+  const [baselineRaceName, setBaselineRaceName] = useState("");
+  const [baselineRaceDate, setBaselineRaceDate] = useState("");
+  const [baselineRaceUrl, setBaselineRaceUrl] = useState("");
+  // HRA-136 AC5: "a successful Regenerate re-enables Save unconditionally" —
+  // even when nothing in the Save-bucket happens to be dirty right after
+  // (e.g. Name never changed). Set true on a successful regenerate; cleared
+  // by a successful Save, by starting fresh, or the instant the
+  // Regenerate-bucket goes dirty again (that always wins over this flag —
+  // see saveEnabled below).
+  const [saveForcedEnabled, setSaveForcedEnabled] = useState(false);
+  // HRA-136 Ask #2: confirm popup before a Name change actually persists.
+  // Gated on the Save action (not per-keystroke — same
+  // pending-then-confirm/cancel shape pendingTemplateId/pendingDaySwap
+  // already use for a different consequential action) since a modal per
+  // character typed would be unusable.
+  const [pendingNameChangeConfirm, setPendingNameChangeConfirm] = useState(false);
   // date -> dsl as of the last successful load/create/save/regenerate — the
   // "manual edit" count below diffs live `sections` against this to find
   // which days (on/after the cutover) actually diverged from what's really
@@ -277,6 +313,10 @@ export function PlanInstancesSection({ templates }: Props) {
     setPendingTemplateId(null);
     setInstantiateError(null);
     setBaselineStartDate(""); setBaselineAnchorRows({});
+    setBaselineRacePaceAnchor(NONE_ANCHOR); setBaselinePaceMode("anchor");
+    setBaselineGoalH("0"); setBaselineGoalM("0"); setBaselineGoalS("0"); setBaselineDistanceM("");
+    setBaselineInstName(""); setBaselineRaceName(""); setBaselineRaceDate(""); setBaselineRaceUrl("");
+    setSaveForcedEnabled(false); setPendingNameChangeConfirm(false);
     setEffectiveFrom(isoToday()); setPendingRegenerateCount(null);
   }
 
@@ -501,11 +541,17 @@ export function PlanInstancesSection({ templates }: Props) {
       // instance's own values, per the unified screen shape.
       setEditingId(created.id);
       setInstName(created.name ?? "");
-      // HRA-134: current startDate/anchorRows already equal exactly what was
-      // just submitted — that's the new baseline, so pendingChange starts
-      // false for a just-created instance (nothing to regenerate yet).
+      // HRA-134/HRA-136: current field values already equal exactly what was
+      // just submitted — that's the new baseline, so both dirty buckets
+      // start clean for a just-created instance.
       setBaselineStartDate(startDate);
       setBaselineAnchorRows(anchorRows);
+      setBaselineRacePaceAnchor(racePaceAnchor);
+      setBaselinePaceMode(paceMode);
+      setBaselineGoalH(goalH); setBaselineGoalM(goalM); setBaselineGoalS(goalS); setBaselineDistanceM(distanceM);
+      setBaselineInstName(created.name ?? "");
+      setBaselineRaceName(raceName); setBaselineRaceDate(raceDate); setBaselineRaceUrl(raceUrl);
+      setSaveForcedEnabled(false);
       const days: ResolvedDay[] = created.days.map(d => ({
         section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
@@ -552,6 +598,7 @@ export function PlanInstancesSection({ templates }: Props) {
     resetPlanScreen();
     setEditingId(instance.id);
     setInstName(instance.name ?? "");
+    setBaselineInstName(instance.name ?? "");
     setEditApprovedAt(instance.approved_at);
     setTemplateId(String(instance.template_id));
     setStartDate(instance.start_date);
@@ -559,6 +606,9 @@ export function PlanInstancesSection({ templates }: Props) {
     setRaceName(instance.race_name ?? "");
     setRaceDate(instance.race_date ?? "");
     setRaceUrl(instance.race_url ?? "");
+    setBaselineRaceName(instance.race_name ?? "");
+    setBaselineRaceDate(instance.race_date ?? "");
+    setBaselineRaceUrl(instance.race_url ?? "");
     setDaysBeforeRace(instance.race_date ? String(daysBetween(instance.start_date, instance.race_date)) : "");
     const plan = parsePlan(templates?.find(tpl => String(tpl.id) === String(instance.template_id)));
     const anchors = plan ? collectPlanAnchors(plan) : [];
@@ -714,14 +764,22 @@ export function PlanInstancesSection({ templates }: Props) {
   }
   function cancelWeekSwap() { setPendingWeekSwap(null); }
 
+  // HRA-136: now also persists Race name/date/url (HRA-135's PATCH accepts
+  // them alongside name/days) — always sent (not conditionally, unlike
+  // onInstantiate's own body-building) since PATCH's own semantics make
+  // resending an unchanged value harmless, and it keeps this call a single
+  // fixed shape rather than a diff against baselines.
   async function onSave() {
     if (editingId == null) return;
     setSaveLoading(true); setEditError(null);
     const days = sections.flatMap(s => s.weeks.flatMap(w => w.days.map(d => ({
       section_name: s.name, week_number: w.number, date: d.date!, dsl: d.dsl,
     }))));
+    const name = instName.trim();
     try {
-      const updated = await api.planInstances.update(editingId, { name: instName, days });
+      const updated = await api.planInstances.update(editingId, {
+        name, race_name: raceName.trim() || null, race_date: raceDate || null, race_url: raceUrl.trim() || null, days,
+      });
       const resolvedDays: ResolvedDay[] = updated.days.map(d => ({
         section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
@@ -732,6 +790,15 @@ export function PlanInstancesSection({ templates }: Props) {
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);
+      // HRA-136: re-baseline the Save-bucket's own fields to what was just
+      // persisted, and drop the post-regenerate forced-enable now that a
+      // real save ran — Save's enabled state goes back to pure dirty-tracking.
+      setInstName(updated.name ?? name);
+      setBaselineInstName(updated.name ?? name);
+      setBaselineRaceName(updated.race_name ?? "");
+      setBaselineRaceDate(updated.race_date ?? "");
+      setBaselineRaceUrl(updated.race_url ?? "");
+      setSaveForcedEnabled(false);
       await refreshInstances();
       notify(t("manage.planInstances.saveSucceeded", "Instance saved."));
     } catch (e) {
@@ -739,6 +806,16 @@ export function PlanInstancesSection({ templates }: Props) {
     }
     setSaveLoading(false);
   }
+
+  // HRA-136 Ask #2: Save is gated on a confirm popup only when Name actually
+  // changed — checked at click time against the Save-bucket's own baseline,
+  // not per-keystroke (see pendingNameChangeConfirm's own comment above).
+  function onSaveClick() {
+    if (instName.trim() !== baselineInstName) { setPendingNameChangeConfirm(true); return; }
+    onSave();
+  }
+  function confirmNameChange() { setPendingNameChangeConfirm(false); onSave(); }
+  function cancelNameChange() { setPendingNameChangeConfirm(false); }
 
   async function onApprove() {
     if (editingId == null) return;
@@ -754,18 +831,24 @@ export function PlanInstancesSection({ templates }: Props) {
     setApproveLoading(false);
   }
 
-  // HRA-134: unlike onInstantiate's own override-building (which only sends
-  // pace_overrides when non-empty, and skips the anchor goal_time derives —
-  // neither applies here: goal-time mode is never reachable once an instance
-  // exists, since racePaceAnchor/paceMode stay locked at their reset
-  // defaults for a loaded instance, HRA-133's own documented display
-  // limitation). Regenerate always sends a COMPLETE override map, even {} —
-  // omitting the field would mean "keep the instance's current stored
-  // overrides" server-side (HRA-132), silently ignoring the user having
-  // cleared every anchor row.
+  // Regenerate always sends a COMPLETE override map, even {} — omitting the
+  // field would mean "keep the instance's current stored overrides"
+  // server-side (HRA-132), silently ignoring the user having cleared every
+  // anchor row. HRA-136: the goal-time/race-pace-anchor toggle is now
+  // reachable post-creation too (Ask #1) — the regenerate endpoint itself
+  // has no goal_time field (that's a contract change, HRA-36's territory,
+  // out of this Story's slice), so the race-pace anchor's own row is
+  // populated from the SAME client-side derivation the anchor table's
+  // preview already uses (derivedPaceSecPerKm) rather than sent as raw
+  // goal_time/race_pace_anchor fields — this stays entirely within the
+  // existing pace_overrides: Record<string,string> contract.
   function buildPaceOverridesForRegenerate(): Record<string, string> {
     const overrides: Record<string, string> = {};
+    if (hasRacePaceAnchor && paceMode === "goalTime" && derivedPaceSecPerKm != null) {
+      overrides[racePaceAnchor] = formatPaceSecPerKm(derivedPaceSecPerKm);
+    }
     for (const anchor of templateAnchors) {
+      if (hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor) continue; // derived above
       const row = anchorRows[anchor];
       if (!row) continue;
       if (row.absoluteValue.trim() !== "") overrides[anchor] = row.absoluteValue.trim();
@@ -805,11 +888,16 @@ export function PlanInstancesSection({ templates }: Props) {
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);
-      // The just-regenerated values are the new baseline — pendingChange
-      // (and therefore the cutover picker) goes away until something is
-      // edited again.
+      // The just-regenerated values are the new baseline — the
+      // Regenerate-bucket goes clean until something is edited again, and
+      // (HRA-136 AC5) Save is unconditionally force-enabled regardless of
+      // whether the Save-bucket itself happens to be dirty right now.
       setBaselineStartDate(startDate);
       setBaselineAnchorRows(anchorRows);
+      setBaselineRacePaceAnchor(racePaceAnchor);
+      setBaselinePaceMode(paceMode);
+      setBaselineGoalH(goalH); setBaselineGoalM(goalM); setBaselineGoalS(goalS); setBaselineDistanceM(distanceM);
+      setSaveForcedEnabled(true);
       await refreshInstances();
       notify(t("manage.planInstances.regenerateSucceeded", `Instance regenerated — days from ${effectiveFrom} onward were updated.`, { date: effectiveFrom }));
     } catch (e) {
@@ -896,30 +984,37 @@ export function PlanInstancesSection({ templates }: Props) {
   // go away.
   const isApproved = editApprovedAt != null;
   const editWeek1AnchorMismatch = editorWeek1AnchorMismatch(sections);
-  // HRA-133: once an instance exists (freshly created this session, or
-  // loaded via startEdit), the shared top fields below lock — populated
-  // with the instance's real values (startEdit above), but not yet wired
-  // for editing. `nameDisabled` is the one exception: Name was already
-  // editable in the pre-unification editor (governed only by isApproved)
-  // and must not regress, so it keeps that exact rule instead of falling
-  // under the new fieldsLocked gate. HRA-134: start_date and the anchor
-  // table's own rows join Name as "unlocked once the instance exists" — the
-  // same `editableFieldDisabled` formula, unaffected by `isApproved` for the
-  // template picker/race info/rest-day-label, which stay fully out of this
-  // Story's scope (AC1 only names start_date and pace anchors).
+  // HRA-133/HRA-134/HRA-136: once an instance exists (freshly created this
+  // session, or loaded via startEdit), the shared top fields below used to
+  // lock — HRA-136 Ask #1 unlocks every one of them (Template excepted,
+  // which keeps its own `fieldsLocked` gate below): the Name/start_date/
+  // anchor-table exception three earlier Stories carved out one field at a
+  // time (`nameDisabled`/`editableFieldDisabled`) is now just the general
+  // rule, so those two names collapse into one `fieldDisabled`.
   const fieldsLocked = editingId != null;
-  const fieldsDisabled = fieldsLocked || !formEnabled;
-  const nameDisabled = fieldsLocked ? isApproved : !formEnabled;
-  const editableFieldDisabled = fieldsLocked ? isApproved : !formEnabled;
+  const fieldDisabled = fieldsLocked ? isApproved : !formEnabled;
   const showWeek1AnchorWarning = week1AnchorMismatch || editWeek1AnchorMismatch;
-  // HRA-134: whether start_date or any anchor row differs from the last
-  // successful load/create/save/regenerate — only then does "editing either
-  // surfaces..." apply and the cutover picker/Regenerate button appear.
+  // HRA-136: the two disjoint dirty buckets from the Story's own Ask #4.
   // Never true before an instance exists (fieldsLocked false) or once
-  // approved (regenerating an approved instance is out of scope, same
-  // HRA-126 lock every other write already respects).
+  // approved (editing an approved instance is out of scope, same HRA-126
+  // lock every other write already respects).
   const anchorRowsChanged = JSON.stringify(anchorRows) !== JSON.stringify(baselineAnchorRows);
-  const pendingRegenerateChange = fieldsLocked && !isApproved && (startDate !== baselineStartDate || anchorRowsChanged);
+  const goalTimeFieldsChanged = paceMode === "goalTime" && (goalH !== baselineGoalH || goalM !== baselineGoalM || goalS !== baselineGoalS || distanceM !== baselineDistanceM);
+  const regenerateBucketDirty = fieldsLocked && !isApproved && (
+    startDate !== baselineStartDate || racePaceAnchor !== baselineRacePaceAnchor || paceMode !== baselinePaceMode
+    || anchorRowsChanged || goalTimeFieldsChanged
+  );
+  const anyDayDirty = sections.some(s => s.weeks.some(w => w.days.some(d => d.date != null && persistedDsl[d.date] !== undefined && persistedDsl[d.date] !== d.dsl)));
+  const saveBucketDirty = fieldsLocked && !isApproved && (
+    instName.trim() !== baselineInstName || raceName.trim() !== baselineRaceName || raceDate !== baselineRaceDate
+    || raceUrl.trim() !== baselineRaceUrl || anyDayDirty
+  );
+  // AC3: Regenerate-bucket-dirty always wins, disabling Save entirely even
+  // when the Save-bucket is also currently dirty. AC5: a successful
+  // Regenerate re-enables Save unconditionally (saveForcedEnabled) — but
+  // still loses to a fresh Regenerate-bucket edit made after that, same as
+  // any other Save-bucket dirtiness would.
+  const saveEnabled = !regenerateBucketDirty && (saveBucketDirty || saveForcedEnabled);
 
   return (
     <Card className="hra-instantiate-form">
@@ -940,7 +1035,7 @@ export function PlanInstancesSection({ templates }: Props) {
           optional. Equal-width grid, not ad hoc flex-basis guessing.
           HRA-133: same row whether creating fresh or viewing an existing
           instance — startEdit() populates every field from the instance's
-          own persisted values, fieldsLocked/fieldsDisabled just gate
+          own persisted values, fieldsLocked/fieldDisabled just gate
           interactivity, not visibility (AC1's "same screen shape"). */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 6 }}>
         <Field label={t("manage.planInstances.templateLabel", "Template")} required>
@@ -953,16 +1048,16 @@ export function PlanInstancesSection({ templates }: Props) {
           />
         </Field>
         <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
-          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={nameDisabled} style={{ width: "100%", padding: "0 10px" }} />
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={fieldDisabled} style={{ width: "100%", padding: "0 10px" }} />
         </Field>
         <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
-          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={fieldsDisabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={fieldDisabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
         </Field>
         <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
-          <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={fieldsDisabled} />
+          <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={fieldDisabled} />
         </Field>
         <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
-          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldsDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
         </Field>
       </div>
       <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
@@ -973,13 +1068,13 @@ export function PlanInstancesSection({ templates }: Props) {
       {/* Row 2 — timing. */}
       <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
         <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
-          <DatePicker value={startDate} onChange={onStartDateChange} disabled={editableFieldDisabled} />
+          <DatePicker value={startDate} onChange={onStartDateChange} disabled={fieldDisabled} />
         </Field>
         <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
           <input
             className="hra-border-strong hra-bg-card hra-text-primary"
             value={daysBeforeRace} onChange={e => onDaysBeforeRaceChange(e.target.value)}
-            type="number" disabled={fieldsDisabled || !raceDate}
+            type="number" disabled={fieldDisabled || !raceDate}
             placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above")}
             style={{ width: "100%", padding: "0 10px" }}
           />
@@ -988,7 +1083,7 @@ export function PlanInstancesSection({ templates }: Props) {
           <input
             className="hra-border-strong hra-bg-card hra-text-primary"
             value={restDayLabel} onChange={e => setRestDayLabel(e.target.value)}
-            disabled={fieldsDisabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
+            disabled={fieldDisabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
             style={{ width: "100%", padding: "0 10px" }}
           />
         </Field>
@@ -1014,7 +1109,7 @@ export function PlanInstancesSection({ templates }: Props) {
         <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
           <div className="hra-segment">
             {[NONE_ANCHOR, ...templateAnchors].map(a => (
-              <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={fieldsDisabled} onClick={() => onRacePaceAnchorChange(a)}>
+              <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={fieldDisabled} onClick={() => onRacePaceAnchorChange(a)}>
                 {a === NONE_ANCHOR ? t("manage.planInstances.racePaceAnchorNone", "None") : a}
               </button>
             ))}
@@ -1022,8 +1117,8 @@ export function PlanInstancesSection({ templates }: Props) {
         </Field>
         <Field label={t("manage.planInstances.paceLabel", "Pace input")}>
           <div className="hra-segment">
-            <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={fieldsDisabled || !hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
-            <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={fieldsDisabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
+            <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={fieldDisabled || !hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
+            <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={fieldDisabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
           </div>
         </Field>
       </div>
@@ -1035,17 +1130,17 @@ export function PlanInstancesSection({ templates }: Props) {
         <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "auto 200px" : "auto", gap: 10, marginBottom: 16 }}>
           <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
             <div className="hra-goal-time-fields">
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={fieldsDisabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={fieldDisabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
               <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeHoursUnit", "h")}</span>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={fieldsDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={fieldDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
               <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeMinutesUnit", "m")}</span>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={fieldsDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={fieldDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
               <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeSecondsUnit", "s")}</span>
             </div>
           </Field>
           {showDistanceOverride && (
             <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldsDisabled} type="number" style={{ width: "100%", padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
+              <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldDisabled} type="number" style={{ width: "100%", padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
             </Field>
           )}
         </div>
@@ -1090,8 +1185,8 @@ export function PlanInstancesSection({ templates }: Props) {
               {templateAnchors.map(anchor => {
                 const derived = hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor;
                 const row = anchorRows[anchor] ?? emptyAnchorRow();
-                const relativeDisabled = derived || editableFieldDisabled || row.absoluteValue.trim() !== "";
-                const absoluteDisabled = derived || editableFieldDisabled || row.relativeTo !== "" || row.seconds.trim() !== "";
+                const relativeDisabled = derived || fieldDisabled || row.absoluteValue.trim() !== "";
+                const absoluteDisabled = derived || fieldDisabled || row.relativeTo !== "" || row.seconds.trim() !== "";
                 const resolved = resolution.find(r => r.anchor === anchor)?.secPerKm ?? null;
                 return (
                   <tr key={anchor}>
@@ -1121,7 +1216,7 @@ export function PlanInstancesSection({ templates }: Props) {
                         options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
                         placeholder="—"
                         triggerStyle={{ width: "100%" }}
-                        disabled={editableFieldDisabled}
+                        disabled={fieldDisabled}
                       />
                     </td>
                     <td>
@@ -1137,7 +1232,7 @@ export function PlanInstancesSection({ templates }: Props) {
                       <button
                         className="hra-border-strong hra-text-secondary"
                         style={{ background: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
-                        disabled={derived || editableFieldDisabled || anchorRowIsEmpty(row)}
+                        disabled={derived || fieldDisabled || anchorRowIsEmpty(row)}
                         onClick={() => clearAnchorRow(anchor)}
                       >
                         {t("manage.planInstances.clearButton", "Clear")}
@@ -1166,49 +1261,69 @@ export function PlanInstancesSection({ templates }: Props) {
           : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}
       </div>
 
-      {/* HRA-134: only appears once start_date or a pace anchor has actually
-          changed relative to the last successful load/create/save/
-          regenerate ("editing either surfaces..."). effective_from's own
-          DatePicker floors at today client-side (min); the server floors it
-          again independently (HRA-132) — never trusted from the client alone. */}
-      {pendingRegenerateChange && (
-        <div className="hra-border-strong" style={{ borderRadius: 8, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div className="hra-text-secondary" style={{ fontSize: 12 }}>
-            {t("manage.planInstances.regenerateHint", "Start date or a pace anchor changed. Pick the date this should apply from, then Regenerate — every day before it stays exactly as it is.")}
-          </div>
-          <div className="hra-row-wrap" style={{ alignItems: "center" }}>
-            <Field label={t("manage.planInstances.effectiveFromLabel", "Modification start from")}>
-              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} />
-            </Field>
-            <button className="hra-btn" data-variant="green" onClick={onRegenerateClick} disabled={regenerateLoading}>
-              {regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateButton", "Regenerate")}
-            </button>
-          </div>
-        </div>
-      )}
-
       {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
       {fieldsLocked && editError && <ErrorBanner message={editError} />}
 
-      <div className="hra-row-wrap" style={{ marginBottom: 12 }}>
+      {/* HRA-136 AC6: Save · Approve · the Regenerate unit · Cancel now all
+          render in this one row — Regenerate's own label+date picker+button
+          used to be a separate block that appeared/disappeared above this
+          row (moving everything below it, the "no moving UI" rule this repo
+          otherwise enforces); it's now a fixed sub-group inside the row
+          itself, always present once the instance exists, only ever
+          DISABLED (not unmounted) until the Regenerate-bucket is actually
+          dirty (AC3) — same "visible but inert" treatment Approve already
+          gets once isApproved. */}
+      <div className="hra-row-wrap" style={{ marginBottom: 12, alignItems: "center" }}>
         {!fieldsLocked ? (
           <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
             {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
           </button>
         ) : (
           <>
-            <button className="hra-btn" data-variant="green" onClick={onSave} disabled={saveLoading || sections.length === 0 || isApproved}>
+            <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || sections.length === 0 || isApproved || !saveEnabled}>
               {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
             </button>
             <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
               {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
             </button>
+            <div
+              className="hra-row-wrap" style={{ alignItems: "center", gap: 6 }}
+              title={!isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
+            >
+              <span className="hra-text-secondary" style={{ fontSize: 12 }}>{t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
+              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={isApproved} />
+              <button className="hra-btn" data-variant="green" onClick={onRegenerateClick} disabled={regenerateLoading || !regenerateBucketDirty || isApproved}>
+                {regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateButton", "Regenerate")}
+              </button>
+            </div>
           </>
         )}
         <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => { resetPlanScreen(); setMode("list"); }}>
           {t("common.cancel", "Cancel")}
         </button>
       </div>
+
+      {/* HRA-136 Ask #2: confirm before a Name change actually persists —
+          gated on the Save click (see onSaveClick/pendingNameChangeConfirm's
+          own comments above), same modal shape every other pending-then-
+          confirm action in this file already uses. */}
+      {pendingNameChangeConfirm && (
+        <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelNameChange}>
+          <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+              {t("manage.planInstances.renameConfirmBody", "This will rename the current plan — it won't create a copy. Continue?")}
+            </div>
+            <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+              <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelNameChange}>
+                {t("common.cancel", "Cancel")}
+              </button>
+              <button className="hra-btn" data-variant="green" onClick={confirmNameChange}>
+                {t("manage.planInstances.renameConfirmButton", "Rename")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {pendingTemplateId != null && (
         <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelSwitchTemplate}>

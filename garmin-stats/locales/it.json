@@ -527,11 +527,13 @@
   "manage.planInstances.approveFailed": "Approvazione dell'istanza non riuscita",
   "manage.planInstances.approveSucceeded": "Istanza approvata.",
   "manage.planInstances.editTitle": "Modifica istanza",
-  "manage.planInstances.regenerateHint": "La data di inizio o un'ancora di passo sono cambiate. Scegli da quale data applicare la modifica, poi Rigenera — ogni giorno precedente resta esattamente com'è.",
-  "manage.planInstances.effectiveFromLabel": "Modifica valida da",
+  "manage.planInstances.regenerateFromLabel": "Rigenera da",
+  "manage.planInstances.regenerateDisabledHint": "Modifica prima la data di inizio o un'ancora di passo.",
   "manage.planInstances.regenerateButton": "Rigenera",
   "manage.planInstances.regenerateConfirmButton": "Rigenera",
   "manage.planInstances.regenerateFailed": "Rigenerazione dell'istanza non riuscita",
   "manage.planInstances.regenerateSucceeded": "Istanza rigenerata — i giorni dal {{date}} in poi sono stati aggiornati.",
-  "manage.planInstances.regenerateConfirmTitle": "Rigenerando si perderanno {{count}} modifica/e manuale/i — continuare?"
+  "manage.planInstances.regenerateConfirmTitle": "Rigenerando si perderanno {{count}} modifica/e manuale/i — continuare?",
+  "manage.planInstances.renameConfirmBody": "Questo rinominerà il piano corrente — non ne creerà una copia. Continuare?",
+  "manage.planInstances.renameConfirmButton": "Rinomina"
 }

@@ -527,11 +527,13 @@
   "manage.planInstances.approveFailed": "Failed to approve instance",
   "manage.planInstances.approveSucceeded": "Instance approved.",
   "manage.planInstances.editTitle": "Edit instance",
-  "manage.planInstances.regenerateHint": "Start date or a pace anchor changed. Pick the date this should apply from, then Regenerate — every day before it stays exactly as it is.",
-  "manage.planInstances.effectiveFromLabel": "Modification start from",
+  "manage.planInstances.regenerateFromLabel": "Regenerate from",
+  "manage.planInstances.regenerateDisabledHint": "Change start date or a pace anchor first.",
   "manage.planInstances.regenerateButton": "Regenerate",
   "manage.planInstances.regenerateConfirmButton": "Regenerate",
   "manage.planInstances.regenerateFailed": "Failed to regenerate instance",
   "manage.planInstances.regenerateSucceeded": "Instance regenerated — days from {{date}} onward were updated.",
-  "manage.planInstances.regenerateConfirmTitle": "Regenerating will discard {{count}} manual edit(s) — continue?"
+  "manage.planInstances.regenerateConfirmTitle": "Regenerating will discard {{count}} manual edit(s) — continue?",
+  "manage.planInstances.renameConfirmBody": "This will rename the current plan — it won't create a copy. Continue?",
+  "manage.planInstances.renameConfirmButton": "Rename"
 }
