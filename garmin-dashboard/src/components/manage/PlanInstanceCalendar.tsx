@@ -1,25 +1,31 @@
 /**
- * PlanInstanceCalendar.tsx (HRA-143, day-cell content HRA-144, bars/clock HRA-145)
+ * PlanInstanceCalendar.tsx (HRA-143, day-cell content HRA-144, gauges HRA-145,
+ * visual redesign HRA-146)
  * Agenda-mode view for PlanInstancesSection's expanded row — a read-only
  * shadcn-big-calendar (react-big-calendar under the hood) rendering one
  * event per resolved day (`date != null`). Enabler slice for Epic HRA-142:
  * no drag-drop or click-to-edit — this component never wires onSelectEvent
  * or the DnD addon, so the calendar is passive by construction, not just by
- * omitted handlers. HRA-144 replaced the bare-string event title with a
- * custom `components.event` renderer (workout-type icon + truncated DSL
- * text + a needs_review flag). HRA-145 adds three metric bars (distance,
- * max speed, speed range) plus a duration "clock" in the cell's corner —
- * the clock was an explicit follow-up addition beyond the Jira Story's own
- * 3-bar Ask, confirmed with the user during this Story (see the PR comment
- * for the full decision trail).
+ * omitted handlers.
+ *
+ * HRA-146 replaced HRA-145's stacked bars + corner duration clock with a
+ * Route/Clock3/Gauge ring trio (distance/duration/intensity, per that
+ * Story's own Ask #3) — the speed-RANGE band HRA-145 also had has no slot
+ * in this 3-ring trio and is retired, not carried forward; flagged in the
+ * HRA-146 PR comment as a deliberate consolidation, not an oversight.
+ * HRA-146 also replaced react-big-calendar's own toolbar/date-header
+ * (`components.toolbar`/`components.dateHeader`) with custom ones matching
+ * the published mockup, and category-tints each event card by
+ * `workout_type` — a placeholder mapping HRA-147/148 will replace with a
+ * real classification.
  */
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AlertTriangle, Bed, Bike, CircleHelp, Dumbbell, Footprints } from "lucide-react";
+import { AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell, Footprints, Gauge, Route } from "lucide-react";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
 import { fmtElapsedClock } from "@/domain/activity-chart";
@@ -27,17 +33,16 @@ import type { SectionView, ResolvedDayMetrics } from "@/domain/runplan-aggregate
 import type { WorkoutType } from "@/types/runplan";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, speedUnitLabel } from "@/utils/units";
 
-// Month view only, per this Story's scope ("verify month navigation" — no
-// week/day/agenda-view-type switching asked for). Restricting `views`
-// removes those buttons from the toolbar entirely rather than leaving them
-// present but unused.
+// Month view only, per HRA-143's own scope ("verify month navigation" — no
+// week/day/agenda-view-type switching asked for). HRA-146's Month/Week
+// toggle is visually present but Week stays inert this slice (AC4).
 const CALENDAR_VIEWS = ["month"] as const;
 
 const locales = { enUS };
 // A plain date-fns localizer — month/weekday names stay English (see the
 // component doc comment: full app-locale wiring, like ui/Calendar.tsx's
-// utils/locale.ts, is a reasonable follow-up but not named by this Story's
-// AC list, which only asks for a themed, navigable, read-only month grid).
+// utils/locale.ts, is a reasonable follow-up but not named by any Story's
+// AC list so far).
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
 interface CalendarEvent {
@@ -55,9 +60,21 @@ const WORKOUT_TYPE_ICONS: Record<WorkoutType, typeof Footprints> = {
   run: Footprints, rest: Bed, strength: Dumbbell, cross: Bike, todo: CircleHelp,
 };
 
+// HRA-146 Ask #2: category tint per workout_type — run/cross/strength get a
+// translucent card; rest/todo get no card at all (see hra-agenda-rest-row
+// below). A placeholder mapping: HRA-147/148 replace this with a real
+// classification (Easy/Long/Intervals/Progressive/Threshold/Tempo).
+const WORKOUT_TYPE_CARD_CLASS: Partial<Record<WorkoutType, string>> = {
+  run: "hra-agenda-cat-run", cross: "hra-agenda-cat-cross", strength: "hra-agenda-cat-strength",
+};
+
 function parseLocalDate(dateISO: string): Date {
   const [y, m, d] = dateISO.split("-").map(Number);
   return new Date(y, m - 1, d);
+}
+
+function isSameCalendarDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
 // HRA-144: `day.dsl` here is already the reconstructed DSL text —
@@ -101,53 +118,60 @@ function formatSpeedKmh(kmh: number): string {
   return `${val.toFixed(1)} ${speedUnitLabel()}`;
 }
 
-// HRA-145: everything needed to scale/color one day's bars+clock, computed
-// once per render of the calendar (see the two useMemos in
-// PlanInstanceCalendar below) rather than recomputed per cell.
-interface BarScaling {
-  visibleMaxDistanceM: number; // Ask #2: max total_distance_m among days CURRENTLY VISIBLE, recomputed on navigation
-  instanceMinSpeedKmh: number | null; // Ask #3/#4: color+length normalization range, whole plan instance
+// HRA-145: everything needed to scale/color one day's gauges, computed once
+// per render of the calendar (see the useMemos in PlanInstanceCalendar
+// below) rather than recomputed per cell. Unchanged by HRA-146's ring
+// redesign — same underlying scaling, new visual only.
+interface GaugeScaling {
+  visibleMaxDistanceM: number; // max total_distance_m among days CURRENTLY VISIBLE, recomputed on navigation
+  instanceMinSpeedKmh: number | null; // color+length normalization range, whole plan instance
   instanceMaxSpeedKmh: number | null;
-  instanceMaxDurationSec: number; // clock scaling — "a full clock = the longest session in the plan"
+  instanceMaxDurationSec: number; // "a full ring = the longest session in the plan"
 }
 
-function speedColorT(value: number, scaling: BarScaling): number {
+function speedColorT(value: number, scaling: GaugeScaling): number {
   const { instanceMinSpeedKmh: min, instanceMaxSpeedKmh: max } = scaling;
   if (min == null || max == null || max <= min) return 0.5;
   return Math.min(1, Math.max(0, (value - min) / (max - min)));
 }
 
-// HRA-145 Ask #1-3 + HRA-144's existing icon/DSL/needs_review row: the day
-// cell's full content. Bars sit below the icon+text row (Ask #2-4); the
-// duration clock is a small radial indicator overlaid in the cell's top
-// right corner, per explicit follow-up instruction during this Story
-// (distinct from and additive to the 3 Jira-specified bars).
-function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: BarScaling }) {
+interface AgendaSummary { workouts: number; runs: number; rest: number; distanceM: number }
+
+// HRA-144 Ask #1-3 + HRA-145's metrics + HRA-146 Ask #2/#3: the day cell's
+// full content. REST/TODO days (no metrics ever) render as a muted row with
+// no card at all; every other day gets a category-tinted card with the
+// Route/Clock3/Gauge ring trio, each ring independently suppressed when its
+// own metric isn't resolvable (Ask #3's own AC, mirroring HRA-145's
+// "no zero-length placeholder" rule).
+function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: GaugeScaling }) {
   const { t } = useTranslation();
   const Icon = WORKOUT_TYPE_ICONS[event.workoutType];
   const [key, fallback] = WORKOUT_TYPE_LABEL_KEYS[event.workoutType];
   const workoutTypeLabel = t(key, fallback);
+
+  if (event.workoutType === "rest" || event.workoutType === "todo") {
+    return (
+      <span className="hra-agenda-rest-row">
+        <Icon size={13} />
+        {workoutTypeLabel}
+      </span>
+    );
+  }
+
   const { metrics } = event;
+  const hasDistance = metrics.totalDistanceM > 0 && scaling.visibleMaxDistanceM > 0;
+  const hasDuration = metrics.totalDurationSec > 0 && scaling.instanceMaxDurationSec > 0;
+  const hasIntensity = metrics.maxSpeedKmh != null && scaling.instanceMaxSpeedKmh != null && scaling.instanceMaxSpeedKmh > 0;
 
-  // Ask #5: REST/TODO/fully-unresolved days show icon+DSL only — no bars,
-  // no zero-length placeholders. A day with genuinely zero distance AND no
-  // resolvable speed renders nothing here.
-  const hasDistanceBar = metrics.totalDistanceM > 0 && scaling.visibleMaxDistanceM > 0;
-  const hasSpeedBars = metrics.minSpeedKmh != null && metrics.maxSpeedKmh != null
-    && scaling.instanceMaxSpeedKmh != null && scaling.instanceMaxSpeedKmh > 0;
-  const hasClock = metrics.totalDurationSec > 0 && scaling.instanceMaxDurationSec > 0;
-
-  const distancePct = hasDistanceBar ? Math.min(100, (metrics.totalDistanceM / scaling.visibleMaxDistanceM) * 100) : 0;
-  const maxSpeedPct = hasSpeedBars ? Math.min(100, (metrics.maxSpeedKmh! / scaling.instanceMaxSpeedKmh!) * 100) : 0;
-  const rangeStartPct = hasSpeedBars ? Math.min(100, (metrics.minSpeedKmh! / scaling.instanceMaxSpeedKmh!) * 100) : 0;
-  const rangeWidthPct = hasSpeedBars ? Math.max(0, maxSpeedPct - rangeStartPct) : 0;
-  const speedColor = hasSpeedBars ? speedRampColor(speedColorT(metrics.maxSpeedKmh!, scaling)) : undefined;
-  const clockPct = hasClock ? Math.min(100, (metrics.totalDurationSec / scaling.instanceMaxDurationSec) * 100) : 0;
+  const distancePct = hasDistance ? Math.min(100, (metrics.totalDistanceM / scaling.visibleMaxDistanceM) * 100) : 0;
+  const durationPct = hasDuration ? Math.min(100, (metrics.totalDurationSec / scaling.instanceMaxDurationSec) * 100) : 0;
+  const intensityPct = hasIntensity ? Math.min(100, (metrics.maxSpeedKmh! / scaling.instanceMaxSpeedKmh!) * 100) : 0;
+  const intensityColor = hasIntensity ? speedRampColor(speedColorT(metrics.maxSpeedKmh!, scaling)) : undefined;
 
   return (
-    <span style={{ position: "relative", display: "flex", flexDirection: "column", width: "100%" }}>
+    <span className={`hra-agenda-event-card ${WORKOUT_TYPE_CARD_CLASS[event.workoutType] ?? ""}`}>
       <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
-        <span title={workoutTypeLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+        <span title={workoutTypeLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
           <Icon size={12} />
         </span>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }} title={event.title}>
@@ -164,41 +188,92 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: BarSc
         )}
       </span>
 
-      {(hasDistanceBar || hasSpeedBars) && (
-        <span className="hra-agenda-bars">
-          {hasDistanceBar && (
-            <span className="hra-agenda-bar-track" title={t("manage.planInstances.distanceTooltip", `Distance: ${formatDistanceM(metrics.totalDistanceM)}`, { value: formatDistanceM(metrics.totalDistanceM) })}>
-              <span className="hra-agenda-bar-fill hra-agenda-bar-fill--distance" style={{ width: `${distancePct}%` }} />
+      {(hasDistance || hasDuration || hasIntensity) && (
+        <span className="hra-agenda-gauges">
+          {hasDistance && (
+            <span className="hra-agenda-gauge" title={t("manage.planInstances.distanceTooltip", `Distance: ${formatDistanceM(metrics.totalDistanceM)}`, { value: formatDistanceM(metrics.totalDistanceM) })}>
+              <Route size={11} />
+              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": distancePct, "--gauge-fill": "var(--data-pace)" } as CSSProperties} />
             </span>
           )}
-          {hasSpeedBars && (
-            <span className="hra-agenda-bar-track" title={t("manage.planInstances.maxSpeedTooltip", `Max speed: ${formatSpeedKmh(metrics.maxSpeedKmh!)}`, { value: formatSpeedKmh(metrics.maxSpeedKmh!) })}>
-              <span className="hra-agenda-bar-fill" style={{ width: `${maxSpeedPct}%`, "--bar-fill": speedColor } as CSSProperties} />
+          {hasDuration && (
+            <span className="hra-agenda-gauge" title={t("manage.planInstances.durationTooltip", `Duration: ${fmtElapsedClock(metrics.totalDurationSec)}`, { value: fmtElapsedClock(metrics.totalDurationSec) })}>
+              <Clock3 size={11} />
+              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": durationPct, "--gauge-fill": "var(--accent)" } as CSSProperties} />
             </span>
           )}
-          {hasSpeedBars && (
-            <span
-              className="hra-agenda-bar-track"
-              title={t(
-                "manage.planInstances.speedRangeTooltip",
-                `Speed range: ${formatSpeedKmh(metrics.minSpeedKmh!)} – ${formatSpeedKmh(metrics.maxSpeedKmh!)}`,
-                { min: formatSpeedKmh(metrics.minSpeedKmh!), max: formatSpeedKmh(metrics.maxSpeedKmh!) },
-              )}
-            >
-              <span className="hra-agenda-bar-fill" style={{ left: `${rangeStartPct}%`, width: `${rangeWidthPct}%`, "--bar-fill": speedColor } as CSSProperties} />
+          {hasIntensity && (
+            <span className="hra-agenda-gauge" title={t("manage.planInstances.maxSpeedTooltip", `Max speed: ${formatSpeedKmh(metrics.maxSpeedKmh!)}`, { value: formatSpeedKmh(metrics.maxSpeedKmh!) })}>
+              <Gauge size={11} />
+              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": intensityPct, "--gauge-fill": intensityColor } as CSSProperties} />
             </span>
           )}
         </span>
       )}
-
-      {hasClock && (
-        <span
-          className="hra-agenda-clock"
-          title={t("manage.planInstances.durationTooltip", `Duration: ${fmtElapsedClock(metrics.totalDurationSec)}`, { value: fmtElapsedClock(metrics.totalDurationSec) })}
-          style={{ "--clock-pct": clockPct } as CSSProperties}
-        />
-      )}
     </span>
+  );
+}
+
+// HRA-146 Ask #5: a reserved time-indicator slot beside the day number —
+// empty this slice (HRA-151 wires real scheduled_time data into it), today
+// marked by a filled circle instead of the whole-cell highlight neutralized
+// in index.css. A stable module-scope component (no closure dependencies),
+// so — unlike EventComponent/ToolbarComponent below — it needs no useMemo
+// wrapper to keep a stable identity across renders.
+function AgendaDateHeader({ date, label }: { date: Date; label: ReactNode }) {
+  const isToday = isSameCalendarDay(date, new Date());
+  return (
+    <span className="hra-agenda-date-header">
+      <span className="hra-agenda-date-time" aria-hidden="true" />
+      <span className="hra-agenda-date-num" data-today={isToday}>{label}</span>
+    </span>
+  );
+}
+
+const ICON_BTN_STYLE: CSSProperties = { width: 32, height: 32, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" };
+
+// HRA-146 Ask #4: replaces react-big-calendar's own toolbar — title +
+// accordion-equivalent summary line, chevron nav, Month/Week toggle (Week
+// inert this slice, per the AC's own "may be visually present but inert").
+function AgendaToolbar({ label, onNavigate, summary }: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void; summary: AgendaSummary }) {
+  const { t } = useTranslation();
+  return (
+    <div className="hra-agenda-toolbar">
+      <div>
+        <h2 className="hra-agenda-title">{label}</h2>
+        <p className="hra-agenda-summary">
+          <span className="val">{summary.workouts}</span> {t("manage.planInstances.calendarWorkouts", "workouts")}
+          <span className="dot" />
+          <span className="val">{summary.runs}</span> {t("manage.planInstances.calendarRuns", "runs")}
+          <span className="dot" />
+          <span className="val">{summary.rest}</span> {t("manage.planInstances.calendarRest", "rest")}
+          <span className="dot" />
+          <span className="val">{formatDistanceM(summary.distanceM)}</span>
+        </p>
+      </div>
+      <div className="hra-agenda-controls">
+        <div className="hra-segment" role="group" aria-label={t("manage.planInstances.calendarViewGroup", "Calendar view")}>
+          <button type="button" className="hra-segment-item" data-active={true}>{t("manage.planInstances.calendarMonth", "Month")}</button>
+          <button
+            type="button" className="hra-segment-item" data-active={false} disabled
+            title={t("manage.planInstances.calendarWeekComingSoon", "Week view coming soon")}
+          >
+            {t("manage.planInstances.calendarWeek", "Week")}
+          </button>
+        </div>
+        <div className="hra-agenda-nav">
+          <button type="button" className="hra-btn" data-variant="outline" style={ICON_BTN_STYLE} onClick={() => onNavigate("PREV")} aria-label={t("manage.planInstances.calendarPrevious", "Previous month")}>
+            <ChevronLeft size={15} />
+          </button>
+          <button type="button" className="hra-btn" data-variant="outline" onClick={() => onNavigate("TODAY")}>
+            {t("manage.planInstances.calendarToday", "Today")}
+          </button>
+          <button type="button" className="hra-btn" data-variant="outline" style={ICON_BTN_STYLE} onClick={() => onNavigate("NEXT")} aria-label={t("manage.planInstances.calendarNext", "Next month")}>
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -207,13 +282,12 @@ interface Props {
 }
 
 export function PlanInstanceCalendar({ sections }: Props) {
-  const { t } = useTranslation();
   const events = useMemo(() => eventsFromSections(sections), [sections]);
   const [date, setDate] = useState<Date>(() => events[0]?.start ?? new Date());
 
-  // Ask #3/#4: max speed across the WHOLE plan instance — computed once per
-  // instance load (i.e. whenever `sections`/`events` changes), not per
-  // visible window.
+  // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
+  // computed once per instance load (i.e. whenever `sections`/`events`
+  // changes), not per visible window.
   const instanceSpeedRange = useMemo(() => {
     const maxSpeeds = events.map(e => e.metrics.maxSpeedKmh).filter((v): v is number => v != null);
     const minSpeeds = events.map(e => e.metrics.minSpeedKmh).filter((v): v is number => v != null);
@@ -227,27 +301,47 @@ export function PlanInstanceCalendar({ sections }: Props) {
     [events],
   );
 
-  // Ask #2: max total_distance_m among days CURRENTLY VISIBLE, recomputed
-  // on month navigation — scoped to the navigated month (year+month match),
-  // not the full leading/trailing-week grid react-big-calendar also renders
-  // for adjacent months.
-  const visibleMaxDistanceM = useMemo(() => {
-    const visible = events.filter(e => e.start.getFullYear() === date.getFullYear() && e.start.getMonth() === date.getMonth());
-    return visible.reduce((max, e) => Math.max(max, e.metrics.totalDistanceM), 0);
-  }, [events, date]);
+  // Shared by both the distance ring's scaling and the toolbar's summary
+  // line — the days in the currently navigated month, recomputed on
+  // navigation (Ask #2/#4).
+  const visibleEvents = useMemo(
+    () => events.filter(e => e.start.getFullYear() === date.getFullYear() && e.start.getMonth() === date.getMonth()),
+    [events, date],
+  );
+  const visibleMaxDistanceM = useMemo(
+    () => visibleEvents.reduce((max, e) => Math.max(max, e.metrics.totalDistanceM), 0),
+    [visibleEvents],
+  );
+  const summary = useMemo<AgendaSummary>(() => {
+    let workouts = 0, runs = 0, rest = 0, distanceM = 0;
+    for (const e of visibleEvents) {
+      if (e.workoutType === "rest") rest++;
+      else if (e.workoutType !== "todo") workouts++;
+      if (e.workoutType === "run") runs++;
+      distanceM += e.metrics.totalDistanceM;
+    }
+    return { workouts, runs, rest, distanceM };
+  }, [visibleEvents]);
 
-  const scaling = useMemo<BarScaling>(
+  const scaling = useMemo<GaugeScaling>(
     () => ({ visibleMaxDistanceM, ...instanceSpeedRange, instanceMaxDurationSec }),
     [visibleMaxDistanceM, instanceSpeedRange, instanceMaxDurationSec],
   );
-  // A stable component identity per `scaling` value — an inline arrow
-  // function in `components.event` below would get a fresh identity every
-  // render, forcing react-big-calendar to remount (not just re-render)
-  // every visible day cell each time this component re-renders.
+  // A stable component identity per `scaling`/`summary` value — an inline
+  // arrow function in `components.event`/`components.toolbar` below would
+  // get a fresh identity every render, forcing react-big-calendar to
+  // remount (not just re-render) every visible day cell / the toolbar each
+  // time this component re-renders.
   const EventComponent = useMemo(
     () => (props: { event: CalendarEvent }) => <DayCellEvent {...props} scaling={scaling} />,
     [scaling],
   );
+  const ToolbarComponent = useMemo(
+    () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => <AgendaToolbar {...props} summary={summary} />,
+    [summary],
+  );
+
+  const { t } = useTranslation();
 
   return (
     <div className="hra-agenda-calendar" style={{ height: 560 }}>
@@ -261,12 +355,8 @@ export function PlanInstanceCalendar({ sections }: Props) {
         date={date}
         onNavigate={setDate}
         style={{ height: "100%" }}
-        components={{ event: EventComponent }}
+        components={{ event: EventComponent, toolbar: ToolbarComponent, dateHeader: AgendaDateHeader }}
         messages={{
-          today: t("manage.planInstances.calendarToday", "Today"),
-          previous: t("manage.planInstances.calendarPrevious", "Back"),
-          next: t("manage.planInstances.calendarNext", "Next"),
-          month: t("manage.planInstances.calendarMonth", "Month"),
           noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range."),
         }}
       />
