@@ -13,6 +13,7 @@ import { fmtRaceLabel } from "@/utils/fmt";
 import { OverviewTab }  from "@/components/OverviewTab";
 import { ActivitiesTab } from "@/components/ActivitiesTab";
 import { BodyTab }      from "@/components/BodyTab";
+import { PlansTab }     from "@/components/PlansTab";
 import { ManageTab }    from "@/components/ManageTab";
 import { SettingsTab }  from "@/components/SettingsTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
@@ -25,6 +26,7 @@ import { ErrorBanner }  from "@/components/ui";
 const TABS = [
   { id: "overview",    labelKey: "nav.overview",   fallback: "Overview & Trends" },
   { id: "activities",  labelKey: "nav.activities", fallback: "Activities"        },
+  { id: "plans",       labelKey: "nav.trainingPlans", fallback: "Training plans" },
   { id: "body",        labelKey: "nav.body",       fallback: "Body"              },
   { id: "manage",      labelKey: "nav.manage",     fallback: "Data & Sync"       },
   { id: "settings",    labelKey: "nav.settings",   fallback: "Settings"          },
@@ -187,6 +189,7 @@ function AppShell() {
           <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
         )}
         {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
+        {tab === "plans"      && <PlansTab />}
         {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
         {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
         {tab === "settings"   && <SettingsTab appearance={appearance} />}
