@@ -358,10 +358,24 @@ export function PlanInstancesSection({ templates }: Props) {
       }
       if (Object.keys(overrides).length > 0) body.pace_overrides = overrides;
 
-      await api.planTemplates.instantiate(Number(templateId), body);
+      const created = await api.planTemplates.instantiate(Number(templateId), body);
       await refreshInstances();
       resetInstantiateForm();
-      setMode("list");
+      // HRA-123: open straight into the generated instance's plan view
+      // instead of dropping back to the list — created already carries
+      // {..., days} (PlanInstanceWithDays), same shape startEdit() fetches
+      // via getById, so no extra round-trip is needed.
+      resetEditor();
+      setEditingId(created.id);
+      setEditName(created.name ?? "");
+      const days: ResolvedDay[] = created.days.map(d => ({
+        section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
+        suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
+        segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
+        activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
+      }));
+      setSections(sectionsFromDays(days));
+      setMode("editor");
       notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
     } catch (e) {
       setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
