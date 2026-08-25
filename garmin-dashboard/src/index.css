@@ -1028,15 +1028,12 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-instantiate-form input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .hra-instantiate-form input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 
-/* Goal time as three small H/M/S fields (HRA-121 follow-up) instead of one
-   free-text HH:MM:SS input — each one a fixed-width number field so the
-   triplet reads as a clock, not three arbitrary boxes. */
-.hra-goal-time-fields { display: flex; align-items: center; gap: 2px; height: var(--hra-field-h); }
-.hra-goal-time-fields input { width: 40px; text-align: center; padding: 0; }
-/* Unit suffix mask (hh"h" mm"m" ss"s") instead of colon separators — each
-   number is self-labeled, so "03" next to "h" reads unambiguously without
-   a legend. */
-.hra-goal-time-fields .hra-goal-time-unit { color: var(--text-muted); font-weight: 600; font-size: var(--fs-label); margin-right: 6px; }
+/* HRA-137: Goal time is one masked HH:MM:SS input now (PlanInstancesSection.tsx's
+   goalTimeDisplayValue/sanitizeGoalTimeInput) — a bare <input> inside
+   .hra-instantiate-form, so it already inherits that scope's own height/
+   font-size rule above; no dedicated class needed (was .hra-goal-time-fields'
+   three-field layout, HRA-121 follow-up, now removed along with the fields
+   it styled). */
 
 .hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }

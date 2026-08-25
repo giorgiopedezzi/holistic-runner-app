@@ -44,9 +44,12 @@ function addDaysISO(dateISO: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
-// Goal time is entered as three small H/M/S number fields (each defaults to
-// "0", never a free-text HH:MM:SS string) — this combines them into total
-// seconds, or null while any field isn't a valid non-negative number.
+// Goal time's h/m/s are each a (possibly partial, possibly empty) digit
+// string sliced from the single masked HH:MM:SS input's own raw buffer
+// (HRA-137, see goalTimeDigits/formatGoalTimeDigits below) — this combines
+// them into total seconds, or null while any field isn't a valid
+// non-negative number. Number("") is 0, so an untyped/incomplete segment
+// counts as 0, same as the old three-separate-fields' own "0" default did.
 function goalTimeToSec(h: string, m: string, s: string): number | null {
   const hn = Number(h), mn = Number(m), sn = Number(s);
   if (![hn, mn, sn].every(n => Number.isFinite(n) && n >= 0)) return null;
@@ -54,6 +57,33 @@ function goalTimeToSec(h: string, m: string, s: string): number | null {
 }
 function pad2(n: string): string {
   return String(Math.max(0, Number(n) || 0)).padStart(2, "0");
+}
+// HRA-137: a single masked HH:MM:SS text input replaces the old three
+// separate H/M/S number fields — small custom mask per the Story's own
+// explicit "zero-dependency, not a new library" instruction. The raw state
+// is just the digits typed so far (0-6 chars, no colons); colons are
+// inserted for display once a segment is reached, not typed. Standard
+// "strip non-digits from whatever the browser reports as the new value"
+// mask technique — this also makes backspace work for free (deleting a
+// colon in the displayed text just gets stripped back out, net effect is
+// the last real digit is gone).
+function formatGoalTimeDigits(digits: string): string {
+  const h = digits.slice(0, 2), m = digits.slice(2, 4), s = digits.slice(4, 6);
+  if (digits.length <= 2) return h;
+  if (digits.length <= 4) return `${h}:${m}`;
+  return `${h}:${m}:${s}`;
+}
+function sanitizeGoalTimeInput(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, 6);
+}
+// HRA-137 Ask #3: the reverse direction — an absolute pace (from the
+// race-pace anchor's own table row) converted back to a clock time, for
+// display only (this input is read-only whenever it's showing this value —
+// see the JSX below). Mirrors formatPaceSecPerKm's own rounding style.
+function formatGoalTimeFromSec(totalSec: number): string {
+  const total = Math.round(totalSec);
+  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 function formatPaceSecPerKm(sec: number): string {
   const total = Math.round(sec);
@@ -190,13 +220,18 @@ export function PlanInstancesSection({ templates }: Props) {
   // row 3 (pace) — racePaceAnchor defaults to NONE_ANCHOR (never auto-picks
   // one of the template's anchors); paceMode is forced to "anchor" whenever
   // it's NONE_ANCHOR (Goal time has nothing to convert to without a
-  // designated anchor). Goal time is three small H/M/S fields, not one
-  // free-text string — each defaults to "0".
+  // designated anchor). HRA-137: Goal time is one masked HH:MM:SS text
+  // input now — `goalTimeDigits` is its raw buffer (0-6 digit chars, no
+  // colons, "" = untouched); `goalH`/`goalM`/`goalS` below are DERIVED from
+  // it (2-char slices) rather than their own state, so every existing call
+  // site that already reads them (goalTimeToSec, pad2, the instantiate body
+  // builder, hasEnteredData) keeps working unchanged.
   const [racePaceAnchor, setRacePaceAnchor] = useState(NONE_ANCHOR);
   const [paceMode, setPaceMode] = useState<"anchor" | "goalTime">("anchor");
-  const [goalH, setGoalH] = useState("0");
-  const [goalM, setGoalM] = useState("0");
-  const [goalS, setGoalS] = useState("0");
+  const [goalTimeDigits, setGoalTimeDigits] = useState("");
+  const goalH = goalTimeDigits.slice(0, 2);
+  const goalM = goalTimeDigits.slice(2, 4);
+  const goalS = goalTimeDigits.slice(4, 6);
   const [distanceM, setDistanceM] = useState("");
   // One row per template anchor (HRA-121: a table, not add/remove rows) —
   // keyed by anchor name, synced whenever the template changes.
@@ -257,9 +292,10 @@ export function PlanInstancesSection({ templates }: Props) {
   // while paceMode === "goalTime" (see regenerateBucketDirty below).
   const [baselineRacePaceAnchor, setBaselineRacePaceAnchor] = useState(NONE_ANCHOR);
   const [baselinePaceMode, setBaselinePaceMode] = useState<"anchor" | "goalTime">("anchor");
-  const [baselineGoalH, setBaselineGoalH] = useState("0");
-  const [baselineGoalM, setBaselineGoalM] = useState("0");
-  const [baselineGoalS, setBaselineGoalS] = useState("0");
+  // HRA-137: one baseline for the whole masked digit buffer, mirroring the
+  // live goalTimeDigits it's diffed against — was three (baselineGoalH/M/S)
+  // before Goal time became a single input.
+  const [baselineGoalTimeDigits, setBaselineGoalTimeDigits] = useState("");
   const [baselineDistanceM, setBaselineDistanceM] = useState("");
   // HRA-136: the Save-bucket's own baselines — Name/Race name/date/url. Day
   // content's own baseline is `persistedDsl` (already existed for HRA-134's
@@ -309,12 +345,12 @@ export function PlanInstancesSection({ templates }: Props) {
     setTemplateId(""); setInstName(""); setRaceName(""); setRaceDate(""); setRaceUrl("");
     setStartDate(isoToday()); setDaysBeforeRace(""); setRestDayLabel("");
     setRacePaceAnchor(NONE_ANCHOR); setPaceMode("anchor");
-    setGoalH("0"); setGoalM("0"); setGoalS("0"); setDistanceM(""); setAnchorRows({});
+    setGoalTimeDigits(""); setDistanceM(""); setAnchorRows({});
     setPendingTemplateId(null);
     setInstantiateError(null);
     setBaselineStartDate(""); setBaselineAnchorRows({});
     setBaselineRacePaceAnchor(NONE_ANCHOR); setBaselinePaceMode("anchor");
-    setBaselineGoalH("0"); setBaselineGoalM("0"); setBaselineGoalS("0"); setBaselineDistanceM("");
+    setBaselineGoalTimeDigits(""); setBaselineDistanceM("");
     setBaselineInstName(""); setBaselineRaceName(""); setBaselineRaceDate(""); setBaselineRaceUrl("");
     setSaveForcedEnabled(false); setPendingNameChangeConfirm(false);
     setEffectiveFrom(isoToday()); setPendingRegenerateCount(null);
@@ -372,7 +408,7 @@ export function PlanInstancesSection({ templates }: Props) {
     const anchors = collectPlanAnchors(parsePlan(templates?.find(tpl => String(tpl.id) === id)) ?? { metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} }, sections: [] });
     setRacePaceAnchor(NONE_ANCHOR);
     setPaceMode("anchor");
-    setGoalH("0"); setGoalM("0"); setGoalS("0"); setDistanceM("");
+    setGoalTimeDigits(""); setDistanceM("");
     setAnchorRows(Object.fromEntries(anchors.map(a => [a, emptyAnchorRow()])));
   }
 
@@ -485,6 +521,32 @@ export function PlanInstancesSection({ templates }: Props) {
     return goalSec / (distM / 1000);
   })();
 
+  // HRA-137 Ask #3: the reverse direction — when the race-pace anchor's own
+  // Absolute pace is set directly (Anchor-override mode), compute the
+  // equivalent Goal Time from it, for display in the (read-only while in
+  // this mode) Goal time field below. Only fires for an ABSOLUTE row value
+  // — a Relative-to-another-anchor row has no standalone pace to convert
+  // without resolving the whole policy chain first, same scope boundary
+  // derivedPaceSecPerKm's own goalTime->pace direction already has (it only
+  // ever reads the anchor's own goal-time inputs, never the rest of the
+  // policy).
+  const equivalentGoalTimeSec = (() => {
+    if (!(hasRacePaceAnchor && paceMode === "anchor") || !selectedPlan) return null;
+    const row = anchorRows[racePaceAnchor];
+    if (!row || row.absoluteValue.trim() === "") return null;
+    const parsed = parsePaceOverrideInput(row.absoluteValue, selectedPlan.metadata.offset_unit);
+    if (!parsed || parsed.kind !== "absolute") return null;
+    const distM = previewGoalDistanceM();
+    if (distM == null) return null;
+    return parsed.pace_sec_per_km * (distM / 1000);
+  })();
+  // What the single masked Goal-time input actually displays: its own live
+  // buffer while it's the editable source of truth (goalTime mode), or the
+  // just-computed equivalent while it's a read-only preview (anchor mode).
+  const goalTimeDisplayValue = paceMode === "goalTime"
+    ? formatGoalTimeDigits(goalTimeDigits)
+    : (equivalentGoalTimeSec != null ? formatGoalTimeFromSec(equivalentGoalTimeSec) : "");
+
   const canInstantiate = templateId !== "" && instName.trim() !== "" && startDate !== "" && allResolved;
 
   // HRA-124: non-blocking warning only — trueMonday (start_date walked back
@@ -500,7 +562,7 @@ export function PlanInstancesSection({ templates }: Props) {
     if (startDate !== isoToday()) return true;
     if (daysBeforeRace.trim() !== "") return true;
     if (restDayLabel.trim() !== "") return true;
-    if (goalH !== "0" || goalM !== "0" || goalS !== "0" || distanceM.trim() !== "") return true;
+    if (goalTimeDigits !== "" || distanceM.trim() !== "") return true;
     if (racePaceAnchor !== NONE_ANCHOR) return true;
     return Object.values(anchorRows).some(row => !anchorRowIsEmpty(row));
   }
@@ -548,7 +610,7 @@ export function PlanInstancesSection({ templates }: Props) {
       setBaselineAnchorRows(anchorRows);
       setBaselineRacePaceAnchor(racePaceAnchor);
       setBaselinePaceMode(paceMode);
-      setBaselineGoalH(goalH); setBaselineGoalM(goalM); setBaselineGoalS(goalS); setBaselineDistanceM(distanceM);
+      setBaselineGoalTimeDigits(goalTimeDigits); setBaselineDistanceM(distanceM);
       setBaselineInstName(created.name ?? "");
       setBaselineRaceName(raceName); setBaselineRaceDate(raceDate); setBaselineRaceUrl(raceUrl);
       setSaveForcedEnabled(false);
@@ -896,7 +958,7 @@ export function PlanInstancesSection({ templates }: Props) {
       setBaselineAnchorRows(anchorRows);
       setBaselineRacePaceAnchor(racePaceAnchor);
       setBaselinePaceMode(paceMode);
-      setBaselineGoalH(goalH); setBaselineGoalM(goalM); setBaselineGoalS(goalS); setBaselineDistanceM(distanceM);
+      setBaselineGoalTimeDigits(goalTimeDigits); setBaselineDistanceM(distanceM);
       setSaveForcedEnabled(true);
       await refreshInstances();
       notify(t("manage.planInstances.regenerateSucceeded", `Instance regenerated — days from ${effectiveFrom} onward were updated.`, { date: effectiveFrom }));
@@ -999,7 +1061,7 @@ export function PlanInstancesSection({ templates }: Props) {
   // approved (editing an approved instance is out of scope, same HRA-126
   // lock every other write already respects).
   const anchorRowsChanged = JSON.stringify(anchorRows) !== JSON.stringify(baselineAnchorRows);
-  const goalTimeFieldsChanged = paceMode === "goalTime" && (goalH !== baselineGoalH || goalM !== baselineGoalM || goalS !== baselineGoalS || distanceM !== baselineDistanceM);
+  const goalTimeFieldsChanged = paceMode === "goalTime" && (goalTimeDigits !== baselineGoalTimeDigits || distanceM !== baselineDistanceM);
   const regenerateBucketDirty = fieldsLocked && !isApproved && (
     startDate !== baselineStartDate || racePaceAnchor !== baselineRacePaceAnchor || paceMode !== baselinePaceMode
     || anchorRowsChanged || goalTimeFieldsChanged
@@ -1109,7 +1171,12 @@ export function PlanInstancesSection({ templates }: Props) {
         </div>
       )}
 
-      {/* Row 3 — pace: Race pace anchor + Pace input mode on one line. */}
+      {/* Row 3 — pace: Race pace anchor + Pace input mode + Goal time all on
+          one line (HRA-137 Ask #1 — Goal time used to be its own separate
+          row below, appearing/disappearing with paceMode, which is exactly
+          the "moving UI" pattern CLAUDE.md forbids elsewhere; it's now
+          ALWAYS mounted here, in the row, and merely disabled outside
+          goalTime mode — never unmounted, so it never shifts its siblings). */}
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
         <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
           <div className="hra-segment">
@@ -1126,28 +1193,39 @@ export function PlanInstancesSection({ templates }: Props) {
             <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={fieldDisabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
           </div>
         </Field>
+        <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {/* HRA-137 Ask #2: one masked HH:MM:SS text field, not three
+                separate H/M/S number inputs — see formatGoalTimeDigits/
+                sanitizeGoalTimeInput above. HRA-137 Ask #3: outside goalTime
+                mode this same field becomes a read-only preview of the
+                equivalent Goal Time computed from the race-pace anchor's
+                own Absolute pace (goalTimeDisplayValue/equivalentGoalTimeSec
+                above), rather than a second control elsewhere. */}
+            <input
+              className="hra-border-strong hra-bg-card hra-text-primary"
+              value={goalTimeDisplayValue}
+              onChange={e => { if (paceMode === "goalTime") setGoalTimeDigits(sanitizeGoalTimeInput(e.target.value)); }}
+              disabled={fieldDisabled || paceMode !== "goalTime"}
+              inputMode="numeric" maxLength={8} style={{ width: 90 }}
+              placeholder={t("manage.planInstances.goalTimePlaceholder", "HH:MM:SS")}
+              aria-label={t("manage.planInstances.goalTimeAria", "Goal time (HH:MM:SS)")}
+            />
+            {paceMode === "anchor" && equivalentGoalTimeSec != null && (
+              <span className="hra-anchor-tag">{t("manage.planInstances.goalTimeFromAnchor", "(from {{anchor}}'s pace)", { anchor: racePaceAnchor })}</span>
+            )}
+          </div>
+        </Field>
       </div>
       <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
         {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
       </div>
 
-      {hasRacePaceAnchor && paceMode === "goalTime" && (
-        <div style={{ display: "grid", gridTemplateColumns: showDistanceOverride ? "auto 200px" : "auto", gap: 10, marginBottom: 16 }}>
-          <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
-            <div className="hra-goal-time-fields">
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalH} onChange={e => setGoalH(e.target.value)} disabled={fieldDisabled} type="number" min={0} aria-label={t("manage.planInstances.goalTimeHoursAria", "Hours")} />
-              <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeHoursUnit", "h")}</span>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalM} onChange={e => setGoalM(e.target.value)} disabled={fieldDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeMinutesAria", "Minutes")} />
-              <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeMinutesUnit", "m")}</span>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={goalS} onChange={e => setGoalS(e.target.value)} disabled={fieldDisabled} type="number" min={0} max={59} aria-label={t("manage.planInstances.goalTimeSecondsAria", "Seconds")} />
-              <span className="hra-goal-time-unit">{t("manage.planInstances.goalTimeSecondsUnit", "s")}</span>
-            </div>
+      {hasRacePaceAnchor && paceMode === "goalTime" && showDistanceOverride && (
+        <div style={{ marginBottom: 16 }}>
+          <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
+            <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldDisabled} type="number" style={{ width: 200, padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
           </Field>
-          {showDistanceOverride && (
-            <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldDisabled} type="number" style={{ width: "100%", padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
-            </Field>
-          )}
         </div>
       )}
       {hasRacePaceAnchor && paceMode === "anchor" && (
