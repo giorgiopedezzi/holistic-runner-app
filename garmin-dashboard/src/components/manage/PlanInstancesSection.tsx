@@ -184,6 +184,11 @@ export function PlanInstancesSection({ templates }: Props) {
   const [editError, setEditError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
+  // HRA-126: once set, the plan view locks — Save/day-edit disabled, Approve
+  // disabled (no double-approve). Kept in sync at every point the instance's
+  // own approved_at could change: loading it (startEdit), creating it fresh
+  // (always null), saving (PUT clears approval, gate 2), approving.
+  const [editApprovedAt, setEditApprovedAt] = useState<string | null>(null);
 
   function refreshInstances() {
     return api.planInstances.list().then(setInstances).catch(e => setListError(e instanceof Error ? e.message : t("manage.planInstances.loadFailed", "Failed to load instances")));
@@ -201,7 +206,7 @@ export function PlanInstancesSection({ templates }: Props) {
   }
 
   function resetEditor() {
-    setEditingId(null); setEditName(""); setSections([]); setEditError(null);
+    setEditingId(null); setEditName(""); setSections([]); setEditError(null); setEditApprovedAt(null);
   }
 
   // Row 2: Start date and Days-before-race are two views of one relationship
@@ -423,6 +428,7 @@ export function PlanInstancesSection({ templates }: Props) {
     resetEditor();
     setEditingId(instance.id);
     setEditName(instance.name ?? "");
+    setEditApprovedAt(instance.approved_at);
     setMode("editor");
     try {
       const full = await api.planInstances.getById(instance.id);
@@ -468,6 +474,7 @@ export function PlanInstancesSection({ templates }: Props) {
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
       }));
       setSections(sectionsFromDays(resolvedDays));
+      setEditApprovedAt(updated.approved_at);
       await refreshInstances();
       notify(t("manage.planInstances.saveSucceeded", "Instance saved."));
     } catch (e) {
@@ -480,7 +487,8 @@ export function PlanInstancesSection({ templates }: Props) {
     if (editingId == null) return;
     setApproveLoading(true);
     try {
-      await api.planInstances.approve(editingId);
+      const approved = await api.planInstances.approve(editingId);
+      setEditApprovedAt(approved.approved_at);
       await refreshInstances();
       notify(t("manage.planInstances.approveSucceeded", "Instance approved."));
     } catch (e) {
@@ -809,19 +817,31 @@ export function PlanInstancesSection({ templates }: Props) {
     );
   }
 
+  // HRA-126: once approved, the plan view locks — Save and day-edit disabled,
+  // Approve disabled (no double-approve). Nothing is hidden or deleted — the
+  // instance stays fully viewable/retrievable, only the editing affordances
+  // go away.
+  const isApproved = editApprovedAt != null;
+
   return (
     <Card>
-      <div className="hra-block-title" style={{ marginBottom: 12 }}>{t("manage.planInstances.editTitle", "Edit instance")}</div>
+      <div className="hra-row-wrap" style={{ alignItems: "center", marginBottom: 12 }}>
+        <div className="hra-block-title">{t("manage.planInstances.editTitle", "Edit instance")}</div>
+        <Badge
+          label={isApproved ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}
+          color={isApproved ? "var(--accent-green)" : "var(--text-muted)"}
+        />
+      </div>
       <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 10 }}>
         {t("manage.planTemplates.nameLabel", "Name")}
-        <input className="hra-border-strong hra-bg-card hra-text-primary" value={editName} onChange={e => setEditName(e.target.value)} style={{ width: "100%", marginTop: 4, padding: 6 }} />
+        <input className="hra-border-strong hra-bg-card hra-text-primary" value={editName} onChange={e => setEditName(e.target.value)} disabled={isApproved} style={{ width: "100%", marginTop: 4, padding: 6 }} />
       </label>
 
       <div className="hra-row-wrap" style={{ marginBottom: 12 }}>
-        <button className="hra-btn" data-variant="green" onClick={onSave} disabled={saveLoading || sections.length === 0}>
+        <button className="hra-btn" data-variant="green" onClick={onSave} disabled={saveLoading || sections.length === 0 || isApproved}>
           {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
         </button>
-        <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null}>
+        <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
           {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
         </button>
         <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => { resetEditor(); setMode("list"); }}>
@@ -839,6 +859,7 @@ export function PlanInstancesSection({ templates }: Props) {
           onWeekEdit={() => {}}
           onDayEdit={onDayEdit}
           readOnlySectionWeek
+          readOnlyDays={isApproved}
         />
       )}
     </Card>

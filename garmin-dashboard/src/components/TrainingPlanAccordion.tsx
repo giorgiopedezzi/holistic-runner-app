@@ -37,6 +37,13 @@ interface TrainingPlanAccordionProps {
   // text instead of inputs. Day dsl/note stay editable regardless. Default
   // false (templates, HRA-117, remain fully editable at every level).
   readOnlySectionWeek?: boolean;
+  // HRA-126: independent of readOnlySectionWeek — when true, Day dsl/note
+  // also stop being editable (the dsl/note inputs simply don't render, same
+  // "hide the input, the title/tooltip already shows the value" pattern
+  // readOnlySectionWeek uses above). Set by the instance card once an
+  // instance's approved_at is set, locking the whole plan view. Default
+  // false (an unapproved instance, or any template, stays fully editable).
+  readOnlyDays?: boolean;
 }
 
 type Translate = (key: string, def: string, opts?: Record<string, unknown>) => string;
@@ -123,10 +130,11 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
 }
 
 function DayEditor({
-  day, onEdit,
+  day, onEdit, readOnlyDays,
 }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
+  readOnlyDays: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -141,26 +149,33 @@ function DayEditor({
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-          {t("runplan.accordion.dslLabel", "Workout (DSL)")}
-          <textarea
-            className={inputClass}
-            value={day.dsl}
-            onChange={e => onEdit({ dsl: e.target.value })}
-            rows={2}
-            style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 6 }}
-          />
-        </label>
-        <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-          {t("runplan.accordion.noteLabel", "Note")}
-          <input
-            className={inputClass}
-            value={day.notes ?? ""}
-            onChange={e => onEdit({ notes: e.target.value })}
-            placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-            style={{ width: "100%", marginTop: 4, padding: 6 }}
-          />
-        </label>
+        {/* HRA-126: once approved, the dsl/note inputs simply don't render —
+            same "hide the input, the title/tooltip already shows the value"
+            pattern readOnlySectionWeek already uses for Section/Week above. */}
+        {!readOnlyDays && (
+          <>
+            <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+              {t("runplan.accordion.dslLabel", "Workout (DSL)")}
+              <textarea
+                className={inputClass}
+                value={day.dsl}
+                onChange={e => onEdit({ dsl: e.target.value })}
+                rows={2}
+                style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 6 }}
+              />
+            </label>
+            <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+              {t("runplan.accordion.noteLabel", "Note")}
+              <input
+                className={inputClass}
+                value={day.notes ?? ""}
+                onChange={e => onEdit({ notes: e.target.value })}
+                placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+                style={{ width: "100%", marginTop: 4, padding: 6 }}
+              />
+            </label>
+          </>
+        )}
         {day.needs_review && day.warnings.length > 0 && (
           <ul className="hra-text-danger" style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
             {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
@@ -177,12 +192,13 @@ function DayEditor({
 }
 
 function WeekEditor({
-  week, onWeekEdit, onDayEdit, readOnlySectionWeek,
+  week, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays,
 }: {
   week: WeekView;
   onWeekEdit: (patch: { notes?: string }) => void;
   onDayEdit: (dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
   readOnlySectionWeek: boolean;
+  readOnlyDays: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -207,7 +223,7 @@ function WeekEditor({
           </label>
         )}
         {week.days.map((day, dayIndex) => (
-          <DayEditor key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} />
+          <DayEditor key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} readOnlyDays={readOnlyDays} />
         ))}
       </div>
     </AccordionCard>
@@ -215,7 +231,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek,
+  section, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays,
 }: {
   section: SectionView;
   ownerName: string;
@@ -223,6 +239,7 @@ function SectionEditor({
   onWeekEdit: (weekIndex: number, patch: { notes?: string }) => void;
   onDayEdit: (weekIndex: number, dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
   readOnlySectionWeek: boolean;
+  readOnlyDays: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -276,6 +293,7 @@ function SectionEditor({
             onWeekEdit={patch => onWeekEdit(weekIndex, patch)}
             onDayEdit={(dayIndex, patch) => onDayEdit(weekIndex, dayIndex, patch)}
             readOnlySectionWeek={readOnlySectionWeek}
+            readOnlyDays={readOnlyDays}
           />
         ))}
       </div>
@@ -283,7 +301,7 @@ function SectionEditor({
   );
 }
 
-export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false }: TrainingPlanAccordionProps) {
+export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false }: TrainingPlanAccordionProps) {
   return (
     <div>
       {sections.map((section, sectionIndex) => (
@@ -295,6 +313,7 @@ export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWe
           onWeekEdit={(weekIndex, patch) => onWeekEdit(sectionIndex, weekIndex, patch)}
           onDayEdit={(weekIndex, dayIndex, patch) => onDayEdit(sectionIndex, weekIndex, dayIndex, patch)}
           readOnlySectionWeek={readOnlySectionWeek}
+          readOnlyDays={readOnlyDays}
         />
       ))}
     </div>
