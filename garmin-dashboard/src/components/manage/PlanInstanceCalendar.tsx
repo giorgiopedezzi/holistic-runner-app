@@ -77,6 +77,15 @@ function isSameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// Follow-up fix: a complex day's DSL text (multiple segments, e.g.
+// "10x1000m @ RG; 2km @ jog") reads as one dense run-on when just wrapped —
+// splitting at each segment's own "; " separator (the exact join
+// reconstructDslFromResolvedDay uses) puts one segment per line instead,
+// the same breakdown a human would apply reading it out loud.
+function splitDslSegments(text: string): string[] {
+  return text.split(/;\s*/).map(s => s.trim()).filter(Boolean);
+}
+
 // HRA-144: `day.dsl` here is already the reconstructed DSL text —
 // PlanInstancesSection's sectionsFromDays runs every ResolvedDay through
 // reconstructDslFromResolvedDay (domain/runplan-aggregate.ts) before
@@ -168,15 +177,15 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
   const intensityPct = hasIntensity ? Math.min(100, (metrics.maxSpeedKmh! / scaling.instanceMaxSpeedKmh!) * 100) : 0;
   const intensityColor = hasIntensity ? speedRampColor(speedColorT(metrics.maxSpeedKmh!, scaling)) : undefined;
 
+  const dslSegments = splitDslSegments(event.title);
+
   return (
     <span className={`hra-agenda-event-card ${WORKOUT_TYPE_CARD_CLASS[event.workoutType] ?? ""}`}>
       <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
         <span title={workoutTypeLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
           <Icon size={12} />
         </span>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }} title={event.title}>
-          {event.title}
-        </span>
+        <span className="hra-agenda-event-title">{event.title}</span>
         {event.needsReview && (
           <span
             title={t("manage.planInstances.needsReviewTooltip", "Needs review")}
@@ -187,6 +196,19 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
           </span>
         )}
       </span>
+
+      {/* Follow-up fix: hover-to-expand, not hover-to-enlarge-text — the
+          card itself grows (more canvas), font-size stays the fixed 11px
+          .hra-agenda-event-title already sets. Only shown when there's
+          something truncation could actually be hiding; a short single-word
+          title (e.g. a rest-adjacent label) never needs it. */}
+      {dslSegments.length > 0 && (
+        <span className="hra-agenda-event-detail" aria-hidden="true">
+          {dslSegments.map((segment, i) => (
+            <span key={i} className="hra-agenda-event-detail-line">{segment}</span>
+          ))}
+        </span>
+      )}
 
       {(hasDistance || hasDuration || hasIntensity) && (
         <span className="hra-agenda-gauges">
