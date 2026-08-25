@@ -858,6 +858,20 @@ the day's full warning list, or actually editing a field.
   always) — a fixed, compact label rather than a spelled-out, language-dependent one, same reasoning
   as `fmtDateChart`'s numeric-only chart-axis ticks.
 
+**Instance day row redesign (HRA-128)**: `DayEditor` is now a thin, hook-free dispatcher on
+`day.date` (the same instance-vs-template signal `dayLabel()` above already uses) — `InstanceDayRow`
+(`day.date != null`) replaces the click-to-expand `AccordionCard`+textarea with a single always-visible
+compact row: a prominent, non-editable date badge (`.hra-day-date-badge`, `index.css` — `var(--accent)`
+background/`var(--on-accent)` text, never derived from the theme's chart-color set) on the left, the
+DSL as a single-line `<input>` (not a `<textarea>` — an instance day's DSL is always one line) and the
+Notes `<input>` beneath it, both wired to the same `onEdit`/`onDayEdit` callback chain as before —
+nothing new became editable. `readOnlyDays` (HRA-126) still renders plain text instead of the two
+inputs, same lock semantics as before. `TemplateDayRow` (`day.date == null`) is the original
+accordion-with-textarea layout, verbatim, unmodified — templates were out of this Story's scope. The
+split into two components (rather than one `DayEditor` with an early return) exists specifically so
+each branch's `useState`/`useDragSwap` hooks are called unconditionally — an early return before a
+hook call inside one component would violate the rules of hooks.
+
 **i18n**: every label goes through `t()` (`runplan.accordion.*` keys, `garmin-stats/locales/en.json`/
 `it.json`). ⚠️ Every dynamic label's `defaultValue` is a pre-substituted JS template literal, never a
 literal `{{var}}` placeholder — the `notReadyT` stub (CLAUDE.md's i18n mechanics note) returns

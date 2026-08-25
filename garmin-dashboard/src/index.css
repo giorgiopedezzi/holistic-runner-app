@@ -1356,6 +1356,22 @@ input:focus, select:focus { border-color: var(--accent); }
   border-radius: 16px;
 }
 
+/* ── Instance day row's date badge (TrainingPlanAccordion.tsx, HRA-128) —
+   the calendar date/weekday is not editable, but used to blend into the
+   row's plain label text; this gives it clear visual prominence instead. */
+.hra-day-date-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
 /* ── Trend chart (SportTrendChart) — glassy combined tooltip + per-line glow
    + pill-chip legend. Bars stay a muted --data-pace SVG gradient defined
    inline (no CSS-class equivalent for an SVG <linearGradient>'s stops), see

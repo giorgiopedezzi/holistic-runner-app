@@ -188,7 +188,85 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
   );
 }
 
-function DayEditor({
+// HRA-128: an instance day (day.date set) no longer needs a click-to-expand
+// accordion — DSL/Notes render directly in a compact row, with the
+// (non-editable) date pulled out into its own prominent badge instead of
+// blending into the label text. Template days (day.date == null) keep the
+// original accordion-with-textarea layout unchanged — templates were never
+// in this Story's scope (HRA-116/117), and the whole distinguishing signal
+// (day.date) already exists for exactly this kind of instance-only fork
+// (see dayLabel() above, HRA-125).
+function InstanceDayRow({
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap,
+}: {
+  day: DayView;
+  date: string;
+  onEdit: (patch: { dsl?: string; notes?: string }) => void;
+  readOnlyDays: boolean;
+  dayRef?: DayRef;
+  onDaySwap?: (a: DayRef, b: DayRef) => void;
+}) {
+  const { t } = useTranslation();
+  const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
+  const dateBadge = `${fmtWeekdayShort(date)} ${fmtDate(date)}`;
+  const workoutText = day.dsl.replace(DAY_PREFIX_RE, "");
+
+  return (
+    <div
+      {...drag.handlers}
+      className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
+      style={drag.swappable ? { cursor: "grab" } : undefined}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span className="hra-day-date-badge">{dateBadge}</span>
+        {/* HRA-126: once approved, the dsl/note inputs simply don't render —
+            plain text takes their place so the row still reads correctly. */}
+        {readOnlyDays ? (
+          <span style={{ flex: 1, minWidth: 0 }}>{workoutText}</span>
+        ) : (
+          <input
+            className={inputClass}
+            value={day.dsl}
+            onChange={e => onEdit({ dsl: e.target.value })}
+            aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
+            style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 13, padding: 6 }}
+          />
+        )}
+        <span className="hra-text-secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fmtDistance(day.distance, t)}</span>
+        {day.needs_review && <WarningBadge t={t} />}
+      </div>
+      {readOnlyDays ? (
+        day.notes && <div className="hra-text-muted" style={{ fontSize: 12, marginTop: 6 }}>{day.notes}</div>
+      ) : (
+        <input
+          className={inputClass}
+          value={day.notes ?? ""}
+          onChange={e => onEdit({ notes: e.target.value })}
+          placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+          aria-label={t("runplan.accordion.noteLabel", "Note")}
+          style={{ width: "100%", marginTop: 6, padding: 6, fontSize: 12 }}
+        />
+      )}
+      {day.needs_review && day.warnings.length > 0 && (
+        <ul className="hra-text-danger" style={{ fontSize: 12, margin: "6px 0 0", paddingLeft: 18 }}>
+          {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
+        </ul>
+      )}
+      {day.needs_review && day.warnings.length === 0 && (
+        <div className="hra-text-danger" style={{ fontSize: 12, marginTop: 6 }}>
+          {t("runplan.accordion.needsReview", "This day needs review before it can be saved.")}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Template day (day.date == null): unchanged accordion-with-textarea layout,
+// split out from DayEditor below purely so its hooks (useState/useDragSwap)
+// are never called on the InstanceDayRow branch — calling both branches'
+// hooks unconditionally in one component, then early-returning, would
+// violate the rules of hooks.
+function TemplateDayRow({
   day, onEdit, readOnlyDays, dayRef, onDaySwap,
 }: {
   day: DayView;
@@ -200,11 +278,10 @@ function DayEditor({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
+
   // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
-  // at a glance, instead of a redundant bare "D3". For an instance day
-  // (day.date set), dayLabel() swaps the "D3" placeholder for the real
-  // calendar date + weekday instead (HRA-125) — template days are unaffected.
+  // at a glance, instead of a redundant bare "D3".
   return (
     <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
       <AccordionCard
@@ -253,6 +330,20 @@ function DayEditor({
       </AccordionCard>
     </div>
   );
+}
+
+// Dispatches on day.date (HRA-125's own instance-vs-template signal) — kept
+// hook-free so each branch's component owns its own hooks unconditionally.
+function DayEditor(props: {
+  day: DayView;
+  onEdit: (patch: { dsl?: string; notes?: string }) => void;
+  readOnlyDays: boolean;
+  dayRef?: DayRef;
+  onDaySwap?: (a: DayRef, b: DayRef) => void;
+}) {
+  return props.day.date != null
+    ? <InstanceDayRow {...props} date={props.day.date} />
+    : <TemplateDayRow {...props} />;
 }
 
 function WeekEditor({
