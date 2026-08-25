@@ -19,7 +19,7 @@
 import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AccordionCard } from "./ui/AccordionCard";
-import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
+import { instanceDayDateLabel } from "@/utils/fmt";
 import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
@@ -380,10 +380,13 @@ function WeekEditor({
   const drag = useDragSwap(weekRef, readOnlyDays ? undefined : onWeekSwap);
   // HRA-129: same "(start → end)" bracket convention DateRangeBar.tsx/
   // DateRangesSection.tsx already use for a named range, appended to the
-  // existing compactTotals() summary rather than replacing it.
+  // existing compactTotals() summary rather than replacing it. Review
+  // follow-up: each side uses the same weekday-first day format
+  // (instanceDayDateLabel) the day rows themselves use, not a bare date —
+  // consistent formatting between a week's range and the days inside it.
   const range = weekDateRange(week);
   const summary = range
-    ? `${compactTotals(week.totals, t)} (${fmtDate(range.start)} → ${fmtDate(range.end)})`
+    ? `${compactTotals(week.totals, t)} (${instanceDayDateLabel(range.start)} → ${instanceDayDateLabel(range.end)})`
     : compactTotals(week.totals, t);
 
   return (

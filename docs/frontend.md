@@ -903,11 +903,15 @@ itself is localized to the app's current language (see its own comment above) �
 separator/order around it is driven by `date_format`'s region here. `WeekEditor`'s title summary now appends a
 `(start → end)` date range (`weekDateRange()` — plain min/max over `week.days[].date`, pure
 derivation, no schema change) after the existing `compactTotals()` text, using the same bracket
-convention `DateRangeBar.tsx`/`manage/DateRangesSection.tsx` already use for a named range —
-`(fmtDate(start) → fmtDate(end))`, no weekday, no `t()` wrapping (the arrow/parens are punctuation,
-not a translatable label, matching those two existing call sites). Template weeks (every
-`day.date == null`) have nothing to derive a range from, so `weekDateRange()` returns `null` and the
-title falls back to the plain `compactTotals()`-only summary, unchanged.
+punctuation `DateRangeBar.tsx`/`manage/DateRangesSection.tsx` use for a named range —
+`(start → end)`, no `t()` wrapping (the arrow/parens are punctuation, not a translatable label,
+matching those two existing call sites) — **but each side is `instanceDayDateLabel(date)`, the same
+weekday-first day format the day rows themselves use, not a bare `fmtDate()`** (review follow-up:
+the initial version used `fmtDate()` alone, e.g. `"(17 Oct 2026 → 23 Oct 2026)"`; corrected to
+`"(Sat 17 Oct 2026 → Fri 23 Oct 2026)"` per explicit feedback that the week range should read
+consistently with the day format, not a plainer one). Template weeks (every `day.date == null`)
+have nothing to derive a range from, so `weekDateRange()` returns `null` and the title falls back to
+the plain `compactTotals()`-only summary, unchanged.
 
 **i18n**: every label goes through `t()` (`runplan.accordion.*` keys, `garmin-stats/locales/en.json`/
 `it.json`). ⚠️ Every dynamic label's `defaultValue` is a pre-substituted JS template literal, never a
