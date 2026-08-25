@@ -89,6 +89,27 @@ function anchorRowIsEmpty(row: AnchorRowState): boolean {
   return row.absoluteValue.trim() === "" && row.relativeTo === "" && row.seconds.trim() === "";
 }
 
+// HRA-124: K0 = lowest D-number the template's week 1 actually declares —
+// mirrors garmin-stats/src/domain/runplan/instantiate.ts's computeK0. Used
+// only for this form's non-blocking week-1-anchor warning below; the
+// backend does the real (authoritative) computation at instantiate time.
+function computeK0(plan: RunPlan): number | null {
+  let k0: number | null = null;
+  for (const section of plan.sections) {
+    for (const week of section.weeks) {
+      if (week.number !== 1) continue;
+      for (const day of week.days) {
+        if (k0 === null || day.day < k0) k0 = day.day;
+      }
+    }
+  }
+  return k0;
+}
+// Monday=0..Sunday=6 weekday index for an ISO date.
+function mondayBasedWeekday(dateISO: string): number {
+  return (new Date(`${dateISO}T00:00:00Z`).getUTCDay() + 6) % 7;
+}
+
 // Every field in the instantiate form goes through this — label is always a
 // block above its control (never beside it), enforced structurally by the
 // column flex layout rather than left to each call site to get right.
@@ -133,6 +154,9 @@ export function PlanInstancesSection({ templates }: Props) {
   // onDaysBeforeRaceChange/onRaceDateChange below).
   const [startDate, setStartDate] = useState(isoToday());
   const [daysBeforeRace, setDaysBeforeRace] = useState("");
+  // HRA-124: free-text label attached as `notes` on every day auto-filled as
+  // a REST day to plug a D-number gap the template left undeclared for a week.
+  const [restDayLabel, setRestDayLabel] = useState("");
   // row 3 (pace) — racePaceAnchor defaults to NONE_ANCHOR (never auto-picks
   // one of the template's anchors); paceMode is forced to "anchor" whenever
   // it's NONE_ANCHOR (Goal time has nothing to convert to without a
@@ -169,7 +193,7 @@ export function PlanInstancesSection({ templates }: Props) {
 
   function resetInstantiateForm() {
     setTemplateId(""); setInstName(""); setRaceName(""); setRaceDate(""); setRaceUrl("");
-    setStartDate(isoToday()); setDaysBeforeRace("");
+    setStartDate(isoToday()); setDaysBeforeRace(""); setRestDayLabel("");
     setRacePaceAnchor(NONE_ANCHOR); setPaceMode("anchor");
     setGoalH("0"); setGoalM("0"); setGoalS("0"); setDistanceM(""); setAnchorRows({});
     setPendingTemplateId(null);
@@ -324,12 +348,19 @@ export function PlanInstancesSection({ templates }: Props) {
 
   const canInstantiate = templateId !== "" && instName.trim() !== "" && startDate !== "" && allResolved;
 
+  // HRA-124: non-blocking warning only — trueMonday (start_date walked back
+  // to what D1's date would be, per K0) landing on a real Monday is never
+  // required to create the instance.
+  const week1K0 = selectedPlan ? computeK0(selectedPlan) : null;
+  const week1AnchorMismatch = week1K0 != null && startDate !== "" && mondayBasedWeekday(startDate) !== (week1K0 - 1) % 7;
+
   // HRA-121: "non-default data" gating the template-switch warning — start
   // date at today counts as default (nothing was deliberately typed there).
   function hasEnteredData(): boolean {
     if (instName.trim() !== "" || raceName.trim() !== "" || raceDate !== "" || raceUrl.trim() !== "") return true;
     if (startDate !== isoToday()) return true;
     if (daysBeforeRace.trim() !== "") return true;
+    if (restDayLabel.trim() !== "") return true;
     if (goalH !== "0" || goalM !== "0" || goalS !== "0" || distanceM.trim() !== "") return true;
     if (racePaceAnchor !== NONE_ANCHOR) return true;
     return Object.values(anchorRows).some(row => !anchorRowIsEmpty(row));
@@ -342,6 +373,7 @@ export function PlanInstancesSection({ templates }: Props) {
       if (raceName.trim() !== "") body.race_name = raceName.trim();
       if (raceDate.trim() !== "") body.race_date = raceDate.trim();
       if (raceUrl.trim() !== "") body.race_url = raceUrl.trim();
+      if (restDayLabel.trim() !== "") body.rest_day_label = restDayLabel.trim();
 
       const overrides: Record<string, string> = {};
       for (const anchor of templateAnchors) {
@@ -554,7 +586,7 @@ export function PlanInstancesSection({ templates }: Props) {
         </div>
 
         {/* Row 2 — timing. */}
-        <div style={{ display: "grid", gridTemplateColumns: "160px 160px", gap: 10, marginBottom: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
           <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
             <DatePicker value={startDate} onChange={onStartDateChange} disabled={!formEnabled} />
           </Field>
@@ -567,10 +599,26 @@ export function PlanInstancesSection({ templates }: Props) {
               style={{ width: "100%", padding: "0 10px" }}
             />
           </Field>
+          <Field label={t("manage.planInstances.restDayLabelLabel", "Rest day label")}>
+            <input
+              className="hra-border-strong hra-bg-card hra-text-primary"
+              value={restDayLabel} onChange={e => setRestDayLabel(e.target.value)}
+              disabled={!formEnabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
+              style={{ width: "100%", padding: "0 10px" }}
+            />
+          </Field>
         </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
           {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
         </div>
+        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+          {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
+        </div>
+        {week1AnchorMismatch && (
+          <div style={{ fontSize: 11, color: "var(--accent-orange)", marginBottom: 16 }}>
+            {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
+          </div>
+        )}
 
         {/* Row 3 — pace: Race pace anchor + Pace input mode on one line. */}
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>

@@ -3,12 +3,16 @@
 // pace stays symbolic until resolved) plus a start date and pace-anchor
 // overrides, produce the concrete resolved days for one instantiation
 // (HRA-112). Reuses HRA-111's pace.ts rather than re-deriving resolution.
-import type { DayEntry, Intensity, PacePolicy, RestSpec, RunPlan, Target, WorkoutSegment } from "./types.ts";
+import type { DayEntry, Intensity, PacePolicy, RestSpec, RestType, RunPlan, Target, WorkoutSegment } from "./types.ts";
 import { getEffectivePacePolicy, resolveIntensityToPace } from "./pace.ts";
 
 export interface InstantiateOptions {
-  startDate: string; // YYYY-MM-DD — the instantiation-time plan start
+  startDate: string; // YYYY-MM-DD — the calendar date of K0, the template's week 1's lowest declared D-number (HRA-124; previously always D1's date)
   paceOverrides?: PacePolicy; // anchors to override at plan level before resolution
+  // HRA-124: free-text label attached as `notes` on every day auto-filled to
+  // plug a gap in a template week (a D-number 1-7 that week never declared) —
+  // the New Instance form's "Rest day label" field.
+  restDayLabel?: string;
 }
 
 export type ResolvedSegment =
@@ -39,16 +43,54 @@ export interface ResolvedDay {
   needs_review: boolean;
 }
 
-// Week N's baseline date = startDate + (N-1)*7 days, UNLESS the template's own
-// source already gave that week an explicit START — the explicit date wins
-// (HRA-112, confirmed at Refinement). Each day within the week then offsets
-// from that baseline by (day.day - 1) days (D1=baseline ... D7=baseline+6) —
-// HRA-122: previously every day in a week shared the identical baseline date.
+// Week N's baseline date = trueMonday + (N-1)*7 days, UNLESS the template's
+// own source already gave that week an explicit START — the explicit date
+// wins (HRA-112, confirmed at Refinement). Each day within the week then
+// offsets from that baseline by (day.day - 1) days (D1=baseline ...
+// D7=baseline+6) — HRA-122: previously every day in a week shared the
+// identical baseline date. trueMonday (HRA-124) is startDate walked back to
+// what D1's date would be: startDate is K0's date (the lowest D-number the
+// template's week 1 actually declares, not necessarily D1), so trueMonday =
+// startDate - (K0-1) days — see computeK0 below.
 function addDays(dateOnly: string, days: number): string {
   const [y, m, d] = dateOnly.split("-").map(Number);
   const date = new Date(Date.UTC(y, m - 1, d));
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+// K0 = the lowest D-number declared anywhere in the template's week 1
+// (HRA-124). Templates are expected to declare week 1 in exactly one
+// section, but this scans every section defensively; returns null when no
+// week 1 exists at all (trueMonday then just falls back to startDate itself,
+// preserving pre-HRA-124 behavior).
+function computeK0(plan: RunPlan): number | null {
+  let k0: number | null = null;
+  for (const section of plan.sections) {
+    for (const week of section.weeks) {
+      if (week.number !== 1) continue;
+      for (const day of week.days) {
+        if (k0 === null || day.day < k0) k0 = day.day;
+      }
+    }
+  }
+  return k0;
+}
+
+// Auto-fills a D-number the template left undeclared for a given week as a
+// REST day (HRA-124) — rest_type carried on a synthetic rest_block segment
+// (no real target, since there's nothing to rest from) rather than a new
+// top-level field, reusing the existing ResolvedSegment vocabulary.
+function makeRestFillDay(
+  sectionName: string, weekNumber: number, date: string, dayNumber: number, restType: RestType, label: string | undefined,
+): ResolvedDay {
+  return {
+    section_name: sectionName, week_number: weekNumber, date, day: dayNumber,
+    workout_type: "rest",
+    segments: [{ type: "rest_block", target: { kind: "unknown", raw: "" }, rest_type: restType, raw: "REST" }],
+    notes: label && label.trim() !== "" ? label.trim() : undefined,
+    needs_review: false,
+  };
 }
 
 // resolvePaceOrNull reports failure via the `flag` accumulator (rather than
@@ -119,15 +161,27 @@ export function instantiatePlan(plan: RunPlan, options: InstantiateOptions): Res
     metadata: { ...plan.metadata, pace_policy: { ...plan.metadata.pace_policy, ...options.paceOverrides } },
   };
 
+  const k0 = computeK0(overriddenPlan) ?? 1;
+  const trueMonday = addDays(options.startDate, -(k0 - 1));
+
   const days: ResolvedDay[] = [];
   for (const section of overriddenPlan.sections) {
     for (const week of section.weeks) {
       const policy = getEffectivePacePolicy(overriddenPlan, section, week);
-      const weekDate = week.start_date ?? addDays(options.startDate, (week.number - 1) * 7);
+      const weekDate = week.start_date ?? addDays(trueMonday, (week.number - 1) * 7);
+      const weekDays: ResolvedDay[] = [];
+      const declared = new Set(week.days.map(day => day.day));
       for (const day of week.days) {
         const dayDate = addDays(weekDate, day.day - 1);
-        days.push(resolveDay(day, section.name, week.number, dayDate, policy));
+        weekDays.push(resolveDay(day, section.name, week.number, dayDate, policy));
       }
+      for (let d = 1; d <= 7; d++) {
+        if (declared.has(d)) continue;
+        const dayDate = addDays(weekDate, d - 1);
+        weekDays.push(makeRestFillDay(section.name, week.number, dayDate, d, overriddenPlan.metadata.default_rest, options.restDayLabel));
+      }
+      weekDays.sort((a, b) => a.day - b.day);
+      days.push(...weekDays);
     }
   }
   return days;

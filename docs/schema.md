@@ -173,13 +173,23 @@ deliberately **not** flattened to one distance/pace pair per day), `activity_tar
 `activity_description`, `notes`, `needs_review` (0/1 — a day is flagged if it already was at parse
 time, or if any of its resolved intensities failed to resolve against the overridden policy).
 
-**Week-date derivation rule** (confirmed at Refinement for HRA-112): `week.start_date =
-instantiation_start_date + (week.number - 1) × 7 days`, **unless** that week already carries an
-explicit `WEEK ... START <date>` in the template's own DSL source, in which case the explicit date
-wins. **Per-day date (HRA-122):** each day's concrete `date` is `week.start_date + (day.day - 1)`
-days (`D1` = the week's start date, `D7` = 6 days later) — before HRA-122 every day in a week was
-persisted with the identical `week.start_date`, a bug. Implemented in
-`domain/runplan/instantiate.ts`'s `instantiatePlan()`.
+**Week-date derivation rule** (confirmed at Refinement for HRA-112, amended HRA-124): `week.start_date
+= trueMonday + (week.number - 1) × 7 days`, **unless** that week already carries an explicit
+`WEEK ... START <date>` in the template's own DSL source, in which case the explicit date wins.
+**`trueMonday` (HRA-124):** `instantiation_start_date` is the calendar date of `K0` — the lowest
+D-number the template's week 1 actually declares, not necessarily `D1` — so `trueMonday =
+instantiation_start_date - (K0-1) days`. When no week 1 exists at all, `K0` falls back to `1` and
+`trueMonday` is just `instantiation_start_date` (pre-HRA-124 behavior). If `instantiation_start_date`'s
+weekday doesn't land `trueMonday` on an actual Monday, the New Instance form shows a non-blocking
+warning (never a save-blocking one — a separate class from the DSL zero-warning gate above).
+**Per-day date (HRA-122):** each day's concrete `date` is `week.start_date + (day.day - 1)` days
+(`D1` = the week's start date, `D7` = 6 days later) — before HRA-122 every day in a week was
+persisted with the identical `week.start_date`, a bug. **Auto-filled rest days (HRA-124):** any
+D-number 1-7 a week doesn't declare is generated as an extra `workout_type: "rest"` row for that
+week, dated the same way, with `notes` set to the instantiate request's `rest_day_label` (if any) and
+a single synthetic `rest_block` segment carrying `rest_type` from the template's `DEFAULT_REST`
+metadata (`jog` if unset) — reuses the existing `ResolvedSegment` shape rather than adding a new
+column. Implemented in `domain/runplan/instantiate.ts`'s `instantiatePlan()`.
 
 ## Soft delete & trash
 `activities` and `body_measurements` both have `deleted_at` (TEXT, nullable) and `purged` (INTEGER, default 0). Three states per row:

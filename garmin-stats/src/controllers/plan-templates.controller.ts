@@ -56,6 +56,10 @@ type InstantiateBody = Partial<{
   // well-formed URL server-side — same "trust the user" treatment as
   // race_name.
   race_name: string; race_date: string; race_url: string;
+  // HRA-124: free-text label attached as `notes` on every day auto-filled to
+  // plug a gap in a template week (a D-number 1-7 the template never
+  // declared for that week).
+  rest_day_label: string;
 }>;
 // HRA-115: a day edit is now its raw DSL text (same grammar as a template's
 // D-line) plus the section/week/date scope it lives in — not pre-resolved
@@ -248,6 +252,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const raceName = body.race_name?.trim() || null;
     const raceDate = body.race_date ?? null;
     const raceUrl = body.race_url?.trim() || null;
+    const restDayLabel = body.rest_day_label?.trim() || undefined;
 
     const plan = JSON.parse(template.parsed_plan) as RunPlan;
 
@@ -294,7 +299,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       if (!targetActivity) throw unprocessable(`Unknown target_activity_id ${targetActivityId}.`);
       if (targetActivity.activity_type_id === 1) throw unprocessable("Only race-type activities (not Training) can be linked.");
 
-      const previewDays = instantiatePlan(plan, { startDate: body.start_date, paceOverrides });
+      const previewDays = instantiatePlan(plan, { startDate: body.start_date, paceOverrides, restDayLabel });
       const lastDay = previewDays.reduce((max, d) => (d.date > max ? d.date : max), body.start_date);
       if (targetActivity.date_only <= lastDay) {
         throw unprocessable("The linked race must take place after the plan's last day.");
@@ -302,7 +307,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
 
     const { instance, days } = instancesService.instantiate(
-      templateId, plan, { startDate: body.start_date, paceOverrides }, targetActivityId, name, raceName, raceDate, raceUrl,
+      templateId, plan, { startDate: body.start_date, paceOverrides, restDayLabel }, targetActivityId, name, raceName, raceDate, raceUrl,
     );
 
     res.setHeader("Location", `/api/v1/plan-instances/${instance.id}`);
