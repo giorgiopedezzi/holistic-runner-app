@@ -260,6 +260,15 @@ export const api = {
     update: (id: number, name: string, days: { section_name: string; week_number: number; date: string; dsl: string }[]) =>
       request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`, "PUT", undefined, { name, days }),
     approve: (id: number) => request<PlanInstance>(`/api/v1/plan-instances/${id}/approve`, "POST"),
+    // POST /api/v1/plan-instances/:id/regenerate (HRA-132/HRA-134) —
+    // effective_from is required (server-floored to today, never trusted
+    // client-side alone); start_date/pace_overrides each fall back to the
+    // instance's own current value when omitted server-side, but this app
+    // always sends both explicitly (the editor's own live values). Returns
+    // the updated instance with its regenerated days, same shape update()
+    // above returns.
+    regenerate: (id: number, body: { start_date: string; pace_overrides?: Record<string, string>; effective_from: string }) =>
+      request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}/regenerate`, "POST", undefined, body),
     remove: (id: number) => request<null>(`/api/v1/plan-instances/${id}`, "DELETE"),
   },
 };

@@ -236,6 +236,32 @@ export function PlanInstancesSection({ templates }: Props) {
   // pending-then-confirm/cancel shape as pendingTemplateId above.
   const [pendingDaySwap, setPendingDaySwap] = useState<{ a: DayRef; b: DayRef } | null>(null);
   const [pendingWeekSwap, setPendingWeekSwap] = useState<{ a: WeekRef; b: WeekRef } | null>(null);
+  // HRA-134: snapshots of startDate/anchorRows as of the last successful
+  // load/create/save/regenerate — the "pendingChange" comparison below diffs
+  // the live fields against these to decide whether to surface the cutover
+  // picker at all ("editing either surfaces..."), not against the raw
+  // persisted pace_overrides JSON (a resolved PaceValue, not the same shape
+  // as the UI's own absolute/relative row state — see startEdit's
+  // paceValueToAnchorRow for why that reverse mapping already exists).
+  const [baselineStartDate, setBaselineStartDate] = useState("");
+  const [baselineAnchorRows, setBaselineAnchorRows] = useState<Record<string, AnchorRowState>>({});
+  // date -> dsl as of the last successful load/create/save/regenerate — the
+  // "manual edit" count below diffs live `sections` against this to find
+  // which days (on/after the cutover) actually diverged from what's really
+  // persisted right now, regardless of how they were touched (direct dsl
+  // edit, a day swap, or a week swap all mutate `sections` the same way).
+  const [persistedDsl, setPersistedDsl] = useState<Record<string, string>>({});
+  // The "Modification start from" cutover date (HRA-134) — defaults to
+  // today, floored there both client-side (DatePicker's own min) and
+  // server-side (never trusted from the client alone, HRA-132).
+  const [effectiveFrom, setEffectiveFrom] = useState(isoToday());
+  const [regenerateLoading, setRegenerateLoading] = useState(false);
+  // Set while a regenerate is pending confirmation because it would discard
+  // one or more manually-edited days on/after the cutover — same
+  // pending-then-confirm/cancel shape pendingTemplateId/pendingDaySwap
+  // already established. null means "no manual edits in range," so
+  // onRegenerate proceeds immediately without asking.
+  const [pendingRegenerateCount, setPendingRegenerateCount] = useState<number | null>(null);
 
   function refreshInstances() {
     return api.planInstances.list().then(setInstances).catch(e => setListError(e instanceof Error ? e.message : t("manage.planInstances.loadFailed", "Failed to load instances")));
@@ -250,11 +276,22 @@ export function PlanInstancesSection({ templates }: Props) {
     setGoalH("0"); setGoalM("0"); setGoalS("0"); setDistanceM(""); setAnchorRows({});
     setPendingTemplateId(null);
     setInstantiateError(null);
+    setBaselineStartDate(""); setBaselineAnchorRows({});
+    setEffectiveFrom(isoToday()); setPendingRegenerateCount(null);
   }
 
   function resetEditor() {
     setEditingId(null); setSections([]); setEditError(null); setEditApprovedAt(null);
     setSwapDayA(""); setSwapDayB(""); setSwapWeekA(""); setSwapWeekB("");
+    setPersistedDsl({});
+  }
+
+  // HRA-134: date -> dsl for every day currently in `sections` — the shape
+  // `persistedDsl` snapshots at each successful load/create/save/regenerate.
+  function snapshotDsl(secs: SectionView[]): Record<string, string> {
+    const map: Record<string, string> = {};
+    secs.forEach(s => s.weeks.forEach(w => w.days.forEach(d => { if (d.date != null) map[d.date] = d.dsl; })));
+    return map;
   }
 
   // HRA-133: the unified "plan" screen's own reset — both the shared top
@@ -464,13 +501,20 @@ export function PlanInstancesSection({ templates }: Props) {
       // instance's own values, per the unified screen shape.
       setEditingId(created.id);
       setInstName(created.name ?? "");
+      // HRA-134: current startDate/anchorRows already equal exactly what was
+      // just submitted — that's the new baseline, so pendingChange starts
+      // false for a just-created instance (nothing to regenerate yet).
+      setBaselineStartDate(startDate);
+      setBaselineAnchorRows(anchorRows);
       const days: ResolvedDay[] = created.days.map(d => ({
         section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
       }));
-      setSections(sectionsFromDays(days));
+      const built = sectionsFromDays(days);
+      setSections(built);
+      setPersistedDsl(snapshotDsl(built));
       notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
     } catch (e) {
       setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
@@ -511,6 +555,7 @@ export function PlanInstancesSection({ templates }: Props) {
     setEditApprovedAt(instance.approved_at);
     setTemplateId(String(instance.template_id));
     setStartDate(instance.start_date);
+    setBaselineStartDate(instance.start_date);
     setRaceName(instance.race_name ?? "");
     setRaceDate(instance.race_date ?? "");
     setRaceUrl(instance.race_url ?? "");
@@ -518,7 +563,9 @@ export function PlanInstancesSection({ templates }: Props) {
     const plan = parsePlan(templates?.find(tpl => String(tpl.id) === String(instance.template_id)));
     const anchors = plan ? collectPlanAnchors(plan) : [];
     const overrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
-    setAnchorRows(Object.fromEntries(anchors.map(a => [a, overrides[a] ? paceValueToAnchorRow(overrides[a]) : emptyAnchorRow()])));
+    const loadedAnchorRows = Object.fromEntries(anchors.map(a => [a, overrides[a] ? paceValueToAnchorRow(overrides[a]) : emptyAnchorRow()]));
+    setAnchorRows(loadedAnchorRows);
+    setBaselineAnchorRows(loadedAnchorRows);
     setMode("plan");
     try {
       const full = await api.planInstances.getById(instance.id);
@@ -528,7 +575,9 @@ export function PlanInstancesSection({ templates }: Props) {
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
       }));
-      setSections(sectionsFromDays(days));
+      const built = sectionsFromDays(days);
+      setSections(built);
+      setPersistedDsl(snapshotDsl(built));
     } catch (e) {
       setEditError(e instanceof Error ? e.message : t("manage.planInstances.loadInstanceFailed", "Failed to load instance"));
     }
@@ -679,7 +728,9 @@ export function PlanInstancesSection({ templates }: Props) {
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
       }));
-      setSections(sectionsFromDays(resolvedDays));
+      const built = sectionsFromDays(resolvedDays);
+      setSections(built);
+      setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);
       await refreshInstances();
       notify(t("manage.planInstances.saveSucceeded", "Instance saved."));
@@ -702,6 +753,81 @@ export function PlanInstancesSection({ templates }: Props) {
     }
     setApproveLoading(false);
   }
+
+  // HRA-134: unlike onInstantiate's own override-building (which only sends
+  // pace_overrides when non-empty, and skips the anchor goal_time derives —
+  // neither applies here: goal-time mode is never reachable once an instance
+  // exists, since racePaceAnchor/paceMode stay locked at their reset
+  // defaults for a loaded instance, HRA-133's own documented display
+  // limitation). Regenerate always sends a COMPLETE override map, even {} —
+  // omitting the field would mean "keep the instance's current stored
+  // overrides" server-side (HRA-132), silently ignoring the user having
+  // cleared every anchor row.
+  function buildPaceOverridesForRegenerate(): Record<string, string> {
+    const overrides: Record<string, string> = {};
+    for (const anchor of templateAnchors) {
+      const row = anchorRows[anchor];
+      if (!row) continue;
+      if (row.absoluteValue.trim() !== "") overrides[anchor] = row.absoluteValue.trim();
+      else if (row.relativeTo !== "" && row.seconds.trim() !== "") overrides[anchor] = `${row.relativeTo}${row.sign}${row.seconds.trim()}`;
+    }
+    return overrides;
+  }
+
+  // Counts days in the CURRENT `sections` (not the persisted baseline) whose
+  // date falls on/after `cutover` and whose dsl has diverged from
+  // `persistedDsl` — i.e. days a regenerate call would silently discard.
+  function manualEditCount(cutover: string): number {
+    let count = 0;
+    sections.forEach(s => s.weeks.forEach(w => w.days.forEach(d => {
+      if (d.date != null && d.date >= cutover && persistedDsl[d.date] !== undefined && persistedDsl[d.date] !== d.dsl) count++;
+    })));
+    return count;
+  }
+
+  async function doRegenerate() {
+    if (editingId == null) return;
+    setPendingRegenerateCount(null);
+    setRegenerateLoading(true); setEditError(null);
+    try {
+      const updated = await api.planInstances.regenerate(editingId, {
+        start_date: startDate,
+        pace_overrides: buildPaceOverridesForRegenerate(),
+        effective_from: effectiveFrom,
+      });
+      const resolvedDays: ResolvedDay[] = updated.days.map(d => ({
+        section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
+        suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
+        segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
+        activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
+      }));
+      const built = sectionsFromDays(resolvedDays);
+      setSections(built);
+      setPersistedDsl(snapshotDsl(built));
+      setEditApprovedAt(updated.approved_at);
+      // The just-regenerated values are the new baseline — pendingChange
+      // (and therefore the cutover picker) goes away until something is
+      // edited again.
+      setBaselineStartDate(startDate);
+      setBaselineAnchorRows(anchorRows);
+      await refreshInstances();
+      notify(t("manage.planInstances.regenerateSucceeded", `Instance regenerated — days from ${effectiveFrom} onward were updated.`, { date: effectiveFrom }));
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : t("manage.planInstances.regenerateFailed", "Failed to regenerate instance"));
+    }
+    setRegenerateLoading(false);
+  }
+
+  // HRA-134: warn before discarding manually-edited days on/after the
+  // cutover — same pending-then-confirm/cancel shape pendingTemplateId/
+  // pendingDaySwap already established. No manual edits in range means
+  // nothing to warn about, so regenerate proceeds immediately.
+  function onRegenerateClick() {
+    const count = manualEditCount(effectiveFrom);
+    if (count > 0) { setPendingRegenerateCount(count); return; }
+    doRegenerate();
+  }
+  function cancelRegenerate() { setPendingRegenerateCount(null); }
 
   async function onDelete(id: number) {
     setDeleteError(null);
@@ -773,15 +899,27 @@ export function PlanInstancesSection({ templates }: Props) {
   // HRA-133: once an instance exists (freshly created this session, or
   // loaded via startEdit), the shared top fields below lock — populated
   // with the instance's real values (startEdit above), but not yet wired
-  // for editing, per this Story's own explicit scope boundary (HRA-134 is
-  // the follow-up that makes them actually editable). `nameDisabled` is the
-  // one exception: Name was already editable in the pre-unification editor
-  // (governed only by isApproved) and must not regress, so it keeps that
-  // exact rule instead of falling under the new fieldsLocked gate.
+  // for editing. `nameDisabled` is the one exception: Name was already
+  // editable in the pre-unification editor (governed only by isApproved)
+  // and must not regress, so it keeps that exact rule instead of falling
+  // under the new fieldsLocked gate. HRA-134: start_date and the anchor
+  // table's own rows join Name as "unlocked once the instance exists" — the
+  // same `editableFieldDisabled` formula, unaffected by `isApproved` for the
+  // template picker/race info/rest-day-label, which stay fully out of this
+  // Story's scope (AC1 only names start_date and pace anchors).
   const fieldsLocked = editingId != null;
   const fieldsDisabled = fieldsLocked || !formEnabled;
   const nameDisabled = fieldsLocked ? isApproved : !formEnabled;
+  const editableFieldDisabled = fieldsLocked ? isApproved : !formEnabled;
   const showWeek1AnchorWarning = week1AnchorMismatch || editWeek1AnchorMismatch;
+  // HRA-134: whether start_date or any anchor row differs from the last
+  // successful load/create/save/regenerate — only then does "editing either
+  // surfaces..." apply and the cutover picker/Regenerate button appear.
+  // Never true before an instance exists (fieldsLocked false) or once
+  // approved (regenerating an approved instance is out of scope, same
+  // HRA-126 lock every other write already respects).
+  const anchorRowsChanged = JSON.stringify(anchorRows) !== JSON.stringify(baselineAnchorRows);
+  const pendingRegenerateChange = fieldsLocked && !isApproved && (startDate !== baselineStartDate || anchorRowsChanged);
 
   return (
     <Card className="hra-instantiate-form">
@@ -835,7 +973,7 @@ export function PlanInstancesSection({ templates }: Props) {
       {/* Row 2 — timing. */}
       <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
         <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
-          <DatePicker value={startDate} onChange={onStartDateChange} disabled={fieldsDisabled} />
+          <DatePicker value={startDate} onChange={onStartDateChange} disabled={editableFieldDisabled} />
         </Field>
         <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
           <input
@@ -952,8 +1090,8 @@ export function PlanInstancesSection({ templates }: Props) {
               {templateAnchors.map(anchor => {
                 const derived = hasRacePaceAnchor && paceMode === "goalTime" && anchor === racePaceAnchor;
                 const row = anchorRows[anchor] ?? emptyAnchorRow();
-                const relativeDisabled = derived || fieldsDisabled || row.absoluteValue.trim() !== "";
-                const absoluteDisabled = derived || fieldsDisabled || row.relativeTo !== "" || row.seconds.trim() !== "";
+                const relativeDisabled = derived || editableFieldDisabled || row.absoluteValue.trim() !== "";
+                const absoluteDisabled = derived || editableFieldDisabled || row.relativeTo !== "" || row.seconds.trim() !== "";
                 const resolved = resolution.find(r => r.anchor === anchor)?.secPerKm ?? null;
                 return (
                   <tr key={anchor}>
@@ -983,7 +1121,7 @@ export function PlanInstancesSection({ templates }: Props) {
                         options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
                         placeholder="—"
                         triggerStyle={{ width: "100%" }}
-                        disabled={fieldsDisabled}
+                        disabled={editableFieldDisabled}
                       />
                     </td>
                     <td>
@@ -999,7 +1137,7 @@ export function PlanInstancesSection({ templates }: Props) {
                       <button
                         className="hra-border-strong hra-text-secondary"
                         style={{ background: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
-                        disabled={derived || fieldsDisabled || anchorRowIsEmpty(row)}
+                        disabled={derived || editableFieldDisabled || anchorRowIsEmpty(row)}
                         onClick={() => clearAnchorRow(anchor)}
                       >
                         {t("manage.planInstances.clearButton", "Clear")}
@@ -1027,6 +1165,27 @@ export function PlanInstancesSection({ templates }: Props) {
           ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — fill in Absolute or Relative for it above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
           : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}
       </div>
+
+      {/* HRA-134: only appears once start_date or a pace anchor has actually
+          changed relative to the last successful load/create/save/
+          regenerate ("editing either surfaces..."). effective_from's own
+          DatePicker floors at today client-side (min); the server floors it
+          again independently (HRA-132) — never trusted from the client alone. */}
+      {pendingRegenerateChange && (
+        <div className="hra-border-strong" style={{ borderRadius: 8, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="hra-text-secondary" style={{ fontSize: 12 }}>
+            {t("manage.planInstances.regenerateHint", "Start date or a pace anchor changed. Pick the date this should apply from, then Regenerate — every day before it stays exactly as it is.")}
+          </div>
+          <div className="hra-row-wrap" style={{ alignItems: "center" }}>
+            <Field label={t("manage.planInstances.effectiveFromLabel", "Modification start from")}>
+              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} />
+            </Field>
+            <button className="hra-btn" data-variant="green" onClick={onRegenerateClick} disabled={regenerateLoading}>
+              {regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateButton", "Regenerate")}
+            </button>
+          </div>
+        </div>
+      )}
 
       {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
       {fieldsLocked && editError && <ErrorBanner message={editError} />}
@@ -1066,6 +1225,27 @@ export function PlanInstancesSection({ templates }: Props) {
               </button>
               <button className="hra-btn" data-variant="danger" onClick={confirmSwitchTemplate}>
                 {t("manage.planInstances.switchTemplateConfirm", "Switch template")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HRA-134: confirm before a regenerate would discard manually-edited
+          days on/after the cutover — same pending-then-confirm/cancel shape
+          the swap/template-switch modals already use. */}
+      {pendingRegenerateCount != null && (
+        <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelRegenerate}>
+          <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 400, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+              {t("manage.planInstances.regenerateConfirmTitle", `Regenerating will discard ${pendingRegenerateCount} manual edit(s) — continue?`, { count: pendingRegenerateCount })}
+            </div>
+            <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+              <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelRegenerate}>
+                {t("common.cancel", "Cancel")}
+              </button>
+              <button className="hra-btn" data-variant="danger" onClick={doRegenerate}>
+                {t("manage.planInstances.regenerateConfirmButton", "Regenerate")}
               </button>
             </div>
           </div>
