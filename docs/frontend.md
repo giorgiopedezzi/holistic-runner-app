@@ -869,11 +869,25 @@ background/`var(--on-accent)` text, never derived from the theme's chart-color s
 DSL as a single-line `<input>` (not a `<textarea>` — an instance day's DSL is always one line) and the
 Notes `<input>` beneath it, both wired to the same `onEdit`/`onDayEdit` callback chain as before —
 nothing new became editable. `readOnlyDays` (HRA-126) still renders plain text instead of the two
-inputs, same lock semantics as before. `TemplateDayRow` (`day.date == null`) is the original
-accordion-with-textarea layout, verbatim, unmodified — templates were out of this Story's scope. The
-split into two components (rather than one `DayEditor` with an early return) exists specifically so
-each branch's `useState`/`useDragSwap` hooks are called unconditionally — an early return before a
-hook call inside one component would violate the rules of hooks.
+inputs, same lock semantics as before.
+
+**D<n> prefix hidden from the instance DSL input (review follow-up)**: the raw `D<n>[suffix][tag]:`
+prefix only carries meaning in template mode (it's how the DSL text addresses a specific day) — an
+instance day already shows its real date via the date badge, so showing/editing the prefix too is
+dead weight and confusing once the row became directly editable (HRA-128 originally round-tripped
+the whole `day.dsl`, prefix included, straight through the `<input>`). `InstanceDayRow` now derives
+`dayPrefix` (`day.dsl.match(DAY_PREFIX_RE)?.[0] ?? ""`) once, displays/edits only the remainder
+(`workoutText`), and reattaches `dayPrefix` verbatim on every `onEdit({ dsl: ... })` call —
+`recomposeDayLine`'s `patch.dsl` branch replaces the whole line, so dropping the prefix here would
+otherwise silently corrupt `day.dsl` (losing the D-number that HRA-127's swap logic and the backend
+parser both key off). The read-only (`readOnlyDays`) text path already stripped the prefix
+identically before this fix; both paths now share the same `workoutText` derivation.
+
+`TemplateDayRow` (`day.date == null`) is the original accordion-with-textarea layout, verbatim,
+unmodified — templates were out of this Story's scope. The split into two components (rather than
+one `DayEditor` with an early return) exists specifically so each branch's `useState`/`useDragSwap`
+hooks are called unconditionally — an early return before a hook call inside one component would
+violate the rules of hooks.
 
 **Weekday-first day date + week date-range summary (HRA-129)**: the instance day date badge
 (`InstanceDayRow`'s `dateBadge`, and `dayLabel()`'s now-unreachable-since-HRA-128 date branch) is

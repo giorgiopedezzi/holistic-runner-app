@@ -239,7 +239,14 @@ function InstanceDayRow({
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
   const dateBadge = instanceDayDateLabel(date);
-  const workoutText = day.dsl.replace(DAY_PREFIX_RE, "");
+  // The D<n>[suffix][tag]: prefix only carries meaning in template mode (it's
+  // how the DSL text addresses a specific day) — an instance day already
+  // shows its real date via dateBadge above, so the prefix is dead weight in
+  // this row. Stripped from what's displayed/edited, but reattached verbatim
+  // on every edit (recomposeDayLine's patch.dsl replaces the whole line, so
+  // dropping the prefix here would silently corrupt day.dsl otherwise).
+  const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
+  const workoutText = day.dsl.slice(dayPrefix.length);
 
   return (
     <div
@@ -256,8 +263,8 @@ function InstanceDayRow({
         ) : (
           <input
             className={inputClass}
-            value={day.dsl}
-            onChange={e => onEdit({ dsl: e.target.value })}
+            value={workoutText}
+            onChange={e => onEdit({ dsl: `${dayPrefix}${e.target.value}` })}
             aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
             style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 13, padding: 6 }}
           />
