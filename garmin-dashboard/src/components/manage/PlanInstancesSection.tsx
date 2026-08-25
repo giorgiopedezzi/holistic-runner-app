@@ -721,7 +721,7 @@ export function PlanInstancesSection({ templates }: Props) {
       section_name: s.name, week_number: w.number, date: d.date!, dsl: d.dsl,
     }))));
     try {
-      const updated = await api.planInstances.update(editingId, instName, days);
+      const updated = await api.planInstances.update(editingId, { name: instName, days });
       const resolvedDays: ResolvedDay[] = updated.days.map(d => ({
         section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,

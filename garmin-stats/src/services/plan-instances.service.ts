@@ -61,24 +61,33 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     }
   }
 
-  // Full replacement of an instance's name + resolved days (HRA-113 PUT
-  // /api/v1/plan-instances/:id, extended HRA-114 with `name`). Never touches
-  // or re-instantiates the source template — an instance is an independent
+  // PATCH /api/v1/plan-instances/:id (HRA-135, replacing the earlier PUT):
+  // partial update of name/race_name/race_date/race_url — each provided
+  // field replaces its current value, every omitted field stays untouched.
+  // `days`, when provided, still fully replaces the day set (same semantics
+  // the old PUT already had) — only the wrapper resource's own
+  // method/partiality changed, not per-day patch semantics. Never touches or
+  // re-instantiates the source template — an instance is an independent
   // artifact once created, and is allowed to diverge from what the template
   // would currently produce (docs/runplan-dsl-future-notes.md §7). `event`
-  // stays read-only/derived, never part of this replacement. Clearing
-  // approved_at is part of the same transaction: an edit that fails must not
-  // leave a cleared approval with stale days/name, or vice versa.
-  function updateDays(
-    instanceId: number, name: string, days: Omit<PlanInstanceDayInput, "instance_id">[],
+  // stays read-only/derived, never part of this update. Clearing approved_at
+  // is part of the same transaction: an edit that fails must not leave a
+  // cleared approval with stale days/fields, or vice versa. The controller
+  // guarantees at least one of fields/days is present before calling this.
+  function patchInstance(
+    instanceId: number,
+    fields: Partial<{ name: string; race_name: string | null; race_date: string | null; race_url: string | null }>,
+    days?: Omit<PlanInstanceDayInput, "instance_id">[],
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     db.exec("BEGIN");
     try {
-      instances.deleteDaysByInstance(instanceId);
-      for (const day of days) {
-        instances.createDay({ ...day, instance_id: instanceId });
+      if (days) {
+        instances.deleteDaysByInstance(instanceId);
+        for (const day of days) {
+          instances.createDay({ ...day, instance_id: instanceId });
+        }
       }
-      instances.updateName(instanceId, name);
+      instances.updateFields(instanceId, fields);
       instances.clearApproval(instanceId);
       db.exec("COMMIT");
     } catch (e) {
@@ -139,7 +148,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     return { instance: instances.instanceById(instanceId)!, days: instances.daysByInstance(instanceId) };
   }
 
-  return { instantiate, updateDays, regenerateFrom };
+  return { instantiate, patchInstance, regenerateFrom };
 }
 
 export type PlanInstancesService = ReturnType<typeof createPlanInstancesService>;

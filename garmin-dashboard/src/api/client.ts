@@ -254,11 +254,16 @@ export const api = {
       "/api/v1/plan-instances", "GET", templateId != null ? { limit: ALL, template_id: String(templateId) } : { limit: ALL },
     )).data,
     getById: (id: number) => request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`),
-    // Each day is {section_name, week_number, date, dsl} (HRA-115) — raw DSL
+    // PATCH /api/v1/plan-instances/:id (HRA-135, replacing the earlier PUT) —
+    // every field optional, at least one required; each provided field
+    // replaces its current value, omitted fields stay untouched. `days`, when
+    // provided, is {section_name, week_number, date, dsl} (HRA-115) — raw DSL
     // text, re-parsed and resolved server-side against that day's own
-    // effective pace policy.
-    update: (id: number, name: string, days: { section_name: string; week_number: number; date: string; dsl: string }[]) =>
-      request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`, "PUT", undefined, { name, days }),
+    // effective pace policy, and still fully replaces the day set.
+    update: (id: number, body: Partial<{
+      name: string; race_name: string | null; race_date: string | null; race_url: string | null;
+      days: { section_name: string; week_number: number; date: string; dsl: string }[];
+    }>) => request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`, "PATCH", undefined, body),
     approve: (id: number) => request<PlanInstance>(`/api/v1/plan-instances/${id}/approve`, "POST"),
     // POST /api/v1/plan-instances/:id/regenerate (HRA-132/HRA-134) —
     // effective_from is required (server-floored to today, never trusted

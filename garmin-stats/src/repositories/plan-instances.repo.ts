@@ -42,6 +42,12 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
   const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
+  // HRA-135: one statement per field, run conditionally in updateFields() —
+  // same granular-primitive style as updateName/updateStartDateAndPaceOverrides
+  // above, so a PATCH that omits a field never touches its column.
+  const updateRaceNameStmt = db.prepare("UPDATE plan_instances SET race_name = ? WHERE id = ?");
+  const updateRaceDateStmt = db.prepare("UPDATE plan_instances SET race_date = ? WHERE id = ?");
+  const updateRaceUrlStmt = db.prepare("UPDATE plan_instances SET race_url = ? WHERE id = ?");
   // HRA-132: written together — a regenerate always resolves both (falling
   // back to the instance's own current value for whichever the caller didn't
   // supply) before running instantiatePlan, so both columns stay consistent
@@ -81,7 +87,15 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     deleteDaysByInstance: (instanceId: number) => { deleteDaysByInstanceStmt.run(instanceId); },
     deleteDaysFromDate: (instanceId: number, fromDate: string) => { deleteDaysFromDateStmt.run(instanceId, fromDate); },
     clearApproval: (id: number) => { clearApprovalStmt.run(id); },
-    updateName: (id: number, name: string) => { updateNameStmt.run(name, id); },
+    // HRA-135: PATCH /api/v1/plan-instances/:id — each field is applied only
+    // if the caller actually supplied it (checked via `!== undefined`, not
+    // truthiness — an explicit null clears a nullable race_* column).
+    updateFields: (id: number, fields: Partial<{ name: string; race_name: string | null; race_date: string | null; race_url: string | null }>) => {
+      if (fields.name !== undefined) updateNameStmt.run(fields.name, id);
+      if (fields.race_name !== undefined) updateRaceNameStmt.run(fields.race_name, id);
+      if (fields.race_date !== undefined) updateRaceDateStmt.run(fields.race_date, id);
+      if (fields.race_url !== undefined) updateRaceUrlStmt.run(fields.race_url, id);
+    },
     updateStartDateAndPaceOverrides: (id: number, startDate: string, paceOverrides: string | null) => {
       updateStartDateAndPaceOverridesStmt.run(startDate, paceOverrides, id);
     },

@@ -41,7 +41,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type",
-        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
       });
       res.end(); return;
     }
@@ -116,7 +116,10 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.updateInstance(req, res, url);
+      }
+
+      if (req.method === "PATCH") {
+        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.patchInstance(req, res, url);
       }
 
       if (req.method === "POST") {
