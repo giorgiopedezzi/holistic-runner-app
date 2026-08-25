@@ -19,7 +19,7 @@ import {
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
 import { notify } from "@/utils/toast";
-import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
+import { instanceDayDateLabel } from "@/utils/fmt";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
@@ -1095,7 +1095,7 @@ export function PlanInstancesSection({ templates }: Props) {
         const rangeA = weekA ? weekDateRange(weekA) : null;
         const rangeB = weekB ? weekDateRange(weekB) : null;
         const bodyText = rangeA && rangeB
-          ? `week ${fmtDate(rangeA.start)} → ${fmtDate(rangeA.end)} with week ${fmtDate(rangeB.start)} → ${fmtDate(rangeB.end)}`
+          ? `week ${instanceDayDateLabel(rangeA.start)} → ${instanceDayDateLabel(rangeA.end)} with week ${instanceDayDateLabel(rangeB.start)} → ${instanceDayDateLabel(rangeB.end)}`
           : "";
         return (
           <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelWeekSwap}>

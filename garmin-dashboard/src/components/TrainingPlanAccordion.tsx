@@ -375,19 +375,19 @@ function WeekEditor({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
-  const label = t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number });
+  const weekTitle = t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number });
   const weekRef: WeekRef = { sectionIndex, weekIndex };
   const drag = useDragSwap(weekRef, readOnlyDays ? undefined : onWeekSwap);
   // HRA-129: same "(start → end)" bracket convention DateRangeBar.tsx/
-  // DateRangesSection.tsx already use for a named range, appended to the
-  // existing compactTotals() summary rather than replacing it. Review
-  // follow-up: each side uses the same weekday-first day format
-  // (instanceDayDateLabel) the day rows themselves use, not a bare date —
-  // consistent formatting between a week's range and the days inside it.
+  // DateRangesSection.tsx already use for a named range — each side uses the
+  // same weekday-first day format (instanceDayDateLabel) the day rows
+  // themselves use, not a bare date, so a week's range reads consistently
+  // with the days inside it. Review follow-up: rendered right next to the
+  // "Week N" label itself (not appended to the totals summary on the right)
+  // — the range identifies *which* week this is, same role as the label.
   const range = weekDateRange(week);
-  const summary = range
-    ? `${compactTotals(week.totals, t)} (${instanceDayDateLabel(range.start)} → ${instanceDayDateLabel(range.end)})`
-    : compactTotals(week.totals, t);
+  const label = range ? `${weekTitle} (${instanceDayDateLabel(range.start)} → ${instanceDayDateLabel(range.end)})` : weekTitle;
+  const summary = compactTotals(week.totals, t);
 
   return (
     <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
