@@ -1286,11 +1286,20 @@ export function PlanInstancesSection({ templates }: Props) {
             <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
               {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
             </button>
+            {/* The label + date picker + button read as ONE unit (AC3) — unlike
+                every other multi-control group in this row, this one must
+                NOT wrap internally: `.hra-row-wrap`'s own flex-wrap would let
+                the label drop onto its own line above the date picker the
+                moment the row runs out of horizontal space, which is exactly
+                the split the Story calls out against. `flexWrap: "nowrap"`
+                overrides that; `flexShrink: 0` keeps the whole unit intact
+                (as one block) rather than letting ITS OWN box get squeezed
+                first when the outer row wraps. */}
             <div
-              className="hra-row-wrap" style={{ alignItems: "center", gap: 6 }}
+              style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", flexShrink: 0 }}
               title={!isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
             >
-              <span className="hra-text-secondary" style={{ fontSize: 12 }}>{t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
+              <span className="hra-text-secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>{t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
               <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={isApproved} />
               <button className="hra-btn" data-variant="green" onClick={onRegenerateClick} disabled={regenerateLoading || !regenerateBucketDirty || isApproved}>
                 {regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateButton", "Regenerate")}
