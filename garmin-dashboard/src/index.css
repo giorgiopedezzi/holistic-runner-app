@@ -468,7 +468,13 @@
   width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
   margin-left: auto; flex: none;
 }
-.hra-agenda-date-num[data-today="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+/* Bug fix: NOT var(--accent) — see the gauge-ring note below for why the
+   app's real dynamic accent is unreachable by name anywhere inside
+   .hra-agenda-calendar (this circle was invisible/wrongly-colored for the
+   same reason the duration ring was). --accent-green is a fixed, unshadowed
+   token — a deliberately fixed "today" color rather than the dynamic theme
+   accent, which literally cannot be read correctly in this subtree. */
+.hra-agenda-date-num[data-today="true"] { background: var(--accent-green); color: var(--on-accent); font-weight: 600; }
 
 /* Category-tinted event card (Ask #2) — replaces the flat grey .rbc-event
    slab. Reuses existing theme-invariant data tokens (--data-pace,
@@ -514,11 +520,22 @@
    let their content bleed through and read as a mess. */
 .hra-agenda-event-card:hover {
   left: -60px; right: -60px;
+  /* 10px above the collapsed anchor (bottom: 0 normally) — a small gap
+     under the expanded card instead of it touching the row's own edge. */
+  bottom: 10px;
   z-index: 30;
   background: color-mix(in srgb, var(--cat-color) 18%, var(--bg-card));
   border-color: color-mix(in srgb, var(--cat-color) 50%, transparent);
   box-shadow: 0 20px 48px rgb(0 0 0 / 0.6), 0 0 0 1px var(--border-strong);
 }
+/* Follow-up: icon + DSL text (and the gauge row) center within the now-much-
+   wider card instead of staying pinned to its original left edge — left-
+   alignment made sense at the compact collapsed width, not the expanded one. */
+.hra-agenda-event-card:hover .hra-agenda-event-main-row,
+.hra-agenda-event-card:hover .hra-agenda-gauges {
+  justify-content: center;
+}
+.hra-agenda-event-card:hover .hra-agenda-event-title { text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   .hra-agenda-event-card { transition: none; }
 }
@@ -549,9 +566,18 @@
    --gauge-fill set inline per instance since both vary by day/metric. */
 .hra-agenda-gauges { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .hra-agenda-gauge { display: flex; align-items: center; gap: 4px; color: var(--text-muted); }
+/* Bug fix: the fallback here used to read var(--accent) — .hra-agenda-calendar
+   scopes its OWN shadcn-vocabulary --accent (a bare "H S% L%" triplet, see
+   the theming block above) for the vendor's own styling, which shadows the
+   app's real hex --accent for every element inside this subtree, including
+   this one. A bare triplet isn't a valid <color> on its own (it needs an
+   hsl() wrapper), so conic-gradient()'s first stop was invalid — the whole
+   background rule failed, and the ring rendered invisible. Every real call
+   site now passes --gauge-fill explicitly with an unshadowed token, but the
+   fallback itself needed the same fix in case a future one doesn't. */
 .hra-agenda-gauge-ring {
   --gauge-pct: 0; width: 13px; height: 13px; border-radius: 50%; position: relative; flex: none;
-  background: conic-gradient(var(--gauge-fill, var(--accent)) calc(var(--gauge-pct) * 1%), var(--border-strong) 0);
+  background: conic-gradient(var(--gauge-fill, var(--accent-green)) calc(var(--gauge-pct) * 1%), var(--border-strong) 0);
 }
 .hra-agenda-gauge-ring::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg-card); }
 

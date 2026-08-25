@@ -181,7 +181,7 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
 
   return (
     <span className={`hra-agenda-event-card ${WORKOUT_TYPE_CARD_CLASS[event.workoutType] ?? ""}`}>
-      <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
+      <span className="hra-agenda-event-main-row" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
         <span title={workoutTypeLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
           <Icon size={12} />
         </span>
@@ -212,7 +212,15 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
           {hasDuration && (
             <span className="hra-agenda-gauge" title={t("manage.planInstances.durationTooltip", `Duration: ${fmtElapsedClock(metrics.totalDurationSec)}`, { value: fmtElapsedClock(metrics.totalDurationSec) })}>
               <Clock3 size={11} />
-              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": durationPct, "--gauge-fill": "var(--accent)" } as CSSProperties} />
+              {/* Bug fix: NOT var(--accent) — .hra-agenda-calendar scopes its
+                  own shadcn-vocabulary --accent (a bare "H S% L%" triplet,
+                  see the theming block in index.css) which shadows the
+                  app's real hex --accent inside this whole subtree. Using it
+                  here made conic-gradient()'s first color stop invalid,
+                  rendering this ring invisible in every state, always —
+                  --accent-green isn't a shadowed name, so it resolves to the
+                  app's real token as intended. */}
+              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": durationPct, "--gauge-fill": "var(--accent-green)" } as CSSProperties} />
             </span>
           )}
           {hasIntensity && (
