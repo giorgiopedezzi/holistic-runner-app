@@ -754,7 +754,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                   onClick={() => setDeleteConfirmId(tpl.id)}
                   title={t("common.delete", "Delete")}
                   aria-label={t("common.delete", "Delete")}
-                  style={{ position: "absolute", top: 11, right: 46, zIndex: 1, padding: "4px 8px", display: "inline-flex", alignItems: "center" }}
+                  style={{ position: "absolute", top: 15, right: 46, zIndex: 1, padding: "4px 8px", display: "inline-flex", alignItems: "center" }}
                 >
                   <Trash2 size={13} />
                 </button>
