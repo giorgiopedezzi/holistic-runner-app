@@ -19,9 +19,8 @@
 import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AccordionCard } from "./ui/AccordionCard";
-import { fmtDate, fmtWeekdayShort } from "@/utils/fmt";
-import { dateFormatRegion } from "@/utils/dateFormat";
-import type { AggregateTotals, DayView, DistanceTotal, SectionView, WeekView } from "../domain/runplan-aggregate";
+import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
+import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
 // below — plain index tuples, same "sectionIndex/weekIndex/dayIndex" shape
@@ -131,22 +130,10 @@ function compactTotals(totals: AggregateTotals, t: Translate): string {
 
 // D<n>[suffix][ [tag]]: — the whole D-line prefix up to and including the
 // colon (garmin-stats/src/domain/runplan/parser.ts's DAY_RE), stripped so
-// only the workout description text after it remains.
-const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
-
-// HRA-129: weekday-first, region-punctuated — US gets a comma after the
-// weekday ("Fri, Oct 17, 2025" literal / "Fri, 08/17/2026" numeric), UK
-// doesn't ("Fri 17 Oct 2025" / "Fri 17/08/2026"). This is a US-vs-UK region
-// rule, not a literal-vs-numeric one, so numeric_us gets the comma too —
-// confirmed with the user (HRA-129), since the Story text itself flagged
-// this as ambiguous. fmtWeekdayShort is localized to the app's current
-// language (see its own comment in fmt.ts) — only order/punctuation is
-// driven by date_format's region here, the weekday's language comes from
-// i18next separately.
-function instanceDayDateLabel(date: string): string {
-  const sep = dateFormatRegion() === "us" ? ", " : " ";
-  return `${fmtWeekdayShort(date)}${sep}${fmtDate(date)}`;
-}
+// only the workout description text after it remains. Exported: HRA-131's
+// swap-confirm modal (PlanInstancesSection.tsx) needs the same stripped
+// workout text this file already uses for InstanceDayRow's editable field.
+export const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 
 // HRA-125: an instance day's title shows its real calendar date + weekday
 // instead of the "D<n>" placeholder — templates have no calendar dates
@@ -166,16 +153,6 @@ function dayLabel(day: DayView): string {
 
 function weekHasWarnings(week: WeekView): boolean {
   return week.days.some(d => d.needs_review);
-}
-
-// HRA-129: min/max of the week's own days' calendar dates — pure derivation,
-// no schema change. Template weeks (every day.date == null) have nothing to
-// derive from, so this returns null and WeekEditor's title falls back to
-// today's plain compactTotals()-only summary.
-function weekDateRange(week: WeekView): { start: string; end: string } | null {
-  const dates = week.days.map(d => d.date).filter((d): d is string => d != null);
-  if (dates.length === 0) return null;
-  return { start: dates.reduce((a, b) => (a < b ? a : b)), end: dates.reduce((a, b) => (a > b ? a : b)) };
 }
 
 function sectionHasWarnings(section: SectionView): boolean {

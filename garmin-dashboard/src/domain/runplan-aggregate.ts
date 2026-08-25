@@ -252,6 +252,18 @@ export interface SectionView {
   totals: AggregateTotals;
 }
 
+// HRA-129: min/max of the week's own days' calendar dates — pure derivation,
+// no schema change. Template weeks (every day.date == null) have nothing to
+// derive from, so this returns null. Moved here from TrainingPlanAccordion.tsx
+// (HRA-131) once a second component (PlanInstancesSection's swap-confirm
+// modal) needed the same derivation — a plain WeekView computation belongs
+// next to this file's other view-model builders, not duplicated per caller.
+export function weekDateRange(week: WeekView): { start: string; end: string } | null {
+  const dates = week.days.map(d => d.date).filter((d): d is string => d != null);
+  if (dates.length === 0) return null;
+  return { start: dates.reduce((a, b) => (a < b ? a : b)), end: dates.reduce((a, b) => (a > b ? a : b)) };
+}
+
 export function buildTemplateSectionView(section: Section, planPolicy: PacePolicy): SectionView {
   const weeks: WeekView[] = section.weeks.map(week => {
     const policy = getEffectivePacePolicy(planPolicy, section.pace_policy, week.pace_policy);

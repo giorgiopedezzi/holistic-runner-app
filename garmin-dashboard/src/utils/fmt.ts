@@ -180,6 +180,23 @@ export function fmtWeekdayShort(iso: string): string {
   return new Intl.DateTimeFormat(language, { weekday: "short" }).format(date);
 }
 
+// HRA-129: weekday-first, region-punctuated day label for a training-plan
+// instance day — US gets a comma after the weekday ("Fri, Oct 17, 2025"
+// literal / "Fri, 08/17/2026" numeric), UK doesn't ("Fri 17 Oct 2025" /
+// "Fri 17/08/2026"). This is a US-vs-UK region rule, not a
+// literal-vs-numeric one, so numeric_us gets the comma too — confirmed with
+// the user (HRA-129), since the Story text itself flagged this as
+// ambiguous. Moved here from TrainingPlanAccordion.tsx (HRA-131) once a
+// second component (PlanInstancesSection's swap-confirm modal) needed the
+// same formatting — a component file exporting a plain function alongside
+// its component trips `react-refresh/only-export-components`; this is a
+// pure formatter, so `utils/fmt.ts` (next to fmtDate/fmtWeekdayShort, which
+// it composes) is the correct home, not a workaround.
+export function instanceDayDateLabel(date: string): string {
+  const sep = dateFormatRegion() === "us" ? ", " : " ";
+  return `${fmtWeekdayShort(date)}${sep}${fmtDate(date)}`;
+}
+
 // Numeric-only "dd/mm" or "mm/dd" (no year) — see NUMERIC_CHART_FORMATTERS
 // above. Used by domain/trends.ts's per-point chart labels.
 export function fmtDateChart(iso: string): string {

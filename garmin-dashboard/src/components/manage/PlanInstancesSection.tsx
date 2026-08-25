@@ -12,13 +12,14 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, DatePicker, Select } from "@/components/ui";
-import { TrainingPlanAccordion, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
 import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
-  resolveIntensityPaceSecPerKm, type SectionView,
+  resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
 import { notify } from "@/utils/toast";
+import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
@@ -215,6 +216,12 @@ export function PlanInstancesSection({ templates }: Props) {
   const [swapDayB, setSwapDayB] = useState("");
   const [swapWeekA, setSwapWeekA] = useState("");
   const [swapWeekB, setSwapWeekB] = useState("");
+  // HRA-131: set while a swap (either entry point — the picker's Swap button
+  // OR a drag-and-drop drop) is pending confirmation, naming both sides
+  // concretely before anything actually mutates `sections`. Same
+  // pending-then-confirm/cancel shape as pendingTemplateId above.
+  const [pendingDaySwap, setPendingDaySwap] = useState<{ a: DayRef; b: DayRef } | null>(null);
+  const [pendingWeekSwap, setPendingWeekSwap] = useState<{ a: WeekRef; b: WeekRef } | null>(null);
 
   function refreshInstances() {
     return api.planInstances.list().then(setInstances).catch(e => setListError(e instanceof Error ? e.message : t("manage.planInstances.loadFailed", "Failed to load instances")));
@@ -544,36 +551,63 @@ export function PlanInstancesSection({ templates }: Props) {
     });
   }
 
+  // HRA-131: both entry points below now only stage a pending swap for
+  // confirmation — neither mutates `sections` directly any more. The actual
+  // mutation happens in confirmDaySwap/confirmWeekSwap once the user
+  // confirms the modal (rendered further down, next to TrainingPlanAccordion).
   function onSwapDays() {
     if (!swapDayA || !swapDayB || swapDayA === swapDayB) return;
     const [aSi, aWi, aDi] = swapDayA.split("-").map(Number);
     const [bSi, bWi, bDi] = swapDayB.split("-").map(Number);
-    swapDaysByRef({ sectionIndex: aSi, weekIndex: aWi, dayIndex: aDi }, { sectionIndex: bSi, weekIndex: bWi, dayIndex: bDi });
-    setSwapDayA(""); setSwapDayB("");
-    notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+    setPendingDaySwap({ a: { sectionIndex: aSi, weekIndex: aWi, dayIndex: aDi }, b: { sectionIndex: bSi, weekIndex: bWi, dayIndex: bDi } });
   }
 
   function onSwapWeeks() {
     if (!swapWeekA || !swapWeekB || swapWeekA === swapWeekB) return;
     const [aSi, aWi] = swapWeekA.split("-").map(Number);
     const [bSi, bWi] = swapWeekB.split("-").map(Number);
-    swapWeeksByRef({ sectionIndex: aSi, weekIndex: aWi }, { sectionIndex: bSi, weekIndex: bWi });
-    setSwapWeekA(""); setSwapWeekB("");
-    notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
+    setPendingWeekSwap({ a: { sectionIndex: aSi, weekIndex: aWi }, b: { sectionIndex: bSi, weekIndex: bWi } });
   }
 
   // HRA-127 follow-up: drag-and-drop, as an alternative UX to the picker
   // above for the same underlying swap — TrainingPlanAccordion calls these
   // with both rows' refs once a valid drop completes (it already guards
-  // against a drop onto the row's own self).
+  // against a drop onto the row's own self). HRA-131: stages the same
+  // pending-confirm state the picker path uses, rather than swapping
+  // immediately — one confirm modal covers both entry points.
   function onDayDragSwap(a: DayRef, b: DayRef) {
-    swapDaysByRef(a, b);
-    notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+    setPendingDaySwap({ a, b });
   }
   function onWeekDragSwap(a: WeekRef, b: WeekRef) {
-    swapWeeksByRef(a, b);
-    notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
+    setPendingWeekSwap({ a, b });
   }
+
+  function dayByRef(ref: DayRef): DayView | undefined {
+    return sections[ref.sectionIndex]?.weeks[ref.weekIndex]?.days[ref.dayIndex];
+  }
+  function weekByRef(ref: WeekRef): WeekView | undefined {
+    return sections[ref.sectionIndex]?.weeks[ref.weekIndex];
+  }
+
+  function confirmDaySwap() {
+    if (pendingDaySwap != null) {
+      swapDaysByRef(pendingDaySwap.a, pendingDaySwap.b);
+      notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+    }
+    setPendingDaySwap(null);
+    setSwapDayA(""); setSwapDayB("");
+  }
+  function cancelDaySwap() { setPendingDaySwap(null); }
+
+  function confirmWeekSwap() {
+    if (pendingWeekSwap != null) {
+      swapWeeksByRef(pendingWeekSwap.a, pendingWeekSwap.b);
+      notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
+    }
+    setPendingWeekSwap(null);
+    setSwapWeekA(""); setSwapWeekB("");
+  }
+  function cancelWeekSwap() { setPendingWeekSwap(null); }
 
   async function onSave() {
     if (editingId == null) return;
@@ -1027,6 +1061,60 @@ export function PlanInstancesSection({ templates }: Props) {
           onWeekSwap={onWeekDragSwap}
         />
       )}
+
+      {/* HRA-131: confirm before either swap actually mutates `sections` —
+          same modal shape as the template-switch confirm above, one modal
+          shared by both entry points (picker Swap button + drag-and-drop). */}
+      {pendingDaySwap != null && (() => {
+        const dayA = dayByRef(pendingDaySwap.a);
+        const dayB = dayByRef(pendingDaySwap.b);
+        const labelFor = (d: DayView) => `${instanceDayDateLabel(d.date!)} (${d.dsl.replace(DAY_PREFIX_RE, "")})`;
+        const bodyText = dayA && dayB ? `${labelFor(dayA)} with ${labelFor(dayB)}` : "";
+        return (
+          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelDaySwap}>
+            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+                {t("manage.planInstances.daySwapConfirmTitle", `Swap ${bodyText}?`, { body: bodyText })}
+              </div>
+              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelDaySwap}>
+                  {t("common.cancel", "Cancel")}
+                </button>
+                <button className="hra-btn" onClick={confirmDaySwap}>
+                  {t("manage.planInstances.swapConfirmButton", "Swap")}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {pendingWeekSwap != null && (() => {
+        const weekA = weekByRef(pendingWeekSwap.a);
+        const weekB = weekByRef(pendingWeekSwap.b);
+        const rangeA = weekA ? weekDateRange(weekA) : null;
+        const rangeB = weekB ? weekDateRange(weekB) : null;
+        const bodyText = rangeA && rangeB
+          ? `week ${fmtDate(rangeA.start)} → ${fmtDate(rangeA.end)} with week ${fmtDate(rangeB.start)} → ${fmtDate(rangeB.end)}`
+          : "";
+        return (
+          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelWeekSwap}>
+            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+                {t("manage.planInstances.weekSwapConfirmTitle", `Swap ${bodyText}?`, { body: bodyText })}
+              </div>
+              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelWeekSwap}>
+                  {t("common.cancel", "Cancel")}
+                </button>
+                <button className="hra-btn" onClick={confirmWeekSwap}>
+                  {t("manage.planInstances.swapConfirmButton", "Swap")}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </Card>
   );
 }
