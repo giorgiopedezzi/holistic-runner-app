@@ -185,7 +185,11 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
         <span title={workoutTypeLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
           <Icon size={12} />
         </span>
-        <span className="hra-agenda-event-title">{event.title}</span>
+        <span className="hra-agenda-event-title">
+          {dslSegments.map((segment, i) => (
+            <span key={i} className="hra-agenda-event-title-line">{segment}</span>
+          ))}
+        </span>
         {event.needsReview && (
           <span
             title={t("manage.planInstances.needsReviewTooltip", "Needs review")}
@@ -196,19 +200,6 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
           </span>
         )}
       </span>
-
-      {/* Follow-up fix: hover-to-expand, not hover-to-enlarge-text — the
-          card itself grows (more canvas), font-size stays the fixed 11px
-          .hra-agenda-event-title already sets. Only shown when there's
-          something truncation could actually be hiding; a short single-word
-          title (e.g. a rest-adjacent label) never needs it. */}
-      {dslSegments.length > 0 && (
-        <span className="hra-agenda-event-detail" aria-hidden="true">
-          {dslSegments.map((segment, i) => (
-            <span key={i} className="hra-agenda-event-detail-line">{segment}</span>
-          ))}
-        </span>
-      )}
 
       {(hasDistance || hasDuration || hasIntensity) && (
         <span className="hra-agenda-gauges">
