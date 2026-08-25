@@ -872,6 +872,24 @@ split into two components (rather than one `DayEditor` with an early return) exi
 each branch's `useState`/`useDragSwap` hooks are called unconditionally — an early return before a
 hook call inside one component would violate the rules of hooks.
 
+**Weekday-first day date + week date-range summary (HRA-129)**: the instance day date badge
+(`InstanceDayRow`'s `dateBadge`, and `dayLabel()`'s now-unreachable-since-HRA-128 date branch) is
+built by a shared `instanceDayDateLabel(date)` helper — weekday first, then the date, joined by
+`", "` for a `_us` `date_format` region or a plain `" "` for `_uk`, e.g. `"Fri, Oct 17, 2025"` /
+`"Fri, 08/17/2026"` (US) vs `"Fri 17 Oct 2025"` / `"Fri 17/08/2026"` (UK) — driven by
+`utils/dateFormat.ts`'s `dateFormatRegion()`. **The comma is a US-vs-UK region rule, not a
+literal-vs-numeric one** — confirmed with the user, since the Story text itself flagged this as
+ambiguous (numeric_us reads `"Fri, 08/17/2026"` with the comma, same as literal_us). `fmtWeekdayShort`
+itself is untouched (stays fixed-English regardless of region/language, see its own comment above) —
+only the separator/order around it changes. `WeekEditor`'s title summary now appends a
+`(start → end)` date range (`weekDateRange()` — plain min/max over `week.days[].date`, pure
+derivation, no schema change) after the existing `compactTotals()` text, using the same bracket
+convention `DateRangeBar.tsx`/`manage/DateRangesSection.tsx` already use for a named range —
+`(fmtDate(start) → fmtDate(end))`, no weekday, no `t()` wrapping (the arrow/parens are punctuation,
+not a translatable label, matching those two existing call sites). Template weeks (every
+`day.date == null`) have nothing to derive a range from, so `weekDateRange()` returns `null` and the
+title falls back to the plain `compactTotals()`-only summary, unchanged.
+
 **i18n**: every label goes through `t()` (`runplan.accordion.*` keys, `garmin-stats/locales/en.json`/
 `it.json`). ⚠️ Every dynamic label's `defaultValue` is a pre-substituted JS template literal, never a
 literal `{{var}}` placeholder — the `notReadyT` stub (CLAUDE.md's i18n mechanics note) returns

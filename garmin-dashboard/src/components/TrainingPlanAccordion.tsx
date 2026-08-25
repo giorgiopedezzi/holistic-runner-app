@@ -20,6 +20,7 @@ import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AccordionCard } from "./ui/AccordionCard";
 import { fmtDate, fmtWeekdayShort } from "@/utils/fmt";
+import { dateFormatRegion } from "@/utils/dateFormat";
 import type { AggregateTotals, DayView, DistanceTotal, SectionView, WeekView } from "../domain/runplan-aggregate";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
@@ -133,21 +134,49 @@ function compactTotals(totals: AggregateTotals, t: Translate): string {
 // only the workout description text after it remains.
 const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 
+// HRA-129: weekday-first, region-punctuated — US gets a comma after the
+// weekday ("Fri, Oct 17, 2025" literal / "Fri, 08/17/2026" numeric), UK
+// doesn't ("Fri 17 Oct 2025" / "Fri 17/08/2026"). This is a US-vs-UK region
+// rule, not a literal-vs-numeric one, so numeric_us gets the comma too —
+// confirmed with the user (HRA-129), since the Story text itself flagged
+// this as ambiguous. fmtWeekdayShort stays fixed-English regardless of
+// region/language (see its own comment in fmt.ts) — only order/punctuation
+// changes here, never the weekday's language.
+function instanceDayDateLabel(date: string): string {
+  const sep = dateFormatRegion() === "us" ? ", " : " ";
+  return `${fmtWeekdayShort(date)}${sep}${fmtDate(date)}`;
+}
+
 // HRA-125: an instance day's title shows its real calendar date + weekday
 // instead of the "D<n>" placeholder — templates have no calendar dates
 // (day.date is only ever set for instance days, runplan-aggregate.ts's
 // buildInstanceSectionView), so template mode keeps day.dsl unchanged (AC3).
 // Only the D<n> prefix is replaced — the workout text after the colon (and
 // any trailing "# note" the DSL line already carries) stays visible (AC2).
+// NOTE: since HRA-128 split DayEditor into InstanceDayRow/TemplateDayRow,
+// this function is only ever called with day.date == null (TemplateDayRow) —
+// the date branch below is unreachable through today's call graph, kept only
+// so this function stays a single source of truth if a caller needs it again.
 function dayLabel(day: DayView): string {
   if (day.date == null) return day.dsl;
   const workoutText = day.dsl.replace(DAY_PREFIX_RE, "");
-  return `${fmtDate(day.date)} ${fmtWeekdayShort(day.date)} ${workoutText}`;
+  return `${instanceDayDateLabel(day.date)} ${workoutText}`;
 }
 
 function weekHasWarnings(week: WeekView): boolean {
   return week.days.some(d => d.needs_review);
 }
+
+// HRA-129: min/max of the week's own days' calendar dates — pure derivation,
+// no schema change. Template weeks (every day.date == null) have nothing to
+// derive from, so this returns null and WeekEditor's title falls back to
+// today's plain compactTotals()-only summary.
+function weekDateRange(week: WeekView): { start: string; end: string } | null {
+  const dates = week.days.map(d => d.date).filter((d): d is string => d != null);
+  if (dates.length === 0) return null;
+  return { start: dates.reduce((a, b) => (a < b ? a : b)), end: dates.reduce((a, b) => (a > b ? a : b)) };
+}
+
 function sectionHasWarnings(section: SectionView): boolean {
   return section.weeks.some(weekHasWarnings);
 }
@@ -208,7 +237,7 @@ function InstanceDayRow({
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
-  const dateBadge = `${fmtWeekdayShort(date)} ${fmtDate(date)}`;
+  const dateBadge = instanceDayDateLabel(date);
   const workoutText = day.dsl.replace(DAY_PREFIX_RE, "");
 
   return (
@@ -364,11 +393,18 @@ function WeekEditor({
   const label = t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number });
   const weekRef: WeekRef = { sectionIndex, weekIndex };
   const drag = useDragSwap(weekRef, readOnlyDays ? undefined : onWeekSwap);
+  // HRA-129: same "(start → end)" bracket convention DateRangeBar.tsx/
+  // DateRangesSection.tsx already use for a named range, appended to the
+  // existing compactTotals() summary rather than replacing it.
+  const range = weekDateRange(week);
+  const summary = range
+    ? `${compactTotals(week.totals, t)} (${fmtDate(range.start)} → ${fmtDate(range.end)})`
+    : compactTotals(week.totals, t);
 
   return (
     <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
       <AccordionCard
-        title={<TitleRow label={label} summary={compactTotals(week.totals, t)} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
+        title={<TitleRow label={label} summary={summary} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
