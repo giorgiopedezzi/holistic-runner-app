@@ -1289,6 +1289,20 @@ export function PlanInstancesSection({ templates }: Props) {
                         ) : (
                           <span className="hra-anchor-derived">—</span>
                         )
+                      ) : row.relativeTo !== "" && resolved != null ? (
+                        // HRA-138: a "Relative to" row used to show a blank
+                        // disabled input even once its anchor actually
+                        // resolved (via the merged policy — `resolution`,
+                        // computed further up from `resolveIntensityPaceSecPerKm`
+                        // against `mergedPolicy`, already accounts for the
+                        // relative offset). Now shows the same
+                        // plain-text-plus-tag treatment the goal-time-derived
+                        // case above already uses, instead of an editable
+                        // input the value was never actually typed into.
+                        <>
+                          {formatPaceSecPerKm(resolved)}
+                          <span className="hra-anchor-tag">{t("manage.planInstances.resolvedFromRelative", "(resolved)")}</span>
+                        </>
                       ) : (
                         <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%", padding: "0 8px" }} />
                       )}

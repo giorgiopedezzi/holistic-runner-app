@@ -502,6 +502,7 @@
   "manage.planInstances.policyRelativeToLabel": "Relative to",
   "manage.planInstances.policySecondsLabel": "Seconds",
   "manage.planInstances.derivedFromGoalTime": "(from goal time)",
+  "manage.planInstances.resolvedFromRelative": "(resolved)",
   "manage.planInstances.racePaceTag": "(race pace)",
   "manage.planInstances.anchorAbsolutePlaceholder": "e.g. 5:10/km",
   "manage.planInstances.clearButton": "Clear",

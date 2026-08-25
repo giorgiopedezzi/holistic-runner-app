@@ -502,6 +502,7 @@
   "manage.planInstances.policyRelativeToLabel": "Relativo a",
   "manage.planInstances.policySecondsLabel": "Secondi",
   "manage.planInstances.derivedFromGoalTime": "(dal tempo obiettivo)",
+  "manage.planInstances.resolvedFromRelative": "(risolto)",
   "manage.planInstances.racePaceTag": "(ritmo gara)",
   "manage.planInstances.anchorAbsolutePlaceholder": "es. 5:10/km",
   "manage.planInstances.clearButton": "Svuota",
