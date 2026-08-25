@@ -532,6 +532,14 @@ body {
    glow so a disabled button never looks interactive on mouseover. */
 .hra-btn:disabled { background: var(--border-strong); color: var(--text-muted); cursor: not-allowed; --btn-glow: transparent; }
 .hra-btn:disabled:hover { box-shadow: none; }
+/* Same visual state as :disabled above, for a .hra-btn that isn't a real
+   <button> (HRA-136 review: the Regenerate-unit button nests a DatePicker
+   inside it, and a <button> can't contain another interactive element — see
+   ActivityRow.tsx's own card-as-button precedent). [data-disabled] is
+   presence-based (Radix's own convention, matched by .hra-select-item above)
+   so it works whether the attribute's value is "true" or empty. */
+.hra-btn[data-disabled] { background: var(--border-strong); color: var(--text-muted); cursor: not-allowed; --btn-glow: transparent; }
+.hra-btn[data-disabled]:hover { box-shadow: none; }
 
 /* Solid outline stays the primary, always-legible focus signal (readability
    first) — the box-shadow only ADDS a soft glow around it, never replaces
@@ -983,6 +991,23 @@ input:focus, select:focus { border-color: var(--accent); }
    DatePicker's style prop must be passed { width: "100%" } at any call site
    inside a row that should fill its column, same as every other field. */
 .hra-instantiate-form .hra-date-trigger { width: 100%; }
+
+/* Regenerate-unit (HRA-136 review): the date picker nests INSIDE the
+   Regenerate button now, not beside it — comes after the general
+   .hra-instantiate-form .hra-date-trigger rule above so it wins the cascade
+   at equal specificity. Shorter than --hra-field-h ("date picker height is
+   less than usual" per explicit feedback) since it's sharing the outer
+   button's own padding, not sitting in its own form row; border/background
+   dropped so it reads as part of the button rather than a second nested
+   control, and color: inherit picks up the green button's own on-accent
+   text color instead of --text-primary (which would be invisible/low-
+   contrast against --accent-green). */
+.hra-regenerate-unit .hra-date-trigger {
+  width: auto; height: auto; padding: 0; border: none; background: transparent; color: inherit;
+}
+.hra-regenerate-unit .hra-date-trigger:hover,
+.hra-regenerate-unit .hra-date-trigger[data-state="open"] { box-shadow: none; }
+.hra-regenerate-unit .hra-date-trigger-text { text-decoration: underline; text-underline-offset: 2px; }
 
 /* One label class for every field in this form — Capital Case, matching
    the sibling PlanTemplatesSection's <label> convention (and the rest of

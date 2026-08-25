@@ -1015,6 +1015,11 @@ export function PlanInstancesSection({ templates }: Props) {
   // still loses to a fresh Regenerate-bucket edit made after that, same as
   // any other Save-bucket dirtiness would.
   const saveEnabled = !regenerateBucketDirty && (saveBucketDirty || saveForcedEnabled);
+  // The Regenerate-unit div below isn't a real <button> (it nests a
+  // DatePicker inside it), so its own disabled state has to be computed and
+  // applied by hand instead of a `disabled` attribute — same three
+  // conditions the old plain <button> used.
+  const regenerateDisabled = regenerateLoading || !regenerateBucketDirty || isApproved;
 
   return (
     <Card className="hra-instantiate-form">
@@ -1286,24 +1291,35 @@ export function PlanInstancesSection({ templates }: Props) {
             <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
               {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
             </button>
-            {/* The label + date picker + button read as ONE unit (AC3) — unlike
-                every other multi-control group in this row, this one must
-                NOT wrap internally: `.hra-row-wrap`'s own flex-wrap would let
-                the label drop onto its own line above the date picker the
-                moment the row runs out of horizontal space, which is exactly
-                the split the Story calls out against. `flexWrap: "nowrap"`
-                overrides that; `flexShrink: 0` keeps the whole unit intact
-                (as one block) rather than letting ITS OWN box get squeezed
-                first when the outer row wraps. */}
+            {/* AC3/AC6, refined per explicit feedback: the label + date picker +
+                button are ONE real control now — a button-shaped div reading
+                "Regenerate from" with the date picker nested INSIDE it
+                (compact/borderless, index.css's .hra-regenerate-unit
+                override), not three elements sitting side by side. A literal
+                <button> can't contain the date picker's own nested <button>
+                (invalid HTML, unpredictable click bubbling) — same reasoning
+                ActivityRow.tsx's own card-as-button already documents — so
+                this is role="button" on a <div>, with tabIndex/onKeyDown
+                restoring the click/keyboard-activate behavior a real button
+                gives for free, and data-disabled driving the same visual
+                language .hra-btn:disabled already has (a div has no real
+                `disabled` attribute to hook — see index.css). The nested
+                DatePicker's own click is wrapped in a stopPropagation span so
+                opening the calendar doesn't also fire Regenerate. */}
             <div
-              style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap", flexShrink: 0 }}
+              className="hra-btn hra-regenerate-unit" data-variant="green"
+              role="button" tabIndex={regenerateDisabled ? -1 : 0}
+              onClick={() => { if (!regenerateDisabled) onRegenerateClick(); }}
+              onKeyDown={e => { if (!regenerateDisabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
+              data-disabled={regenerateDisabled || undefined}
+              aria-disabled={regenerateDisabled}
               title={!isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
             >
-              <span className="hra-text-secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>{t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
-              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={isApproved} />
-              <button className="hra-btn" data-variant="green" onClick={onRegenerateClick} disabled={regenerateLoading || !regenerateBucketDirty || isApproved}>
-                {regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateButton", "Regenerate")}
-              </button>
+              <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
+              <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex" }}>
+                <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={isApproved} />
+              </span>
             </div>
           </>
         )}
