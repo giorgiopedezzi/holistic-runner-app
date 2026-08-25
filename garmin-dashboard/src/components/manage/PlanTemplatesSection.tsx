@@ -1,17 +1,34 @@
 /**
- * PlanTemplatesSection.tsx (HRA-117)
- * Data & Sync card: list/create/edit/approve/delete RunPlan DSL v1 templates
+ * PlanTemplatesSection.tsx (HRA-117, accordion-based editing HRA-140)
+ * Plans tab card: list/create/edit/approve/delete RunPlan DSL v1 templates
  * (docs/runplan-dsl.md), built on top of the shared accordion (HRA-116) and
  * the plan-templates backend (HRA-111 through HRA-115). This file owns all
  * the state/API wiring HRA-116 deliberately left out of the accordion
  * itself: create via paste/upload, generate-preview, content-anchored
  * dsl_source patching on edit (domain/runplan-patch.ts), save, approve,
  * delete.
+ *
+ * HRA-140: the earlier `mode: "list" | "editor"` full-screen swap is gone —
+ * each list row is now its own `AccordionCard` (ui/AccordionCard.tsx, the
+ * same single-expand pattern SettingsTab already uses), expanding in place
+ * to reveal the exact same editor fields the old `mode === "editor"` screen
+ * showed. Only ONE row's edits live in the "live" editor state at a time
+ * (name/event/distanceValue/editor/planWarnings below) — same single-active-
+ * editor architecture as before, just keyed by `activeKey` instead of a
+ * page-level mode. What's new: collapsing a DIRTY row (or switching to a
+ * different row while one is dirty) doesn't discard the edit — it stashes a
+ * lightweight snapshot into `drafts` (keyed by template id, or `"new"` for
+ * an unsaved template) so re-expanding that same row restores exactly what
+ * was there, and a warning icon shows on any collapsed-but-drafted row until
+ * it's actually Saved or Restored (Ask #3/#4). Switching rows itself never
+ * confirms — nothing is lost, just tucked away; only Restore (an actual
+ * discard) does.
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { AlertTriangle } from "lucide-react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge, Select } from "@/components/ui";
+import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
@@ -37,6 +54,17 @@ const EVENT_OPTIONS: readonly EventType[] = ["5k", "10k", "half", "marathon", "c
 type DistanceUnit = "km" | "mi";
 // Mirrors garmin-stats/src/domain/runplan/parser.ts's M_PER_MILE.
 const M_PER_MILE = 1609.34;
+
+// HRA-140: what gets stashed when a dirty row is collapsed or switched away
+// from — everything needed to restore the live editor state on reopen
+// (`editor.sections` itself isn't stashed; it's cheap to rebuild via
+// runGenerate against the stashed dslSource, and stashing a resolved
+// SectionView[] tree would be redundant state that could drift from it).
+interface Draft { name: string; event: EventType | ""; distanceValue: string; distanceUnit: DistanceUnit; dslSource: string }
+// A row's identity: an existing template's real id, or "new" for the
+// not-yet-saved draft row. String-keyed in `drafts` (object keys are always
+// strings) but kept as this union everywhere else for type safety.
+type RowKey = number | "new";
 
 function defaultDistanceUnit(): DistanceUnit {
   return getUnitSystem() === "imperial" ? "mi" : "km";
@@ -85,8 +113,25 @@ function hasOutstandingWarnings(editor: EditorState, planWarnings: ParseWarning[
   return editor.sections.some(s => s.weeks.some(w => w.days.some(d => d.needs_review)));
 }
 
+// A known event type's distance is always the fixed standard one —
+// distance_m is never saved for these (the backend rejects it). For
+// "custom", distance_m lives inside the saved parsed_plan's own metadata
+// (HRA-120: sourced from the request body at save time, not DSL text) —
+// shared by startEdit (fresh load) and reopenExisting (restoring a stashed
+// draft), so the "what does this template's own persisted distance read as"
+// logic exists in exactly one place.
+function resolvePersistedDistanceValue(template: PlanTemplate, tplEvent: EventType | "", unit: DistanceUnit): string {
+  const standard = tplEvent !== "" ? STANDARD_DISTANCE_M[tplEvent] : undefined;
+  if (standard != null) return metersToDistance(standard, unit);
+  try {
+    const parsed = JSON.parse(template.parsed_plan) as { metadata?: { distance_m?: number } };
+    const distM = parsed.metadata?.distance_m;
+    return distM != null ? metersToDistance(distM, unit) : "";
+  } catch { return ""; }
+}
+
 interface Props {
-  // Lifted to ManageTab (not fetched here) so PlanInstancesSection's own
+  // Lifted to PlansTab (not fetched here) so PlanInstancesSection's own
   // template picker/list stays in sync with a save/delete happening in this
   // card — both are siblings mounted on the same tab, each independently
   // fetching its own copy would otherwise go stale the moment the other one
@@ -99,9 +144,14 @@ interface Props {
 export function PlanTemplatesSection({ templates, templatesError, refreshTemplates }: Props) {
   const { t } = useTranslation();
 
-  const [mode, setMode] = useState<"list" | "editor">("list");
+  // HRA-140: which row is expanded — an existing template's id, "new" for
+  // the unsaved-draft row, or null (every row collapsed). Replaces the old
+  // page-level `mode`; `editingId` is now derived from this, not its own
+  // state, since the two could never legitimately disagree.
+  const [activeKey, setActiveKey] = useState<RowKey | null>(null);
+  const editingId = typeof activeKey === "number" ? activeKey : null;
+
   const [showHelp, setShowHelp] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
   const [savedDslSource, setSavedDslSource] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [event, setEvent] = useState<EventType | "">("");
@@ -109,6 +159,25 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [distanceUnit, setDistanceUnit] = useState<DistanceUnit>(defaultDistanceUnit());
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
   const [planWarnings, setPlanWarnings] = useState<ParseWarning[]>([]);
+
+  // HRA-140: the active row's own "last saved/loaded" snapshot — what
+  // isEditorDirty() below diffs the live fields against. `savedDslSource`
+  // above already served this exact role for dslSource (canApprove already
+  // relied on it), reused rather than duplicated.
+  const [baselineName, setBaselineName] = useState("");
+  const [baselineEvent, setBaselineEvent] = useState<EventType | "">("");
+  const [baselineDistanceValue, setBaselineDistanceValue] = useState("");
+
+  // HRA-140: rows with unsaved edits that are currently collapsed (or were
+  // never the active row to begin with, if a *different* row's live edits
+  // just got stashed here). Presence of a key drives the warning icon
+  // (Ask #4); an entry is removed on a successful Save or an explicit
+  // Restore (Ask #3), never just by reopening the row.
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  // HRA-140 Ask #3: confirm gate before Restore actually discards — only
+  // shown when the active row is genuinely dirty; a clean row restores
+  // (closes) immediately.
+  const [pendingRestoreConfirm, setPendingRestoreConfirm] = useState(false);
 
   const [genLoading, setGenLoading] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
@@ -126,11 +195,23 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const lastGeneratedRef = useRef<string | null>(null);
 
   function resetEditorState() {
-    setEditingId(null); setSavedDslSource(null); setName(""); setEvent("");
+    setSavedDslSource(null); setName(""); setEvent("");
     setDistanceValue(""); setDistanceUnit(defaultDistanceUnit());
     setEditor(EMPTY_EDITOR);
+    setBaselineName(""); setBaselineEvent(""); setBaselineDistanceValue("");
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     lastGeneratedRef.current = null;
+  }
+
+  // HRA-140: whether the currently-active row's live fields differ from its
+  // own last-saved/loaded baseline — the single source of truth for both
+  // the Restore confirm gate (Ask #3) and what gets stashed on collapse
+  // (Ask #4).
+  function isEditorDirty(): boolean {
+    return editor.dslSource !== (savedDslSource ?? "")
+      || name !== baselineName
+      || event !== baselineEvent
+      || distanceValue !== baselineDistanceValue;
   }
 
   // Switches which unit the (already-typed) distance value displays as,
@@ -162,54 +243,17 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   function startCreate() {
     resetEditorState();
-    setMode("editor");
-  }
-
-  async function startEdit(template: PlanTemplate) {
-    resetEditorState();
-    setEditingId(template.id);
-    const tplEvent = (template.event as EventType | null) ?? "";
-    setEvent(tplEvent);
-    const unit = defaultDistanceUnit();
-    setDistanceUnit(unit);
-    const standard = tplEvent !== "" ? STANDARD_DISTANCE_M[tplEvent] : undefined;
-    if (standard != null) {
-      // A known event type's distance is always the fixed standard one —
-      // distance_m is never saved for these (the backend rejects it), so
-      // there's nothing to read from parsed_plan here.
-      setDistanceValue(metersToDistance(standard, unit));
-    } else {
-      // distance_m isn't a top-level template field — it lives inside the
-      // saved parsed_plan's metadata (HRA-120: sourced from the request
-      // body at save time, not DSL text).
-      try {
-        const parsed = JSON.parse(template.parsed_plan) as { metadata?: { distance_m?: number } };
-        const distM = parsed.metadata?.distance_m;
-        setDistanceValue(distM != null ? metersToDistance(distM, unit) : "");
-      } catch { setDistanceValue(""); }
-    }
-    setName(template.name);
-    setSavedDslSource(template.dsl_source);
-    setEditor({ dslSource: template.dsl_source, sections: [] });
-    setMode("editor");
-    await runGenerate(template.dsl_source, { autoFillDistance: false });
-  }
-
-  async function onFileUpload(file: File) {
-    const text = await file.text();
-    setEditor({ dslSource: text, sections: [] });
-    setPlanWarnings([]);
   }
 
   // autoFillDistance defaults to on (fresh create/paste/upload flows) but is
-  // explicitly off from startEdit: a saved template's distanceValue is set
-  // via setDistanceValue just before runGenerate is called there, and since
-  // that setState hasn't been applied to this render's closure yet (state
-  // updates aren't visible synchronously within the same callback that
-  // queued them), the check below would see the pre-update "" and clobber
-  // the just-loaded real distance with a re-guessed one — auto-fill is a
-  // create-time nicety only, never a substitute for the template's own
-  // saved value.
+  // explicitly off from startEdit/reopenExisting: a loaded template's own
+  // distanceValue is set via setDistanceValue just before runGenerate is
+  // called there, and since that setState hasn't been applied to this
+  // render's closure yet (state updates aren't visible synchronously within
+  // the same callback that queued them), the check below would see the
+  // pre-update "" and clobber the just-loaded real distance with a
+  // re-guessed one — auto-fill is a create-time nicety only, never a
+  // substitute for the template's own saved value.
   async function runGenerate(dslSource: string, opts: { autoFillDistance?: boolean } = {}) {
     const autoFillDistance = opts.autoFillDistance ?? true;
     setGenLoading(true); setGenError(null); setPatchError(null);
@@ -238,6 +282,88 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setGenLoading(false);
   }
 
+  async function startEdit(template: PlanTemplate) {
+    resetEditorState();
+    const tplEvent = (template.event as EventType | null) ?? "";
+    setEvent(tplEvent); setBaselineEvent(tplEvent);
+    const unit = defaultDistanceUnit();
+    setDistanceUnit(unit);
+    const resolvedDistance = resolvePersistedDistanceValue(template, tplEvent, unit);
+    setDistanceValue(resolvedDistance); setBaselineDistanceValue(resolvedDistance);
+    setName(template.name); setBaselineName(template.name);
+    setSavedDslSource(template.dsl_source);
+    setEditor({ dslSource: template.dsl_source, sections: [] });
+    await runGenerate(template.dsl_source, { autoFillDistance: false });
+  }
+
+  // HRA-140: restores a previously-stashed draft's fields into the live
+  // editor state, WITHOUT touching the baseline* fields — those must still
+  // reflect the template's real persisted values (or the empty defaults for
+  // an unsaved "new" draft), never the draft itself, or isEditorDirty()
+  // would read false the instant a genuinely-dirty draft reopens.
+  async function reopenDraft(draft: Draft, template: PlanTemplate | undefined) {
+    setGenError(null); setPatchError(null); setSaveError(null);
+    setName(draft.name); setEvent(draft.event);
+    setDistanceValue(draft.distanceValue); setDistanceUnit(draft.distanceUnit);
+    if (template) {
+      setSavedDslSource(template.dsl_source);
+      setBaselineName(template.name);
+      setBaselineEvent((template.event as EventType | null) ?? "");
+      setBaselineDistanceValue(resolvePersistedDistanceValue(template, (template.event as EventType | null) ?? "", draft.distanceUnit));
+    } else {
+      setSavedDslSource(null);
+      setBaselineName(""); setBaselineEvent(""); setBaselineDistanceValue("");
+    }
+    lastGeneratedRef.current = null;
+    await runGenerate(draft.dslSource, { autoFillDistance: false });
+  }
+
+  // HRA-140: called before switching away from whatever row is currently
+  // active (collapsing it, or opening a different row) — stashes a draft
+  // if genuinely dirty, or drops any stale stash if the row turned out
+  // clean (e.g. the user typed something then typed it back to the
+  // original value before collapsing).
+  function stashCurrentIfDirty() {
+    if (activeKey == null) return;
+    const key = String(activeKey);
+    if (isEditorDirty()) {
+      setDrafts(prev => ({ ...prev, [key]: { name, event, distanceValue, distanceUnit, dslSource: editor.dslSource } }));
+    } else {
+      setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    }
+  }
+
+  // HRA-140: the single entry point for both the "+ New template" button
+  // and every row's own AccordionCard toggle — stashes whatever was
+  // previously open (never a discard, see stashCurrentIfDirty), then either
+  // collapses everything (re-clicking the already-open row) or opens the
+  // requested row, restoring its stashed draft if one exists.
+  async function onToggleRow(key: RowKey) {
+    if (activeKey === key) {
+      stashCurrentIfDirty();
+      setActiveKey(null);
+      return;
+    }
+    stashCurrentIfDirty();
+    setActiveKey(key);
+    const draft = drafts[String(key)];
+    if (draft) {
+      const template = key === "new" ? undefined : templates?.find(tpl => tpl.id === key);
+      await reopenDraft(draft, template);
+    } else if (key === "new") {
+      startCreate();
+    } else {
+      const template = templates?.find(tpl => tpl.id === key);
+      if (template) await startEdit(template);
+    }
+  }
+
+  async function onFileUpload(file: File) {
+    const text = await file.text();
+    setEditor({ dslSource: text, sections: [] });
+    setPlanWarnings([]);
+  }
+
   // Auto-regenerate the preview a beat after any edit — editing a Section/
   // Week/Day field, pasting fresh text, or uploading a file all change
   // editor.dslSource without themselves calling generate() (see each edit
@@ -249,12 +375,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // auto-generating originally; the manual button stays available for an
   // instant refresh.
   useEffect(() => {
-    if (mode !== "editor") return;
+    if (activeKey == null) return;
     if (editor.dslSource.trim() === "") return;
     if (editor.dslSource === lastGeneratedRef.current) return;
     const timer = setTimeout(() => { runGenerate(editor.dslSource); }, 700);
     return () => clearTimeout(timer);
-  }, [editor.dslSource, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [editor.dslSource, activeKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function onSectionEdit(sectionIndex: number, patch: { name?: string; notes?: string }) {
     setPatchError(null);
@@ -333,8 +459,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       const saved = editingId
         ? await api.planTemplates.update(editingId, name, event, editor.dslSource, distance)
         : await api.planTemplates.create(name, event, editor.dslSource, distance);
-      setEditingId(saved.id);
+      // HRA-140: the row this draft belonged to just got persisted — drop
+      // its stash (whichever key it was under: "new" the first time, or its
+      // own numeric id on a later re-save) and re-baseline everything to
+      // what was just saved, so the row reads clean immediately.
+      setDrafts(prev => { const key = activeKey != null ? String(activeKey) : null; if (key == null || !(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+      setActiveKey(saved.id);
       setSavedDslSource(saved.dsl_source);
+      setBaselineName(name); setBaselineEvent(event); setBaselineDistanceValue(distanceValue);
       await refreshTemplates();
       notify(t("manage.planTemplates.saveSucceeded", "Template saved."));
     } catch (e) {
@@ -356,12 +488,34 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setApproveLoading(false);
   }
 
+  // HRA-140 Ask #3: "Restore" (renamed from Cancel) discards the active
+  // row's unsaved edits and collapses it — since the list row itself only
+  // ever displays the real persisted `templates` data (never mutated by
+  // local typing), simply resetting local state + collapsing IS "reverting
+  // to the last-saved values"; there's nothing to re-populate. Gated on a
+  // confirm only when genuinely dirty.
+  function onRestoreClick() {
+    if (isEditorDirty()) { setPendingRestoreConfirm(true); return; }
+    doRestore();
+  }
+  function doRestore() {
+    setPendingRestoreConfirm(false);
+    if (activeKey != null) {
+      const key = String(activeKey);
+      setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    }
+    resetEditorState();
+    setActiveKey(null);
+  }
+  function cancelRestoreConfirm() { setPendingRestoreConfirm(false); }
+
   async function onDelete(id: number) {
     setDeleteError(null);
     try {
       await api.planTemplates.remove(id);
       setDeleteConfirmId(null);
-      if (editingId === id) { resetEditorState(); setMode("list"); }
+      setDrafts(prev => { const key = String(id); if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+      if (activeKey === id) { resetEditorState(); setActiveKey(null); }
       await refreshTemplates();
       notify(t("manage.planTemplates.deleteSucceeded", "Template deleted."));
     } catch (e) {
@@ -369,173 +523,247 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     }
   }
 
-  if (mode === "list") {
+  // HRA-140 Ask #2/#4: a collapsed row's own status hint — a drafted (dirty
+  // but collapsed) row gets the warning icon; any other collapsed row gets
+  // the plain "Open to edit" hint (this reads correctly for a genuinely
+  // never-opened row, and equally correctly for a row that was opened,
+  // found clean, and collapsed again — both have nothing pending, so both
+  // just invite a click).
+  function rowStatusHint(key: RowKey) {
+    if (drafts[String(key)]) {
+      return (
+        <span
+          title={t("manage.planTemplates.unsavedChanges", "Unsaved changes")}
+          className="hra-text-warning"
+          style={{ display: "inline-flex", alignItems: "center" }}
+        >
+          <AlertTriangle size={14} />
+        </span>
+      );
+    }
     return (
-      <Card>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-          <div className="hra-block-title">{t("manage.planTemplates.title", "Training-plan templates")}</div>
-          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }} onClick={() => setShowHelp(true)}>
-            {t("manage.planTemplates.howToUse", "How to use it")}
-          </button>
-        </div>
-        <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
-          {t("manage.planTemplates.description", "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.")}
-        </div>
-        {showHelp && <PlanTemplateHelpModal onClose={() => setShowHelp(false)} />}
-        {templatesError && <ErrorBanner message={templatesError} />}
-        {templates === null ? (
-          <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
-        ) : templates.length === 0 ? (
-          <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
-            {templates.map(tpl => (
-              <div key={tpl.id} className="hra-border-strong" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderRadius: 8 }}>
-                <span className="hra-text-primary" style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{tpl.name}</span>
-                {tpl.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
-                <Badge
-                  label={tpl.approved_at ? t("manage.planTemplates.approved", "Approved") : t("manage.planTemplates.notApproved", "Not approved")}
-                  color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
-                />
-                <button className="hra-btn" onClick={() => startEdit(tpl)}>{t("common.edit", "Edit")}</button>
-                {deleteConfirmId === tpl.id ? (
-                  <>
-                    <span className="hra-text-danger" style={{ fontSize: 12 }}>
-                      {t("manage.planTemplates.deleteConfirm", "Delete? This also removes every instance derived from it.")}
-                    </span>
-                    <button className="hra-btn" data-variant="danger" onClick={() => onDelete(tpl.id)}>{t("common.yesDelete", "Yes, delete")}</button>
-                    <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => setDeleteConfirmId(null)}>{t("common.cancel", "Cancel")}</button>
-                  </>
-                ) : (
-                  <button className="hra-btn" data-variant="danger" onClick={() => setDeleteConfirmId(tpl.id)}>{t("common.delete", "Delete")}</button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-        {deleteError && <ErrorBanner message={deleteError} />}
-        <button className="hra-btn" data-variant="accent" onClick={startCreate}>{t("manage.planTemplates.newTemplate", "New template")}</button>
-      </Card>
+      <span className="hra-text-secondary" style={{ fontSize: 11, fontStyle: "italic" }}>
+        {t("manage.planTemplates.openToEditHint", "Open to edit")}
+      </span>
     );
   }
 
+  function renderRowTitle(tpl: PlanTemplate) {
+    return (
+      <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl.name}</span>
+        {tpl.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
+        <Badge
+          label={tpl.approved_at ? t("manage.planTemplates.approved", "Approved") : t("manage.planTemplates.notApproved", "Not approved")}
+          color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
+        />
+        {activeKey !== tpl.id && rowStatusHint(tpl.id)}
+      </span>
+    );
+  }
+
+  // Shared by every row's AccordionCard — only ever actually rendered for
+  // whichever one is expanded (each call site gates on `activeKey === key`
+  // before calling this), since AccordionCard itself only mounts children
+  // while `expanded`.
+  function renderEditorFields() {
+    return (
+      <>
+        {/* Fixed widths, no flex-grow, on every field (CLAUDE.md's "no moving
+            UI" rule). Distance/km-mi stay on screen at all times (not
+            conditionally mounted) — only their enabled state depends on
+            Event type — so nothing ever appears/disappears in this row. */}
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 400px" }}>
+            {t("manage.planTemplates.nameLabel", "Name")}
+            <input
+              className="hra-border-strong hra-bg-card hra-text-primary"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              style={{ width: "100%", marginTop: 4, padding: 6 }}
+            />
+          </label>
+
+          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
+            {t("manage.planTemplates.eventLabel", "Event type")}
+            <div style={{ marginTop: 4 }}>
+              <Select
+                value={event}
+                onValueChange={v => onEventChange(v as EventType)}
+                options={eventOptions}
+                placeholder={eventPlaceholder}
+                triggerStyle={{ width: `${eventSelectWidth}ch` }}
+              />
+            </div>
+          </label>
+
+          {/* Always shown, always full-opacity ("visually enabled") — a known
+              event type's distance is fixed and filled the instant it's
+              picked (onEventChange above); readOnly/an inert toggle just mean
+              it can be seen and selected/copied but not changed, unlike
+              disabled which would also dim it. Only Custom makes both
+              writable. */}
+          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
+            {t("manage.planTemplates.distanceLabel", "Distance")}
+            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+              <input
+                className="hra-border-strong hra-bg-card hra-text-primary"
+                value={distanceValue}
+                onChange={e => setDistanceValue(e.target.value)}
+                type="number"
+                readOnly={!isCustomEvent}
+                style={{ width: 100, padding: 6 }}
+              />
+              <div className="hra-segment">
+                <button className="hra-segment-item" data-active={distanceUnit === "km"} onClick={() => switchDistanceUnit("km")}>km</button>
+                <button className="hra-segment-item" data-active={distanceUnit === "mi"} onClick={() => switchDistanceUnit("mi")}>mi</button>
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+          {t("manage.planTemplates.dslSourceLabel", "DSL text")}
+          <textarea
+            className="hra-border-strong hra-bg-card hra-text-primary"
+            value={editor.dslSource}
+            onChange={e => setEditor({ dslSource: e.target.value, sections: [] })}
+            rows={8}
+            style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 8 }}
+          />
+        </label>
+
+        <div className="hra-row-wrap" style={{ marginBottom: 12 }}>
+          <label className="hra-btn" style={{ cursor: "pointer" }}>
+            {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
+            <input
+              type="file" accept=".txt,.csv" style={{ display: "none" }}
+              onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
+            />
+          </label>
+          <button className="hra-btn" onClick={() => runGenerate(editor.dslSource)} disabled={genLoading || editor.dslSource.trim() === ""}>
+            {genLoading ? t("manage.planTemplates.generating", "Parsing…") : t("manage.planTemplates.generateButton", "Generate / refresh preview")}
+          </button>
+          <button className="hra-btn" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}>
+            {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+          </button>
+          <button className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading}>
+            {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
+          </button>
+          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={onRestoreClick}>
+            {t("common.restore", "Restore")}
+          </button>
+        </div>
+
+        {genError && <ErrorBanner message={genError} />}
+        {patchError && <ErrorBanner message={patchError} />}
+        {saveError && <ErrorBanner message={saveError} />}
+
+        {planWarnings.length > 0 && (
+          <ul className="hra-text-danger" style={{ fontSize: 12, marginBottom: 12 }}>
+            {planWarnings.map((w, i) => <li key={i}>{w.message}</li>)}
+          </ul>
+        )}
+
+        {generated && (
+          <TrainingPlanAccordion
+            ownerName={name || t("manage.planTemplates.untitled", "Untitled plan")}
+            sections={editor.sections}
+            onSectionEdit={onSectionEdit}
+            onWeekEdit={onWeekEdit}
+            onDayEdit={onDayEdit}
+          />
+        )}
+
+        {pendingRestoreConfirm && (
+          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelRestoreConfirm}>
+            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+                {t("manage.planTemplates.restoreConfirmBody", "You have unsaved changes — discard them?")}
+              </div>
+              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelRestoreConfirm}>
+                  {t("common.cancel", "Cancel")}
+                </button>
+                <button className="hra-btn" data-variant="danger" onClick={doRestore}>
+                  {t("common.restore", "Restore")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
+  const newDraftPending = activeKey === "new" || drafts["new"] != null;
+
   return (
     <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <div className="hra-block-title">
-          {editingId == null ? t("manage.planTemplates.createTitle", "New template") : t("manage.planTemplates.editTitle", "Edit template")}
-        </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+        <div className="hra-block-title">{t("manage.planTemplates.title", "Training-plan templates")}</div>
         <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }} onClick={() => setShowHelp(true)}>
           {t("manage.planTemplates.howToUse", "How to use it")}
         </button>
       </div>
+      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+        {t("manage.planTemplates.description", "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.")}
+      </div>
       {showHelp && <PlanTemplateHelpModal onClose={() => setShowHelp(false)} />}
+      {templatesError && <ErrorBanner message={templatesError} />}
 
-      {/* Fixed widths, no flex-grow, on every field (CLAUDE.md's "no moving
-          UI" rule). Distance/km-mi stay on screen at all times (not
-          conditionally mounted) — only their enabled state depends on
-          Event type — so nothing ever appears/disappears in this row. */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 400px" }}>
-          {t("manage.planTemplates.nameLabel", "Name")}
-          <input
-            className="hra-border-strong hra-bg-card hra-text-primary"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            style={{ width: "100%", marginTop: 4, padding: 6 }}
-          />
-        </label>
-
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-          {t("manage.planTemplates.eventLabel", "Event type")}
-          <div style={{ marginTop: 4 }}>
-            <Select
-              value={event}
-              onValueChange={v => onEventChange(v as EventType)}
-              options={eventOptions}
-              placeholder={eventPlaceholder}
-              triggerStyle={{ width: `${eventSelectWidth}ch` }}
-            />
-          </div>
-        </label>
-
-        {/* Always shown, always full-opacity ("visually enabled") — a known
-            event type's distance is fixed and filled the instant it's
-            picked (onEventChange above); readOnly/an inert toggle just mean
-            it can be seen and selected/copied but not changed, unlike
-            disabled which would also dim it. Only Custom makes both
-            writable. */}
-        <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
-          {t("manage.planTemplates.distanceLabel", "Distance")}
-          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              value={distanceValue}
-              onChange={e => setDistanceValue(e.target.value)}
-              type="number"
-              readOnly={!isCustomEvent}
-              style={{ width: 100, padding: 6 }}
-            />
-            <div className="hra-segment">
-              <button className="hra-segment-item" data-active={distanceUnit === "km"} onClick={() => switchDistanceUnit("km")}>km</button>
-              <button className="hra-segment-item" data-active={distanceUnit === "mi"} onClick={() => switchDistanceUnit("mi")}>mi</button>
+      {templates === null ? (
+        <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+          {newDraftPending && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <AccordionCard
+                title={
+                  <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                    <span>{name || t("manage.planTemplates.createTitle", "New template")}</span>
+                    {activeKey !== "new" && rowStatusHint("new")}
+                  </span>
+                }
+                expanded={activeKey === "new"}
+                onToggle={() => onToggleRow("new")}
+              >
+                {activeKey === "new" ? renderEditorFields() : null}
+              </AccordionCard>
             </div>
-          </div>
-        </label>
-      </div>
-
-      <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
-        {t("manage.planTemplates.dslSourceLabel", "DSL text")}
-        <textarea
-          className="hra-border-strong hra-bg-card hra-text-primary"
-          value={editor.dslSource}
-          onChange={e => setEditor({ dslSource: e.target.value, sections: [] })}
-          rows={8}
-          style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 8 }}
-        />
-      </label>
-
-      <div className="hra-row-wrap" style={{ marginBottom: 12 }}>
-        <label className="hra-btn" style={{ cursor: "pointer" }}>
-          {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
-          <input
-            type="file" accept=".txt,.csv" style={{ display: "none" }}
-            onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
-          />
-        </label>
-        <button className="hra-btn" onClick={() => runGenerate(editor.dslSource)} disabled={genLoading || editor.dslSource.trim() === ""}>
-          {genLoading ? t("manage.planTemplates.generating", "Parsing…") : t("manage.planTemplates.generateButton", "Generate / refresh preview")}
-        </button>
-        <button className="hra-btn" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}>
-          {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
-        </button>
-        <button className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading}>
-          {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
-        </button>
-        <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => { resetEditorState(); setMode("list"); }}>
-          {t("common.cancel", "Cancel")}
-        </button>
-      </div>
-
-      {genError && <ErrorBanner message={genError} />}
-      {patchError && <ErrorBanner message={patchError} />}
-      {saveError && <ErrorBanner message={saveError} />}
-
-      {planWarnings.length > 0 && (
-        <ul className="hra-text-danger" style={{ fontSize: 12, marginBottom: 12 }}>
-          {planWarnings.map((w, i) => <li key={i}>{w.message}</li>)}
-        </ul>
+          )}
+          {templates.length === 0 && !newDraftPending ? (
+            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
+          ) : (
+            templates.map(tpl => (
+              <div key={tpl.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <AccordionCard title={renderRowTitle(tpl)} expanded={activeKey === tpl.id} onToggle={() => onToggleRow(tpl.id)}>
+                    {activeKey === tpl.id ? renderEditorFields() : null}
+                  </AccordionCard>
+                </div>
+                <div style={{ flexShrink: 0, paddingTop: 14 }}>
+                  {deleteConfirmId === tpl.id ? (
+                    <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                      <span className="hra-text-danger" style={{ fontSize: 11 }}>
+                        {t("manage.planTemplates.deleteConfirm", "Delete? This also removes every instance derived from it.")}
+                      </span>
+                      <button className="hra-btn" data-variant="danger" onClick={() => onDelete(tpl.id)}>{t("common.yesDelete", "Yes, delete")}</button>
+                      <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => setDeleteConfirmId(null)}>{t("common.cancel", "Cancel")}</button>
+                    </div>
+                  ) : (
+                    <button className="hra-btn" data-variant="danger" onClick={() => setDeleteConfirmId(tpl.id)}>{t("common.delete", "Delete")}</button>
+                  )}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       )}
-
-      {generated && (
-        <TrainingPlanAccordion
-          ownerName={name || t("manage.planTemplates.untitled", "Untitled plan")}
-          sections={editor.sections}
-          onSectionEdit={onSectionEdit}
-          onWeekEdit={onWeekEdit}
-          onDayEdit={onDayEdit}
-        />
-      )}
+      {deleteError && <ErrorBanner message={deleteError} />}
+      <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new")} disabled={newDraftPending}>
+        {t("manage.planTemplates.newTemplate", "New template")}
+      </button>
     </Card>
   );
 }
