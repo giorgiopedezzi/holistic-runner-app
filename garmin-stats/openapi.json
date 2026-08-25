@@ -632,6 +632,15 @@
         "responses": { "200": { "description": "The updated instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
+    "/api/v1/plan-instances/{id}/regenerate": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Regenerate an instance's days from a cutover date onward (HRA-132)",
+        "description": "effective_from is required and server-floored to today — never trusted from the client. Days with date < effective_from are never modified or deleted. Days with date >= effective_from are fully regenerated from the template's own DSL (via instantiatePlan, not from the instance's already-resolved days — those already discarded each day's original symbolic pace anchor) using start_date/pace_overrides, falling back to the instance's own current value for whichever is omitted. pace_overrides, when supplied, is the instance's new COMPLETE override map (same semantics as /instantiate's own field), not a partial merge on top of what was stored before. Existing manual edits on days >= effective_from are discarded (documented behavior, not a bug). Clears approved_at, same gate-2 rule as the instance PUT.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["effective_from"], "properties": { "start_date": { "type": "string", "format": "date", "description": "Optional — defaults to the instance's own current start_date." }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional — the instance's new COMPLETE override map, anchor -> pace value string. Defaults to the instance's own currently-stored overrides when omitted." }, "effective_from": { "type": "string", "format": "date", "description": "The cutover date. Must not be before today (422 otherwise, enforced server-side)." } } } } } },
+        "responses": { "200": { "description": "The updated instance, with its regenerated days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/locales/{lang}": {
       "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },

@@ -67,6 +67,11 @@ type InstantiateBody = Partial<{
 // effective pace policy (see updateInstance below).
 type InstanceDayBody = { section_name: string; week_number: number; date: string; dsl: string };
 type InstanceUpdateBody = Partial<{ name: string; days: InstanceDayBody[] }>;
+// HRA-132: effective_from is required (the cutover — server-floored to
+// "today", never trusted from the client); start_date/pace_overrides are
+// both optional, falling back to the instance's own current value for
+// whichever is omitted.
+type RegenerateBody = Partial<{ start_date: string; pace_overrides: Record<string, string>; effective_from: string }>;
 
 // HRA-113: nothing in the tree is a hard error anymore — walk plan-scoped
 // (ParseResult.warnings) plus every day's own DayEntry.warnings so a 422 body
@@ -419,6 +424,59 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, { ...updated, days });
   };
 
+  // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
+  // instance's days from a cutover date onward, given a possibly-changed
+  // start_date and/or pace policy overrides. Days before the cutover are
+  // never touched (protects already-logged history); days from it onward
+  // are fully regenerated from the template DSL, discarding any manual
+  // edits on them (documented behavior, not a bug). Modeled as a POST action
+  // sub-resource (same pattern as /instantiate and /approve above), not a
+  // PUT/PATCH on the plain resource — it does more than replace fields, it
+  // deletes/regenerates a date-bounded slice of a nested collection.
+  // pace_overrides, when supplied, is the instance's new COMPLETE override
+  // map (same semantics as /instantiate's own field) — not a partial merge
+  // on top of whatever was stored before.
+  const regenerateInstance: Handler = async (req, res, url) => {
+    const id = parseIdForAction(url.pathname);
+    if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
+    const instance = instancesRepo.instanceById(id);
+    if (!instance) throw notFound(`No plan instance with id ${id}.`);
+    const template = templates.byId(instance.template_id);
+    if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
+
+    const body = await readJsonBody<RegenerateBody>(req);
+    if (!body.effective_from || !ISO_DATE.test(body.effective_from)) {
+      throw unprocessable("effective_from is required in YYYY-MM-DD format.");
+    }
+    // Server-enforced floor — never trust the client's own "not before
+    // today" check (rest-api-standards §10: validate at the boundary).
+    const today = new Date().toISOString().slice(0, 10);
+    if (body.effective_from < today) {
+      throw unprocessable("effective_from cannot be before today.");
+    }
+    if (body.start_date != null && !ISO_DATE.test(body.start_date)) {
+      throw unprocessable("start_date must be in YYYY-MM-DD format.");
+    }
+
+    const plan = JSON.parse(template.parsed_plan) as RunPlan;
+    const startDate = body.start_date ?? instance.start_date;
+
+    let paceOverrides: PacePolicy | undefined;
+    if (body.pace_overrides) {
+      paceOverrides = {};
+      for (const [anchor, raw] of Object.entries(body.pace_overrides)) {
+        const value = parsePaceValue(raw, plan.metadata.offset_unit);
+        if (!value) throw unprocessable(`Invalid pace_overrides value for "${anchor}": ${raw}`);
+        paceOverrides[anchor] = value;
+      }
+    } else if (instance.pace_overrides) {
+      paceOverrides = JSON.parse(instance.pace_overrides) as PacePolicy;
+    }
+
+    const { instance: updated, days } = instancesService.regenerateFrom(id, plan, { startDate, paceOverrides }, body.effective_from);
+    return send(res, { ...updated, days });
+  };
+
   // POST /api/v1/plan-instances/:id/approve — gate 2, symmetric with the
   // template approve endpoint above.
   const approveInstance: Handler = (_req, res, url) => {
@@ -441,6 +499,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, updateInstance, approveInstance, removeInstance, listInstances,
+    instantiate, instanceById, updateInstance, regenerateInstance, approveInstance, removeInstance, listInstances,
   };
 }

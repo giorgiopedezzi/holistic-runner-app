@@ -134,6 +134,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/plan-templates")             return await planTemplates.create(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await planTemplates.instantiate(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/approve$/.test(route))     return await planTemplates.approveTemplate(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await planTemplates.regenerateInstance(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await planTemplates.approveInstance(req, res, url);
       }
 

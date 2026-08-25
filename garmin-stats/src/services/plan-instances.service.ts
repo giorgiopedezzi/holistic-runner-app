@@ -88,7 +88,58 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     return { instance: instances.instanceById(instanceId)!, days: instances.daysByInstance(instanceId) };
   }
 
-  return { instantiate, updateDays };
+  // HRA-132: regenerates a plan instance's days from `effectiveFrom` onward,
+  // leaving every day before it completely untouched. `options` already
+  // carries whichever of startDate/paceOverrides the caller changed, with
+  // the instance's own current values substituted for whatever it didn't
+  // (the controller resolves that merge before calling this) — so
+  // instantiatePlan always runs against one coherent, fully-specified view.
+  // Always regenerates from the *template's* DSL (via instantiatePlan), never
+  // from the instance's own already-resolved days — those already discarded
+  // each day's original symbolic anchor, so there's nothing to re-resolve
+  // them from (see HRA-129/130's own notes on this same data-model gap).
+  function regenerateFrom(
+    instanceId: number, plan: RunPlan, options: InstantiateOptions, effectiveFrom: string,
+  ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
+    const regeneratedDays = instantiatePlan(plan, options).filter(d => d.date >= effectiveFrom);
+
+    db.exec("BEGIN");
+    try {
+      instances.deleteDaysFromDate(instanceId, effectiveFrom);
+      for (const day of regeneratedDays) {
+        instances.createDay({
+          instance_id: instanceId,
+          section_name: day.section_name,
+          week_number: day.week_number,
+          date: day.date,
+          day: day.day,
+          suffix: day.suffix ?? null,
+          category: day.category ?? null,
+          workout_type: day.workout_type,
+          segments: JSON.stringify(day.segments),
+          activity_target: day.activity_target ? JSON.stringify(day.activity_target) : null,
+          activity_description: day.activity_description ?? null,
+          notes: day.notes ?? null,
+          needs_review: day.needs_review ? 1 : 0,
+        });
+      }
+      instances.updateStartDateAndPaceOverrides(
+        instanceId, options.startDate, options.paceOverrides ? JSON.stringify(options.paceOverrides) : null,
+      );
+      // Same gate-2 rule every other instance-mutating operation already
+      // applies (updateDays above, the template PUT) — regenerating changes
+      // persisted day content, exactly the class of edit that revokes
+      // approval.
+      instances.clearApproval(instanceId);
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    return { instance: instances.instanceById(instanceId)!, days: instances.daysByInstance(instanceId) };
+  }
+
+  return { instantiate, updateDays, regenerateFrom };
 }
 
 export type PlanInstancesService = ReturnType<typeof createPlanInstancesService>;

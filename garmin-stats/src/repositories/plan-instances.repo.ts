@@ -35,9 +35,18 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review)
   `);
   const deleteDaysByInstanceStmt = db.prepare("DELETE FROM plan_instance_days WHERE instance_id = ?");
+  // HRA-132: deletes only the cutover-and-later slice of an instance's days —
+  // everything before `fromDate` is left completely untouched (protects
+  // already-logged history), the caller re-inserts the regenerated slice.
+  const deleteDaysFromDateStmt = db.prepare("DELETE FROM plan_instance_days WHERE instance_id = ? AND date >= ?");
   const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
   const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
+  // HRA-132: written together — a regenerate always resolves both (falling
+  // back to the instance's own current value for whichever the caller didn't
+  // supply) before running instantiatePlan, so both columns stay consistent
+  // with whatever was actually used to produce the regenerated days.
+  const updateStartDateAndPaceOverridesStmt = db.prepare("UPDATE plan_instances SET start_date = ?, pace_overrides = ? WHERE id = ?");
   // ON DELETE CASCADE (plan_instance_days.instance_id) removes the instance's days too.
   const deleteInstanceStmt = db.prepare("DELETE FROM plan_instances WHERE id = ?");
 
@@ -70,8 +79,12 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     // services/plan-instances.service.ts, which owns the transaction — these
     // are the single-statement primitives it composes (rest-api-standards §11).
     deleteDaysByInstance: (instanceId: number) => { deleteDaysByInstanceStmt.run(instanceId); },
+    deleteDaysFromDate: (instanceId: number, fromDate: string) => { deleteDaysFromDateStmt.run(instanceId, fromDate); },
     clearApproval: (id: number) => { clearApprovalStmt.run(id); },
     updateName: (id: number, name: string) => { updateNameStmt.run(name, id); },
+    updateStartDateAndPaceOverrides: (id: number, startDate: string, paceOverrides: string | null) => {
+      updateStartDateAndPaceOverridesStmt.run(startDate, paceOverrides, id);
+    },
     approve: (id: number): PlanInstanceRow => {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;
