@@ -26,7 +26,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
@@ -339,6 +339,11 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // collapses everything (re-clicking the already-open row) or opens the
   // requested row, restoring its stashed draft if one exists.
   async function onToggleRow(key: RowKey) {
+    // The delete-confirm modal now lives inside the panel it belongs to
+    // (review fix, below) — closing or switching away from a row must not
+    // leave it staged, or reopening that same row later would pop the
+    // confirm modal back up unprompted.
+    setDeleteConfirmId(null);
     if (activeKey === key) {
       stashCurrentIfDirty();
       setActiveKey(null);
@@ -653,6 +658,24 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={onRestoreClick}>
             {t("common.restore", "Restore")}
           </button>
+          {/* HRA-140 review: Delete lives INSIDE the accordion's own panel now,
+              not as a sibling button beside it — AccordionCard.tsx's header is
+              a real <button>, so this was never nestable in the collapsed
+              header either way; a plain icon button here needs no such
+              workaround, and nothing sits outside the accordion anymore. Only
+              shown for an existing (already-saved) template — nothing to
+              delete yet for a "new" draft. */}
+          {editingId != null && (
+            <button
+              className="hra-btn" data-variant="danger"
+              onClick={() => setDeleteConfirmId(editingId)}
+              title={t("common.delete", "Delete")}
+              aria-label={t("common.delete", "Delete")}
+              style={{ display: "inline-flex", alignItems: "center", padding: "6px 10px" }}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
         </div>
 
         {genError && <ErrorBanner message={genError} />}
@@ -692,6 +715,24 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             </div>
           </div>
         )}
+
+        {deleteConfirmId != null && deleteConfirmId === editingId && (
+          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={() => setDeleteConfirmId(null)}>
+            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+                {t("manage.planTemplates.deleteConfirm", "Delete? This also removes every instance derived from it.")}
+              </div>
+              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => setDeleteConfirmId(null)}>
+                  {t("common.cancel", "Cancel")}
+                </button>
+                <button className="hra-btn" data-variant="danger" onClick={() => editingId != null && onDelete(editingId)}>
+                  {t("common.yesDelete", "Yes, delete")}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </>
     );
   }
@@ -717,45 +758,26 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
           {newDraftPending && (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <AccordionCard
-                title={
-                  <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                    <span>{name || t("manage.planTemplates.createTitle", "New template")}</span>
-                    {activeKey !== "new" && rowStatusHint("new")}
-                  </span>
-                }
-                expanded={activeKey === "new"}
-                onToggle={() => onToggleRow("new")}
-              >
-                {activeKey === "new" ? renderEditorFields() : null}
-              </AccordionCard>
-            </div>
+            <AccordionCard
+              title={
+                <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                  <span>{name || t("manage.planTemplates.createTitle", "New template")}</span>
+                  {activeKey !== "new" && rowStatusHint("new")}
+                </span>
+              }
+              expanded={activeKey === "new"}
+              onToggle={() => onToggleRow("new")}
+            >
+              {activeKey === "new" ? renderEditorFields() : null}
+            </AccordionCard>
           )}
           {templates.length === 0 && !newDraftPending ? (
             <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
           ) : (
             templates.map(tpl => (
-              <div key={tpl.id} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <AccordionCard title={renderRowTitle(tpl)} expanded={activeKey === tpl.id} onToggle={() => onToggleRow(tpl.id)}>
-                    {activeKey === tpl.id ? renderEditorFields() : null}
-                  </AccordionCard>
-                </div>
-                <div style={{ flexShrink: 0, paddingTop: 14 }}>
-                  {deleteConfirmId === tpl.id ? (
-                    <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                      <span className="hra-text-danger" style={{ fontSize: 11 }}>
-                        {t("manage.planTemplates.deleteConfirm", "Delete? This also removes every instance derived from it.")}
-                      </span>
-                      <button className="hra-btn" data-variant="danger" onClick={() => onDelete(tpl.id)}>{t("common.yesDelete", "Yes, delete")}</button>
-                      <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => setDeleteConfirmId(null)}>{t("common.cancel", "Cancel")}</button>
-                    </div>
-                  ) : (
-                    <button className="hra-btn" data-variant="danger" onClick={() => setDeleteConfirmId(tpl.id)}>{t("common.delete", "Delete")}</button>
-                  )}
-                </div>
-              </div>
+              <AccordionCard key={tpl.id} title={renderRowTitle(tpl)} expanded={activeKey === tpl.id} onToggle={() => onToggleRow(tpl.id)}>
+                {activeKey === tpl.id ? renderEditorFields() : null}
+              </AccordionCard>
             ))
           )}
         </div>
