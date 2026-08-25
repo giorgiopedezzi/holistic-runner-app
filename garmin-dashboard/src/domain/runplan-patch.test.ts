@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote,
+  recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
 } from "./runplan-patch";
 
 describe("splitNote", () => {
@@ -52,6 +52,21 @@ describe("recomposeDayLine", () => {
   });
   it("clearing notes drops the trailing comment", () => {
     expect(recomposeDayLine("D1: 5km @ RG # easy", { notes: "" })).toBe("D1: 5km @ RG");
+  });
+});
+
+describe("swapDayContent (HRA-127)", () => {
+  it("swaps workout content, each day keeping its own D-number prefix", () => {
+    expect(swapDayContent("D1: 5km @ RG", "D3: 4x1000m @ RG-20")).toEqual(["D1: 4x1000m @ RG-20", "D3: 5km @ RG"]);
+  });
+  it("preserves each side's own suffix/tag prefix, not the other side's", () => {
+    expect(swapDayContent("D6a [long]: 12mi @ AEROBIC", "D2: REST")).toEqual(["D6a [long]: REST", "D2: 12mi @ AEROBIC"]);
+  });
+  it("swaps a trailing # note along with the workout text (the note travels with the content, not the day)", () => {
+    expect(swapDayContent("D1: 5km @ RG # easy", "D4: REST # taper")).toEqual(["D1: REST # taper", "D4: 5km @ RG # easy"]);
+  });
+  it("leaves both lines unchanged when either doesn't match the D-line grammar", () => {
+    expect(swapDayContent("not a day line", "D2: REST")).toEqual(["not a day line", "D2: REST"]);
   });
 });
 

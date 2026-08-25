@@ -17,7 +17,7 @@ import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, type SectionView,
 } from "@/domain/runplan-aggregate";
-import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
+import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
@@ -189,6 +189,16 @@ export function PlanInstancesSection({ templates }: Props) {
   // own approved_at could change: loading it (startEdit), creating it fresh
   // (always null), saving (PUT clears approval, gate 2), approving.
   const [editApprovedAt, setEditApprovedAt] = useState<string | null>(null);
+  // HRA-127: day/week swap — a per-picker "swap with…" selector (the
+  // interaction pattern was left open by the Story). Selection keys are
+  // "sectionIndex-weekIndex-dayIndex" / "sectionIndex-weekIndex" strings
+  // (Select needs string values, same convention every other Select in this
+  // file already uses, e.g. templateId). Swap only mutates local `sections`
+  // state — persisted on the existing Save flow like any other day edit.
+  const [swapDayA, setSwapDayA] = useState("");
+  const [swapDayB, setSwapDayB] = useState("");
+  const [swapWeekA, setSwapWeekA] = useState("");
+  const [swapWeekB, setSwapWeekB] = useState("");
 
   function refreshInstances() {
     return api.planInstances.list().then(setInstances).catch(e => setListError(e instanceof Error ? e.message : t("manage.planInstances.loadFailed", "Failed to load instances")));
@@ -207,6 +217,7 @@ export function PlanInstancesSection({ templates }: Props) {
 
   function resetEditor() {
     setEditingId(null); setEditName(""); setSections([]); setEditError(null); setEditApprovedAt(null);
+    setSwapDayA(""); setSwapDayB(""); setSwapWeekA(""); setSwapWeekB("");
   }
 
   // Row 2: Start date and Days-before-race are two views of one relationship
@@ -457,6 +468,69 @@ export function PlanInstancesSection({ templates }: Props) {
       week.days = days; weeks[weekIndex] = week; section.weeks = weeks; sections[sectionIndex] = section;
       return sections;
     });
+  }
+
+  // HRA-127: day/week swap — flat, cross-week/cross-section pickable lists
+  // for the two "swap with…" selectors below. A day's calendar date never
+  // moves (only content exchanges), so date isn't part of the label — the
+  // D-line workout text itself is the useful cue for telling rows apart.
+  function weekLabel(weekNumber: number): string {
+    return t("manage.planInstances.swapWeekLabel", `Week ${weekNumber}`, { n: weekNumber });
+  }
+  function dayOptions(): { value: string; label: string }[] {
+    const out: { value: string; label: string }[] = [];
+    sections.forEach((s, si) => s.weeks.forEach((w, wi) => w.days.forEach((d, di) => {
+      out.push({ value: `${si}-${wi}-${di}`, label: `${weekLabel(w.number)} — ${d.dsl}` });
+    })));
+    return out;
+  }
+  function weekOptions(): { value: string; label: string }[] {
+    const out: { value: string; label: string }[] = [];
+    sections.forEach((s, si) => s.weeks.forEach((w, wi) => out.push({ value: `${si}-${wi}`, label: weekLabel(w.number) })));
+    return out;
+  }
+
+  function onSwapDays() {
+    if (!swapDayA || !swapDayB || swapDayA === swapDayB) return;
+    const [aSi, aWi, aDi] = swapDayA.split("-").map(Number);
+    const [bSi, bWi, bDi] = swapDayB.split("-").map(Number);
+    setSections(prev => {
+      const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
+      const dayA = next[aSi].weeks[aWi].days[aDi];
+      const dayB = next[bSi].weeks[bWi].days[bDi];
+      const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
+      next[aSi].weeks[aWi].days[aDi] = { ...dayA, dsl: newA, notes: splitNote(newA).note };
+      next[bSi].weeks[bWi].days[bDi] = { ...dayB, dsl: newB, notes: splitNote(newB).note };
+      return next;
+    });
+    setSwapDayA(""); setSwapDayB("");
+    notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+  }
+
+  // Matches days by their own D-number (not array position) so weeks with
+  // different declared day-sets (a pre-HRA-124 partial week, or two weeks
+  // whose sections diverge) still swap every day-number both sides actually
+  // share — a day-number present in only one side is left untouched rather
+  // than guessed at, same "don't guess" discipline swapDayContent itself uses.
+  function onSwapWeeks() {
+    if (!swapWeekA || !swapWeekB || swapWeekA === swapWeekB) return;
+    const [aSi, aWi] = swapWeekA.split("-").map(Number);
+    const [bSi, bWi] = swapWeekB.split("-").map(Number);
+    setSections(prev => {
+      const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
+      const weekA = next[aSi].weeks[aWi];
+      const weekB = next[bSi].weeks[bWi];
+      for (const dayB of weekB.days) {
+        const dayA = weekA.days.find(d => d.day === dayB.day);
+        if (!dayA) continue;
+        const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
+        dayA.dsl = newA; dayA.notes = splitNote(newA).note;
+        dayB.dsl = newB; dayB.notes = splitNote(newB).note;
+      }
+      return next;
+    });
+    setSwapWeekA(""); setSwapWeekB("");
+    notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
   }
 
   async function onSave() {
@@ -850,6 +924,42 @@ export function PlanInstancesSection({ templates }: Props) {
       </div>
 
       {editError && <ErrorBanner message={editError} />}
+
+      {/* HRA-127: day/week swap — only available while unapproved (AC3), a
+          per-picker "swap with…" selector (the interaction pattern was left
+          open by the Story; multiple accordion rows can already be expanded
+          at once today, so comparing both sides before swapping works
+          out of the box with no further change here). Swap only mutates
+          local `sections` state, persisted the same way any other day edit
+          already is — via the existing Save button (AC4). */}
+      {!isApproved && sections.length > 0 && (dayOptions().length >= 2 || weekOptions().length >= 2) && (
+        <div className="hra-border-strong" style={{ borderRadius: 8, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
+          {dayOptions().length >= 2 && (
+            <Field label={t("manage.planInstances.swapDaysLabel", "Swap two days")}>
+              <div className="hra-row-wrap" style={{ alignItems: "center" }}>
+                <Select value={swapDayA} onValueChange={setSwapDayA} options={dayOptions()} placeholder={t("manage.planInstances.swapPickDayPlaceholder", "Pick a day…")} triggerStyle={{ width: 260 }} />
+                <span className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.swapWithLabel", "with")}</span>
+                <Select value={swapDayB} onValueChange={setSwapDayB} options={dayOptions()} placeholder={t("manage.planInstances.swapPickDayPlaceholder", "Pick a day…")} triggerStyle={{ width: 260 }} />
+                <button className="hra-btn" onClick={onSwapDays} disabled={!swapDayA || !swapDayB || swapDayA === swapDayB}>
+                  {t("manage.planInstances.swapButton", "Swap")}
+                </button>
+              </div>
+            </Field>
+          )}
+          {weekOptions().length >= 2 && (
+            <Field label={t("manage.planInstances.swapWeeksLabel", "Swap two weeks")}>
+              <div className="hra-row-wrap" style={{ alignItems: "center" }}>
+                <Select value={swapWeekA} onValueChange={setSwapWeekA} options={weekOptions()} placeholder={t("manage.planInstances.swapPickWeekPlaceholder", "Pick a week…")} triggerStyle={{ width: 160 }} />
+                <span className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.swapWithLabel", "with")}</span>
+                <Select value={swapWeekB} onValueChange={setSwapWeekB} options={weekOptions()} placeholder={t("manage.planInstances.swapPickWeekPlaceholder", "Pick a week…")} triggerStyle={{ width: 160 }} />
+                <button className="hra-btn" onClick={onSwapWeeks} disabled={!swapWeekA || !swapWeekB || swapWeekA === swapWeekB}>
+                  {t("manage.planInstances.swapButton", "Swap")}
+                </button>
+              </div>
+            </Field>
+          )}
+        </div>
+      )}
 
       {sections.length > 0 && (
         <TrainingPlanAccordion

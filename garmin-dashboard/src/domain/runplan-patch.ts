@@ -59,6 +59,26 @@ export function recomposeDayLine(currentFullLine: string, patch: { dsl?: string;
   return currentFullLine;
 }
 
+// D<n>[suffix][ [tag]]: — the whole D-line prefix up to and including the
+// colon (mirrors garmin-stats/src/domain/runplan/parser.ts's DAY_RE, same
+// grammar TrainingPlanAccordion.tsx's own display-only DAY_PREFIX_RE
+// mirrors for a different purpose — both are small, independent copies of
+// the same backend regex, same pattern SECTION_RE/WEEK_RE above already use).
+const DAY_LINE_RE = /^(D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*)(.*)$/;
+
+// Exchanges two days' WORKOUT content (everything after the D<n>: prefix —
+// the workout text and any trailing "# note") while each keeps its own
+// D-number/suffix/tag prefix untouched (HRA-127) — a day's identity (which
+// D-number, and therefore which calendar date once resolved) never moves,
+// only what's scheduled on it. Malformed lines (prefix doesn't match the
+// grammar) are returned unchanged rather than guessed at.
+export function swapDayContent(dslA: string, dslB: string): [string, string] {
+  const mA = DAY_LINE_RE.exec(dslA);
+  const mB = DAY_LINE_RE.exec(dslB);
+  if (!mA || !mB) return [dslA, dslB];
+  return [`${mA[1]}${mB[2]}`, `${mB[1]}${mA[2]}`];
+}
+
 export type ReplaceResult =
   | { ok: true; source: string }
   | { ok: false; reason: "not-found" | "ambiguous" };
