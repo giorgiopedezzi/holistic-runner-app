@@ -519,7 +519,17 @@
    transparent — floating over neighboring cells, the translucent version
    let their content bleed through and read as a mess. */
 .hra-agenda-event-card:hover {
-  left: -60px; right: -60px;
+  /* Follow-up: width now follows the real (unclamped) text instead of a
+     fixed +-60px push — a fixed push overshot short text and, worse, on
+     the LAST column pushed part of the card past the calendar's own right
+     edge while still trying to keep the same total width, leaving its left
+     side effectively invisible. Centering on the column's own midpoint
+     (left: 50% + translateX(-50%)) instead of stretching between two fixed
+     offsets means a short line barely grows past its column at all, and a
+     long one grows evenly in both directions from a stable center — far
+     less likely to run past either edge, on any column. */
+  left: 50%; right: auto; transform: translateX(-50%);
+  width: max-content; max-width: 240px;
   /* 10px above the collapsed anchor (bottom: 0 normally) — a small gap
      under the expanded card instead of it touching the row's own edge. */
   bottom: 10px;

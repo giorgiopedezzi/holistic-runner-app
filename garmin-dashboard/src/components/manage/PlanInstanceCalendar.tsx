@@ -25,7 +25,7 @@ import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell, Footprints, Gauge, Route } from "lucide-react";
+import { AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell, Gauge, Route } from "lucide-react";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
 import { fmtElapsedClock } from "@/domain/activity-chart";
@@ -55,9 +55,27 @@ interface CalendarEvent {
   metrics: ResolvedDayMetrics;
 }
 
-// HRA-144 Ask #1: run/rest/strength/cross/todo -> lucide-react icon.
-const WORKOUT_TYPE_ICONS: Record<WorkoutType, typeof Footprints> = {
-  run: Footprints, rest: Bed, strength: Dumbbell, cross: Bike, todo: CircleHelp,
+// Follow-up fix: lucide-react has no dedicated running-figure icon (checked
+// directly — no "Runner"/"Running" export exists), so HRA-144 used
+// Footprints as a stand-in. Per explicit instruction this app always uses a
+// runner glyph for "run" (matches the mockup's own hand-drawn icon, same
+// stroke language as every other lucide icon here: 24x24, stroke-based,
+// round caps/joins) — never Footprints.
+function RunnerIcon({ size = 24 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="15.5" cy="4.5" r="1.6" />
+      <path d="M13 8l2.2 2.2-1 3.3 3.3 2.5-.9 3.6" />
+      <path d="M13.2 10.3l-3.6 1.4-2.1 3.8" />
+      <path d="M16.5 16l2.6 1.4-1 3.6" />
+      <path d="M9.8 14.3l-1.4 3.2-3.4 1" />
+    </svg>
+  );
+}
+
+// HRA-144 Ask #1: run/rest/strength/cross/todo -> icon.
+const WORKOUT_TYPE_ICONS: Record<WorkoutType, (props: { size?: number }) => ReactNode> = {
+  run: RunnerIcon, rest: Bed, strength: Dumbbell, cross: Bike, todo: CircleHelp,
 };
 
 // HRA-146 Ask #2: category tint per workout_type — run/cross/strength get a
@@ -81,9 +99,23 @@ function isSameCalendarDay(a: Date, b: Date): boolean {
 // "10x1000m @ RG; 2km @ jog") reads as one dense run-on when just wrapped —
 // splitting at each segment's own "; " separator (the exact join
 // reconstructDslFromResolvedDay uses) puts one segment per line instead,
-// the same breakdown a human would apply reading it out loud.
+// the same breakdown a human would apply reading it out loud. A trailing
+// "# note" (reconstructDslFromResolvedDay appends day.notes this way, once,
+// at the very end of the whole line) gets its own line too, rather than
+// staying glued onto whichever segment happens to be last — the "#" itself
+// is kept so a comment still reads as a comment, not just more workout text.
 function splitDslSegments(text: string): string[] {
-  return text.split(/;\s*/).map(s => s.trim()).filter(Boolean);
+  const bySemicolon = text.split(/;\s*/).map(s => s.trim()).filter(Boolean);
+  const lines: string[] = [];
+  for (const segment of bySemicolon) {
+    const hashIndex = segment.indexOf("#");
+    if (hashIndex === -1) { lines.push(segment); continue; }
+    const before = segment.slice(0, hashIndex).trim();
+    const comment = segment.slice(hashIndex).trim();
+    if (before) lines.push(before);
+    if (comment) lines.push(comment);
+  }
+  return lines;
 }
 
 // HRA-144: `day.dsl` here is already the reconstructed DSL text —
