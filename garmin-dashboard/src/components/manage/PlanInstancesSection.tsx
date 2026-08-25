@@ -12,7 +12,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, DatePicker, Select } from "@/components/ui";
-import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
 import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, type SectionView,
@@ -490,21 +490,21 @@ export function PlanInstancesSection({ templates }: Props) {
     return out;
   }
 
-  function onSwapDays() {
-    if (!swapDayA || !swapDayB || swapDayA === swapDayB) return;
-    const [aSi, aWi, aDi] = swapDayA.split("-").map(Number);
-    const [bSi, bWi, bDi] = swapDayB.split("-").map(Number);
+  // Core swap mutations, parameterized by explicit refs so both the picker
+  // (Select) UI below AND the accordion's native drag-and-drop (HRA-127
+  // follow-up — TrainingPlanAccordion's onDaySwap/onWeekSwap props) share
+  // one implementation. Only mutates local `sections` state — persisted the
+  // same way any other day edit already is, via the existing Save button.
+  function swapDaysByRef(a: { sectionIndex: number; weekIndex: number; dayIndex: number }, b: { sectionIndex: number; weekIndex: number; dayIndex: number }) {
     setSections(prev => {
       const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
-      const dayA = next[aSi].weeks[aWi].days[aDi];
-      const dayB = next[bSi].weeks[bWi].days[bDi];
+      const dayA = next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex];
+      const dayB = next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex];
       const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
-      next[aSi].weeks[aWi].days[aDi] = { ...dayA, dsl: newA, notes: splitNote(newA).note };
-      next[bSi].weeks[bWi].days[bDi] = { ...dayB, dsl: newB, notes: splitNote(newB).note };
+      next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = { ...dayA, dsl: newA, notes: splitNote(newA).note };
+      next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = { ...dayB, dsl: newB, notes: splitNote(newB).note };
       return next;
     });
-    setSwapDayA(""); setSwapDayB("");
-    notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
   }
 
   // Matches days by their own D-number (not array position) so weeks with
@@ -512,14 +512,11 @@ export function PlanInstancesSection({ templates }: Props) {
   // whose sections diverge) still swap every day-number both sides actually
   // share — a day-number present in only one side is left untouched rather
   // than guessed at, same "don't guess" discipline swapDayContent itself uses.
-  function onSwapWeeks() {
-    if (!swapWeekA || !swapWeekB || swapWeekA === swapWeekB) return;
-    const [aSi, aWi] = swapWeekA.split("-").map(Number);
-    const [bSi, bWi] = swapWeekB.split("-").map(Number);
+  function swapWeeksByRef(a: { sectionIndex: number; weekIndex: number }, b: { sectionIndex: number; weekIndex: number }) {
     setSections(prev => {
       const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
-      const weekA = next[aSi].weeks[aWi];
-      const weekB = next[bSi].weeks[bWi];
+      const weekA = next[a.sectionIndex].weeks[a.weekIndex];
+      const weekB = next[b.sectionIndex].weeks[b.weekIndex];
       for (const dayB of weekB.days) {
         const dayA = weekA.days.find(d => d.day === dayB.day);
         if (!dayA) continue;
@@ -529,7 +526,36 @@ export function PlanInstancesSection({ templates }: Props) {
       }
       return next;
     });
+  }
+
+  function onSwapDays() {
+    if (!swapDayA || !swapDayB || swapDayA === swapDayB) return;
+    const [aSi, aWi, aDi] = swapDayA.split("-").map(Number);
+    const [bSi, bWi, bDi] = swapDayB.split("-").map(Number);
+    swapDaysByRef({ sectionIndex: aSi, weekIndex: aWi, dayIndex: aDi }, { sectionIndex: bSi, weekIndex: bWi, dayIndex: bDi });
+    setSwapDayA(""); setSwapDayB("");
+    notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+  }
+
+  function onSwapWeeks() {
+    if (!swapWeekA || !swapWeekB || swapWeekA === swapWeekB) return;
+    const [aSi, aWi] = swapWeekA.split("-").map(Number);
+    const [bSi, bWi] = swapWeekB.split("-").map(Number);
+    swapWeeksByRef({ sectionIndex: aSi, weekIndex: aWi }, { sectionIndex: bSi, weekIndex: bWi });
     setSwapWeekA(""); setSwapWeekB("");
+    notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
+  }
+
+  // HRA-127 follow-up: drag-and-drop, as an alternative UX to the picker
+  // above for the same underlying swap — TrainingPlanAccordion calls these
+  // with both rows' refs once a valid drop completes (it already guards
+  // against a drop onto the row's own self).
+  function onDayDragSwap(a: DayRef, b: DayRef) {
+    swapDaysByRef(a, b);
+    notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+  }
+  function onWeekDragSwap(a: WeekRef, b: WeekRef) {
+    swapWeeksByRef(a, b);
     notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
   }
 
@@ -970,6 +996,8 @@ export function PlanInstancesSection({ templates }: Props) {
           onDayEdit={onDayEdit}
           readOnlySectionWeek
           readOnlyDays={isApproved}
+          onDaySwap={onDayDragSwap}
+          onWeekSwap={onWeekDragSwap}
         />
       )}
     </Card>

@@ -1348,6 +1348,14 @@ input:focus, select:focus { border-color: var(--accent); }
   transform: translateX(-50%) translateY(-9px);
 }
 
+/* ── Day/week swap drag-and-drop (TrainingPlanAccordion.tsx, HRA-127 follow-
+   up) — the row currently being dragged over, as a valid drop target. */
+.hra-swap-drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+  border-radius: 16px;
+}
+
 /* ── Trend chart (SportTrendChart) — glassy combined tooltip + per-line glow
    + pill-chip legend. Bars stay a muted --data-pace SVG gradient defined
    inline (no CSS-class equivalent for an SVG <linearGradient>'s stops), see

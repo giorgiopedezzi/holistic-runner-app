@@ -16,11 +16,17 @@
  * derived by walking children (any day -> any week -> any section), never
  * stored, matching docs/runplan-dsl.md's own documented rule for this.
  */
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AccordionCard } from "./ui/AccordionCard";
 import { fmtDate, fmtWeekdayShort } from "@/utils/fmt";
 import type { AggregateTotals, DayView, DistanceTotal, SectionView, WeekView } from "../domain/runplan-aggregate";
+
+// HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
+// below — plain index tuples, same "sectionIndex/weekIndex/dayIndex" shape
+// onSectionEdit/onWeekEdit/onDayEdit already key by.
+export interface DayRef { sectionIndex: number; weekIndex: number; dayIndex: number }
+export interface WeekRef { sectionIndex: number; weekIndex: number }
 
 interface TrainingPlanAccordionProps {
   // The owning template's/instance's own name — substituted for the
@@ -44,6 +50,59 @@ interface TrainingPlanAccordionProps {
   // instance's approved_at is set, locking the whole plan view. Default
   // false (an unapproved instance, or any template, stays fully editable).
   readOnlyDays?: boolean;
+  // HRA-127 follow-up: native HTML5 drag-and-drop, as an alternative UX to
+  // the picker-based swap the instance card already offers — dragging one
+  // Day/Week row onto another calls back with both refs; the CALLER does
+  // the actual content exchange (the same swapDayContent-based logic the
+  // picker uses) and is expected to no-op a drop onto the row's own self.
+  // Optional — templates never pass these, so their rows stay non-draggable.
+  // Gated by readOnlyDays above regardless of whether these are supplied
+  // (an approved instance gets neither the picker panel nor drag-and-drop).
+  onDaySwap?: (a: DayRef, b: DayRef) => void;
+  onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
+}
+
+// DayRef/WeekRef are always flat, plain object literals built with the same
+// key order at every call site — JSON comparison is a simple, safe way to
+// compare them without fighting TypeScript's index-signature rules for a
+// generic Record-shaped parameter.
+function refsEqual<TRef>(a: TRef, b: TRef): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+// Native HTML5 DnD (no library — this app is deliberately zero-dependency).
+// The dragged row's own ref travels as JSON text/plain payload; dropping
+// reads it back and hands both refs to the caller-supplied swap callback.
+// A lightweight "is a valid drop target hovering over me" boolean drives
+// the `.hra-swap-drop-target` outline (index.css) — visual feedback only,
+// never persisted state.
+function useDragSwap<TRef>(ref: TRef | undefined, onSwap: ((a: TRef, b: TRef) => void) | undefined) {
+  const [isDragOver, setIsDragOver] = useState(false);
+  const swappable = ref != null && onSwap != null;
+  if (!swappable) return { swappable: false as const, isDragOver: false, handlers: {} };
+  // stopPropagation on every drag/drop-target handler: a Day row's own
+  // draggable wrapper is nested inside its Week row's (WeekEditor renders
+  // DayEditor as a child) — without it, hovering a day would bubble up and
+  // light up the enclosing week's drop-target outline too.
+  const handlers = {
+    draggable: true,
+    onDragStart: (e: DragEvent) => { e.stopPropagation(); e.dataTransfer.setData("text/plain", JSON.stringify(ref)); e.dataTransfer.effectAllowed = "move"; },
+    onDragOver: (e: DragEvent) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; },
+    onDragEnter: (e: DragEvent) => { e.stopPropagation(); setIsDragOver(true); },
+    onDragLeave: (e: DragEvent) => { e.stopPropagation(); setIsDragOver(false); },
+    onDrop: (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragOver(false);
+      const raw = e.dataTransfer.getData("text/plain");
+      if (!raw) return;
+      let source: TRef;
+      try { source = JSON.parse(raw); } catch { return; }
+      if (refsEqual(source, ref)) return;
+      onSwap(source, ref);
+    },
+  };
+  return { swappable: true as const, isDragOver, handlers };
 }
 
 type Translate = (key: string, def: string, opts?: Record<string, unknown>) => string;
@@ -130,116 +189,135 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
 }
 
 function DayEditor({
-  day, onEdit, readOnlyDays,
+  day, onEdit, readOnlyDays, dayRef, onDaySwap,
 }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
   readOnlyDays: boolean;
+  dayRef?: DayRef;
+  onDaySwap?: (a: DayRef, b: DayRef) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
   // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
   // at a glance, instead of a redundant bare "D3". For an instance day
   // (day.date set), dayLabel() swaps the "D3" placeholder for the real
   // calendar date + weekday instead (HRA-125) — template days are unaffected.
   return (
-    <AccordionCard
-      title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
-      expanded={expanded} onToggle={() => setExpanded(v => !v)}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {/* HRA-126: once approved, the dsl/note inputs simply don't render —
-            same "hide the input, the title/tooltip already shows the value"
-            pattern readOnlySectionWeek already uses for Section/Week above. */}
-        {!readOnlyDays && (
-          <>
-            <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-              {t("runplan.accordion.dslLabel", "Workout (DSL)")}
-              <textarea
-                className={inputClass}
-                value={day.dsl}
-                onChange={e => onEdit({ dsl: e.target.value })}
-                rows={2}
-                style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 6 }}
-              />
-            </label>
-            <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-              {t("runplan.accordion.noteLabel", "Note")}
-              <input
-                className={inputClass}
-                value={day.notes ?? ""}
-                onChange={e => onEdit({ notes: e.target.value })}
-                placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-                style={{ width: "100%", marginTop: 4, padding: 6 }}
-              />
-            </label>
-          </>
-        )}
-        {day.needs_review && day.warnings.length > 0 && (
-          <ul className="hra-text-danger" style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
-            {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
-          </ul>
-        )}
-        {day.needs_review && day.warnings.length === 0 && (
-          <div className="hra-text-danger" style={{ fontSize: 12 }}>
-            {t("runplan.accordion.needsReview", "This day needs review before it can be saved.")}
-          </div>
-        )}
-      </div>
-    </AccordionCard>
+    <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
+      <AccordionCard
+        title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
+        expanded={expanded} onToggle={() => setExpanded(v => !v)}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {/* HRA-126: once approved, the dsl/note inputs simply don't render —
+              same "hide the input, the title/tooltip already shows the value"
+              pattern readOnlySectionWeek already uses for Section/Week above. */}
+          {!readOnlyDays && (
+            <>
+              <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+                {t("runplan.accordion.dslLabel", "Workout (DSL)")}
+                <textarea
+                  className={inputClass}
+                  value={day.dsl}
+                  onChange={e => onEdit({ dsl: e.target.value })}
+                  rows={2}
+                  style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 6 }}
+                />
+              </label>
+              <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+                {t("runplan.accordion.noteLabel", "Note")}
+                <input
+                  className={inputClass}
+                  value={day.notes ?? ""}
+                  onChange={e => onEdit({ notes: e.target.value })}
+                  placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+                  style={{ width: "100%", marginTop: 4, padding: 6 }}
+                />
+              </label>
+            </>
+          )}
+          {day.needs_review && day.warnings.length > 0 && (
+            <ul className="hra-text-danger" style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
+              {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
+            </ul>
+          )}
+          {day.needs_review && day.warnings.length === 0 && (
+            <div className="hra-text-danger" style={{ fontSize: 12 }}>
+              {t("runplan.accordion.needsReview", "This day needs review before it can be saved.")}
+            </div>
+          )}
+        </div>
+      </AccordionCard>
+    </div>
   );
 }
 
 function WeekEditor({
-  week, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap,
 }: {
   week: WeekView;
+  sectionIndex: number;
+  weekIndex: number;
   onWeekEdit: (patch: { notes?: string }) => void;
   onDayEdit: (dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
   readOnlySectionWeek: boolean;
   readOnlyDays: boolean;
+  onDaySwap?: (a: DayRef, b: DayRef) => void;
+  onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const label = t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number });
+  const weekRef: WeekRef = { sectionIndex, weekIndex };
+  const drag = useDragSwap(weekRef, readOnlyDays ? undefined : onWeekSwap);
 
   return (
-    <AccordionCard
-      title={<TitleRow label={label} summary={compactTotals(week.totals, t)} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
-      expanded={expanded} onToggle={() => setExpanded(v => !v)}
-    >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-        {!readOnlySectionWeek && (
-          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
-            {t("runplan.accordion.noteLabel", "Note")}
-            <input
-              className={inputClass}
-              value={week.notes ?? ""}
-              onChange={e => onWeekEdit({ notes: e.target.value })}
-              placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-              style={{ width: "100%", marginTop: 4, padding: 6 }}
+    <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
+      <AccordionCard
+        title={<TitleRow label={label} summary={compactTotals(week.totals, t)} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
+        expanded={expanded} onToggle={() => setExpanded(v => !v)}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {!readOnlySectionWeek && (
+            <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+              {t("runplan.accordion.noteLabel", "Note")}
+              <input
+                className={inputClass}
+                value={week.notes ?? ""}
+                onChange={e => onWeekEdit({ notes: e.target.value })}
+                placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+                style={{ width: "100%", marginTop: 4, padding: 6 }}
+              />
+            </label>
+          )}
+          {week.days.map((day, dayIndex) => (
+            <DayEditor
+              key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} readOnlyDays={readOnlyDays}
+              dayRef={{ sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap}
             />
-          </label>
-        )}
-        {week.days.map((day, dayIndex) => (
-          <DayEditor key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} readOnlyDays={readOnlyDays} />
-        ))}
-      </div>
-    </AccordionCard>
+          ))}
+        </div>
+      </AccordionCard>
+    </div>
   );
 }
 
 function SectionEditor({
-  section, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap,
 }: {
   section: SectionView;
+  sectionIndex: number;
   ownerName: string;
   onSectionEdit: (patch: { name?: string; notes?: string }) => void;
   onWeekEdit: (weekIndex: number, patch: { notes?: string }) => void;
   onDayEdit: (weekIndex: number, dayIndex: number, patch: { dsl?: string; notes?: string }) => void;
   readOnlySectionWeek: boolean;
   readOnlyDays: boolean;
+  onDaySwap?: (a: DayRef, b: DayRef) => void;
+  onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -290,10 +368,14 @@ function SectionEditor({
           <WeekEditor
             key={weekIndex}
             week={week}
+            sectionIndex={sectionIndex}
+            weekIndex={weekIndex}
             onWeekEdit={patch => onWeekEdit(weekIndex, patch)}
             onDayEdit={(dayIndex, patch) => onDayEdit(weekIndex, dayIndex, patch)}
             readOnlySectionWeek={readOnlySectionWeek}
             readOnlyDays={readOnlyDays}
+            onDaySwap={onDaySwap}
+            onWeekSwap={onWeekSwap}
           />
         ))}
       </div>
@@ -301,19 +383,24 @@ function SectionEditor({
   );
 }
 
-export function TrainingPlanAccordion({ ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false }: TrainingPlanAccordionProps) {
+export function TrainingPlanAccordion({
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap,
+}: TrainingPlanAccordionProps) {
   return (
     <div>
       {sections.map((section, sectionIndex) => (
         <SectionEditor
           key={sectionIndex}
           section={section}
+          sectionIndex={sectionIndex}
           ownerName={ownerName}
           onSectionEdit={patch => onSectionEdit(sectionIndex, patch)}
           onWeekEdit={(weekIndex, patch) => onWeekEdit(sectionIndex, weekIndex, patch)}
           onDayEdit={(weekIndex, dayIndex, patch) => onDayEdit(sectionIndex, weekIndex, dayIndex, patch)}
           readOnlySectionWeek={readOnlySectionWeek}
           readOnlyDays={readOnlyDays}
+          onDaySwap={onDaySwap}
+          onWeekSwap={onWeekSwap}
         />
       ))}
     </div>
