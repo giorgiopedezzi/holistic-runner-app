@@ -848,15 +848,18 @@ the day's full warning list, or actually editing a field.
   carries the full original text including the `D`-prefix), so a separate label would only have been
   redundant; `TitleRow`'s existing ellipsis truncation handles a long workout line gracefully.
   **For an instance day (HRA-125), the `D<n>` placeholder prefix is swapped for the day's real
-  calendar date + a fixed-English 3-letter weekday abbreviation** (`TrainingPlanAccordion.tsx`'s
-  `dayLabel()`, e.g. `"24/08/2026 Mon 5km @ RG"`) — `day.date` (`DayView.date`) is only ever set for
-  instance days (`buildInstanceSectionView`), so template days (`day.date == null`) keep the
-  unmodified `day.dsl` label exactly as before; only the prefix up to the D-line's colon is replaced,
-  the workout text (and any trailing `# note`) after it stays untouched. Date formatting reuses
-  `utils/fmt.ts`'s `fmtDate()` (the app's one date-format-setting-aware formatter); the weekday
-  abbreviation is a new `fmtWeekdayShort()` in the same file, deliberately NOT localized (`Mon`..`Sun`
-  always) — a fixed, compact label rather than a spelled-out, language-dependent one, same reasoning
-  as `fmtDateChart`'s numeric-only chart-axis ticks.
+  calendar date + a 3-letter weekday abbreviation** (`TrainingPlanAccordion.tsx`'s `dayLabel()`, e.g.
+  `"24/08/2026 Mon 5km @ RG"`) — `day.date` (`DayView.date`) is only ever set for instance days
+  (`buildInstanceSectionView`), so template days (`day.date == null`) keep the unmodified `day.dsl`
+  label exactly as before; only the prefix up to the D-line's colon is replaced, the workout text (and
+  any trailing `# note`) after it stays untouched. Date formatting reuses `utils/fmt.ts`'s `fmtDate()`
+  (the app's one date-format-setting-aware formatter); the weekday abbreviation is `fmtWeekdayShort()`
+  in the same file — **localized to the app's current language** (`i18next.language`, HRA-129
+  follow-up correction: originally fixed English `Mon`..`Sun` regardless of language, per this
+  Story's own now-superseded reasoning about `fmtDateChart`'s numeric-only chart-axis ticks; corrected
+  per explicit feedback that a plan reviewed in Italian must read `Lun`, not `Mon`) — same per-call
+  `Intl.DateTimeFormat(language, { weekday: "short" })` pattern `localizedMonthShort()` already uses
+  for a literal date's month token, not a cached formatter, since the language can change at runtime.
 
 **Instance day row redesign (HRA-128)**: `DayEditor` is now a thin, hook-free dispatcher on
 `day.date` (the same instance-vs-template signal `dayLabel()` above already uses) — `InstanceDayRow`
@@ -880,8 +883,8 @@ built by a shared `instanceDayDateLabel(date)` helper — weekday first, then th
 `utils/dateFormat.ts`'s `dateFormatRegion()`. **The comma is a US-vs-UK region rule, not a
 literal-vs-numeric one** — confirmed with the user, since the Story text itself flagged this as
 ambiguous (numeric_us reads `"Fri, 08/17/2026"` with the comma, same as literal_us). `fmtWeekdayShort`
-itself is untouched (stays fixed-English regardless of region/language, see its own comment above) —
-only the separator/order around it changes. `WeekEditor`'s title summary now appends a
+itself is localized to the app's current language (see its own comment above) — only the
+separator/order around it is driven by `date_format`'s region here. `WeekEditor`'s title summary now appends a
 `(start → end)` date range (`weekDateRange()` — plain min/max over `week.days[].date`, pure
 derivation, no schema change) after the existing `compactTotals()` text, using the same bracket
 convention `DateRangeBar.tsx`/`manage/DateRangesSection.tsx` already use for a named range —

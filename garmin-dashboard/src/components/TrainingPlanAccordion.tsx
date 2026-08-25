@@ -139,9 +139,10 @@ const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 // doesn't ("Fri 17 Oct 2025" / "Fri 17/08/2026"). This is a US-vs-UK region
 // rule, not a literal-vs-numeric one, so numeric_us gets the comma too —
 // confirmed with the user (HRA-129), since the Story text itself flagged
-// this as ambiguous. fmtWeekdayShort stays fixed-English regardless of
-// region/language (see its own comment in fmt.ts) — only order/punctuation
-// changes here, never the weekday's language.
+// this as ambiguous. fmtWeekdayShort is localized to the app's current
+// language (see its own comment in fmt.ts) — only order/punctuation is
+// driven by date_format's region here, the weekday's language comes from
+// i18next separately.
 function instanceDayDateLabel(date: string): string {
   const sep = dateFormatRegion() === "us" ? ", " : " ";
   return `${fmtWeekdayShort(date)}${sep}${fmtDate(date)}`;

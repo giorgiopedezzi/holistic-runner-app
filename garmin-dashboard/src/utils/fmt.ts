@@ -167,14 +167,17 @@ export function fmtDate(iso: string | null | undefined): string {
 }
 
 // 3-letter weekday abbreviation (HRA-125, training-plan instance day rows) —
-// deliberately fixed English (Mon..Sun) regardless of app language or the
-// date_format setting's region, same "compact label, not a spelled-out
-// sentence" reasoning as fmtDateChart's numeric-only axis ticks above.
-const WEEKDAY_SHORT_FORMATTER = new Intl.DateTimeFormat("en-US", { weekday: "short" });
-
+// localized to the app's current language (HRA-129 follow-up: originally
+// fixed English "Mon".."Sun" regardless of language, corrected per explicit
+// feedback — a plan reviewed in Italian must read "Lun", not "Mon"). Same
+// per-call Intl.DateTimeFormat(language, ...) pattern localizedMonthShort()
+// above uses for a literal date's month token — no cached formatter, since
+// i18next.language can change at runtime (Settings tab language picker).
 export function fmtWeekdayShort(iso: string): string {
   const date = parseIsoDateLocal(iso);
-  return date ? WEEKDAY_SHORT_FORMATTER.format(date) : "";
+  if (!date) return "";
+  const language = i18next.language || "en";
+  return new Intl.DateTimeFormat(language, { weekday: "short" }).format(date);
 }
 
 // Numeric-only "dd/mm" or "mm/dd" (no year) — see NUMERIC_CHART_FORMATTERS

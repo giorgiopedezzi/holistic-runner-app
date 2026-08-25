@@ -92,8 +92,8 @@ describe("fmtDate", () => {
   });
 });
 
-describe("fmtWeekdayShort (HRA-125, training-plan instance day labels)", () => {
-  it("returns the fixed 3-letter English abbreviation, regardless of app language", () => {
+describe("fmtWeekdayShort (HRA-125/HRA-129, training-plan instance day labels)", () => {
+  it("returns the 3-letter abbreviation in the app's current language (English in this test env)", () => {
     expect(fmtWeekdayShort("2026-08-24")).toBe("Mon"); // Monday
     expect(fmtWeekdayShort("2026-08-25")).toBe("Tue");
     expect(fmtWeekdayShort("2026-08-30")).toBe("Sun");
