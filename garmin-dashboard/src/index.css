@@ -331,6 +331,84 @@
    the stated preference for this theme. */
 :root[data-palette="graphite"] body::before { animation: none; }
 
+/* ── shadcn-big-calendar theming (HRA-143) ─────────────────────────────────
+   The vendor stylesheet (imported via "shadcn-big-calendar/styles") reads
+   its colors as hsl(var(--x)) — shadcn's own convention, which needs each
+   variable to hold a raw "H S% L%" triplet, not the hex values this app's
+   own tokens use everywhere else. These blocks are that triplet exactly
+   converted from the SAME per-theme×palette hex tokens above (bg/bg-card/
+   bg-surface/border/text-primary/text-secondary/accent/on-accent/accent-red)
+   — not a separate calendar palette, just the one notation the vendor's CSS
+   requires. Scoped entirely to .hra-agenda-calendar so these shadcn-named
+   variables (--accent, --border, etc. mean something different in shadcn's
+   vocabulary than this app's own --accent/--border) never leak outside the
+   calendar's own subtree. --radius is theme-invariant, set once below. */
+/* Bare fallback (Dark Metal's own values, mirroring :root's own
+   pre-attribute-resolution duplication above) — covers the brief window
+   before App.tsx's useAppearance() sets data-theme/data-palette on <html>. */
+.hra-agenda-calendar {
+  --radius: var(--radius-md);
+  --background: 220 49% 8%; --foreground: 208 35% 93%;
+  --card: 221 41% 12%; --card-foreground: 208 35% 93%;
+  --primary: 217 91% 60%; --primary-foreground: 0 0% 0%;
+  --secondary: 216 32% 15%; --secondary-foreground: 208 35% 93%;
+  --muted: 216 32% 15%; --muted-foreground: 214 21% 81%;
+  --accent: 216 32% 15%; --accent-foreground: 208 35% 93%;
+  --destructive: 0 84% 60%; --destructive-foreground: 0 0% 0%;
+  --border: 211 29% 23%; --input: 211 29% 23%; --ring: 217 91% 60%;
+}
+
+:root[data-theme="dark"][data-palette="metal"] .hra-agenda-calendar {
+  --background: 220 49% 8%; --foreground: 208 35% 93%;
+  --card: 221 41% 12%; --card-foreground: 208 35% 93%;
+  --primary: 217 91% 60%; --primary-foreground: 0 0% 0%;
+  --secondary: 216 32% 15%; --secondary-foreground: 208 35% 93%;
+  --muted: 216 32% 15%; --muted-foreground: 214 21% 81%;
+  --accent: 216 32% 15%; --accent-foreground: 208 35% 93%;
+  --destructive: 0 84% 60%; --destructive-foreground: 0 0% 0%;
+  --border: 211 29% 23%; --input: 211 29% 23%; --ring: 217 91% 60%;
+}
+:root[data-theme="dark"][data-palette="warm"] .hra-agenda-calendar {
+  --background: 213 27% 8%; --foreground: 33 47% 93%;
+  --card: 215 19% 13%; --card-foreground: 33 47% 93%;
+  --primary: 38 92% 50%; --primary-foreground: 0 0% 0%;
+  --secondary: 215 15% 16%; --secondary-foreground: 33 47% 93%;
+  --muted: 215 15% 16%; --muted-foreground: 50 17% 71%;
+  --accent: 215 15% 16%; --accent-foreground: 33 47% 93%;
+  --destructive: 0 84% 60%; --destructive-foreground: 0 0% 0%;
+  --border: 214 13% 21%; --input: 214 13% 21%; --ring: 38 92% 50%;
+}
+:root[data-theme="light"][data-palette="metal"] .hra-agenda-calendar {
+  --background: 210 33% 98%; --foreground: 221 39% 11%;
+  --card: 0 0% 100%; --card-foreground: 221 39% 11%;
+  --primary: 221 83% 53%; --primary-foreground: 0 0% 100%;
+  --secondary: 210 36% 96%; --secondary-foreground: 221 39% 11%;
+  --muted: 210 36% 96%; --muted-foreground: 221 15% 29%;
+  --accent: 210 36% 96%; --accent-foreground: 221 39% 11%;
+  --destructive: 0 72% 51%; --destructive-foreground: 0 0% 100%;
+  --border: 212 23% 85%; --input: 212 23% 85%; --ring: 221 83% 53%;
+}
+:root[data-theme="light"][data-palette="warm"] .hra-agenda-calendar {
+  --background: 38 44% 96%; --foreground: 215 28% 17%;
+  --card: 0 0% 100%; --card-foreground: 215 28% 17%;
+  --primary: 38 92% 50%; --primary-foreground: 0 0% 0%;
+  --secondary: 40 53% 97%; --secondary-foreground: 215 28% 17%;
+  --muted: 40 53% 97%; --muted-foreground: 217 14% 32%;
+  --accent: 40 53% 97%; --accent-foreground: 215 28% 17%;
+  --destructive: 0 61% 54%; --destructive-foreground: 0 0% 0%;
+  --border: 48 16% 88%; --input: 48 16% 88%; --ring: 38 92% 50%;
+}
+:root[data-palette="graphite"] .hra-agenda-calendar {
+  --background: 220 23% 3%; --foreground: 200 12% 95%;
+  --card: 220 23% 5%; --card-foreground: 200 12% 95%;
+  --primary: 202 10% 84%; --primary-foreground: 200 14% 4%;
+  --secondary: 218 18% 9%; --secondary-foreground: 200 12% 95%;
+  --muted: 218 18% 9%; --muted-foreground: 207 7% 67%;
+  --accent: 218 18% 9%; --accent-foreground: 200 12% 95%;
+  --destructive: 355 53% 55%; --destructive-foreground: 0 0% 0%;
+  --border: 216 11% 17%; --input: 216 11% 17%; --ring: 202 10% 84%;
+}
+
 html, body, #root { height: 100%; }
 
 body {

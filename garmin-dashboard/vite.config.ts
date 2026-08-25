@@ -12,6 +12,17 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
+      // shadcn-big-calendar's ESM build (HRA-143) re-exports
+      // withDragAndDrop from this exact bare specifier — a directory import
+      // with no "exports" map entry, which Vite's build/dev resolver
+      // tolerates but Node's own ESM resolver (used by Vitest for
+      // node_modules deps) rejects outright. We never use the DnD addon
+      // (the calendar is read-only by design), so this just points the
+      // broken specifier at its real entry file instead of pulling in a
+      // patch tool for one unused re-export.
+      "react-big-calendar/lib/addons/dragAndDrop": path.resolve(
+        __dirname, "node_modules/react-big-calendar/lib/addons/dragAndDrop/index.js",
+      ),
     },
   },
   // Vitest (T4/HRA-62). jsdom for React component tests; the setup file
@@ -22,6 +33,15 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     css: false,
+    // shadcn-big-calendar/react-big-calendar (HRA-143) are externalized by
+    // Vitest's default SSR resolution, which uses Node's own ESM resolver
+    // and ignores the resolve.alias above entirely — only deps actually run
+    // through Vite's own pipeline see it. Forcing them inline routes them
+    // through Vite instead, so the alias above (fixing a broken directory
+    // import in shadcn-big-calendar's ESM build) actually takes effect.
+    server: {
+      deps: { inline: [/shadcn-big-calendar/, /react-big-calendar/] },
+    },
   },
   server: {
     port: 5173,

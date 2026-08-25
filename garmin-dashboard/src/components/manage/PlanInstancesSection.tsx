@@ -32,6 +32,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
+import { PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
 import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
@@ -298,6 +299,14 @@ export function PlanInstancesSection({ templates }: Props) {
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
 
   const [sections, setSections] = useState<SectionView[]>([]);
+  // HRA-143: List/Agenda toggle for the currently-open row's own accordion —
+  // one shared state is enough since only one row is ever expanded at a
+  // time (activeKey). Default List (AC2) — the pre-existing accordion,
+  // unchanged; Agenda swaps it for a read-only calendar over the same
+  // `sections` data, no separate fetch. Not part of Draft/dirty-tracking —
+  // it's a view preference, not data, so switching rows doesn't need to
+  // stash/restore it.
+  const [viewMode, setViewMode] = useState<"list" | "agenda">("list");
   const [editError, setEditError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
@@ -1631,17 +1640,34 @@ export function PlanInstancesSection({ templates }: Props) {
         )}
 
         {sections.length > 0 && (
-          <TrainingPlanAccordion
-            ownerName={instName || t("manage.planTemplates.untitled", "Untitled plan")}
-            sections={sections}
-            onSectionEdit={() => {}}
-            onWeekEdit={() => {}}
-            onDayEdit={onDayEdit}
-            readOnlySectionWeek
-            readOnlyDays={isApproved}
-            onDaySwap={onDayDragSwap}
-            onWeekSwap={onWeekDragSwap}
-          />
+          <>
+            {/* HRA-143: List/Agenda toggle — same .hra-segment switch every
+                other in-view mode toggle in this app uses (Distance/Time in
+                ActivityChartSection, etc). Default List (AC2). */}
+            <div className="hra-segment" style={{ marginBottom: 12, width: "fit-content" }}>
+              <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
+                {t("manage.planInstances.viewList", "List")}
+              </button>
+              <button className="hra-segment-item" data-active={viewMode === "agenda"} onClick={() => setViewMode("agenda")}>
+                {t("manage.planInstances.viewAgenda", "Agenda")}
+              </button>
+            </div>
+            {viewMode === "list" ? (
+              <TrainingPlanAccordion
+                ownerName={instName || t("manage.planTemplates.untitled", "Untitled plan")}
+                sections={sections}
+                onSectionEdit={() => {}}
+                onWeekEdit={() => {}}
+                onDayEdit={onDayEdit}
+                readOnlySectionWeek
+                readOnlyDays={isApproved}
+                onDaySwap={onDayDragSwap}
+                onWeekSwap={onWeekDragSwap}
+              />
+            ) : (
+              <PlanInstanceCalendar sections={sections} />
+            )}
+          </>
         )}
 
         {pendingDaySwap != null && (() => {
