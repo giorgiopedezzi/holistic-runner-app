@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
   buildInstanceSectionView, buildTemplateSectionView, computeResolvedDayDistance,
-  computeTemplateDayDistance, getEffectivePacePolicy, groupResolvedDaysIntoSectionViews,
-  reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
+  computeResolvedDayMetrics, computeTemplateDayDistance, getEffectivePacePolicy,
+  groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
 } from "./runplan-aggregate";
 import type {
   DayEntry, PacePolicy, ResolvedDay, ResolvedSegment, Section, Target, Week, WorkoutSegment,
@@ -232,6 +232,69 @@ describe("reconstructDslFromResolvedDay (HRA-118)", () => {
       day: 6, suffix: "a", category: "double", workout_type: "cross",
       activity_target: { kind: "duration", duration_sec: 2700, raw: "45min" }, activity_description: "bike", notes: "easy spin",
     }))).toBe("D6a [double]: CROSS 45min bike # easy spin");
+  });
+});
+
+describe("computeResolvedDayMetrics (HRA-145)", () => {
+  function resolvedDay(overrides: Partial<ResolvedDay>): ResolvedDay {
+    return { section_name: "Base", week_number: 1, date: "2026-09-01", day: 3, workout_type: "run", needs_review: false, segments: [], ...overrides };
+  }
+
+  it("continuous: derives speed (3600/pace) and duration (distance/pace) from a resolved distance target", () => {
+    const seg: ResolvedSegment = { type: "continuous", target: target("distance", 6000), resolved_pace_sec_per_km: 300, raw: "6km @ RG" };
+    const metrics = computeResolvedDayMetrics(resolvedDay({ segments: [seg] }));
+    expect(metrics).toEqual({ totalDistanceM: 6000, minSpeedKmh: 12, maxSpeedKmh: 12, totalDurationSec: 1800 });
+  });
+
+  it("interval: multiplies work distance by reps, excludes the rest leg from speed but includes it in duration", () => {
+    const seg: ResolvedSegment = {
+      type: "interval", reps: 4, work_target: target("distance", 1000), work_resolved_pace_sec_per_km: 280,
+      rest: { target: target("distance", 1000), resolved_pace_sec_per_km: 310, raw: "r:1km @ RG+10" }, raw: "4x1000m @ RG-20 r:1km @ RG+10",
+    };
+    const metrics = computeResolvedDayMetrics(resolvedDay({ segments: [seg] }));
+    expect(metrics.totalDistanceM).toBe(4000); // 4 x 1000m, rest leg excluded
+    expect(metrics.minSpeedKmh).toBeCloseTo(3600 / 280); // work-leg pace only
+    expect(metrics.maxSpeedKmh).toBeCloseTo(3600 / 280);
+    expect(metrics.totalDurationSec).toBe((280 + 310) * 4); // work + rest, x4 reps — real elapsed clock time
+  });
+
+  it("progression: both start AND end pace count toward min/max speed; duration uses the start pace", () => {
+    const seg: ResolvedSegment = {
+      type: "progression", target: target("distance", 5000),
+      start_resolved_pace_sec_per_km: 300, end_resolved_pace_sec_per_km: 250, raw: "5km PROG RG -> RG-50",
+    };
+    const metrics = computeResolvedDayMetrics(resolvedDay({ segments: [seg] }));
+    expect(metrics.totalDistanceM).toBe(5000);
+    expect(metrics.minSpeedKmh).toBeCloseTo(3600 / 300); // 12
+    expect(metrics.maxSpeedKmh).toBeCloseTo(3600 / 250); // 14.4
+    expect(metrics.totalDurationSec).toBe((5000 / 1000) * 300); // start pace, mirrors the distance rule's own choice
+  });
+
+  it("unresolved anchor (distance target, null pace): speed and duration are excluded entirely, never treated as zero", () => {
+    // A distance-kind target's own distance is data, not pace-derived, so it
+    // still counts — only speed (needs a pace directly) and duration (needs
+    // pace to convert distance -> time) are unresolvable without one.
+    const seg: ResolvedSegment = { type: "continuous", target: target("distance", 5000), resolved_pace_sec_per_km: null, raw: "5km @ FL" };
+    const metrics = computeResolvedDayMetrics(resolvedDay({ segments: [seg] }));
+    expect(metrics).toEqual({ totalDistanceM: 5000, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 0 });
+  });
+
+  it("unresolved anchor (duration target, null pace): distance is excluded (needs pace to convert), but duration is the target's own known time, not pace-derived", () => {
+    const seg: ResolvedSegment = { type: "continuous", target: target("duration", 600), resolved_pace_sec_per_km: null, raw: "10min @ FL" };
+    const metrics = computeResolvedDayMetrics(resolvedDay({ segments: [seg] }));
+    expect(metrics).toEqual({ totalDistanceM: 0, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 600 });
+  });
+
+  it("REST/TODO days have no distance, no speed, and no duration", () => {
+    expect(computeResolvedDayMetrics(resolvedDay({ workout_type: "rest" }))).toEqual({ totalDistanceM: 0, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 0 });
+    expect(computeResolvedDayMetrics(resolvedDay({ workout_type: "todo" }))).toEqual({ totalDistanceM: 0, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 0 });
+  });
+
+  it("CROSS/STRENGTH: distance/duration come from activity_target directly, speed is never resolvable (no intensity concept)", () => {
+    const metrics = computeResolvedDayMetrics(resolvedDay({
+      workout_type: "cross", activity_target: { kind: "duration", duration_sec: 2700, raw: "45min" },
+    }));
+    expect(metrics).toEqual({ totalDistanceM: 0, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 2700 });
   });
 });
 

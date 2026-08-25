@@ -409,6 +409,23 @@
   --border: 216 11% 17%; --input: 216 11% 17%; --ring: 202 10% 84%;
 }
 
+/* Agenda-view day-cell bars + duration clock (HRA-145) — per-instance hook
+   pattern (Stat's accent prop, ChartPillLegend's per-series color): the
+   track/base visuals live here, --bar-fill/--clock-pct/--clock-fill are set
+   inline per bar/clock instance since their color (speedRampColor's
+   computed rgb()) or fill fraction can't be a static class value. Bar 1's
+   fixed --data-pace fill has no hook — it's genuinely static per the
+   Story's own Ask #2, so it's a plain modifier class instead. */
+.hra-agenda-bars { display: flex; flex-direction: column; gap: 1px; margin-top: 3px; width: 100%; }
+.hra-agenda-bar-track { position: relative; height: 2px; border-radius: 1px; background: var(--border); overflow: hidden; }
+.hra-agenda-bar-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--bar-fill); border-radius: 1px; }
+.hra-agenda-bar-fill--distance { background: var(--data-pace); }
+.hra-agenda-clock {
+  position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--clock-pct) * 1%), var(--border) 0);
+  border: 1px solid var(--bg-card);
+}
+
 html, body, #root { height: 100%; }
 
 body {

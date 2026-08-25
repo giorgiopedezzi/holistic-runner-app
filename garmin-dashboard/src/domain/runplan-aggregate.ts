@@ -158,6 +158,101 @@ export function computeResolvedDayDistance(day: ResolvedDay): DistanceTotal {
   return sumDistances(day.segments.map(distanceFromResolvedSegment));
 }
 
+// ── per-day metrics (HRA-145: agenda-view distance/speed/duration bars) ────
+// Speed formula per the Story: speed_kmh = 3600 / pace_sec_per_km. Mirrors
+// the distance rule's own documented assumptions (interval REST leg
+// excluded from speed characterization — a segment's speed describes its
+// WORK effort, not a recovery jog, same "4x1000m = 4km" volume convention;
+// progression's start AND end pace both count, since a progression genuinely
+// spans a pace range within one segment, unlike continuous/interval's single
+// value). A segment with no resolved pace is excluded from min/max entirely,
+// never treated as 0 (an unresolved anchor isn't "zero speed").
+
+function speedKmhFromPaceSecPerKm(paceSecPerKm: number): number {
+  return 3600 / paceSecPerKm;
+}
+
+function speedsFromResolvedSegment(seg: ResolvedSegment): number[] {
+  switch (seg.type) {
+    case "continuous":
+      return seg.resolved_pace_sec_per_km != null ? [speedKmhFromPaceSecPerKm(seg.resolved_pace_sec_per_km)] : [];
+    case "interval":
+      return seg.work_resolved_pace_sec_per_km != null ? [speedKmhFromPaceSecPerKm(seg.work_resolved_pace_sec_per_km)] : [];
+    case "progression": {
+      const speeds: number[] = [];
+      if (seg.start_resolved_pace_sec_per_km != null) speeds.push(speedKmhFromPaceSecPerKm(seg.start_resolved_pace_sec_per_km));
+      if (seg.end_resolved_pace_sec_per_km != null) speeds.push(speedKmhFromPaceSecPerKm(seg.end_resolved_pace_sec_per_km));
+      return speeds;
+    }
+    case "rest_block":
+      return []; // never carries an intensity
+  }
+}
+
+// The mirror image of distanceFromTarget (duration <-> distance swapped) —
+// a duration target's own duration_sec is used directly; a distance target
+// converts via the resolved pace when one is available; unknown is never
+// resolvable. Real session length (the agenda view's duration "clock"), not
+// part of the Jira Story's own Ask list — added per explicit follow-up
+// instruction alongside HRA-145 to show each day's duration relative to the
+// plan's longest single session.
+function durationFromTarget(target: Target, resolvedPaceSecPerKm: number | null | undefined): number | null {
+  if (target.kind === "unknown") return null;
+  if (target.kind === "duration") return target.duration_sec;
+  if (resolvedPaceSecPerKm == null) return null;
+  return (target.distance_m / M_PER_KM) * resolvedPaceSecPerKm;
+}
+
+function durationFromResolvedSegment(seg: ResolvedSegment): number | null {
+  switch (seg.type) {
+    case "continuous":
+      return durationFromTarget(seg.target, seg.resolved_pace_sec_per_km);
+    case "interval": {
+      if (seg.reps == null) return null;
+      const workDur = durationFromTarget(seg.work_target, seg.work_resolved_pace_sec_per_km);
+      if (workDur == null) return null;
+      // Unlike distance, the interval's rest leg IS real elapsed clock time
+      // on an actual run — included here, unlike speedsFromResolvedSegment.
+      const restDur = seg.rest ? durationFromTarget(seg.rest.target, seg.rest.resolved_pace_sec_per_km) : null;
+      return (workDur + (restDur ?? 0)) * seg.reps;
+    }
+    case "progression":
+      return durationFromTarget(seg.target, seg.start_resolved_pace_sec_per_km);
+    case "rest_block":
+      // Never carries an intensity — only resolvable when its own target is
+      // already duration-kind (e.g. "10min walk"), same as distance's rule.
+      return durationFromTarget(seg.target, null);
+  }
+}
+
+export interface ResolvedDayMetrics {
+  totalDistanceM: number;
+  minSpeedKmh: number | null;
+  maxSpeedKmh: number | null;
+  totalDurationSec: number;
+}
+
+export function computeResolvedDayMetrics(day: ResolvedDay): ResolvedDayMetrics {
+  const totalDistanceM = computeResolvedDayDistance(day).meters;
+  if (day.workout_type === "cross" || day.workout_type === "strength") {
+    // Mirrors computeResolvedDayDistance's own dispatch: CROSS/STRENGTH
+    // never carry an intensity, so speed is never resolvable for them; a
+    // duration IS directly usable when activity_target is itself
+    // duration-kind (no pace needed to convert it).
+    const durationSec = day.activity_target?.kind === "duration" ? day.activity_target.duration_sec : 0;
+    return { totalDistanceM, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: durationSec };
+  }
+  if (day.workout_type !== "run") return { totalDistanceM, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 0 };
+  const speeds = day.segments.flatMap(speedsFromResolvedSegment);
+  const durations = day.segments.map(durationFromResolvedSegment).filter((d): d is number => d != null);
+  return {
+    totalDistanceM,
+    minSpeedKmh: speeds.length > 0 ? Math.min(...speeds) : null,
+    maxSpeedKmh: speeds.length > 0 ? Math.max(...speeds) : null,
+    totalDurationSec: durations.reduce((a, b) => a + b, 0),
+  };
+}
+
 // ── day-count categorization + combined totals ──────────────────────────
 
 export interface AggregateTotals {
@@ -228,6 +323,16 @@ export interface DayView {
   // has no date until instantiated). HRA-118 needs this to build each day's
   // PUT /api/v1/plan-instances/:id body ({section_name, week_number, date, dsl}).
   date?: string;
+  // HRA-145: speed/duration metrics for the agenda-view bars — only ever
+  // set on the instance path (buildInstanceSectionView), since it needs a
+  // ResolvedDay's resolved segments; a template DayEntry has unresolved
+  // Intensity values with no speed concept yet, so this stays undefined
+  // there. `distance` above already exists independently for the
+  // accordion's own totals display — `metrics.totalDistanceM` duplicates
+  // that same number for the instance path rather than threading a second
+  // prop through PlanInstanceCalendar, since both call the same underlying
+  // computeResolvedDayDistance internally.
+  metrics?: ResolvedDayMetrics;
 }
 
 // Local alias so this file doesn't need to import ParseWarning just for this one signature.
@@ -298,6 +403,7 @@ export function buildInstanceSectionView(
       day: day.day, suffix: day.suffix, category: day.category, workout_type: day.workout_type,
       dsl: day.dsl, notes: day.notes, needs_review: day.needs_review, warnings: [],
       distance: computeResolvedDayDistance(day), date: day.date,
+      metrics: computeResolvedDayMetrics(day),
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,
