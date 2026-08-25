@@ -110,6 +110,22 @@ function mondayBasedWeekday(dateISO: string): number {
   return (new Date(`${dateISO}T00:00:00Z`).getUTCDay() + 6) % 7;
 }
 
+// HRA-130: the same non-blocking week-1 Monday-anchor check the instantiate
+// form's week1AnchorMismatch already does (HRA-124), but for the editor —
+// computed straight from the loaded instance's own resolved days (real
+// calendar dates + D-numbers already persisted) rather than re-parsing the
+// template DSL and a live startDate; the instance itself is the source of
+// truth for what actually got created. Checked per section (a plan can have
+// more than one "week 1" if a section restarts its own numbering), any
+// mismatch anywhere is enough to show the warning.
+function editorWeek1AnchorMismatch(sections: SectionView[]): boolean {
+  return sections.some(section => section.weeks.some(week => {
+    if (week.number !== 1 || week.days.length === 0) return false;
+    const k0Day = week.days.reduce((min, d) => (d.day < min.day ? d : min));
+    return k0Day.date != null && mondayBasedWeekday(k0Day.date) !== (k0Day.day - 1) % 7;
+  }));
+}
+
 // Every field in the instantiate form goes through this — label is always a
 // block above its control (never beside it), enforced structurally by the
 // column flex layout rather than left to each call site to get right.
@@ -723,7 +739,7 @@ export function PlanInstancesSection({ templates }: Props) {
           {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
         </div>
         {week1AnchorMismatch && (
-          <div style={{ fontSize: 11, color: "var(--accent-orange)", marginBottom: 16 }}>
+          <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 16 }}>
             {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
           </div>
         )}
@@ -922,6 +938,7 @@ export function PlanInstancesSection({ templates }: Props) {
   // instance stays fully viewable/retrievable, only the editing affordances
   // go away.
   const isApproved = editApprovedAt != null;
+  const editWeek1AnchorMismatch = editorWeek1AnchorMismatch(sections);
 
   return (
     <Card>
@@ -950,6 +967,16 @@ export function PlanInstancesSection({ templates }: Props) {
       </div>
 
       {editError && <ErrorBanner message={editError} />}
+
+      {/* HRA-130: same (non-blocking) warning/style the instantiate form
+          shows, recomputed from this instance's own loaded days — visible
+          regardless of approval state, since it's informational only and
+          never gates Save/Approve (isApproved already governs those). */}
+      {editWeek1AnchorMismatch && (
+        <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 12 }}>
+          {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
+        </div>
+      )}
 
       {/* HRA-127: day/week swap — only available while unapproved (AC3), a
           per-picker "swap with…" selector (the interaction pattern was left
