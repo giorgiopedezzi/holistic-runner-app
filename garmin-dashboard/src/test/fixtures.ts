@@ -7,7 +7,9 @@
 import type {
   Activity, SportSummary, BodyMeasurement, CorrelationPoint,
   Settings, TrackPoint, WithingsStatus, StravaStatus, DeviceStatus, DateRange,
+  PlanTemplate, PlanInstance, PlanInstanceDay,
 } from "@/types/api";
+import type { RunPlan } from "@/types/runplan";
 
 export const REFERENCE_ACTIVITY_ID = 200;
 
@@ -132,5 +134,66 @@ export const stravaStatus = (overrides: Partial<StravaStatus> = {}): StravaStatu
 export const deviceStatus = (overrides: Partial<DeviceStatus> = {}): DeviceStatus => ({
   connected: false,
   reason: "No Garmin device detected",
+  ...overrides,
+});
+
+// HRA-166: minimal fixtures for PlanInstancesSection's characterization
+// tests. collectPlanAnchors (domain/runplan-aggregate.ts) reads a template's
+// pace anchors from metadata.pace_policy plus every section/week/day, so a
+// template with an empty `sections: []` and one metadata anchor is a valid,
+// minimal fixture — PlanInstancesSection never renders the template's own
+// day/week structure, only an instance's (separately-fetched) days.
+export const planTemplateRunPlan = (overrides: Partial<RunPlan["metadata"]> = {}): RunPlan => ({
+  metadata: {
+    unit: "km", offset_unit: "s/km", default_rest: "jog",
+    pace_policy: { RG: { kind: "absolute", pace_sec_per_km: 330 } },
+    ...overrides,
+  },
+  sections: [],
+});
+
+export const planTemplate = (overrides: Partial<PlanTemplate> = {}): PlanTemplate => ({
+  id: 1,
+  name: "5K Base",
+  dsl_source: "PACE RG 5:30/km",
+  parsed_plan: JSON.stringify(planTemplateRunPlan()),
+  event: "5k",
+  approved_at: "2026-08-01T00:00:00Z",
+  created_at: "2026-08-01T00:00:00Z",
+  ...overrides,
+});
+
+export const planInstance = (overrides: Partial<PlanInstance> = {}): PlanInstance => ({
+  id: 10,
+  template_id: 1,
+  start_date: "2026-09-01",
+  pace_overrides: null,
+  target_activity_id: null,
+  approved_at: null,
+  name: "My Plan",
+  event: "5k",
+  race_name: null,
+  race_date: null,
+  race_url: null,
+  created_at: "2026-08-20T00:00:00Z",
+  ...overrides,
+});
+
+export const planInstanceDay = (overrides: Partial<PlanInstanceDay> = {}): PlanInstanceDay => ({
+  id: 100,
+  instance_id: 10,
+  section_name: "Base",
+  week_number: 1,
+  date: "2026-09-01",
+  day: 1,
+  suffix: null,
+  category: null,
+  workout_type: "run",
+  segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, resolved_pace_sec_per_km: 330, raw: "5km @ RG" }]),
+  activity_target: null,
+  activity_description: null,
+  notes: null,
+  needs_review: 0,
+  scheduled_time: null,
   ...overrides,
 });
