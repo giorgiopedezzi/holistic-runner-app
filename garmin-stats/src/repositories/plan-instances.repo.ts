@@ -48,10 +48,20 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   `);
   const updateDayNotesStmt = db.prepare("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
   const updateDayScheduledTimeStmt = db.prepare("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
-  // HRA-132: deletes only the cutover-and-later slice of an instance's days —
-  // everything before `fromDate` is left completely untouched (protects
-  // already-logged history), the caller re-inserts the regenerated slice.
-  const deleteDaysFromDateStmt = db.prepare("DELETE FROM plan_instance_days WHERE instance_id = ? AND date >= ?");
+  // HRA-155: replaces the earlier HRA-132 `deleteDaysFromDate` (a raw
+  // `date >= fromDate` threshold) — that comparison silently broke whenever
+  // `start_date` changed as part of the same regenerate call, since the OLD
+  // rows' dates and the FRESHLY regenerated rows' dates are then computed
+  // from two different baselines, so a single date threshold can't reliably
+  // tell which old row a fresh one is replacing (produced orphaned stale
+  // rows and/or duplicate rows for the same day). Deleting by day identity
+  // instead — the caller only ever calls this once per day about to be
+  // (re)inserted (services/plan-instances.service.ts's regenerateFrom) — so
+  // that day's previous row, whatever date it happened to carry, is always
+  // removed first, with no dependence on dates lining up across the change.
+  const deleteDayByIdentityStmt = db.prepare(
+    "DELETE FROM plan_instance_days WHERE instance_id = ? AND section_name = ? AND week_number = ? AND day = ?",
+  );
   const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
   const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
@@ -99,7 +109,9 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     // services/plan-instances.service.ts, which owns the transaction — these
     // are the single-statement primitives it composes (rest-api-standards §11).
     deleteDaysByInstance: (instanceId: number) => { deleteDaysByInstanceStmt.run(instanceId); },
-    deleteDaysFromDate: (instanceId: number, fromDate: string) => { deleteDaysFromDateStmt.run(instanceId, fromDate); },
+    deleteDayByIdentity: (instanceId: number, sectionName: string, weekNumber: number, day: number) => {
+      deleteDayByIdentityStmt.run(instanceId, sectionName, weekNumber, day);
+    },
     clearApproval: (id: number) => { clearApprovalStmt.run(id); },
     // HRA-135: PATCH /api/v1/plan-instances/:id — each field is applied only
     // if the caller actually supplied it (checked via `!== undefined`, not

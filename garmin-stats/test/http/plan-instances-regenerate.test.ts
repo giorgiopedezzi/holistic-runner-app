@@ -121,6 +121,52 @@ test("POST .../regenerate with a new start_date shifts only the days on/after th
   }
 });
 
+// HRA-155: reproduces the duplicate/orphan bug directly — no need to
+// simulate the historical pre-HRA-122 data corruption. The bug fires
+// whenever, for some day identity, its OLD stored date falls BEFORE
+// effective_from while its FRESHLY regenerated date falls ON/AFTER it (the
+// two dates are computed from different start_date baselines once
+// start_date changes, so a single date threshold can't tell the old row is
+// being superseded). Shifting start_date 2 days later and picking
+// effective_from = today guarantees at least one day (today-2 or today-1
+// under the OLD schedule) straddles exactly that boundary — the fixture's
+// every-calendar-day coverage (D1 declared + 6 auto-filled REST days) means
+// some day identity always lands there.
+test("POST .../regenerate with a start_date shift never duplicates or orphans a day identity", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, originalDays } = await setUp(server);
+    const newStartDate = addDays(pastStart, 2);
+    const straddling = originalDays.find(d => d.date === addDays(today, -2) || d.date === addDays(today, -1));
+    assert.ok(straddling, "fixture must cover a day whose old date falls in [today-2, today-1]");
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/regenerate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ start_date: newStartDate, effective_from: today }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const after = (res.json as any).days as any[];
+
+    const matches = after.filter(d =>
+      d.section_name === straddling.section_name && d.week_number === straddling.week_number && d.day === straddling.day,
+    );
+    assert.equal(matches.length, 1, `expected exactly one row for ${straddling.section_name}/week ${straddling.week_number}/day ${straddling.day}, got ${matches.length}`);
+    assert.equal(matches[0].date, addDays(straddling.date, 2), "the surviving row must carry the freshly regenerated date, not the stale one");
+
+    // No duplicate identity anywhere in the full result, not just the one
+    // day picked above — the fixture spans every calendar day in range, so
+    // this exercises the whole cutover boundary at once.
+    const seen = new Set<string>();
+    for (const d of after) {
+      const key = `${d.section_name} ${d.week_number} ${d.day}`;
+      assert.ok(!seen.has(key), `duplicate row for ${key}`);
+      seen.add(key);
+    }
+  } finally {
+    await server.close();
+  }
+});
+
 test("POST .../regenerate with new pace_overrides re-resolves the regenerated days' pace", async () => {
   const server = await startTestServer();
   try {

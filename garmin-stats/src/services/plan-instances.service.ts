@@ -151,7 +151,19 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
 
     db.exec("BEGIN");
     try {
-      instances.deleteDaysFromDate(instanceId, effectiveFrom);
+      // HRA-155: delete each regenerated day's previous row by identity
+      // (section_name/week_number/day), not by a date threshold — see
+      // deleteDayByIdentity's own comment in the repo for why a raw date
+      // comparison breaks once start_date changes in this same call. Every
+      // day in `regeneratedDays` already passed the `date >= effectiveFrom`
+      // filter above using its FRESH date, so this only ever touches days
+      // actually being regenerated; a day whose fresh date falls before the
+      // cutover is excluded from `regeneratedDays` entirely and its old row
+      // (whatever identity) is left completely untouched, preserving the
+      // "protects already-logged history" guarantee.
+      for (const day of regeneratedDays) {
+        instances.deleteDayByIdentity(instanceId, day.section_name, day.week_number, day.day);
+      }
       for (const day of regeneratedDays) {
         instances.createDay({
           instance_id: instanceId,

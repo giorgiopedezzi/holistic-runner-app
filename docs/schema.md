@@ -191,7 +191,23 @@ weekday doesn't land `trueMonday` on an actual Monday, the New Instance form sho
 warning (never a save-blocking one — a separate class from the DSL zero-warning gate above).
 **Per-day date (HRA-122):** each day's concrete `date` is `week.start_date + (day.day - 1)` days
 (`D1` = the week's start date, `D7` = 6 days later) — before HRA-122 every day in a week was
-persisted with the identical `week.start_date`, a bug. **Auto-filled rest days (HRA-124):** any
+persisted with the identical `week.start_date`, a bug.
+
+**Regenerate deletes by day identity, not date (HRA-155):** `POST /api/v1/plan-instances/:id/regenerate`
+(below) replaces the cutover-and-later slice of an instance's days by deleting each regenerated
+day's previous row keyed on `(instance_id, section_name, week_number, day)`
+(`plan-instances.repo.ts`'s `deleteDayByIdentity`) — **not** a raw `date >= effective_from`
+threshold (the original HRA-132 implementation). A date-threshold delete silently breaks the moment
+`start_date` changes as part of the same regenerate call: the OLD rows' dates and the FRESHLY
+regenerated rows' dates are then computed from two different baselines, so one date threshold can't
+reliably tell which old row a fresh one supersedes — it produced orphaned stale rows and/or
+duplicate rows for the same day. `garmin-stats/src/jobs/cleanup-plan-instance-day-dates.ts`
+(`npm run cleanup:plan-instance-dates`) is the one-time script that repaired the rows already
+corrupted by this bug (and by the pre-HRA-122 bug above) at the time it was fixed — safe to rerun
+(it's idempotent: recomputes each day's correct date from the template + instance's own `start_date`
+and only touches rows that actually disagree), but not part of any regular sync/migration path.
+
+**Auto-filled rest days (HRA-124):** any
 D-number 1-7 a week doesn't declare is generated as an extra `workout_type: "rest"` row for that
 week, dated the same way, with `notes` set to the instantiate request's `rest_day_label` (if any) and
 a single synthetic `rest_block` segment carrying `rest_type` from the template's `DEFAULT_REST`
