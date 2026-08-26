@@ -19,4 +19,4 @@ paths:
 - Respect the architecture pipeline: `http/ → controllers/ → services/ → repositories/`; `domain/` stays pure/no-I/O.
 - Naming: integration/client modules are nouns; executable jobs/commands are verbs.
 
-Before changing backend behavior, read the relevant routed document from root `CLAUDE.md` (`docs/api.md`, `docs/schema.md`, or `docs/ingestion.md`).
+Before changing backend behavior, read the relevant routed document from root `AGENTS.md` (`docs/api.md`, `docs/schema.md`, or `docs/ingestion.md`).

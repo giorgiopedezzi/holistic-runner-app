@@ -1,37 +1,60 @@
-# Migration notes
+# Migration notes — Claude Code + Codex
 
-This restructuring intentionally changes **where** instructions load, not the product behavior they describe.
+## What changes
 
-## Files
+1. Root `AGENTS.md` becomes the global source of truth.
+2. Root `CLAUDE.md` becomes a thin adapter containing `@AGENTS.md`.
+3. Existing `.claude/rules/*.md` remain the single source of truth for path-specific invariants.
+4. Codex gets two repo skills:
+   - `.agents/skills/implement-story/SKILL.md`
+   - `.agents/skills/generate-user-stories/SKILL.md`
+5. Codex gets project-local `.codex/config.toml` with safe workspace defaults and Atlassian Rovo MCP.
+6. Existing `docs/*.md` remain unchanged.
+7. `docs/agent-workflow.md` is not used.
 
-- `CLAUDE.md` — global invariants only; intended to remain under ~200 lines.
-- `.claude/rules/backend.md` — backend-only invariants.
-- `.claude/rules/frontend.md` — frontend stack/React/styling/UI behavior.
-- `.claude/rules/frontend-i18n.md` — i18n invariants, separated so CSS-only work does not pay for i18n detail.
-- `.claude/rules/fit-parser.md` — FIT anti-regression field/clock rules.
-- `.claude/rules/api-contract.md` — router/OpenAPI synchronization.
-- `/implement-story` — existing authority for Story execution, effort handling, Jira writes, issue links, checklist edits, and review workflow. **No `docs/agent-workflow.md` is needed.**
+## Why no nested AGENTS.md files
 
-## Intentionally removed from always-loaded context
+Codex builds its AGENTS instruction chain when a run/session starts, from the repository root down to the **current working directory**. If Codex is launched from the repo root, putting `AGENTS.md` under `garmin-stats/` or `garmin-dashboard/` would not give dynamic path-trigger behavior when Codex later reads those files.
 
-- `Known issues / open tasks`: this contradicted the existing “status does not live here” rule. Keep live state in Jira or `sessions/*.md`.
-- historical rationale and incident narration where the invariant can stand on its own.
-- long Jira option/mechanics tables and effort implementation detail; these belong in the existing `/implement-story` skill when they are needed for Story work.
+Therefore path-specific rules stay centralized in `.claude/rules/`:
+- Claude applies them natively via `paths:`.
+- Codex reads the applicable same files before editing.
 
-## Before replacing the existing file
+This avoids two diverging copies of the same invariants.
 
-Diff this package against the live repo because the original `CLAUDE.md` itself requires file/script claims to be verified before preserving them. In particular, confirm:
+## New dual-agent gate
 
-- current source tree and package scripts;
-- whether `frontend-standards` has since been created;
-- whether Jira field option IDs/labels have changed;
-- that `/implement-story` contains every Story/Jira/effort invariant removed from the old `CLAUDE.md`. If anything is missing, merge it into the skill rather than creating `docs/agent-workflow.md`.
+For new Stories, `Agent` is treated as mandatory alongside Model and Planned effort:
+- `Claude Code`
+- `Codex`
 
-## Final authority split
+The active harness must match Jira. Mismatch = STOP.
 
-- `CLAUDE.md` = global guardrails that must be known in every session.
-- `.claude/rules/*.md` = path-scoped guardrails that matter only for matching code.
-- `docs/*.md` = descriptive system knowledge read on demand.
-- `/implement-story` = procedural Story/Jira/effort authority loaded when executing Story work.
+This is intentionally human routing, not an automated router.
 
-This keeps a single authority per concern and avoids duplicating the Story workflow in both `docs/` and the skill.
+## Jira Model options
+
+Add:
+- `gpt-5.6-sol`
+- `gpt-5.6-terra`
+- `gpt-5.6-luna`
+
+Keep:
+- `claude-sonnet-5`
+- `claude-opus-5`
+
+## Effort compatibility
+
+Keep the Jira ladder `low / medium / high / xhigh / max`.
+
+Important: current Codex local config documentation exposes reasoning effort through `xhigh`, even though the GPT-5.6 API family supports `max`. The Codex skill therefore refuses a `max` Story when the running client cannot explicitly select it. No silent downgrade.
+
+## One policy addition to review
+
+`AGENTS.md` sets `Agent` as mandatory for Stories entering Ready to Develop from `2026-08-26`.
+
+If you prefer a different policy epoch, change that date in:
+- `AGENTS.md`
+- `.agents/skills/implement-story/SKILL.md`
+
+Do not backfill older Stories.
