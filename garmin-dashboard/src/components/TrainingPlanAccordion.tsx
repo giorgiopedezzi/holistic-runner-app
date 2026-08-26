@@ -81,7 +81,11 @@ function refsEqual<TRef>(a: TRef, b: TRef): boolean {
 // A lightweight "is a valid drop target hovering over me" boolean drives
 // the `.hra-swap-drop-target` outline (index.css) — visual feedback only,
 // never persisted state.
-function useDragSwap<TRef>(ref: TRef | undefined, onSwap: ((a: TRef, b: TRef) => void) | undefined) {
+// HRA-152: exported so PlanInstanceCalendar.tsx's Agenda-view day cells can
+// reuse this same generic drag-and-drop mechanics for their own day swap —
+// "no new swap logic, only a new UI entry point" (the Story's own Ask #1)
+// applies just as much to this hook as to swapDaysByRef/swapDayContent.
+export function useDragSwap<TRef>(ref: TRef | undefined, onSwap: ((a: TRef, b: TRef) => void) | undefined) {
   const [isDragOver, setIsDragOver] = useState(false);
   const swappable = ref != null && onSwap != null;
   if (!swappable) return { swappable: false as const, isDragOver: false, handlers: {} };

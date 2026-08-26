@@ -930,6 +930,18 @@ already were, for the same "stable identity, no remount-per-cell-render" reason.
 is what resolves "which day is this cell" — the vendor's `dateHeader` prop only ever supplies a
 `Date`, no link back to the resolved day.
 
+**Agenda view's day swap (HRA-152)**: `DayCellEvent` (`PlanInstanceCalendar.tsx`) is now draggable —
+reuses `TrainingPlanAccordion.tsx`'s own `useDragSwap` hook verbatim (exported for this, rather than
+a second drag-and-drop implementation) keyed by the event's own `dayId`, since this component has no
+section/week/day index of its own. Every day type is draggable (including REST/TODO — day swap was
+never workout-only in the List view either), gated on `!readOnlyDays`. `PlanInstancesSection.tsx`'s
+`onDayDragSwapByDayId` resolves both sides' `dayId` to `{sectionIndex, weekIndex, dayIndex}` via the
+same `findDayIndicesById` HRA-151 built, then delegates to the List view's own `onDayDragSwap` — same
+`pendingDaySwap` confirm-modal state, same `swapDaysByRef`/`swapDayContent` core, same `notify()` on
+completion (HRA-127's own mutation, unmodified). **Week swap has no Agenda entry point, by explicit
+product decision** (a month grid spans multiple visual rows per week, unlike List's linear layout) —
+not implemented here, not a gap.
+
 `TemplateDayRow` (`day.date == null`) is the original accordion-with-textarea layout, verbatim,
 unmodified — templates were out of this Story's scope. The split into two components (rather than
 one `DayEditor` with an early return) exists specifically so each branch's `useState`/`useDragSwap`

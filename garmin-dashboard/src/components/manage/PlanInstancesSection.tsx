@@ -992,6 +992,18 @@ export function PlanInstancesSection({ templates }: Props) {
   function onDayDragSwap(a: DayRef, b: DayRef) {
     setPendingDaySwap({ a, b });
   }
+  // HRA-152: PlanInstanceCalendar's own drag-and-drop only ever has each
+  // side's backend dayId (see its own Props comment) — resolves both to the
+  // {sectionIndex, weekIndex, dayIndex} refs onDayDragSwap above needs via
+  // the same findDayIndicesById HRA-151 already built for scheduled_time,
+  // then delegates to it. Same pending-confirm modal, same swapDaysByRef
+  // core, same notify() — only the entry point is new (Ask #1).
+  function onDayDragSwapByDayId(aDayId: number, bDayId: number) {
+    const aRef = findDayIndicesById(aDayId);
+    const bRef = findDayIndicesById(bDayId);
+    if (!aRef || !bRef) return;
+    onDayDragSwap(aRef, bRef);
+  }
   function onWeekDragSwap(a: WeekRef, b: WeekRef) {
     setPendingWeekSwap({ a, b });
   }
@@ -1728,7 +1740,10 @@ export function PlanInstancesSection({ templates }: Props) {
                 onScheduledTimeEdit={onScheduledTimeEdit}
               />
             ) : (
-              <PlanInstanceCalendar sections={sections} readOnlyDays={isApproved} onScheduledTimeEdit={onScheduledTimeEditByDayId} />
+              <PlanInstanceCalendar
+                sections={sections} readOnlyDays={isApproved}
+                onScheduledTimeEdit={onScheduledTimeEditByDayId} onDaySwap={onDayDragSwapByDayId}
+              />
             )}
           </>
         )}

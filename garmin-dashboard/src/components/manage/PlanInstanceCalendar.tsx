@@ -32,7 +32,7 @@ import {
   Activity, AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3,
   Feather, Gauge, Info, Repeat, Route, TrendingUp, Zap,
 } from "lucide-react";
-import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
+import { DAY_PREFIX_RE, useDragSwap } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
 import { fmtElapsedClock } from "@/domain/activity-chart";
 import type { SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
@@ -267,13 +267,26 @@ interface AgendaSummary { workouts: number; runs: number; rest: number; distance
 // classifyResolvedDay's category (HRA-148 Ask #1), not raw workout_type —
 // `todo` is the one exception, kept on its own dedicated label/icon since
 // it isn't a real category (see TODO_LABEL_KEY above).
-function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: GaugeScaling }) {
+// HRA-152: day swap between two Agenda cells, mirroring the List view's own
+// HRA-127-follow-up drag-and-drop (TrainingPlanAccordion.tsx's useDragSwap,
+// reused verbatim — see its own export comment) rather than a second DnD
+// implementation. Draggable by the event's own backend `dayId` (this
+// component has no section/week/day index of its own — PlanInstancesSection
+// resolves those from the id, same pattern HRA-151's onScheduledTimeEdit
+// already established). Gated on `!readOnlyDays` (Ask #3); every day type
+// (including REST/TODO) is draggable, matching the List view's own
+// unconditional per-row wiring — day swap was never workout-only there.
+function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
+  event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean; onDaySwap?: (a: number, b: number) => void;
+}) {
   const { t } = useTranslation();
+  const drag = useDragSwap(event.dayId, readOnlyDays ? undefined : onDaySwap);
+  const dragProps = { ...drag.handlers, style: drag.swappable ? { cursor: "grab" as const } : undefined };
 
   if (event.workoutType === "todo") {
     const [key, fallback] = TODO_LABEL_KEY;
     return (
-      <span className="hra-agenda-rest-row">
+      <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <CircleHelp size={13} />
         {t(key, fallback)}
       </span>
@@ -286,7 +299,7 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
 
   if (event.workoutType === "rest") {
     return (
-      <span className="hra-agenda-rest-row">
+      <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <Icon size={13} />
         {categoryLabel}
       </span>
@@ -306,7 +319,10 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
   const dslSegments = splitDslSegments(event.title);
 
   return (
-    <span className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? ""}`}>
+    <span
+      className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? ""}${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
+      {...dragProps}
+    >
       <span className="hra-agenda-event-main-row" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
         <span title={categoryLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
           <Icon size={12} />
@@ -511,9 +527,15 @@ interface Props {
   // instead of an <input>, same pattern InstanceDayRow's own fields use.
   readOnlyDays: boolean;
   onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
+  // HRA-152: day swap between two Agenda cells — see DayCellEvent's own
+  // comment. Both dayIds are the dragged/dropped days' own backend ids;
+  // PlanInstancesSection resolves them to the {sectionIndex, weekIndex,
+  // dayIndex} refs swapDaysByRef needs and stages the same pending-confirm
+  // modal the List view's own drag-and-drop already uses.
+  onDaySwap: (aDayId: number, bDayId: number) => void;
 }
 
-export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEdit }: Props) {
+export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEdit, onDaySwap }: Props) {
   const events = useMemo(() => eventsFromSections(sections), [sections]);
   // HRA-151: AgendaDateHeader gets one calendar Date per render (react-big-
   // calendar's own dateHeader contract) with no direct link back to "this
@@ -573,8 +595,8 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   // remount (not just re-render) every visible day cell / the toolbar each
   // time this component re-renders.
   const EventComponent = useMemo(
-    () => (props: { event: CalendarEvent }) => <DayCellEvent {...props} scaling={scaling} />,
-    [scaling],
+    () => (props: { event: CalendarEvent }) => <DayCellEvent {...props} scaling={scaling} readOnlyDays={readOnlyDays} onDaySwap={onDaySwap} />,
+    [scaling, readOnlyDays, onDaySwap],
   );
   const ToolbarComponent = useMemo(
     () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => <AgendaToolbar {...props} summary={summary} />,
