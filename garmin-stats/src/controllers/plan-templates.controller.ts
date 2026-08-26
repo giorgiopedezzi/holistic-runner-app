@@ -22,10 +22,13 @@ import type { DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/
 import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
-import { badRequest, notFound, unprocessable } from "../http/problem.ts";
+import { badRequest, conflict, notFound, unprocessable } from "../http/problem.ts";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const GOAL_TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
+// HRA-149: scheduled_time is HH:MM, 24-hour, no seconds — distinct from
+// GOAL_TIME_RE above (HH:MM:SS, an elapsed duration, not a time of day).
+const SCHEDULED_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 // Mirrors the standard-distance seed values in db.ts's activity_types table
 // (5k/10k/half/marathon) — custom has no fixed distance, which is why
@@ -42,6 +45,11 @@ function parseId(pathname: string): number {
 function parseIdForAction(pathname: string): number {
   const parts = pathname.split("/");
   return Number(parts[parts.length - 2]);
+}
+// /api/v1/plan-instances/:id/days/:dayId — both ids are fixed-position segments.
+function parseInstanceAndDayId(pathname: string): { instanceId: number; dayId: number } {
+  const parts = pathname.split("/");
+  return { instanceId: Number(parts[4]), dayId: Number(parts[6]) };
 }
 
 type TemplateBody = Partial<{ name: string; event: string; distance_m: number; dsl_source: string }>;
@@ -79,6 +87,13 @@ type InstanceUpdateBody = Partial<{
 // both optional, falling back to the instance's own current value for
 // whichever is omitted.
 type RegenerateBody = Partial<{ start_date: string; pace_overrides: Record<string, string>; effective_from: string }>;
+// HRA-149: PATCH /api/v1/plan-instances/:id/days/:dayId — a smaller, more
+// honest write than the bulk days-replace above: one field's worth of edit
+// on one already-existing day. All optional (at least one required); dsl is
+// re-parsed+resolved the same way the bulk day-replace path does, notes and
+// scheduled_time are independent columns (notes overrides whatever the dsl
+// parse itself produced, when both are supplied in the same request).
+type DayPatchBody = Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>;
 
 // HRA-113: nothing in the tree is a hard error anymore — walk plan-scoped
 // (ParseResult.warnings) plus every day's own DayEntry.warnings so a 422 body
@@ -448,6 +463,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
           activity_target: resolved.activity_target ? JSON.stringify(resolved.activity_target) : null,
           activity_description: resolved.activity_description ?? null, notes: resolved.notes ?? null,
           needs_review: resolved.needs_review ? 1 : 0,
+          // HRA-149: a wholesale days replace never backfills scheduled_time —
+          // NULL reads as the 08:00 display default until set via the
+          // per-day PATCH.
+          scheduled_time: null,
         });
       }
       if (flagged.length > 0) {
@@ -457,6 +476,83 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
     const { instance: updated, days } = instancesService.patchInstance(id, fields, dayInputs);
     return send(res, { ...updated, days });
+  };
+
+  // PATCH /api/v1/plan-instances/:id/days/:dayId (HRA-149) — a single day's
+  // dsl/notes/scheduled_time, independently. Rejected outright on an already-
+  // approved instance (mirrors HRA-126's intended "editable only until
+  // approved" lock, which the earlier Story only enforced client-side). dsl,
+  // when supplied, is re-parsed+resolved against this day's own existing
+  // section/week/date scope and the template's effective PacePolicy — same
+  // logic as the bulk days-replace path in patchInstance above, just for one
+  // day instead of the whole set. Never touches or re-instantiates the
+  // source template.
+  const patchInstanceDay: Handler = async (req, res, url) => {
+    const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
+    if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
+    const instance = instancesRepo.instanceById(instanceId);
+    if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
+    if (instance.approved_at) throw conflict("This instance is approved and its days can no longer be edited.");
+    const day = instancesRepo.dayById(dayId);
+    if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
+
+    const body = await readJsonBody<DayPatchBody>(req);
+    const hasDsl = "dsl" in body;
+    const hasNotes = "notes" in body;
+    const hasScheduledTime = "scheduled_time" in body;
+    if (!hasDsl && !hasNotes && !hasScheduledTime) {
+      throw unprocessable("At least one of dsl, notes, scheduled_time is required.");
+    }
+
+    let scheduledTime: string | null | undefined;
+    if (hasScheduledTime) {
+      if (body.scheduled_time != null && !SCHEDULED_TIME_RE.test(body.scheduled_time)) {
+        throw unprocessable("scheduled_time must be in HH:MM 24-hour format.");
+      }
+      scheduledTime = body.scheduled_time ?? null;
+    }
+
+    let dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined;
+    if (hasDsl) {
+      if (!body.dsl?.trim()) throw unprocessable("dsl must not be blank.");
+      const template = templates.byId(instance.template_id);
+      if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
+      const plan = JSON.parse(template.parsed_plan) as RunPlan;
+      const instanceOverrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
+      const overriddenPlan: RunPlan = {
+        ...plan,
+        metadata: { ...plan.metadata, pace_policy: { ...plan.metadata.pace_policy, ...instanceOverrides } },
+      };
+      const section = overriddenPlan.sections.find(s => s.name === day.section_name);
+      const week = section?.weeks.find(w => w.number === day.week_number);
+      if (!section || !week) {
+        throw unprocessable(`Unknown section/week for this day: "${day.section_name}" week ${day.week_number}.`);
+      }
+      const policy = getEffectivePacePolicy(overriddenPlan, section, week);
+      const ctx: DayParseContext = {
+        unit: overriddenPlan.metadata.unit, offset_unit: overriddenPlan.metadata.offset_unit,
+        default_rest: overriddenPlan.metadata.default_rest, pacePolicy: policy,
+        allowUnboundPace: false,
+      };
+      const parsedDay = parseDayEntry(body.dsl, ctx);
+      if (parsedDay.needs_review) {
+        throw unprocessable("Day still needs review — resolve every flag before saving.", {
+          errors: parsedDay.warnings.map(w => ({ field: `week ${day.week_number} day ${parsedDay.day}`, message: w.message })),
+        });
+      }
+      const resolved = resolveDay(parsedDay, day.section_name, day.week_number, day.date, policy);
+      dslFields = {
+        day: resolved.day, suffix: resolved.suffix ?? null, category: resolved.category ?? null, workout_type: resolved.workout_type,
+        segments: JSON.stringify(resolved.segments),
+        activity_target: resolved.activity_target ? JSON.stringify(resolved.activity_target) : null,
+        activity_description: resolved.activity_description ?? null, notes: resolved.notes ?? null,
+        needs_review: resolved.needs_review ? 1 : 0,
+      };
+    }
+    const notes = hasNotes ? (body.notes?.trim() || null) : undefined;
+
+    const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime);
+    return send(res, updated);
   };
 
   // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
@@ -534,6 +630,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, patchInstance, regenerateInstance, approveInstance, removeInstance, listInstances,
+    instantiate, instanceById, patchInstance, patchInstanceDay, regenerateInstance, approveInstance, removeInstance, listInstances,
   };
 }

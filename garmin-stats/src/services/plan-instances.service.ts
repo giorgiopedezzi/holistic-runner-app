@@ -51,6 +51,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           activity_description: day.activity_description ?? null,
           notes: day.notes ?? null,
           needs_review: day.needs_review ? 1 : 0,
+          // HRA-149: never backfilled at creation — NULL reads as the 08:00
+          // display default until explicitly set via the per-day PATCH.
+          scheduled_time: null,
         });
       }
       db.exec("COMMIT");
@@ -97,6 +100,40 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     return { instance: instances.instanceById(instanceId)!, days: instances.daysByInstance(instanceId) };
   }
 
+  // PATCH /api/v1/plan-instances/:id/days/:dayId (HRA-149): each of dsl,
+  // notes, scheduled_time is applied independently — the controller has
+  // already re-parsed+resolved `dsl` (if supplied) into `dslFields`, and
+  // resolved which of `notes`/`scheduledTime` the caller actually supplied
+  // (undefined = omitted, distinct from an explicit null clearing a nullable
+  // column). An explicit `notes` always wins over whatever the fresh dsl
+  // parse produced for that same field. No approval-clearing here — the
+  // controller rejects the whole request before this runs if the instance is
+  // already approved (mirrors HRA-126's intended lock rule), so there is
+  // nothing to clear.
+  function patchDay(
+    dayId: number,
+    dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined,
+    notes: string | null | undefined,
+    scheduledTime: string | null | undefined,
+  ): PlanInstanceDayRow {
+    db.exec("BEGIN");
+    try {
+      if (dslFields) {
+        instances.updateDayFromDsl(dayId, { ...dslFields, notes: notes !== undefined ? notes : dslFields.notes });
+      } else if (notes !== undefined) {
+        instances.updateDayNotes(dayId, notes);
+      }
+      if (scheduledTime !== undefined) {
+        instances.updateDayScheduledTime(dayId, scheduledTime);
+      }
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    return instances.dayById(dayId)!;
+  }
+
   // HRA-132: regenerates a plan instance's days from `effectiveFrom` onward,
   // leaving every day before it completely untouched. `options` already
   // carries whichever of startDate/paceOverrides the caller changed, with
@@ -130,6 +167,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           activity_description: day.activity_description ?? null,
           notes: day.notes ?? null,
           needs_review: day.needs_review ? 1 : 0,
+          // HRA-149: never backfilled at creation — NULL reads as the 08:00
+          // display default until explicitly set via the per-day PATCH.
+          scheduled_time: null,
         });
       }
       instances.updateStartDateAndPaceOverrides(
@@ -148,7 +188,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     return { instance: instances.instanceById(instanceId)!, days: instances.daysByInstance(instanceId) };
   }
 
-  return { instantiate, patchInstance, regenerateFrom };
+  return { instantiate, patchInstance, patchDay, regenerateFrom };
 }
 
 export type PlanInstancesService = ReturnType<typeof createPlanInstancesService>;

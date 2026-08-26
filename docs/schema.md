@@ -171,7 +171,14 @@ segment on a multi-segment day and the DSL's real segment shapes, continuous/int
 rest_block, each carrying resolved `*_sec_per_km` pace values instead of symbolic anchors —
 deliberately **not** flattened to one distance/pace pair per day), `activity_target`,
 `activity_description`, `notes`, `needs_review` (0/1 — a day is flagged if it already was at parse
-time, or if any of its resolved intensities failed to resolve against the overridden policy).
+time, or if any of its resolved intensities failed to resolve against the overridden policy),
+`scheduled_time` (TEXT, `HH:MM`, nullable — HRA-149: a `NULL` reads as the 08:00 default at display
+time only, never backfilled onto pre-existing rows. Set via `PATCH /api/v1/plan-instances/:id/days/:dayId`,
+the per-day sibling of the bulk `PATCH /api/v1/plan-instances/:id`'s wholesale `days` replace — a
+smaller, more honest write for editing one field on one already-existing day. That endpoint's body,
+`{dsl?, notes?, scheduled_time?}`, validates each field independently and is rejected with 409 once
+the instance is approved, mirroring HRA-126's intended "editable only until approved" lock, which the
+earlier Story enforced client-side only).
 
 **Week-date derivation rule** (confirmed at Refinement for HRA-112, amended HRA-124): `week.start_date
 = trueMonday + (week.number - 1) × 7 days`, **unless** that week already carries an explicit

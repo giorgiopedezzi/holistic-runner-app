@@ -8,7 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
 const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, created_at FROM plan_instances";
-const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review FROM plan_instance_days";
+const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time FROM plan_instance_days";
 
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
@@ -28,6 +28,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     "INSERT INTO plan_instances (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date, race_url) VALUES ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date, $race_url)",
   );
   const findDaysByInstance = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
+  const findDayByIdStmt = db.prepare(`SELECT ${DAY_FIELDS} WHERE id = ?`);
   const insertDay = db.prepare(`
     INSERT INTO plan_instance_days
       (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review)
@@ -35,6 +36,18 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review)
   `);
   const deleteDaysByInstanceStmt = db.prepare("DELETE FROM plan_instance_days WHERE instance_id = ?");
+  // HRA-149: PATCH /api/v1/plan-instances/:id/days/:dayId — a single day's
+  // dsl-derived columns (re-parsed+resolved) vs. its independent notes/
+  // scheduled_time overrides are separate statements, run conditionally by
+  // the service, same "one statement per field" style as updateFields above.
+  const updateDayFromDslStmt = db.prepare(`
+    UPDATE plan_instance_days SET
+      day = ?, suffix = ?, category = ?, workout_type = ?, segments = ?,
+      activity_target = ?, activity_description = ?, notes = ?, needs_review = ?
+    WHERE id = ?
+  `);
+  const updateDayNotesStmt = db.prepare("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
+  const updateDayScheduledTimeStmt = db.prepare("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
   // HRA-132: deletes only the cutover-and-later slice of an instance's days —
   // everything before `fromDate` is left completely untouched (protects
   // already-logged history), the caller re-inserts the regenerated slice.
@@ -65,6 +78,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     count: (templateId?: number): { count: number } =>
       (templateId != null ? countByTemplateStmt.get(templateId) : countAllStmt.get()) as unknown as { count: number },
     daysByInstance: (instanceId: number): PlanInstanceDayRow[] => findDaysByInstance.all(instanceId) as unknown as PlanInstanceDayRow[],
+    dayById: (id: number): PlanInstanceDayRow | undefined => findDayByIdStmt.get(id) as unknown as PlanInstanceDayRow | undefined,
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
       const info = insertInstance.run({
         $template_id: i.template_id, $start_date: i.start_date,
@@ -99,6 +113,18 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     updateStartDateAndPaceOverrides: (id: number, startDate: string, paceOverrides: string | null) => {
       updateStartDateAndPaceOverridesStmt.run(startDate, paceOverrides, id);
     },
+    // HRA-149: dsl-derived columns for one day, re-parsed+resolved by the caller.
+    updateDayFromDsl: (dayId: number, d: {
+      day: number; suffix: string | null; category: string | null; workout_type: string; segments: string;
+      activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number;
+    }) => {
+      updateDayFromDslStmt.run(
+        d.day, d.suffix, d.category, d.workout_type, d.segments,
+        d.activity_target, d.activity_description, d.notes, d.needs_review, dayId,
+      );
+    },
+    updateDayNotes: (dayId: number, notes: string | null) => { updateDayNotesStmt.run(notes, dayId); },
+    updateDayScheduledTime: (dayId: number, scheduledTime: string | null) => { updateDayScheduledTimeStmt.run(scheduledTime, dayId); },
     approve: (id: number): PlanInstanceRow => {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;

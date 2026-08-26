@@ -330,7 +330,10 @@ export function initSchema(db: DatabaseSync): void {
       activity_target       TEXT,
       activity_description  TEXT,
       notes                 TEXT,
-      needs_review          INTEGER NOT NULL DEFAULT 0
+      needs_review          INTEGER NOT NULL DEFAULT 0,
+      -- HRA-149: per-day scheduled time (HH:MM), nullable — NULL reads as the
+      -- 08:00 default at display time, never backfilled onto existing rows.
+      scheduled_time        TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
@@ -550,6 +553,14 @@ export function initSchema(db: DatabaseSync): void {
   if (!planInstanceCols.some(c => c.name === "race_url")) {
     db.exec("ALTER TABLE plan_instances ADD COLUMN race_url TEXT");
   }
+
+  // HRA-149: scheduled_time, added after plan_instance_days already existed
+  // (HRA-112). Nullable, no backfill — a NULL reads as the 08:00 default at
+  // display time only, never written here.
+  const planInstanceDayCols = db.prepare("PRAGMA table_info(plan_instance_days)").all() as { name: string }[];
+  if (!planInstanceDayCols.some(c => c.name === "scheduled_time")) {
+    db.exec("ALTER TABLE plan_instance_days ADD COLUMN scheduled_time TEXT");
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -691,6 +702,9 @@ export interface PlanInstanceDayRow {
   activity_description: string | null;
   notes: string | null;
   needs_review: number;
+  // HRA-149: HH:MM, nullable — a null reads as the 08:00 default at display
+  // time, never backfilled.
+  scheduled_time: string | null;
 }
 
 export interface WithingsTokenRow {

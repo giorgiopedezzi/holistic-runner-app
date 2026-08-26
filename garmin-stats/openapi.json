@@ -26,6 +26,7 @@
       "from": { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive start date (YYYY-MM-DD). Defaults to 30 days ago." },
       "to": { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive end date (YYYY-MM-DD). Defaults to today." },
       "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Activity id." },
+      "dayId": { "name": "dayId", "in": "path", "required": true, "schema": { "type": "integer" }, "description": "Plan instance day id." },
       "limit": { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "default": 50, "maximum": 100000 }, "description": "Max rows to return (list envelope, HRA-38). Defaults to 50, capped at 100000." },
       "offset": { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "default": 0 }, "description": "Rows to skip before returning (list envelope, HRA-38)." }
     },
@@ -289,7 +290,8 @@
           "workout_type": { "type": "string", "enum": ["run", "rest", "todo", "cross", "strength"] },
           "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ResolvedSegment" } },
           "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] },
-          "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] }
+          "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] },
+          "scheduled_time": { "type": ["string", "null"], "description": "HRA-149: HH:MM, nullable — NULL reads as the 08:00 default at display time, never backfilled." }
         }
       },
       "PlanInstanceDayEdit": {
@@ -623,6 +625,15 @@
         "responses": { "200": { "description": "The updated instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       },
       "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/plan-instances/{id}/days/{dayId}": {
+      "patch": {
+        "tags": ["plan-templates"], "summary": "Partially update a single resolved day (HRA-149)",
+        "description": "A smaller, more honest write than PATCH .../plan-instances/{id}'s bulk days replace: one field's worth of edit on one already-existing day. Body is {dsl?, notes?, scheduled_time?}, all optional but at least one required (422 otherwise), each validated independently. dsl, when supplied, is re-parsed against this day's own existing section/week/date scope and the template's effective PacePolicy (merged with the instance's pace_overrides) and resolved the same way the bulk days-replace path does; rejected (422) if the fresh parse still needs review. notes overrides whatever the dsl parse itself produced for that field, when both are supplied together. scheduled_time must be HH:MM 24-hour, or null to clear back to the 08:00 display default. Rejected with 409 if the instance is already approved (mirrors HRA-126's intended lock rule for editing an approved instance). Never touches or re-instantiates the source template.",
+        "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "dsl": { "type": "string", "description": "Raw D-line text, same grammar as a template, e.g. \"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10\"." }, "notes": { "type": ["string", "null"] }, "scheduled_time": { "type": ["string", "null"], "description": "HH:MM, 24-hour. null clears back to the 08:00 display default." } } } } } },
+        "responses": { "200": { "description": "The updated day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstanceDay" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
     },
     "/api/v1/plan-instances/{id}/approve": {
       "post": {

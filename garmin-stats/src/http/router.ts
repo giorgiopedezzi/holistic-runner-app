@@ -119,6 +119,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       }
 
       if (req.method === "PATCH") {
+        if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+$/.test(route)) return await planTemplates.patchInstanceDay(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.patchInstance(req, res, url);
       }
 
