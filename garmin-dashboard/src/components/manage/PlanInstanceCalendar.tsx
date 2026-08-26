@@ -22,7 +22,7 @@
  * cross AND strength both fold into the single Cross training category, per
  * HRA-147's own design) and adds the in-app criteria-reference popover.
  */
-import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
@@ -618,16 +618,36 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => <AgendaToolbar {...props} summary={summary} />,
     [summary],
   );
+  // Fix (follow-up to HRA-165): DateHeaderComponent used to be re-memoized
+  // whenever eventsByDateKey/onScheduledTimeEdit changed — which is EVERY
+  // scheduled-time edit, since that edit flows straight back into `sections`
+  // (optimistic update) -> `events` -> `eventsByDateKey`. A fresh function
+  // identity on `components.dateHeader` makes react-big-calendar treat every
+  // date-header cell as a different component type and remount it, which
+  // reset AgendaScheduledTimeEditor's own local `open` state — the popover
+  // closed itself after the very first edit. Fixed the same way this repo's
+  // own i18n `t()` rule handles an unstable dependency that would retrigger
+  // an effect/remount (CLAUDE.md): read the latest value through a ref
+  // instead of closing over it directly, so DateHeaderComponent's own
+  // identity can stay genuinely stable (`[]` deps) while still rendering
+  // fresh data every call — react-big-calendar keeps calling the same
+  // function, so it never remounts the header (or the popover inside it).
+  const eventsByDateKeyRef = useRef(eventsByDateKey);
+  eventsByDateKeyRef.current = eventsByDateKey;
+  const readOnlyDaysRef = useRef(readOnlyDays);
+  readOnlyDaysRef.current = readOnlyDays;
+  const onScheduledTimeEditRef = useRef(onScheduledTimeEdit);
+  onScheduledTimeEditRef.current = onScheduledTimeEdit;
   const DateHeaderComponent = useMemo(
     () => (props: { date: Date; label: ReactNode }) => (
       <AgendaDateHeader
         {...props}
-        event={eventsByDateKey.get(toDateKey(props.date))}
-        readOnlyDays={readOnlyDays}
-        onScheduledTimeEdit={onScheduledTimeEdit}
+        event={eventsByDateKeyRef.current.get(toDateKey(props.date))}
+        readOnlyDays={readOnlyDaysRef.current}
+        onScheduledTimeEdit={(dayId, scheduledTime) => onScheduledTimeEditRef.current?.(dayId, scheduledTime)}
       />
     ),
-    [eventsByDateKey, readOnlyDays, onScheduledTimeEdit],
+    [],
   );
 
   const { t } = useTranslation();
