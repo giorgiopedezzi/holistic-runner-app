@@ -46,15 +46,23 @@ Never write them.
 
 ### Runtime match
 
-Compare Jira with the launched Codex session.
+Treat Jira `Agent`, `Model`, and `Planned thinking effort` as **declared launch preconditions**.
 
-- Agent mismatch → STOP.
-- Model mismatch → STOP.
-- Known effort mismatch → STOP.
+The human launches Codex with the Jira-selected model and reasoning effort, and verifies the launch configuration in the Codex client/UI when available.
+
+Runtime introspection from inside the agent context may be incomplete. In particular, `.codex/config.toml` contains **project defaults only**: CLI or UI overrides can supersede those values without modifying the file. Therefore:
+
+- `Agent` mismatch → STOP.
+- A **known** model mismatch → STOP.
+- A **known** reasoning-effort mismatch → STOP.
+- If concrete runtime evidence shows a mismatch, STOP.
+- If you know you were launched with a different model or effort, STOP.
+- If the active runtime override cannot be introspected, **proceed using the Jira Model and Planned effort as the declared launch configuration**. Absence of introspection is not a mismatch.
+- Never infer the active runtime from `.codex/config.toml` when an override may have been supplied.
 - Never change model or reasoning effort mid-Story to make the session match Jira.
 - Never rewrite Jira to make it match the session.
 
-**Current Codex-local caveat:** project config currently documents `minimal|low|medium|high|xhigh`. If Jira says `max` and the running Codex client does not expose/select `max`, STOP. Do not silently map `max` to `xhigh`.
+**Current Codex-local caveat:** if Jira says `max` and the running Codex client does not expose/select `max`, STOP. Do not silently map `max` to `xhigh`.
 
 Policy epochs:
 - Model + Planned effort: mandatory for Stories entering Ready to Develop from `2026-08-12 ~17:30 CEST`.
