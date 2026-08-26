@@ -29,8 +29,7 @@ import "shadcn-big-calendar/styles";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
-  Activity, AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3,
-  Feather, Gauge, Info, Repeat, Route, TrendingUp, Zap,
+  AlertTriangle, ChevronLeft, ChevronRight, CircleHelp, Clock3, Gauge, Info, Route,
 } from "lucide-react";
 import { DAY_PREFIX_RE, useDragSwap } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
@@ -39,6 +38,9 @@ import type { SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/do
 import type { WorkoutType } from "@/types/runplan";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, speedUnitLabel } from "@/utils/units";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
+import {
+  CATEGORY_CARD_CLASS, CATEGORY_CRITERIA_KEYS, CATEGORY_ICONS, CATEGORY_LABEL_KEYS, CATEGORY_ORDER,
+} from "@/components/manage/categoryVisuals";
 
 // Month view only, per HRA-143's own scope ("verify month navigation" — no
 // week/day/agenda-view-type switching asked for). HRA-146's Month/Week
@@ -68,53 +70,6 @@ interface CalendarEvent {
   dayId?: number;
   scheduledTime?: string | null;
 }
-
-// Follow-up fix: lucide-react has no dedicated running-figure icon (checked
-// directly — no "Runner"/"Running" export exists), so HRA-144 used
-// Footprints as a stand-in. Per explicit instruction this app always uses a
-// runner glyph for "run" (matches the mockup's own hand-drawn icon, same
-// stroke language as every other lucide icon here: 24x24, stroke-based,
-// round caps/joins) — never Footprints. HRA-148 keeps this as the Long run
-// category's icon specifically (still literally "a run"), while the other
-// two pace tiers (Threshold/Tempo) and Easy/Recovery get their own distinct
-// marks per that Story's own Ask #2 ("a distinct mark for Threshold vs
-// Tempo vs Easy/Recovery") — reconciling both instructions rather than
-// dropping either.
-function RunnerIcon({ size = 24 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="15.5" cy="4.5" r="1.6" />
-      <path d="M13 8l2.2 2.2-1 3.3 3.3 2.5-.9 3.6" />
-      <path d="M13.2 10.3l-3.6 1.4-2.1 3.8" />
-      <path d="M16.5 16l2.6 1.4-1 3.6" />
-      <path d="M9.8 14.3l-1.4 3.2-3.4 1" />
-    </svg>
-  );
-}
-
-// HRA-148 Ask #2: one icon per HRA-147 classification category — Repeat for
-// Intervals, TrendingUp for Progressive (both named explicitly by the
-// Story), and a distinct mark each for Threshold/Tempo/Easy-Recovery so the
-// three pace tiers of a "run" day never read as visually the same badge.
-// Long run keeps RunnerIcon (see its own comment above). `todo` isn't a real
-// category (HRA-147 folds it into Easy/Recovery) — the compact row below
-// keeps its own historic CircleHelp treatment for it instead of using this
-// map (see DayCellEvent).
-const CATEGORY_ICONS: Record<TrainingLoadCategory, (props: { size?: number }) => ReactNode> = {
-  easy_recovery: Feather, long_run: RunnerIcon, intervals: Repeat, progressive: TrendingUp,
-  threshold: Zap, tempo: Activity, cross_training: Bike, rest: Bed,
-};
-
-// HRA-148 Ask #1/#2: category tint per classifyResolvedDay output, replacing
-// HRA-146's workout_type-only placeholder. `rest` intentionally has no card
-// class — it still renders as the compact no-card row (see
-// hra-agenda-rest-row below), just with its own icon/label now.
-const CATEGORY_CARD_CLASS: Partial<Record<TrainingLoadCategory, string>> = {
-  easy_recovery: "hra-agenda-cat-easy-recovery", long_run: "hra-agenda-cat-long-run",
-  intervals: "hra-agenda-cat-intervals", progressive: "hra-agenda-cat-progressive",
-  threshold: "hra-agenda-cat-threshold", tempo: "hra-agenda-cat-tempo",
-  cross_training: "hra-agenda-cat-cross-training",
-};
 
 function parseLocalDate(dateISO: string): Date {
   const [y, m, d] = dateISO.split("-").map(Number);
@@ -207,33 +162,6 @@ const TODO_LABEL_KEY: [string, string] = ["manage.planInstances.workoutType.todo
 // dedicated treatment, its own label/icon rather than classifyResolvedDay's
 // fallback category.
 const OTHER_LABEL_KEY: [string, string] = ["manage.planInstances.workoutType.other", "Other"];
-
-// HRA-148 Ask #3: category / icon / criteria, in the same order as HRA-147's
-// own description — also the order the criteria-reference popover lists
-// them in.
-const CATEGORY_ORDER: TrainingLoadCategory[] = [
-  "easy_recovery", "long_run", "intervals", "progressive", "threshold", "tempo", "cross_training", "rest",
-];
-const CATEGORY_LABEL_KEYS: Record<TrainingLoadCategory, [string, string]> = {
-  easy_recovery: ["manage.planInstances.category.easyRecovery", "Easy/Recovery"],
-  long_run: ["manage.planInstances.category.longRun", "Long run"],
-  intervals: ["manage.planInstances.category.intervals", "Intervals"],
-  progressive: ["manage.planInstances.category.progressive", "Progressive"],
-  threshold: ["manage.planInstances.category.threshold", "Threshold"],
-  tempo: ["manage.planInstances.category.tempo", "Tempo"],
-  cross_training: ["manage.planInstances.category.crossTraining", "Cross training"],
-  rest: ["manage.planInstances.category.rest", "Rest"],
-};
-const CATEGORY_CRITERIA_KEYS: Record<TrainingLoadCategory, [string, string]> = {
-  easy_recovery: ["manage.planInstances.categoryCriteria.easyRecovery", "Slowest pace third of the plan, or pace not yet resolved."],
-  long_run: ["manage.planInstances.categoryCriteria.longRun", "The week's longest run, by distance (or duration)."],
-  intervals: ["manage.planInstances.categoryCriteria.intervals", "Contains an interval segment (reps × work, with rest)."],
-  progressive: ["manage.planInstances.categoryCriteria.progressive", "Contains a progression segment (pace shifts start → end)."],
-  threshold: ["manage.planInstances.categoryCriteria.threshold", "Fastest pace third of the plan."],
-  tempo: ["manage.planInstances.categoryCriteria.tempo", "Middle pace third of the plan."],
-  cross_training: ["manage.planInstances.categoryCriteria.crossTraining", "A CROSS or STRENGTH day."],
-  rest: ["manage.planInstances.categoryCriteria.rest", "A REST day."],
-};
 
 function formatDistanceM(m: number): string {
   const km = m / 1000;

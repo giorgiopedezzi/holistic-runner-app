@@ -1703,6 +1703,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-day-date-badge {
   display: inline-flex;
   align-items: center;
+  gap: 4px;
   flex-shrink: 0;
   background: var(--accent);
   color: var(--on-accent);
@@ -1711,6 +1712,16 @@ input:focus, select:focus { border-color: var(--accent); }
   padding: 4px 10px;
   border-radius: 20px;
   white-space: nowrap;
+  /* HRA-160: width/style only — deliberately no border-color here. The
+     badge is always paired with one of the .hra-agenda-cat-* classes
+     (categoryVisuals.tsx's CATEGORY_CARD_CLASS, same tokens the Agenda
+     view's cards/legend/popover already use), which is what supplies
+     border-color (--cat-color) — and because this class comes later in
+     the cascade, its own `background` above still wins over that class's
+     tinted background (equal specificity, later rule wins), so only the
+     border changes, not the pill's solid fill. */
+  border-width: 2px;
+  border-style: solid;
 }
 
 /* ── Trend chart (SportTrendChart) — glassy combined tooltip + per-line glow

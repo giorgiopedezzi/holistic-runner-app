@@ -19,6 +19,7 @@
 import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AccordionCard } from "./ui/AccordionCard";
+import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
 
@@ -230,6 +231,15 @@ function InstanceDayRow({
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
   const dateBadge = instanceDayDateLabel(date);
+  // HRA-160: reuses the same TrainingLoadCategory -> icon/--cat-color data
+  // the Agenda view's CategoryLegend/CategoryCriteriaPopover already draw
+  // from (categoryVisuals.tsx) — no new palette. Instance days always carry
+  // a trainingLoadCategory (buildInstanceSectionView classifies every one),
+  // but the field is optional on DayView (templates never set it), hence
+  // the fallback.
+  const category = day.trainingLoadCategory ?? "easy_recovery";
+  const CategoryIcon = CATEGORY_ICONS[category];
+  const categoryCatClass = CATEGORY_CARD_CLASS[category] ?? "";
   // The D<n>[suffix][tag]: prefix only carries meaning in template mode (it's
   // how the DSL text addresses a specific day) — an instance day already
   // shows its real date via dateBadge above, so the prefix is dead weight in
@@ -249,7 +259,17 @@ function InstanceDayRow({
       style={drag.swappable ? { cursor: "grab" } : undefined}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span className="hra-day-date-badge">{dateBadge}</span>
+        {/* HRA-160: border color now comes from the day's classified
+            category (--cat-color, set by the same hra-agenda-cat-* class
+            the Agenda view uses) — the badge's own later-declared
+            `background` rule (index.css) still wins the cascade over that
+            class's own tinted background, so only the border changes here,
+            not the pill's solid fill. Icon (same CATEGORY_ICONS map)
+            renders after the date text. */}
+        <span className={`hra-day-date-badge ${categoryCatClass}`}>
+          {dateBadge}
+          <CategoryIcon size={12} />
+        </span>
         {/* HRA-126: once approved, the dsl/note inputs simply don't render —
             plain text takes their place so the row still reads correctly. */}
         {readOnlyDays ? (
@@ -272,6 +292,17 @@ function InstanceDayRow({
           fixed, non-growing width so neither field shifts as the other's
           content changes. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+        {/* HRA-160: an invisible clone of row 1's date badge — reserves the
+            exact same leading width (same content, same classes, so it's
+            pixel-identical regardless of locale/date-format/icon) so the
+            Note input's flex:1 share below ends up the same width as the
+            DSL input's above, without hardcoding a width that would drift
+            the moment the badge's own content changes. visibility:hidden
+            (not display:none) keeps the layout box while hiding the paint. */}
+        <span className={`hra-day-date-badge ${categoryCatClass}`} style={{ visibility: "hidden" }} aria-hidden="true">
+          {dateBadge}
+          <CategoryIcon size={12} />
+        </span>
         {readOnlyDays ? (
           day.notes && <div className="hra-text-muted" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>{day.notes}</div>
         ) : (
