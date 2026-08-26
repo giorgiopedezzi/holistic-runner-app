@@ -30,10 +30,11 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard, ConfirmModal } from "@/components/ui";
+import { Card, ErrorBanner, Badge, DatePicker, AccordionCard, ConfirmModal } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
+import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
 import {
   aggregateDayViews, collectPlanAnchors, computeResolvedDayDistance, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
@@ -45,7 +46,7 @@ import type { PlanTemplate, PlanInstance } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
 
-const NONE_ANCHOR = "__none__";
+export const NONE_ANCHOR = "__none__";
 
 // Mirrors garmin-stats/src/controllers/plan-templates.controller.ts's own
 // STANDARD_DISTANCE_M — used only for the live client-side resolution
@@ -181,7 +182,7 @@ function editorWeek1AnchorMismatch(sections: SectionView[]): boolean {
 // Every field in the instantiate form goes through this — label is always a
 // block above its control (never beside it), enforced structurally by the
 // column flex layout rather than left to each call site to get right.
-function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
+export function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
       <span className="hra-field-label">
@@ -519,6 +520,13 @@ export function PlanInstancesSection({ templates }: Props) {
   function onRacePaceAnchorChange(v: string) {
     setRacePaceAnchor(v);
     if (v === NONE_ANCHOR && paceMode === "goalTime") setPaceMode("anchor");
+  }
+
+  // The Goal time input is read-only while paceMode is "anchor" (it shows a
+  // computed equivalent, see equivalentGoalTimeSec below) — this guard was
+  // previously inline in the input's own onChange.
+  function onGoalTimeInput(raw: string) {
+    if (paceMode === "goalTime") setGoalTimeDigits(sanitizeGoalTimeInput(raw));
   }
 
   // Fill exactly one of Absolute or Relative per anchor row — typing into
@@ -1577,127 +1585,41 @@ export function PlanInstancesSection({ templates }: Props) {
   function renderEditorFields() {
     return (
       <>
-        {/* Row 1 — identity. Template gates the whole form below; Name is
-            required; Race name/Race date/Link a race are independently
-            optional. Equal-width grid, not ad hoc flex-basis guessing.
-            HRA-133: same row whether creating fresh or viewing an existing
-            instance — startEdit() populates every field from the instance's
-            own persisted values, fieldsLocked/fieldDisabled just gate
-            interactivity, not visibility (AC1's "same screen shape"). */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 6 }}>
-          <Field label={t("manage.planInstances.templateLabel", "Template")} required>
-            <Select
-              value={templateId} onValueChange={onTemplateSelectChange}
-              options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
-              placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
-              triggerStyle={{ width: "100%" }}
-              disabled={fieldsLocked}
-            />
-          </Field>
-          <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
-            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={fieldDisabled} style={{ width: "100%", padding: "0 10px" }} />
-          </Field>
-          <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
-            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={fieldDisabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
-          </Field>
-          <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
-            <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={fieldDisabled} />
-          </Field>
-          <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
-            <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
-          </Field>
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
-          <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
-          {!fieldsLocked && !formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
-        </div>
-
-        {/* Row 2 — timing. */}
-        <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
-          <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
-            <DatePicker value={startDate} onChange={onStartDateChange} disabled={fieldDisabled} />
-          </Field>
-          <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              value={daysBeforeRace} onChange={e => onDaysBeforeRaceChange(e.target.value)}
-              type="number" disabled={fieldDisabled || !raceDate}
-              placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above")}
-              style={{ width: "100%", padding: "0 10px" }}
-            />
-          </Field>
-          <Field label={t("manage.planInstances.restDayLabelLabel", "Rest day label")}>
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              value={restDayLabel} onChange={e => setRestDayLabel(e.target.value)}
-              disabled={fieldDisabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
-              style={{ width: "100%", padding: "0 10px" }}
-            />
-          </Field>
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
-          {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
-          {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
-        </div>
-        {showWeek1AnchorWarning && (
-          <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 16 }}>
-            {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
-          </div>
-        )}
-
-        {/* Row 3 — pace: Race pace anchor + Pace input mode + Goal time all on
-            one line (HRA-137 Ask #1). */}
-        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
-          <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
-            <div className="hra-segment">
-              {[NONE_ANCHOR, ...templateAnchors].map(a => (
-                <button key={a} className="hra-segment-item" data-active={racePaceAnchor === a} disabled={fieldDisabled} onClick={() => onRacePaceAnchorChange(a)}>
-                  {a === NONE_ANCHOR ? t("manage.planInstances.racePaceAnchorNone", "None") : a}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <Field label={t("manage.planInstances.paceLabel", "Pace input")}>
-            <div className="hra-segment">
-              <button className="hra-segment-item" data-active={paceMode === "goalTime"} disabled={fieldDisabled || !hasRacePaceAnchor} onClick={() => setPaceMode("goalTime")}>{t("manage.planInstances.goalTimeMode", "Goal time")}</button>
-              <button className="hra-segment-item" data-active={paceMode === "anchor"} disabled={fieldDisabled} onClick={() => setPaceMode("anchor")}>{t("manage.planInstances.anchorMode", "Anchor override")}</button>
-            </div>
-          </Field>
-          <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <input
-                className="hra-border-strong hra-bg-card hra-text-primary"
-                value={goalTimeDisplayValue}
-                onChange={e => { if (paceMode === "goalTime") setGoalTimeDigits(sanitizeGoalTimeInput(e.target.value)); }}
-                disabled={fieldDisabled || paceMode !== "goalTime"}
-                inputMode="numeric" maxLength={8} style={{ width: 90 }}
-                placeholder={t("manage.planInstances.goalTimePlaceholder", "HH:MM:SS")}
-                aria-label={t("manage.planInstances.goalTimeAria", "Goal time (HH:MM:SS)")}
-              />
-              {paceMode === "anchor" && equivalentGoalTimeSec != null && (
-                <span className="hra-anchor-tag">{t("manage.planInstances.goalTimeFromAnchor", "(from {{anchor}}'s pace)", { anchor: racePaceAnchor })}</span>
-              )}
-            </div>
-          </Field>
-        </div>
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
-          {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
-        </div>
-
-        {hasRacePaceAnchor && paceMode === "goalTime" && showDistanceOverride && (
-          <div style={{ marginBottom: 16 }}>
-            <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
-              <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldDisabled} type="number" style={{ width: 200, padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
-            </Field>
-          </div>
-        )}
-        {hasRacePaceAnchor && paceMode === "anchor" && (
-          <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
-            {t("manage.planInstances.anchorModeHint", "Set {{anchor}}'s pace directly in its row in the table below.", { anchor: racePaceAnchor })}
-          </div>
-        )}
+        <PlanInstanceFormFields
+          templates={templates}
+          templateId={templateId}
+          onTemplateSelectChange={onTemplateSelectChange}
+          fieldsLocked={fieldsLocked}
+          instName={instName}
+          setInstName={setInstName}
+          raceName={raceName}
+          setRaceName={setRaceName}
+          raceDate={raceDate}
+          onRaceDateChange={onRaceDateChange}
+          raceUrl={raceUrl}
+          setRaceUrl={setRaceUrl}
+          fieldDisabled={fieldDisabled}
+          formEnabled={formEnabled}
+          startDate={startDate}
+          onStartDateChange={onStartDateChange}
+          daysBeforeRace={daysBeforeRace}
+          onDaysBeforeRaceChange={onDaysBeforeRaceChange}
+          restDayLabel={restDayLabel}
+          setRestDayLabel={setRestDayLabel}
+          showWeek1AnchorWarning={showWeek1AnchorWarning}
+          racePaceAnchor={racePaceAnchor}
+          onRacePaceAnchorChange={onRacePaceAnchorChange}
+          templateAnchors={templateAnchors}
+          paceMode={paceMode}
+          setPaceMode={setPaceMode}
+          hasRacePaceAnchor={hasRacePaceAnchor}
+          goalTimeDisplayValue={goalTimeDisplayValue}
+          onGoalTimeInput={onGoalTimeInput}
+          equivalentGoalTimeSec={equivalentGoalTimeSec}
+          showDistanceOverride={showDistanceOverride}
+          distanceM={distanceM}
+          setDistanceM={setDistanceM}
+        />
 
         <PlanInstanceAnchorTable
           templateAnchors={templateAnchors}
