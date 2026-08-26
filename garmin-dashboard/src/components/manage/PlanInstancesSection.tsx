@@ -974,7 +974,29 @@ export function PlanInstancesSection({ templates }: Props) {
     const newBody = workoutType === "rest" ? "REST" : workoutType === "other" ? "OTHER" : "";
     const newDsl = recomposeDayLine(`${dayPrefix}${newBody}`, { notes: day.notes });
     onDayEdit(sectionIndex, weekIndex, dayIndex, { dsl: newDsl });
+    // Bug fix: onDayEdit only ever patches dsl/notes (matching a manual DSL
+    // edit) — day.workout_type itself stays whatever it was at last
+    // load/Save until a real re-parse happens, so the switch's own active
+    // button (workoutTypeSwitchValue(day.workout_type)) never moved after a
+    // confirm, and the SAME stuck value kept reporting as "active" no
+    // matter what was clicked. The switch's own selection has to be
+    // reflected immediately, unlike distance/metrics/trainingLoadCategory
+    // (which staying stale until Save is expected, matching a hand-typed
+    // DSL edit) — so patch workout_type locally too, right here.
+    patchLocalDayWorkoutType(sectionIndex, weekIndex, dayIndex, workoutType);
     notify(t("manage.planInstances.workoutTypeChanged", "Day type updated — remember to Save."));
+  }
+  function patchLocalDayWorkoutType(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
+    setSections(prev => {
+      const next = [...prev];
+      const section = { ...next[sectionIndex] };
+      const weeks = [...section.weeks];
+      const week = { ...weeks[weekIndex] };
+      const days = [...week.days];
+      days[dayIndex] = { ...days[dayIndex], workout_type: workoutType as WorkoutType };
+      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
+      return next;
+    });
   }
 
   // HRA-151: PlanInstanceCalendar (the Agenda view) only ever has the day's
@@ -1893,6 +1915,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 onWeekSwap={onWeekDragSwap}
                 onScheduledTimeEdit={onScheduledTimeEdit}
                 onWorkoutTypeEdit={onWorkoutTypeEdit}
+                isDayDirty={day => day.date != null && persistedDsl[day.date] !== undefined && persistedDsl[day.date] !== day.dsl}
               />
             ) : (
               <PlanInstanceCalendar

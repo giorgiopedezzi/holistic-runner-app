@@ -18,7 +18,7 @@
  */
 import { useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Bed, CircleHelp, Play } from "lucide-react";
+import { AlertTriangle, Bed, CircleHelp, Play } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -77,6 +77,14 @@ interface TrainingPlanAccordionProps {
   // have no per-day manual type override, so PlanTemplatesSection never
   // passes this.
   onWorkoutTypeEdit?: (sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
+  // Live follow-up: instance-only — a day's dsl/notes stay local until the
+  // whole-day bulk Save (HRA-149/150), so a day can silently differ from
+  // what's actually persisted with no visible sign of it. Pure read, keyed
+  // by the day itself (unlike the edit callbacks above, no section/week/day
+  // index currying needed) — PlanInstancesSection already tracks each day's
+  // persisted baseline (persistedDsl, HRA-134) to answer this. Optional:
+  // templates have no persisted-baseline concept to compare against.
+  isDayDirty?: (day: DayView) => boolean;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -215,6 +223,22 @@ function WarningBadge({ t }: { t: Translate }) {
   );
 }
 
+// Live follow-up: an instance day whose dsl/notes differ from what's
+// actually persisted (local-only until the whole-day bulk Save) — distinct
+// from WarningBadge above (a parse issue with the CONTENT itself, needs_review).
+// Same icon/color/copy as the collapsed-row-level indicator this file's own
+// sibling already shows for the same concept (PlanInstancesSection.tsx's
+// rowStatusHint — AlertTriangle + hra-text-warning + the same i18n key),
+// so "unsaved" reads as one consistent visual language at both the
+// whole-instance and per-day granularity.
+function UnsavedBadge({ t }: { t: Translate }) {
+  return (
+    <span className="hra-text-warning" style={{ display: "inline-flex", alignItems: "center" }} title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}>
+      <AlertTriangle size={12} />
+    </span>
+  );
+}
+
 function NoteIcon({ note }: { note?: string }) {
   if (!note) return null;
   return (
@@ -252,7 +276,7 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
 }: {
   day: DayView;
   date: string;
@@ -262,6 +286,7 @@ function InstanceDayRow({
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onScheduledTimeEdit?: (scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
+  isDayDirty?: (day: DayView) => boolean;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
@@ -296,6 +321,9 @@ function InstanceDayRow({
   const workoutTypeValue = workoutTypeSwitchValue(day.workout_type);
   const ActiveWorkoutTypeIcon = WORKOUT_TYPE_SWITCH_ICONS[workoutTypeValue];
   const [workoutTypeKey, workoutTypeFallback] = WORKOUT_TYPE_SWITCH_LABEL_KEYS[workoutTypeValue];
+  // Live follow-up: this day's dsl/notes differ from what's actually
+  // persisted (local-only until the whole-day bulk Save) — see UnsavedBadge.
+  const dirty = isDayDirty?.(day) ?? false;
 
   return (
     <div
@@ -353,6 +381,7 @@ function InstanceDayRow({
         )}
         <span className="hra-text-secondary" style={{ gridRow: 1, gridColumn: 3, display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
           {fmtDistance(day.distance, t)}
+          {dirty && <UnsavedBadge t={t} />}
           {day.needs_review && <WarningBadge t={t} />}
         </span>
 
@@ -502,6 +531,7 @@ function DayEditor(props: {
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onScheduledTimeEdit?: (scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
+  isDayDirty?: (day: DayView) => boolean;
 }) {
   return props.day.date != null
     ? <InstanceDayRow {...props} date={props.day.date} />
@@ -509,7 +539,7 @@ function DayEditor(props: {
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -522,6 +552,7 @@ function WeekEditor({
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
   onScheduledTimeEdit?: (dayIndex: number, scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
+  isDayDirty?: (day: DayView) => boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -564,6 +595,7 @@ function WeekEditor({
               dayRef={{ sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap}
               onScheduledTimeEdit={onScheduledTimeEdit ? time => onScheduledTimeEdit(dayIndex, time) : undefined}
               onWorkoutTypeEdit={onWorkoutTypeEdit ? workoutType => onWorkoutTypeEdit(dayIndex, workoutType) : undefined}
+              isDayDirty={isDayDirty}
             />
           ))}
         </div>
@@ -573,7 +605,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -587,6 +619,7 @@ function SectionEditor({
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
   onScheduledTimeEdit?: (weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
+  isDayDirty?: (day: DayView) => boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -647,6 +680,7 @@ function SectionEditor({
             onWeekSwap={onWeekSwap}
             onScheduledTimeEdit={onScheduledTimeEdit ? (dayIndex, time) => onScheduledTimeEdit(weekIndex, dayIndex, time) : undefined}
             onWorkoutTypeEdit={onWorkoutTypeEdit ? (dayIndex, workoutType) => onWorkoutTypeEdit(weekIndex, dayIndex, workoutType) : undefined}
+            isDayDirty={isDayDirty}
           />
         ))}
       </div>
@@ -655,7 +689,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -674,6 +708,7 @@ export function TrainingPlanAccordion({
           onWeekSwap={onWeekSwap}
           onScheduledTimeEdit={onScheduledTimeEdit ? (weekIndex, dayIndex, time) => onScheduledTimeEdit(sectionIndex, weekIndex, dayIndex, time) : undefined}
           onWorkoutTypeEdit={onWorkoutTypeEdit ? (weekIndex, dayIndex, workoutType) => onWorkoutTypeEdit(sectionIndex, weekIndex, dayIndex, workoutType) : undefined}
+          isDayDirty={isDayDirty}
         />
       ))}
     </div>
