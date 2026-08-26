@@ -47,7 +47,41 @@ test("POST .../validate returns needs_review:false and no warnings for a clean e
     const { instanceId, dayId } = await setUp(server);
     const res = await validateDay(server, instanceId, dayId, "D1: 8km @ RG");
     assert.equal(res.status, 200, JSON.stringify(res.json));
-    assert.deepEqual(res.json, { needs_review: false, warnings: [] });
+    const body = res.json as any;
+    assert.equal(body.needs_review, false);
+    assert.deepEqual(body.warnings, []);
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../validate: a clean edit also resolves and returns workout_type/segments/activity_target/activity_description (live follow-up)", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, dayId } = await setUp(server);
+    const res = await validateDay(server, instanceId, dayId, "D1: 8km @ RG");
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const body = res.json as any;
+    assert.equal(body.workout_type, "run");
+    assert.equal(body.segments.length, 1);
+    assert.equal(body.segments[0].target.distance_m, 8000, JSON.stringify(body.segments));
+    assert.equal(body.activity_target, null);
+    assert.equal(body.activity_description, null);
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../validate: resolved fields are omitted (only needs_review/warnings) when the parse itself fails (live follow-up)", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, dayId } = await setUp(server);
+    const res = await validateDay(server, instanceId, dayId, "D1: garbled nonsense");
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const body = res.json as any;
+    assert.equal(body.needs_review, true);
+    assert.equal(body.workout_type, undefined, JSON.stringify(body));
+    assert.equal(body.segments, undefined, JSON.stringify(body));
   } finally {
     await server.close();
   }

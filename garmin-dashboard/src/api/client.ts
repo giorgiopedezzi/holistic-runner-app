@@ -12,7 +12,7 @@ import type {
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, Palette,
 } from "@/types/api";
-import type { EventType, ParseWarning, RunPlan } from "@/types/runplan";
+import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
 // Sentinel "give me everything" limit for consumers that need the full set
 // (charts, previews, bulk actions) rather than a page — see HRA-38. The server
@@ -287,8 +287,17 @@ export const api = {
     // parse-only preview, never persists (mirrors planTemplates.generate's
     // own preview-vs-persist split above). What List view's per-day editor
     // calls, debounced, on every DSL keystroke so warning feedback updates
-    // live instead of only after the whole-day bulk Save.
+    // live instead of only after the whole-day bulk Save. Live follow-up:
+    // when the parse itself succeeds, the response also carries the
+    // resolved workout_type/segments/activity_target/activity_description
+    // (all optional — omitted when needs_review is true, i.e. the parse
+    // failed) so the caller can compute this day's own distance client-side
+    // without persisting.
     validateDay: (instanceId: number, dayId: number, dsl: string) =>
-      request<{ needs_review: boolean; warnings: ParseWarning[] }>(`/api/v1/plan-instances/${instanceId}/days/${dayId}/validate`, "POST", undefined, { dsl }),
+      request<{
+        needs_review: boolean; warnings: ParseWarning[];
+        workout_type?: WorkoutType; segments?: ResolvedSegment[];
+        activity_target?: Target | null; activity_description?: string | null;
+      }>(`/api/v1/plan-instances/${instanceId}/days/${dayId}/validate`, "POST", undefined, { dsl }),
   },
 };

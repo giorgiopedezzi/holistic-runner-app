@@ -34,7 +34,7 @@ import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard } from "@/c
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import {
-  collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
+  aggregateDayViews, collectPlanAnchors, computeResolvedDayDistance, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
@@ -884,21 +884,65 @@ export function PlanInstancesSection({ templates }: Props) {
         .then(result => {
           const liveDay = sectionsRef.current[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
           if (!liveDay || liveDay.id !== dayId || liveDay.dsl !== dsl) return; // stale — a newer edit/save has already superseded this
-          patchLocalDayWarnings(sectionIndex, weekIndex, dayIndex, result.needs_review, result.warnings);
+          // Live follow-up: the parse succeeding also resolves it now
+          // (docs/api.md), so workout_type/distance are included whenever
+          // parsing didn't fail — patch those too, not just needs_review/
+          // warnings, so this day's own total and its week/section rollups
+          // stay consistent with the DSL actually on screen instead of only
+          // updating at the next full Save/reload. When the parse itself
+          // failed, those fields are absent and only needs_review/warnings
+          // patch — same as before this change.
+          const patch: Partial<DayView> = { needs_review: result.needs_review, warnings: result.warnings };
+          if (result.workout_type !== undefined && result.segments !== undefined) {
+            patch.workout_type = result.workout_type;
+            patch.distance = computeResolvedDayDistance({
+              section_name: "", week_number: 0, date: liveDay.date ?? "", day: liveDay.day, suffix: liveDay.suffix, category: liveDay.category,
+              workout_type: result.workout_type, segments: result.segments,
+              activity_target: result.activity_target ?? undefined, activity_description: result.activity_description ?? undefined,
+              notes: liveDay.notes, needs_review: result.needs_review,
+            });
+          }
+          patchLocalDayResolved(sectionIndex, weekIndex, dayIndex, patch);
         })
         .catch(() => {}); // never block typing on a transient network failure — the next debounced call (or the eventual Save) will surface it
     }, 400);
   }
-  function patchLocalDayWarnings(sectionIndex: number, weekIndex: number, dayIndex: number, needsReview: boolean, warnings: DayView["warnings"]) {
+  // Live follow-up: applies a patch to one day AND recomputes its owning
+  // week's/section's own AggregateTotals in the SAME state update (via
+  // aggregateDayViews, the DayView-shaped twin of aggregateResolvedDays
+  // every other Section/Week total already uses) — the single place any
+  // local (not-yet-saved) change to a day's workout_type/distance has to
+  // go through, so the accordion's title-row totals never drift from
+  // what's actually showing on screen. Used by the debounced live-validate
+  // result above and by the run/rest/other switch's own confirm below.
+  // Live follow-up: recomputes ONE week's and its owning section's own
+  // AggregateTotals from whatever `sections` array is handed in — pure, no
+  // state write itself, so both a single setSections updater (patchLocalDayResolved
+  // below) and a multi-day one (swapDaysByRef/swapWeeksByRef, whose own
+  // updater already builds the post-swap array before this runs) can call
+  // it as the last step, including twice in the same updater when a swap's
+  // two sides land in different weeks/sections.
+  function recomputeTotals(secs: SectionView[], sectionIndex: number, weekIndex: number): SectionView[] {
+    const next = [...secs];
+    const section = { ...next[sectionIndex] };
+    const weeks = [...section.weeks];
+    weeks[weekIndex] = { ...weeks[weekIndex], totals: aggregateDayViews(weeks[weekIndex].days) };
+    section.weeks = weeks;
+    section.totals = aggregateDayViews(weeks.flatMap(w => w.days));
+    next[sectionIndex] = section;
+    return next;
+  }
+  function patchLocalDayResolved(sectionIndex: number, weekIndex: number, dayIndex: number, patch: Partial<DayView>) {
     setSections(prev => {
       const next = [...prev];
       const section = { ...next[sectionIndex] };
       const weeks = [...section.weeks];
-      const week = { ...weeks[weekIndex] };
-      const days = [...week.days];
-      days[dayIndex] = { ...days[dayIndex], needs_review: needsReview, warnings };
-      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
-      return next;
+      const days = [...weeks[weekIndex].days];
+      days[dayIndex] = { ...days[dayIndex], ...patch };
+      weeks[weekIndex] = { ...weeks[weekIndex], days };
+      section.weeks = weeks;
+      next[sectionIndex] = section;
+      return recomputeTotals(next, sectionIndex, weekIndex);
     });
   }
   useEffect(() => () => { Object.values(validateTimers.current).forEach(clearTimeout); }, []);
@@ -975,28 +1019,19 @@ export function PlanInstancesSection({ templates }: Props) {
     const newDsl = recomposeDayLine(`${dayPrefix}${newBody}`, { notes: day.notes });
     onDayEdit(sectionIndex, weekIndex, dayIndex, { dsl: newDsl });
     // Bug fix: onDayEdit only ever patches dsl/notes (matching a manual DSL
-    // edit) — day.workout_type itself stays whatever it was at last
-    // load/Save until a real re-parse happens, so the switch's own active
-    // button (workoutTypeSwitchValue(day.workout_type)) never moved after a
-    // confirm, and the SAME stuck value kept reporting as "active" no
-    // matter what was clicked. The switch's own selection has to be
-    // reflected immediately, unlike distance/metrics/trainingLoadCategory
-    // (which staying stale until Save is expected, matching a hand-typed
-    // DSL edit) — so patch workout_type locally too, right here.
-    patchLocalDayWorkoutType(sectionIndex, weekIndex, dayIndex, workoutType);
+    // edit) — day.workout_type/distance stay whatever they were at last
+    // load/Save until a real re-parse happens (onDayEdit's own debounced
+    // live-validate, ~400ms later), so the switch's own active button
+    // (workoutTypeSwitchValue(day.workout_type)) never moved after a
+    // confirm, and the row's/week's/section's totals kept showing this
+    // day's OLD content. Unlike a hand-typed edit, REST/OTHER/RUN-clear's
+    // outcome is fully known up front (no segments -> 0 distance) — patch
+    // workout_type+distance (and the owning week/section totals with them,
+    // via patchLocalDayResolved) immediately, rather than waiting on the
+    // debounce that's about to fire anyway and would just confirm the same
+    // values.
+    patchLocalDayResolved(sectionIndex, weekIndex, dayIndex, { workout_type: workoutType as WorkoutType, distance: { meters: 0, approximate: false } });
     notify(t("manage.planInstances.workoutTypeChanged", "Day type updated — remember to Save."));
-  }
-  function patchLocalDayWorkoutType(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
-    setSections(prev => {
-      const next = [...prev];
-      const section = { ...next[sectionIndex] };
-      const weeks = [...section.weeks];
-      const week = { ...weeks[weekIndex] };
-      const days = [...week.days];
-      days[dayIndex] = { ...days[dayIndex], workout_type: workoutType as WorkoutType };
-      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
-      return next;
-    });
   }
 
   // HRA-151: PlanInstanceCalendar (the Agenda view) only ever has the day's
@@ -1095,7 +1130,16 @@ export function PlanInstancesSection({ templates }: Props) {
         ...dayA, dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB,
         day: dayB.day, suffix: dayB.suffix, category: dayB.category, date: dayB.date, id: dayB.id,
       };
-      return next;
+      // Live follow-up: each slot's own distance/workout_type already moved
+      // correctly WITH its content (the spread above), but the OWNING
+      // week's/section's own AggregateTotals are a separate, precomputed
+      // value that doesn't recompute itself — same-week swaps happen to
+      // still be numerically right (same days, same content, just
+      // reordered), but a cross-week/cross-section swap actually needs to
+      // move content out of one total and into the other. Recompute both
+      // sides unconditionally rather than special-casing same-vs-cross.
+      const afterA = recomputeTotals(next, a.sectionIndex, a.weekIndex);
+      return recomputeTotals(afterA, b.sectionIndex, b.weekIndex);
     });
     void persistSwappedScheduledTimes([
       { day: dayA, newScheduledTime: newTimeA },
@@ -1139,7 +1183,13 @@ export function PlanInstancesSection({ templates }: Props) {
           day: originalB.day, suffix: originalB.suffix, category: originalB.category, date: originalB.date, id: originalB.id,
         });
       }
-      return next;
+      // Live follow-up: same reasoning as swapDaysByRef's own totals
+      // recompute above — each day's own distance/workout_type already
+      // moved correctly with its content, but the two weeks' (and their
+      // sections') own AggregateTotals need recomputing too, since a
+      // whole week's worth of content can cross a section boundary here.
+      const afterA = recomputeTotals(next, a.sectionIndex, a.weekIndex);
+      return recomputeTotals(afterA, b.sectionIndex, b.weekIndex);
     });
     void persistSwappedScheduledTimes(timePairs);
   }

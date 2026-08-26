@@ -294,6 +294,22 @@ export function aggregateResolvedDays(days: ResolvedDay[]): AggregateTotals {
   };
 }
 
+// Live follow-up: recomputes a Week/Section's own AggregateTotals directly
+// from its current DayView[] — used when a local (not-yet-saved) dsl edit
+// changes a day's workout_type/distance, so the accordion's title-row
+// totals stay consistent with what's actually on screen instead of only
+// updating at the next full Save/reload. Reuses categorize/sumDistances,
+// the same rollup aggregateResolvedDays above already uses — a DayView
+// already carries its own resolved workout_type/distance, so this needs
+// neither a PacePolicy (template days use aggregateTemplateDays for that)
+// nor a fresh ResolvedDay (aggregateResolvedDays' own case) to recompute.
+export function aggregateDayViews(days: DayView[]): AggregateTotals {
+  return {
+    ...categorize(days.map(d => d.workout_type)),
+    distance: sumDistances(days.map(d => d.distance)),
+  };
+}
+
 export function aggregateTemplateWeek(section: Section, week: Week, planPolicy: PacePolicy): AggregateTotals {
   const policy = getEffectivePacePolicy(planPolicy, section.pace_policy, week.pace_policy);
   return aggregateTemplateDays(week.days.map(day => ({ day, policy })));

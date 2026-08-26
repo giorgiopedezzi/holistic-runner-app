@@ -568,19 +568,35 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, updated);
   };
 
-  // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162) —
-  // parse-only preview of a day's DSL edit, never persists: what the List
-  // view's per-day editor calls (debounced) as the user types, so warning
-  // feedback updates live instead of only after the whole-day bulk Save
-  // round-trip. Deliberately reuses parseDayInScope — the exact same
-  // parseDayEntry call and ParseWarning taxonomy the persisting PATCH above
-  // validates against — never a separate client-side grammar
-  // reimplementation that could drift from parser.ts (docs/runplan-dsl.md's
-  // warnings-only model). Always 200: parseDayEntry itself never hard-rejects
-  // (docs/runplan-dsl.md), it only ever produces warnings — the caller reads
-  // needs_review/warnings from the body, same shape a DayEntry itself
-  // carries. No approved-instance guard (unlike the PATCH above): this never
-  // mutates anything, so there's nothing for that lock to protect.
+  // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162, resolved
+  // fields added in a live follow-up) — parse-only preview of a day's DSL
+  // edit, never persists: what the List view's per-day editor calls
+  // (debounced) as the user types, so warning feedback (and now
+  // workout_type/distance, for keeping the day's own total and its
+  // week/section rollups live too) updates live instead of only after the
+  // whole-day bulk Save round-trip. Deliberately reuses parseDayInScope —
+  // the exact same parseDayEntry call and ParseWarning taxonomy the
+  // persisting PATCH above validates against — never a separate
+  // client-side grammar reimplementation that could drift from parser.ts
+  // (docs/runplan-dsl.md's warnings-only model). Always 200: parseDayEntry
+  // itself never hard-rejects (docs/runplan-dsl.md), it only ever produces
+  // warnings — the caller reads needs_review/warnings from the body, same
+  // shape a DayEntry itself carries. No approved-instance guard (unlike the
+  // PATCH above): this never mutates anything, so there's nothing for that
+  // lock to protect.
+  // When the parse itself succeeds (parsedDay.needs_review false), also
+  // resolves it — same resolveDay call the persisting PATCH makes — and
+  // returns workout_type/segments/activity_target/activity_description so
+  // the frontend can compute this day's own distance via its existing
+  // computeResolvedDayDistance, without a client-side DSL parser and
+  // without persisting anything. needs_review in the response then reflects
+  // resolveDay's own verdict (day.needs_review || an unresolved pace
+  // anchor) rather than only the syntactic parse's — a day can parse fine
+  // but still need review once resolved (the PATCH endpoint already
+  // tolerates and persists exactly this case; this endpoint previously
+  // under-reported it as always false). When parsing itself fails, resolve
+  // is skipped (its inputs may be malformed) and the response stays exactly
+  // the pre-existing {needs_review: true, warnings} shape.
   const validateInstanceDay: Handler = async (req, res, url) => {
     const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
     if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
@@ -592,8 +608,16 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const body = await readJsonBody<{ dsl?: string }>(req);
     if (!body.dsl?.trim()) throw unprocessable("dsl is required.");
 
-    const { parsedDay } = parseDayInScope(instance, day, body.dsl);
-    return send(res, { needs_review: parsedDay.needs_review, warnings: parsedDay.warnings });
+    const { parsedDay, policy } = parseDayInScope(instance, day, body.dsl);
+    if (parsedDay.needs_review) {
+      return send(res, { needs_review: true, warnings: parsedDay.warnings });
+    }
+    const resolved = resolveDay(parsedDay, day.section_name, day.week_number, day.date, policy);
+    return send(res, {
+      needs_review: resolved.needs_review, warnings: parsedDay.warnings,
+      workout_type: resolved.workout_type, segments: resolved.segments,
+      activity_target: resolved.activity_target ?? null, activity_description: resolved.activity_description ?? null,
+    });
   };
 
   // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
