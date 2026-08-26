@@ -142,7 +142,7 @@ export interface DayEntry {
   day: number;
   suffix?: string;
   category?: string;
-  workout_type: "run" | "rest" | "todo" | "cross" | "strength";
+  workout_type: "run" | "rest" | "todo" | "cross" | "strength" | "other";
   segments: WorkoutSegment[];
   activity_target?: Target;
   activity_description?: string;

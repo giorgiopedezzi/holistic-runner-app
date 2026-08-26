@@ -287,7 +287,7 @@
           "section_name": { "type": "string" }, "week_number": { "type": "integer" },
           "date": { "type": "string", "format": "date" }, "day": { "type": "integer" },
           "suffix": { "type": ["string", "null"] }, "category": { "type": ["string", "null"] },
-          "workout_type": { "type": "string", "enum": ["run", "rest", "todo", "cross", "strength"] },
+          "workout_type": { "type": "string", "enum": ["run", "rest", "todo", "cross", "strength", "other"] },
           "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ResolvedSegment" } },
           "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] },
           "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] },

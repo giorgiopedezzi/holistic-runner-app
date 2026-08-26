@@ -136,12 +136,13 @@ function toDateKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-// HRA-151 Ask #1: "only on days with a workout" — the same REST/empty-cell
-// exclusion DayCellEvent's own gauges already apply (no event at all, or a
-// REST/TODO day, both render as the compact no-card row with nothing to
-// schedule around).
+// HRA-151 Ask #1: "only on days with a workout" — the same REST/TODO/empty-
+// cell exclusion DayCellEvent's own gauges already apply (no event at all,
+// or a REST/TODO/OTHER day, all render as the compact no-card row with
+// nothing to schedule around). OTHER never carries segments either (HRA-156)
+// — same "nothing to schedule" reasoning as TODO.
 function dayHasScheduledWorkout(event: CalendarEvent | undefined): boolean {
-  return event != null && event.workoutType !== "rest" && event.workoutType !== "todo";
+  return event != null && event.workoutType !== "rest" && event.workoutType !== "todo" && event.workoutType !== "other";
 }
 
 // Follow-up fix: a complex day's DSL text (multiple segments, e.g.
@@ -201,6 +202,11 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
 // "Easy/Recovery" badge would misinform a runner) — the compact row keeps
 // this dedicated, category-independent label+icon for it instead.
 const TODO_LABEL_KEY: [string, string] = ["manage.planInstances.workoutType.todo", "To do"];
+// HRA-156: `other` (unparseable free text, preserved as this day's note) has
+// the exact same "would misinform as Easy/Recovery" problem TODO does — same
+// dedicated treatment, its own label/icon rather than classifyResolvedDay's
+// fallback category.
+const OTHER_LABEL_KEY: [string, string] = ["manage.planInstances.workoutType.other", "Other"];
 
 // HRA-148 Ask #3: category / icon / criteria, in the same order as HRA-147's
 // own description — also the order the criteria-reference popover lists
@@ -288,6 +294,15 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
     return (
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <CircleHelp size={13} />
+        {t(key, fallback)}
+      </span>
+    );
+  }
+  if (event.workoutType === "other") {
+    const [key, fallback] = OTHER_LABEL_KEY;
+    return (
+      <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
+        <Info size={13} />
         {t(key, fallback)}
       </span>
     );
@@ -578,7 +593,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     let workouts = 0, runs = 0, rest = 0, distanceM = 0;
     for (const e of visibleEvents) {
       if (e.workoutType === "rest") rest++;
-      else if (e.workoutType !== "todo") workouts++;
+      else if (e.workoutType !== "todo" && e.workoutType !== "other") workouts++;
       if (e.workoutType === "run") runs++;
       distanceM += e.metrics.totalDistanceM;
     }

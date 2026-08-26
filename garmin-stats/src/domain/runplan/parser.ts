@@ -260,8 +260,24 @@ export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
 
   const m = DAY_RE.exec(main);
   if (!m) {
-    warn(`Unrecognized day entry syntax: ${main}`);
-    return { day: 0, workout_type: "todo", segments: [], notes: note, needs_review: true, raw_dsl: rawLine, warnings };
+    // HRA-156: no D<n>: pattern here at all — distinct from a line that DOES
+    // match but has a broken segment inside it (that path is untouched, see
+    // parseSegment/parseInterval/etc.'s own kind:"unknown" fallbacks below).
+    // This used to become workout_type "todo" with the whole raw line kept
+    // as raw_dsl — indistinguishable from a deliberately-unplanned day, and
+    // the free text buried where no reviewer would look for it. "other"
+    // keeps the day genuinely resolved (zero warnings, so it still saves)
+    // while moving the original text to notes, where it's visible, and
+    // giving raw_dsl its own minimal, valid D-line so this day is real,
+    // reconstructable DSL going forward rather than an unparseable blob.
+    // Placeholder day is 1, not 0: day 0 would itself be flagged by the
+    // "day should be 1-7" check just below on any subsequent re-parse of
+    // this same raw_dsl, defeating the "still round-trips through save"
+    // requirement — 1 is an equally arbitrary placeholder but a stable one.
+    return {
+      day: 1, workout_type: "other", segments: [],
+      notes: rawLine.trim(), needs_review: false, raw_dsl: "D1: OTHER", warnings: [],
+    };
   }
 
   const day = parseInt(m[1], 10);
@@ -278,6 +294,13 @@ export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
   }
   if (workoutText === "TODO") {
     return { ...base, workout_type: "todo", segments: [], needs_review: true, warnings };
+  }
+  // HRA-156: OTHER is a real keyword (parallel to REST/TODO), not just the
+  // no-match fallback's own internal placeholder — this is what makes that
+  // placeholder ("D1: OTHER") genuinely valid, re-parseable DSL rather than
+  // a magic string only this function's own fallback branch understands.
+  if (workoutText === "OTHER") {
+    return { ...base, workout_type: "other", segments: [], needs_review: warnings.length > 0, warnings };
   }
 
   const cross = CROSS_RE.exec(workoutText);

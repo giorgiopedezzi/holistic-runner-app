@@ -133,6 +133,10 @@ function compactTotals(totals: AggregateTotals, t: Translate): string {
     t("runplan.accordion.activeDays", `${totals.activeDays} active`, { n: totals.activeDays }),
     t("runplan.accordion.runningDays", `${totals.runningDays} running`, { n: totals.runningDays }),
     t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays }),
+    // HRA-156: a distinct tally from the needs-review warning badge above —
+    // an "other" day is already resolved (zero warnings), just worth
+    // surfacing separately since it's unparsed free text, not a real plan.
+    ...(totals.otherDays > 0 ? [t("runplan.accordion.otherDays", `${totals.otherDays} other`, { n: totals.otherDays })] : []),
     fmtDistance(totals.distance, t),
   ].join(" · ");
 }

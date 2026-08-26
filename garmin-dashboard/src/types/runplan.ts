@@ -5,7 +5,7 @@
 // lockstep by hand until that Epic lands, same as every other API-shaped
 // type in this app's types/api.ts.
 
-export type WorkoutType = "run" | "rest" | "todo" | "cross" | "strength";
+export type WorkoutType = "run" | "rest" | "todo" | "cross" | "strength" | "other";
 export type RestType = "stand" | "walk" | "jog";
 
 export interface AbsolutePace { kind: "absolute"; pace_sec_per_km: number }

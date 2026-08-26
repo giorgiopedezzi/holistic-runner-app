@@ -148,6 +148,21 @@ describe("aggregate day-count categorization", () => {
     expect(totals.activeDays).toBe(4); // run, cross, strength, run (todo excluded)
     expect(totals.runningDays).toBe(2);
     expect(totals.restDays).toBe(2);
+    expect(totals.otherDays).toBe(0);
+  });
+
+  // HRA-156
+  it("counts 'other' days separately, excluded from activeDays same as todo", () => {
+    const days: DayEntry[] = [
+      day({ day: 1, workout_type: "run" }),
+      day({ day: 2, workout_type: "other" }),
+      day({ day: 3, workout_type: "other" }),
+    ];
+    const section: Section = { name: "Base", week_spec: "1", pace_policy: {}, raw_dsl: "SECTION \"Base\" WEEKS 1", weeks: [{ number: 1, pace_policy: {}, days, raw_dsl: "WEEK 1" }] };
+    const totals = aggregateTemplateSection(section, {});
+    expect(totals.totalDays).toBe(3);
+    expect(totals.activeDays).toBe(1); // run only — both "other" days excluded
+    expect(totals.otherDays).toBe(2);
   });
 });
 
@@ -237,9 +252,10 @@ describe("reconstructDslFromResolvedDay (HRA-118)", () => {
     expect(reconstructDslFromResolvedDay(resolvedDay({ segments: [seg] }))).toBe("D3: 5km @ ?");
   });
 
-  it("reconstructs REST/TODO/CROSS days by literal keyword, with suffix/category/note carried through", () => {
+  it("reconstructs REST/TODO/OTHER/CROSS days by literal keyword, with suffix/category/note carried through", () => {
     expect(reconstructDslFromResolvedDay(resolvedDay({ workout_type: "rest" }))).toBe("D3: REST");
     expect(reconstructDslFromResolvedDay(resolvedDay({ workout_type: "todo" }))).toBe("D3: TODO");
+    expect(reconstructDslFromResolvedDay(resolvedDay({ workout_type: "other", notes: "handwritten note" }))).toBe("D3: OTHER # handwritten note");
     expect(reconstructDslFromResolvedDay(resolvedDay({
       day: 6, suffix: "a", category: "double", workout_type: "cross",
       activity_target: { kind: "duration", duration_sec: 2700, raw: "45min" }, activity_description: "bike", notes: "easy spin",
@@ -328,6 +344,7 @@ describe("classifyResolvedDay / buildDayClassificationContext (HRA-147)", () => 
     expect(classifyResolvedDay(resolvedDay({ workout_type: "strength" }), ctx)).toBe("cross_training");
     expect(classifyResolvedDay(resolvedDay({ workout_type: "rest" }), ctx)).toBe("rest");
     expect(classifyResolvedDay(resolvedDay({ workout_type: "todo" }), ctx)).toBe("easy_recovery");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "other" }), ctx)).toBe("easy_recovery"); // HRA-156
   });
 
   it("buckets a continuous day's resolved pace into a tercile of every resolved pace across the whole instance", () => {

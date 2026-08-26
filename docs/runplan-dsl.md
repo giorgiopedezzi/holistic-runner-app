@@ -54,8 +54,9 @@ removed everywhere: it was already functionally identical to `custom`, since nei
 standard-distance table entry — see `docs/schema.md`). `distance_m` is required iff
 `event === "custom"`, rejected (422) if supplied for any other event.
 
-A day's workout is one of `REST`, `TODO` (→ `needs_review:true`), `CROSS [<target>] <description>`,
-`STRENGTH [<target>] <description>`, or one or more `;`-separated segments:
+A day's workout is one of `REST`, `TODO` (→ `needs_review:true`), `OTHER` (HRA-156 — see below),
+`CROSS [<target>] <description>`, `STRENGTH [<target>] <description>`, or one or more `;`-separated
+segments:
 - **continuous**: `TARGET @ INTENSITY`
 - **interval**: `REPS x TARGET @ INTENSITY [r: REST]` — the `r:` clause is **optional** (HRA-113
   reverses HRA-111's earlier mandatory-rest amendment): an interval without it
@@ -110,6 +111,21 @@ whole plan closes), unaffected by this leniency. Instantiating a template with a
 unresolved and never supplying it via `pace_overrides`/`goal_time` produces instance days flagged
 `needs_review:true` — the deferred requirement surfaces at instantiate time, not template-save time,
 which is the whole point.
+
+**`OTHER` (HRA-156):** a day-body keyword parallel to `REST`/`TODO` — `workout_type: "other"`,
+`needs_review: false` (it's a resolved, non-review state, distinct from `TODO`'s "deliberately not
+yet planned"). It also doubles as `parseDayEntry`'s fallback for a line with no recognizable `D<n>:`
+pattern at all (independent of the rest of the document — the whole-document parser never hits this
+path, since it only calls `parseDayEntry` once `D<n>:` has already matched; only a standalone call,
+e.g. an instance's per-day edit endpoints, can). That fallback resolves to `workout_type: "other"`,
+moves the original unparsed text into `notes` (visible, not discarded), and sets `raw_dsl` to the
+minimal valid placeholder `"D1: OTHER"` (day `1` is an arbitrary but stable choice — day `0` would
+itself fail the day-range check on a subsequent re-parse of that same placeholder, breaking the
+round-trip) — real, reconstructable DSL rather than an unparseable blob.
+This is distinct from a line that DOES match `D<n>:` but has a broken/unrecognized segment inside it
+(a bad target or intensity token) — that already falls back to a per-segment `{kind:"unknown", raw}`
+shape, stays as real DSL, and surfaces a `ParseWarning` with `needs_review:true` (unchanged by
+HRA-156).
 
 ## Pace scoping (Plan → Section → Week)
 `PACE <ANCHOR>=<value>` lines are scoped by where they appear (§18): before any `SECTION`/`WEEK` →

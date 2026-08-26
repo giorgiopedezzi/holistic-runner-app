@@ -550,6 +550,37 @@ test("day: REST/TODO/CROSS/STRENGTH parse with the right workout_type", () => {
   assert.equal(strength.activity_description, "core");
 });
 
+// HRA-156: OTHER is a real day-body keyword (parallel to REST/TODO) and also
+// parseDayEntry's own fallback for a line with no D<n>: pattern at all.
+test("day: OTHER keyword parses to workout_type other with zero warnings", () => {
+  const other = parseDayEntry("D4: OTHER", dayCtx);
+  assert.equal(other.workout_type, "other");
+  assert.equal(other.day, 4);
+  assert.equal(other.needs_review, false);
+  assert.equal(other.warnings.length, 0);
+});
+
+test("day: no recognizable D<n>: pattern at all resolves to other, not todo — original text preserved as notes", () => {
+  const raw = "just some free text with no day prefix at all";
+  const day = parseDayEntry(raw, dayCtx);
+  assert.equal(day.workout_type, "other");
+  assert.equal(day.needs_review, false);
+  assert.equal(day.warnings.length, 0);
+  assert.equal(day.notes, raw);
+  assert.equal(day.raw_dsl, "D1: OTHER");
+  // The placeholder itself round-trips: re-parsing it reproduces the exact
+  // same resolved, warning-free "other" day.
+  const reparsed = parseDayEntry(day.raw_dsl, dayCtx);
+  assert.equal(reparsed.workout_type, "other");
+  assert.equal(reparsed.needs_review, false);
+});
+
+test("day: a line that DOES match D<n>: but has a broken segment inside stays 'run' with a warning, never 'other'", () => {
+  const garbage = parseDayEntry("D3: not a real workout !!!", dayCtx);
+  assert.equal(garbage.workout_type, "run");
+  assert.equal(garbage.needs_review, true);
+});
+
 test("day: category tag and trailing note are captured", () => {
   const day = parseDayEntry("D3 [interval]: 3x3000m @ RG-20 r:1km @ RG+10 # first quality session", dayCtx);
   assert.equal(day.category, "interval");

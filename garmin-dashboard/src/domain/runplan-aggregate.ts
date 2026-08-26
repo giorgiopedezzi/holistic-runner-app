@@ -257,20 +257,27 @@ export function computeResolvedDayMetrics(day: ResolvedDay): ResolvedDayMetrics 
 
 export interface AggregateTotals {
   totalDays: number;
-  activeDays: number;  // every day whose workout_type isn't rest/todo (run/cross/strength)
+  activeDays: number;  // every day whose workout_type isn't rest/todo/other (run/cross/strength)
   runningDays: number; // workout_type === "run" only
   restDays: number;    // workout_type === "rest"
+  // HRA-156: "other" (a day whose DSL text couldn't be recognized at all,
+  // preserved verbatim as a note rather than discarded) is tracked
+  // separately from needs_review's warning count — it's a resolved,
+  // non-review state, not a flagged one, so it needs its own tally rather
+  // than silently folding into activeDays or getting conflated with warnings.
+  otherDays: number;
   distance: DistanceTotal;
 }
 
 function categorize(workoutTypes: WorkoutType[]): Omit<AggregateTotals, "distance"> {
-  let activeDays = 0, runningDays = 0, restDays = 0;
+  let activeDays = 0, runningDays = 0, restDays = 0, otherDays = 0;
   for (const wt of workoutTypes) {
     if (wt === "rest") restDays++;
-    else if (wt !== "todo") activeDays++;
+    else if (wt !== "todo" && wt !== "other") activeDays++;
     if (wt === "run") runningDays++;
+    if (wt === "other") otherDays++;
   }
-  return { totalDays: workoutTypes.length, activeDays, runningDays, restDays };
+  return { totalDays: workoutTypes.length, activeDays, runningDays, restDays, otherDays };
 }
 
 export function aggregateTemplateDays(entries: { day: DayEntry; policy: PacePolicy }[]): AggregateTotals {
@@ -549,6 +556,7 @@ export function classifyResolvedDay(day: ResolvedDay, context: DayClassification
   if (day.workout_type === "cross" || day.workout_type === "strength") return "cross_training";
   if (day.workout_type === "rest") return "rest";
   if (day.workout_type === "todo") return "easy_recovery"; // not yet planned — no load info to classify by
+  if (day.workout_type === "other") return "easy_recovery"; // unparseable free text, no segments — no load info to classify by
 
   const structural = structuralCategory(day);
   if (structural) return structural;
@@ -612,6 +620,7 @@ export function reconstructDslFromResolvedDay(day: ResolvedDay): string {
   let body: string;
   if (day.workout_type === "rest") body = "REST";
   else if (day.workout_type === "todo") body = "TODO";
+  else if (day.workout_type === "other") body = "OTHER";
   else if (day.workout_type === "cross" || day.workout_type === "strength") {
     const keyword = day.workout_type === "cross" ? "CROSS" : "STRENGTH";
     const targetText = day.activity_target ? `${day.activity_target.raw} ` : "";

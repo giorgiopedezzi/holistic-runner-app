@@ -86,7 +86,7 @@ export const dayEntrySchema = z.object({
   day: z.number().int(),
   suffix: z.string().optional(),
   category: z.string().optional(),
-  workout_type: z.enum(["run", "rest", "todo", "cross", "strength"]),
+  workout_type: z.enum(["run", "rest", "todo", "cross", "strength", "other"]),
   segments: z.array(workoutSegmentSchema),
   activity_target: targetSchema.optional(),
   activity_description: z.string().optional(),
