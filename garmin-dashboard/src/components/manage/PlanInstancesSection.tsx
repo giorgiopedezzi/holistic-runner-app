@@ -30,11 +30,12 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge, DatePicker, AccordionCard, ConfirmModal } from "@/components/ui";
+import { Card, ErrorBanner, Badge, AccordionCard, ConfirmModal } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
+import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
 import {
   aggregateDayViews, collectPlanAnchors, computeResolvedDayDistance, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
@@ -1641,70 +1642,31 @@ export function PlanInstancesSection({ templates }: Props) {
         {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
         {fieldsLocked && editError && <ErrorBanner message={editError} />}
 
-        <div className="hra-row-wrap" style={{ marginBottom: 12, alignItems: "center" }}>
-          {!fieldsLocked ? (
-            <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
-              {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
-            </button>
-          ) : (
-            <>
-              <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || sections.length === 0 || isApproved || !saveEnabled}>
-                {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
-              </button>
-              <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
-                {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
-              </button>
-              {/* AC3/AC6: label + date picker + button as ONE real control — a
-                  button-shaped div with the DatePicker nested INSIDE it
-                  (compact/borderless, index.css's .hra-regenerate-unit
-                  override). A literal <button> can't contain the date
-                  picker's own nested <button> (invalid HTML), so this is
-                  role="button" on a <div>, with tabIndex/onKeyDown restoring
-                  the click/keyboard-activate behavior a real button gives
-                  for free, and data-disabled driving the same visual
-                  language .hra-btn:disabled already has. The nested
-                  DatePicker's own click is wrapped in a stopPropagation span
-                  so opening the calendar doesn't also fire Regenerate. */}
-              <div
-                className="hra-btn hra-regenerate-unit" data-variant="green"
-                role="button" tabIndex={regenerateDisabled ? -1 : 0}
-                onClick={() => { if (!regenerateDisabled) onRegenerateClick(); }}
-                onKeyDown={e => { if (!regenerateDisabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
-                data-disabled={regenerateDisabled || undefined}
-                aria-disabled={regenerateDisabled}
-                title={!isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
-                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
-              >
-                <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
-                <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex" }}>
-                  <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled} />
-                </span>
-              </div>
-            </>
-          )}
-          {/* HRA-159: "Restore" renames to "Reset to previous values" here —
-              a dedicated key, not a change to the shared common.restore
-              key PlanTemplatesSection.tsx also uses, since this Story's ask
-              is scoped to the instance card only. */}
-          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => onRestoreClick(isDirty)}>
-            {t("manage.planInstances.resetButton", "Reset to previous values")}
-          </button>
-          {/* HRA-157: List/Agenda switch relocated here from its own row
-              above the accordion/calendar — right-aligned via marginLeft:
-              auto in this flex row, while the buttons above stay
-              left-aligned. Only shown once there's something to switch
-              between, same gating the old location used. */}
-          {sections.length > 0 && (
-            <div className="hra-segment" style={{ marginLeft: "auto" }}>
-              <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
-                {t("manage.planInstances.viewList", "List")}
-              </button>
-              <button className="hra-segment-item" data-active={viewMode === "agenda"} onClick={() => setViewMode("agenda")}>
-                {t("manage.planInstances.viewAgenda", "Agenda")}
-              </button>
-            </div>
-          )}
-        </div>
+        <PlanInstanceEditorActions
+          fieldsLocked={fieldsLocked}
+          instantiateLoading={instantiateLoading}
+          canInstantiate={canInstantiate}
+          onInstantiate={onInstantiate}
+          saveLoading={saveLoading}
+          hasSections={sections.length > 0}
+          isApproved={isApproved}
+          saveEnabled={saveEnabled}
+          onSaveClick={onSaveClick}
+          approveLoading={approveLoading}
+          editingId={editingId}
+          onApprove={onApprove}
+          regenerateLoading={regenerateLoading}
+          regenerateDisabled={regenerateDisabled}
+          regenerateBucketDirty={regenerateBucketDirty}
+          onRegenerateClick={onRegenerateClick}
+          effectiveFrom={effectiveFrom}
+          setEffectiveFrom={setEffectiveFrom}
+          minEffectiveFrom={minEffectiveFrom}
+          isDirty={isDirty}
+          onRestoreClick={onRestoreClick}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+        />
 
         <ConfirmModal
           open={pendingNameChangeConfirm}
