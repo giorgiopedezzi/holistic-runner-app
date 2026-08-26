@@ -30,7 +30,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard } from "@/components/ui";
+import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard, ConfirmModal } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import {
@@ -1875,80 +1875,63 @@ export function PlanInstancesSection({ templates }: Props) {
           )}
         </div>
 
-        {pendingNameChangeConfirm && (
-          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelNameChange}>
-            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-                {t("manage.planInstances.renameConfirmBody", "This will rename the current plan — it won't create a copy. Continue?")}
-              </div>
-              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelNameChange}>
-                  {t("common.cancel", "Cancel")}
-                </button>
-                <button className="hra-btn" data-variant="green" onClick={confirmNameChange}>
-                  {t("manage.planInstances.renameConfirmButton", "Rename")}
-                </button>
-              </div>
+        <ConfirmModal
+          open={pendingNameChangeConfirm}
+          title={
+            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+              {t("manage.planInstances.renameConfirmBody", "This will rename the current plan — it won't create a copy. Continue?")}
             </div>
-          </div>
-        )}
+          }
+          confirmLabel={t("manage.planInstances.renameConfirmButton", "Rename")}
+          variant="green"
+          onConfirm={confirmNameChange}
+          onCancel={cancelNameChange}
+        />
 
-        {pendingTemplateId != null && (
-          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelSwitchTemplate}>
-            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
+        <ConfirmModal
+          open={pendingTemplateId != null}
+          title={
+            <>
               <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
                 {t("manage.planInstances.switchTemplateTitle", "Discard current instance data?")}
               </div>
               <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
                 {t("manage.planInstances.switchTemplateBody", "This instance hasn't been created yet. Picking a different template will lose the name, dates, and pace values you've already entered.")}
               </div>
-              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelSwitchTemplate}>
-                  {t("common.cancel", "Cancel")}
-                </button>
-                <button className="hra-btn" data-variant="danger" onClick={confirmSwitchTemplate}>
-                  {t("manage.planInstances.switchTemplateConfirm", "Switch template")}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+            </>
+          }
+          confirmLabel={t("manage.planInstances.switchTemplateConfirm", "Switch template")}
+          variant="danger"
+          onConfirm={confirmSwitchTemplate}
+          onCancel={cancelSwitchTemplate}
+        />
 
-        {pendingRegenerateCount != null && (
-          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelRegenerate}>
-            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 400, padding: 20 }} onClick={e => e.stopPropagation()}>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
-                {t("manage.planInstances.regenerateConfirmTitle", `Regenerating will discard ${pendingRegenerateCount} manual edit(s) — continue?`, { count: pendingRegenerateCount })}
-              </div>
-              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelRegenerate}>
-                  {t("common.cancel", "Cancel")}
-                </button>
-                <button className="hra-btn" data-variant="danger" onClick={doRegenerate}>
-                  {t("manage.planInstances.regenerateConfirmButton", "Regenerate")}
-                </button>
-              </div>
+        <ConfirmModal
+          open={pendingRegenerateCount != null}
+          title={
+            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+              {t("manage.planInstances.regenerateConfirmTitle", `Regenerating will discard ${pendingRegenerateCount ?? 0} manual edit(s) — continue?`, { count: pendingRegenerateCount ?? 0 })}
             </div>
-          </div>
-        )}
+          }
+          confirmLabel={t("manage.planInstances.regenerateConfirmButton", "Regenerate")}
+          variant="danger"
+          maxWidth={400}
+          onConfirm={doRegenerate}
+          onCancel={cancelRegenerate}
+        />
 
-        {pendingRestoreConfirm && (
-          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelRestoreConfirm}>
-            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-                {t("manage.planInstances.restoreConfirmBody", "You have unsaved changes — reset them to the previous values?")}
-              </div>
-              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelRestoreConfirm}>
-                  {t("common.cancel", "Cancel")}
-                </button>
-                <button className="hra-btn" data-variant="danger" onClick={doRestore}>
-                  {t("manage.planInstances.resetButton", "Reset to previous values")}
-                </button>
-              </div>
+        <ConfirmModal
+          open={pendingRestoreConfirm}
+          title={
+            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+              {t("manage.planInstances.restoreConfirmBody", "You have unsaved changes — reset them to the previous values?")}
             </div>
-          </div>
-        )}
+          }
+          confirmLabel={t("manage.planInstances.resetButton", "Reset to previous values")}
+          variant="danger"
+          onConfirm={doRestore}
+          onCancel={cancelRestoreConfirm}
+        />
 
         {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
             buttons) is hidden — superseded by drag-and-drop swap in both List
@@ -2005,21 +1988,18 @@ export function PlanInstancesSection({ templates }: Props) {
             ? t("manage.planInstances.workoutTypeConfirmClearTitle", `Clear ${dateLabel}'s workout text ("${currentText}") so you can enter a new run?`, { date: dateLabel, body: currentText })
             : t("manage.planInstances.workoutTypeConfirmSetTitle", `Set ${dateLabel} to ${typeLabel}? This replaces the current workout text ("${currentText}").`, { date: dateLabel, type: typeLabel, body: currentText });
           return (
-            <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelWorkoutTypeChange}>
-              <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <ConfirmModal
+              open
+              title={
                 <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
                   {title}
                 </div>
-                <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                  <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelWorkoutTypeChange}>
-                    {t("common.cancel", "Cancel")}
-                  </button>
-                  <button className="hra-btn" onClick={confirmWorkoutTypeChange}>
-                    {t("common.confirm", "Confirm")}
-                  </button>
-                </div>
-              </div>
-            </div>
+              }
+              confirmLabel={t("common.confirm", "Confirm")}
+              maxWidth={420}
+              onConfirm={confirmWorkoutTypeChange}
+              onCancel={cancelWorkoutTypeChange}
+            />
           );
         })()}
 
@@ -2029,21 +2009,18 @@ export function PlanInstancesSection({ templates }: Props) {
           const labelFor = (d: DayView) => `${instanceDayDateLabel(d.date!)} (${d.dsl.replace(DAY_PREFIX_RE, "")})`;
           const bodyText = dayA && dayB ? `${labelFor(dayA)} with ${labelFor(dayB)}` : "";
           return (
-            <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelDaySwap}>
-              <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <ConfirmModal
+              open
+              title={
                 <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
                   {t("manage.planInstances.daySwapConfirmTitle", `Swap ${bodyText}?`, { body: bodyText })}
                 </div>
-                <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                  <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelDaySwap}>
-                    {t("common.cancel", "Cancel")}
-                  </button>
-                  <button className="hra-btn" onClick={confirmDaySwap}>
-                    {t("manage.planInstances.swapConfirmButton", "Swap")}
-                  </button>
-                </div>
-              </div>
-            </div>
+              }
+              confirmLabel={t("manage.planInstances.swapConfirmButton", "Swap")}
+              maxWidth={420}
+              onConfirm={confirmDaySwap}
+              onCancel={cancelDaySwap}
+            />
           );
         })()}
 
@@ -2056,21 +2033,18 @@ export function PlanInstancesSection({ templates }: Props) {
             ? `week ${instanceDayDateLabel(rangeA.start)} → ${instanceDayDateLabel(rangeA.end)} with week ${instanceDayDateLabel(rangeB.start)} → ${instanceDayDateLabel(rangeB.end)}`
             : "";
           return (
-            <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelWeekSwap}>
-              <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+            <ConfirmModal
+              open
+              title={
                 <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
                   {t("manage.planInstances.weekSwapConfirmTitle", `Swap ${bodyText}?`, { body: bodyText })}
                 </div>
-                <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                  <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelWeekSwap}>
-                    {t("common.cancel", "Cancel")}
-                  </button>
-                  <button className="hra-btn" onClick={confirmWeekSwap}>
-                    {t("manage.planInstances.swapConfirmButton", "Swap")}
-                  </button>
-                </div>
-              </div>
-            </div>
+              }
+              confirmLabel={t("manage.planInstances.swapConfirmButton", "Swap")}
+              maxWidth={420}
+              onConfirm={confirmWeekSwap}
+              onCancel={cancelWeekSwap}
+            />
           );
         })()}
       </>
@@ -2145,23 +2119,18 @@ export function PlanInstancesSection({ templates }: Props) {
       {/* One shared confirm modal (not per-row) — deleteConfirmId already
           uniquely identifies the target, and only one can ever be pending
           at a time. */}
-      {deleteConfirmId != null && (
-        <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={() => setDeleteConfirmId(null)}>
-          <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
-            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-              {t("manage.planInstances.deleteConfirm", "Delete this instance?")}
-            </div>
-            <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-              <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => setDeleteConfirmId(null)}>
-                {t("common.cancel", "Cancel")}
-              </button>
-              <button className="hra-btn" data-variant="danger" onClick={() => onDelete(deleteConfirmId)}>
-                {t("common.yesDelete", "Yes, delete")}
-              </button>
-            </div>
+      <ConfirmModal
+        open={deleteConfirmId != null}
+        title={
+          <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+            {t("manage.planInstances.deleteConfirm", "Delete this instance?")}
           </div>
-        </div>
-      )}
+        }
+        confirmLabel={t("common.yesDelete", "Yes, delete")}
+        variant="danger"
+        onConfirm={() => deleteConfirmId != null && onDelete(deleteConfirmId)}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </Card>
   );
 }
