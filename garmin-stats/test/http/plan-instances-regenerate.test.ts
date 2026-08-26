@@ -158,7 +158,7 @@ test("POST .../regenerate with a start_date shift never duplicates or orphans a 
     // this exercises the whole cutover boundary at once.
     const seen = new Set<string>();
     for (const d of after) {
-      const key = `${d.section_name} ${d.week_number} ${d.day}`;
+      const key = `${d.section_name} ${d.week_number} ${d.day}`;
       assert.ok(!seen.has(key), `duplicate row for ${key}`);
       seen.add(key);
     }
