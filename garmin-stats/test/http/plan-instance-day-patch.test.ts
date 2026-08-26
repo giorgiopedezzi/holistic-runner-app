@@ -93,45 +93,6 @@ test("PATCH .../days/:dayId: an explicit notes overrides whatever the dsl parse 
   }
 });
 
-test("PATCH .../days/:dayId updates workout_type only, leaves dsl-derived segments untouched (HRA-163)", async () => {
-  const server = await startTestServer();
-  try {
-    const { instanceId, dayId } = await setUp(server);
-    const before = await patchDay(server, instanceId, dayId, { notes: "" });
-    const segmentsBefore = (before.json as any).segments;
-    const res = await patchDay(server, instanceId, dayId, { workout_type: "rest" });
-    assert.equal(res.status, 200, JSON.stringify(res.json));
-    const updated = res.json as any;
-    assert.equal(updated.workout_type, "rest");
-    assert.equal(updated.segments, segmentsBefore);
-  } finally {
-    await server.close();
-  }
-});
-
-test("PATCH .../days/:dayId rejects a workout_type outside run/rest/other (HRA-163)", async () => {
-  const server = await startTestServer();
-  try {
-    const { instanceId, dayId } = await setUp(server);
-    const res = await patchDay(server, instanceId, dayId, { workout_type: "cross" });
-    assert.equal(res.status, 422, JSON.stringify(res.json));
-  } finally {
-    await server.close();
-  }
-});
-
-test("PATCH .../days/:dayId: an explicit workout_type overrides whatever the dsl parse itself produced (HRA-163)", async () => {
-  const server = await startTestServer();
-  try {
-    const { instanceId, dayId } = await setUp(server);
-    const res = await patchDay(server, instanceId, dayId, { dsl: "D1: 8km @ RG", workout_type: "rest" });
-    assert.equal(res.status, 200, JSON.stringify(res.json));
-    assert.equal((res.json as any).workout_type, "rest");
-  } finally {
-    await server.close();
-  }
-});
-
 test("PATCH .../days/:dayId rejects an invalid scheduled_time format", async () => {
   const server = await startTestServer();
   try {

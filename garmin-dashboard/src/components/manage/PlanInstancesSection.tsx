@@ -35,7 +35,7 @@ import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type W
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
-  resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView, type TrainingLoadCategory,
+  resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
 import { notify } from "@/utils/toast";
@@ -938,51 +938,43 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
-  // HRA-163: the List view's run/rest/other switch — same "own PATCH,
-  // optimistic, rolled back on failure" shape as onScheduledTimeEdit above.
-  // Unlike scheduled_time, workout_type also drives trainingLoadCategory
-  // (classifyResolvedDay, runplan-aggregate.ts), which is baked into DayView
-  // at build time and needs a full plan-wide DayClassificationContext (pace
-  // terciles, week's longest run) to recompute properly — context this
-  // single-day PATCH doesn't have, and a full re-fetch+rebuild here would
-  // clobber any *other* day's unsaved dsl/notes edits (still local-only until
-  // the whole-day bulk Save, HRA-149/150's own rule). So this only
-  // approximates the category locally, mirroring classifyResolvedDay's own
-  // deterministic branches for the two cases that don't need context (rest
-  // -> "rest", other -> "easy_recovery"); switching to "run" with no real
-  // segments yet also falls back to "easy_recovery" (same treatment
-  // classifyResolvedDay already gives todo/other) until the day's DSL is
-  // actually edited into a real run and the section is next rebuilt from a
-  // full fetch (Save/reload), at which point the real classification takes
-  // over. Flagged as a residual-risk approximation in this Story's review.
-  function fallbackCategoryForWorkoutType(workoutType: WorkoutTypeSwitchValue): TrainingLoadCategory {
-    return workoutType === "rest" ? "rest" : "easy_recovery";
+  // Live follow-up (post-HRA-163): the run/rest/other switch now writes the
+  // DSL TEXT field itself (REST/OTHER's own bare DSL keyword; RUN clears
+  // the body so a real workout can be typed) instead of a separate
+  // workout_type column — reusing onDayEdit below, the exact same
+  // local-only-until-Save path a manual DSL edit already goes through
+  // (HRA-149/150's own rule), rather than the HRA-163 immediate-PATCH
+  // mechanism this replaces (that backend field/endpoint support has been
+  // reverted — nothing calls it any more). This also means the switch no
+  // longer needs its own trainingLoadCategory approximation: it now has
+  // exactly the same (already-accepted) "distance/metrics/category stay
+  // stale until Save" behavior as typing REST/OTHER into the DSL box by
+  // hand, not a special case.
+  // Destructive (replaces whatever workout text/segments were there), so
+  // it stages a pending confirmation first — same "stage, render a confirm
+  // modal, mutate only once the user actually confirms" shape
+  // pendingDaySwap/pendingWeekSwap/pendingRegenerateCount already use.
+  const [pendingWorkoutTypeChange, setPendingWorkoutTypeChange] = useState<{
+    sectionIndex: number; weekIndex: number; dayIndex: number; workoutType: WorkoutTypeSwitchValue;
+  } | null>(null);
+  function onWorkoutTypeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
+    setPendingWorkoutTypeChange({ sectionIndex, weekIndex, dayIndex, workoutType });
   }
-  function patchLocalDayWorkoutType(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: string, category: TrainingLoadCategory | undefined) {
-    setSections(prev => {
-      const next = [...prev];
-      const section = { ...next[sectionIndex] };
-      const weeks = [...section.weeks];
-      const week = { ...weeks[weekIndex] };
-      const days = [...week.days];
-      days[dayIndex] = { ...days[dayIndex], workout_type: workoutType as WorkoutType, trainingLoadCategory: category };
-      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
-      return next;
-    });
-  }
-  async function onWorkoutTypeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
-    if (editingId == null) return;
-    const day = dayStateAt(sectionIndex, weekIndex, dayIndex);
-    if (day?.id == null) return;
-    const previousType = day.workout_type;
-    const previousCategory = day.trainingLoadCategory;
-    patchLocalDayWorkoutType(sectionIndex, weekIndex, dayIndex, workoutType, fallbackCategoryForWorkoutType(workoutType));
-    try {
-      await api.planInstances.patchDay(editingId, day.id, { workout_type: workoutType });
-    } catch (e) {
-      patchLocalDayWorkoutType(sectionIndex, weekIndex, dayIndex, previousType, previousCategory);
-      notify(e instanceof Error ? e.message : t("manage.planInstances.workoutTypeFailed", "Failed to save day type"), "error");
-    }
+  function cancelWorkoutTypeChange() { setPendingWorkoutTypeChange(null); }
+  function confirmWorkoutTypeChange() {
+    if (!pendingWorkoutTypeChange) return;
+    const { sectionIndex, weekIndex, dayIndex, workoutType } = pendingWorkoutTypeChange;
+    setPendingWorkoutTypeChange(null);
+    const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
+    if (!day) return;
+    const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
+    // RUN has no single canonical DSL body (unlike REST/OTHER's own bare
+    // keyword) — clears the body instead, so the day is ready for the user
+    // to type a real workout, same "confirm, then replace" shape either way.
+    const newBody = workoutType === "rest" ? "REST" : workoutType === "other" ? "OTHER" : "";
+    const newDsl = recomposeDayLine(`${dayPrefix}${newBody}`, { notes: day.notes });
+    onDayEdit(sectionIndex, weekIndex, dayIndex, { dsl: newDsl });
+    notify(t("manage.planInstances.workoutTypeChanged", "Day type updated — remember to Save."));
   }
 
   // HRA-151: PlanInstanceCalendar (the Agenda view) only ever has the day's
@@ -1910,6 +1902,38 @@ export function PlanInstancesSection({ templates }: Props) {
             )}
           </>
         )}
+
+        {pendingWorkoutTypeChange != null && (() => {
+          const { sectionIndex, weekIndex, dayIndex, workoutType } = pendingWorkoutTypeChange;
+          const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
+          const currentText = day ? day.dsl.replace(DAY_PREFIX_RE, "") : "";
+          const dateLabel = day?.date ? instanceDayDateLabel(day.date) : "";
+          const typeLabel = workoutType === "rest"
+            ? t("runplan.accordion.workoutTypeRest", "Rest")
+            : workoutType === "other"
+              ? t("runplan.accordion.workoutTypeOther", "Other")
+              : t("runplan.accordion.workoutTypeRun", "Run");
+          const title = workoutType === "run"
+            ? t("manage.planInstances.workoutTypeConfirmClearTitle", `Clear ${dateLabel}'s workout text ("${currentText}") so you can enter a new run?`, { date: dateLabel, body: currentText })
+            : t("manage.planInstances.workoutTypeConfirmSetTitle", `Set ${dateLabel} to ${typeLabel}? This replaces the current workout text ("${currentText}").`, { date: dateLabel, type: typeLabel, body: currentText });
+          return (
+            <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelWorkoutTypeChange}>
+              <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 420, padding: 20 }} onClick={e => e.stopPropagation()}>
+                <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
+                  {title}
+                </div>
+                <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
+                  <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelWorkoutTypeChange}>
+                    {t("common.cancel", "Cancel")}
+                  </button>
+                  <button className="hra-btn" onClick={confirmWorkoutTypeChange}>
+                    {t("common.confirm", "Confirm")}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {pendingDaySwap != null && (() => {
           const dayA = dayByRef(pendingDaySwap.a);

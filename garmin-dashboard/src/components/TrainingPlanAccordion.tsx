@@ -68,10 +68,14 @@ interface TrainingPlanAccordionProps {
   // local until the whole-day bulk Save). Optional: templates have no
   // scheduled_time concept, so PlanTemplatesSection never passes this.
   onScheduledTimeEdit?: (sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
-  // HRA-163: instance-only, same "own PATCH, independent of the dsl/notes
-  // bulk-Save path" shape as onScheduledTimeEdit above — the note row's
-  // run/rest/other switch. Optional: templates have no per-day manual type
-  // override, so PlanTemplatesSection never passes this.
+  // HRA-163, DSL-text mechanism added in a live follow-up: instance-only —
+  // the note row's run/rest/other switch. Unlike onScheduledTimeEdit above,
+  // this does NOT persist on its own; the caller stages a confirm (the
+  // switch overwrites the day's workout text) and, once confirmed, applies
+  // it through the SAME onDayEdit({dsl}) path a manual DSL edit already
+  // uses (local-only until the whole-day bulk Save). Optional: templates
+  // have no per-day manual type override, so PlanTemplatesSection never
+  // passes this.
   onWorkoutTypeEdit?: (sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
 }
 
@@ -156,14 +160,16 @@ function compactTotals(totals: AggregateTotals, t: Translate): string {
 // workout text this file already uses for InstanceDayRow's editable field.
 export const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 
-// HRA-163: the note row's run/rest/other switch — a manual override of the
-// day's workout_type, independent of the DSL text (the DSL stays whatever it
-// was; only the stored workout_type column changes, via its own PATCH field,
-// see TrainingPlanAccordion.tsx's onWorkoutTypeEdit and docs/api.md). Only 3
-// values are ever WRITTEN through this control (todo/cross/strength stay
-// DSL-only, edited via the D-line's own keywords) — but every WorkoutType
-// value must READ into one of the 3 buttons, so a day whose real type isn't
-// run/rest folds into "other" for display (AC4: never silently shows "run").
+// HRA-163, mechanism changed in a live follow-up: the note row's
+// run/rest/other switch — sets the DSL text field itself (REST/OTHER's own
+// bare DSL keyword; RUN clears the body) once the caller's confirm modal is
+// accepted, via the same onDayEdit({dsl}) path a manual DSL edit already
+// uses — see PlanInstancesSection.tsx's onWorkoutTypeEdit/
+// confirmWorkoutTypeChange. Only 3 values are ever WRITTEN through this
+// control (todo/cross/strength stay DSL-only, edited via the D-line's own
+// keywords) — but every WorkoutType value must READ into one of the 3
+// buttons, so a day whose real type isn't run/rest folds into "other" for
+// display (never silently shows "run").
 export type WorkoutTypeSwitchValue = "run" | "rest" | "other";
 const WORKOUT_TYPE_SWITCH_ICONS: Record<WorkoutTypeSwitchValue, (props: { size?: number }) => ReactNode> = {
   run: Play, rest: Bed, other: CircleHelp,
@@ -297,7 +303,30 @@ function InstanceDayRow({
       className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
       style={drag.swappable ? { cursor: "grab" } : undefined}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      {/* Live follow-up (post-HRA-165): both rows are now ONE CSS Grid,
+          columns [leading auto][middle 1fr][trailing auto], instead of two
+          independent flex rows — a plain two-flex-row layout can't guarantee
+          "column N in row 1 is the same width as column N in row 2" when
+          both columns hold DIFFERENT, independently-sized content (date
+          pill vs. switch; distance text vs. a native time input), which is
+          exactly what was reported as misaligned. Grid tracks size to the
+          WIDEST cell in that column across BOTH rows, so the date-pill/
+          switch pair and the distance/time-input pair each land on a shared
+          width automatically, no measurement or magic px numbers — and
+          the DSL/Notes inputs (the shared 1fr middle track) end up the same
+          width too, so their right edges line up, satisfying that
+          requirement for free. Every cell below sets an EXPLICIT
+          gridRow/gridColumn (not relying on document-order auto-flow) —
+          required because several cells render nothing at all when a
+          condition is false (the warning badge, an empty read-only note),
+          and a skipped grid child under auto-flow would silently shift
+          every later cell into the wrong column.
+          Gap note: row 1 previously used gap:10, row 2 gap:8 — a single
+          grid can only have one column-gap for both rows, so this now uses
+          8 throughout (row 2's own gap, unchanged, per instruction; row 1's
+          own gap shrinks by 2px as a minor, flagged side effect of sharing
+          one grid). */}
+      <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", alignItems: "center", columnGap: 8, rowGap: 6 }}>
         {/* HRA-160: border color now comes from the day's classified
             category (--cat-color, set by the same hra-agenda-cat-* class
             the Agenda view uses) — the badge's own later-declared
@@ -305,43 +334,38 @@ function InstanceDayRow({
             class's own tinted background, so only the border changes here,
             not the pill's solid fill. Icon (same CATEGORY_ICONS map)
             renders after the date text. */}
-        <span className={`hra-day-date-badge ${categoryCatClass}`}>
+        <span className={`hra-day-date-badge ${categoryCatClass}`} style={{ gridRow: 1, gridColumn: 1 }}>
           {dateBadge}
           <CategoryIcon size={12} />
         </span>
         {/* HRA-126: once approved, the dsl/note inputs simply don't render —
             plain text takes their place so the row still reads correctly. */}
         {readOnlyDays ? (
-          <span style={{ flex: 1, minWidth: 0 }}>{workoutText}</span>
+          <span style={{ gridRow: 1, gridColumn: 2, minWidth: 0 }}>{workoutText}</span>
         ) : (
           <input
             className={inputClass}
             value={workoutText}
             onChange={e => onEdit({ dsl: recomposeDayLine(`${dayPrefix}${e.target.value}`, { notes: day.notes }) })}
             aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
-            style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 13, padding: 6 }}
+            style={{ gridRow: 1, gridColumn: 2, width: "100%", minWidth: 0, fontFamily: "monospace", fontSize: 13, padding: 6 }}
           />
         )}
-        <span className="hra-text-secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fmtDistance(day.distance, t)}</span>
-        {day.needs_review && <WarningBadge t={t} />}
-      </div>
-      {/* HRA-150: the time field sits on this row, narrowing the note field
-          to make room — horizontally aligned (same right-hand column) with
-          the distance figure on the row above, matching that field's own
-          fixed, non-growing width so neither field shifts as the other's
-          content changes. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-        {/* HRA-163: the run/rest/other switch — "directly below the date
-            pill" (AC1) means literally here, in row 1's own invisible-clone
-            alignment slot (HRA-160's own comment above explains why that
-            slot exists). Replaces the invisible clone rather than sitting
-            beside it: this row only ever needs one leading control. */}
+        <span className="hra-text-secondary" style={{ gridRow: 1, gridColumn: 3, display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+          {fmtDistance(day.distance, t)}
+          {day.needs_review && <WarningBadge t={t} />}
+        </span>
+
+        {/* run/rest/other switch — "directly below the date pill" (HRA-163
+            AC1) means literally here, in the date pill's own grid column,
+            so the two share a width by construction (see the grid comment
+            above) rather than an invisible clone. */}
         {readOnlyDays ? (
-          <span className="hra-text-secondary" style={{ display: "flex", alignItems: "center", flexShrink: 0 }} title={t(workoutTypeKey, workoutTypeFallback)}>
+          <span className="hra-text-secondary" style={{ gridRow: 2, gridColumn: 1, display: "flex", alignItems: "center" }} title={t(workoutTypeKey, workoutTypeFallback)}>
             <ActiveWorkoutTypeIcon size={14} />
           </span>
         ) : (
-          <div className="hra-segment" role="group" aria-label={t("runplan.accordion.workoutTypeSwitchLabel", "Day type")} style={{ flexShrink: 0 }}>
+          <div className="hra-segment" role="group" aria-label={t("runplan.accordion.workoutTypeSwitchLabel", "Day type")} style={{ gridRow: 2, gridColumn: 1, width: "100%" }}>
             {(["run", "rest", "other"] as const).map(v => {
               const Icon = WORKOUT_TYPE_SWITCH_ICONS[v];
               const [key, fallback] = WORKOUT_TYPE_SWITCH_LABEL_KEYS[v];
@@ -349,8 +373,8 @@ function InstanceDayRow({
               return (
                 <button
                   key={v} type="button" className="hra-segment-item" data-active={workoutTypeValue === v}
-                  onClick={() => onWorkoutTypeEdit?.(v)} title={label} aria-label={label}
-                  style={{ padding: "4px 8px", display: "flex", alignItems: "center" }}
+                  onClick={() => v !== workoutTypeValue && onWorkoutTypeEdit?.(v)} title={label} aria-label={label}
+                  style={{ flex: 1, padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   <Icon size={14} />
                 </button>
@@ -359,7 +383,7 @@ function InstanceDayRow({
           </div>
         )}
         {readOnlyDays ? (
-          day.notes && <div className="hra-text-muted" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>{day.notes}</div>
+          day.notes && <div className="hra-text-muted" style={{ gridRow: 2, gridColumn: 2, minWidth: 0, fontSize: 12 }}>{day.notes}</div>
         ) : (
           <input
             className={inputClass}
@@ -367,11 +391,11 @@ function InstanceDayRow({
             onChange={e => onEdit({ notes: e.target.value })}
             placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
             aria-label={t("runplan.accordion.noteLabel", "Note")}
-            style={{ flex: 1, minWidth: 0, padding: 6, fontSize: 12 }}
+            style={{ gridRow: 2, gridColumn: 2, width: "100%", minWidth: 0, padding: 6, fontSize: 12 }}
           />
         )}
         {readOnlyDays ? (
-          <span className="hra-text-secondary" style={{ fontSize: 12, flexShrink: 0 }}>{scheduledTime}</span>
+          <span className="hra-text-secondary" style={{ gridRow: 2, gridColumn: 3, fontSize: 12 }}>{scheduledTime}</span>
         ) : (
           <input
             type="time"
@@ -379,7 +403,7 @@ function InstanceDayRow({
             value={scheduledTime}
             onChange={e => onScheduledTimeEdit?.(e.target.value || null)}
             aria-label={t("runplan.accordion.scheduledTimeLabel", "Scheduled time")}
-            style={{ flexShrink: 0, padding: 6, fontSize: 12 }}
+            style={{ gridRow: 2, gridColumn: 3, width: "100%", padding: 6, fontSize: 12 }}
           />
         )}
       </div>
