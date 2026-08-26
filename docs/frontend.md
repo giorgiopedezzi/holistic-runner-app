@@ -942,6 +942,19 @@ completion (HRA-127's own mutation, unmodified). **Week swap has no Agenda entry
 product decision** (a month grid spans multiple visual rows per week, unlike List's linear layout) —
 not implemented here, not a gap.
 
+**Swap now also carries `scheduled_time` (HRA-152 follow-up fix)**: `swapDaysByRef`/`swapWeeksByRef`
+originally only exchanged `dsl`/`notes` (`swapDayContent`'s own output) — `scheduled_time` stayed
+behind at its own day's array position, since it isn't part of the DSL text at all. Reported live
+after shipping HRA-152: a runner swapping two workouts expects the scheduled time to move WITH the
+workout, not stay pinned to the old slot. Fixed by also swapping `scheduled_time` in local state
+(same local-only timing dsl/notes already have) **and** immediately PATCHing both sides' new
+`scheduled_time` via `persistSwappedScheduledTimes()` — `scheduled_time` is the one `DayView` field
+with an "immediate persist regardless of Save" contract (HRA-149/150), so leaving it local-only after
+a swap would silently desync the backend from what's on screen. `dsl`/`notes` are untouched by this
+fix — still local-only until the whole-day bulk Save, same as before. Best-effort
+(`Promise.allSettled`, one shared error toast if either PATCH fails) since the local swap has already
+happened either way by the time these requests resolve.
+
 `TemplateDayRow` (`day.date == null`) is the original accordion-with-textarea layout, verbatim,
 unmodified — templates were out of this Story's scope. The split into two components (rather than
 one `DayEditor` with an early return) exists specifically so each branch's `useState`/`useDragSwap`

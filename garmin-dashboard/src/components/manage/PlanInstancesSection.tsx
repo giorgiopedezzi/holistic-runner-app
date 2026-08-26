@@ -927,21 +927,56 @@ export function PlanInstancesSection({ templates }: Props) {
     return out;
   }
 
+  // HRA-152 follow-up fix: scheduled_time is its own persisted column, not
+  // part of the DSL text swapDayContent exchanges — a swap that only moved
+  // dsl/notes left each day's OLD scheduled_time behind at its own position,
+  // so the workout moved but its scheduled time didn't (reported live after
+  // shipping HRA-152). scheduled_time persists immediately regardless of the
+  // Save button (HRA-149/150's own rule, unlike dsl/notes which stay local
+  // until Save) — so a swap has to PATCH both sides' new scheduled_time
+  // right away too, or local state and the backend disagree the moment
+  // either day's chip is touched next. Best-effort: the local (already-
+  // swapped) state is the source of truth for display either way; a failed
+  // PATCH here only means the backend hasn't caught up yet, surfaced via the
+  // same error toast onScheduledTimeEdit already uses.
+  async function persistSwappedScheduledTimes(pairs: { day: DayView; newScheduledTime: string | null | undefined }[]) {
+    if (editingId == null) return;
+    const instanceId = editingId;
+    await Promise.allSettled(
+      pairs
+        .filter((p): p is { day: DayView & { id: number }; newScheduledTime: string | null | undefined } => p.day.id != null)
+        .map(({ day, newScheduledTime }) => api.planInstances.patchDay(instanceId, day.id, { scheduled_time: newScheduledTime ?? null })),
+    ).then(results => {
+      if (results.some(r => r.status === "rejected")) {
+        notify(t("manage.planInstances.scheduledTimeFailed", "Failed to save scheduled time"), "error");
+      }
+    });
+  }
+
   // Core swap mutations, parameterized by explicit refs so both the picker
   // (Select) UI below AND the accordion's native drag-and-drop (HRA-127
   // follow-up — TrainingPlanAccordion's onDaySwap/onWeekSwap props) share
-  // one implementation. Only mutates local `sections` state — persisted the
-  // same way any other day edit already is, via the existing Save button.
+  // one implementation. dsl/notes only mutate local `sections` state —
+  // persisted the same way any other day edit already is, via the existing
+  // Save button; scheduled_time additionally persists right away (see
+  // persistSwappedScheduledTimes above).
   function swapDaysByRef(a: { sectionIndex: number; weekIndex: number; dayIndex: number }, b: { sectionIndex: number; weekIndex: number; dayIndex: number }) {
+    const dayA = sections[a.sectionIndex]?.weeks[a.weekIndex]?.days[a.dayIndex];
+    const dayB = sections[b.sectionIndex]?.weeks[b.weekIndex]?.days[b.dayIndex];
+    if (!dayA || !dayB) return;
+    const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
+    const newTimeA = dayB.scheduled_time;
+    const newTimeB = dayA.scheduled_time;
     setSections(prev => {
       const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
-      const dayA = next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex];
-      const dayB = next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex];
-      const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
-      next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = { ...dayA, dsl: newA, notes: splitNote(newA).note };
-      next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = { ...dayB, dsl: newB, notes: splitNote(newB).note };
+      next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = { ...dayA, dsl: newA, notes: splitNote(newA).note, scheduled_time: newTimeA };
+      next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = { ...dayB, dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB };
       return next;
     });
+    void persistSwappedScheduledTimes([
+      { day: dayA, newScheduledTime: newTimeA },
+      { day: dayB, newScheduledTime: newTimeB },
+    ]);
   }
 
   // Matches days by their own D-number (not array position) so weeks with
@@ -950,6 +985,7 @@ export function PlanInstancesSection({ templates }: Props) {
   // share — a day-number present in only one side is left untouched rather
   // than guessed at, same "don't guess" discipline swapDayContent itself uses.
   function swapWeeksByRef(a: { sectionIndex: number; weekIndex: number }, b: { sectionIndex: number; weekIndex: number }) {
+    const timePairs: { day: DayView; newScheduledTime: string | null | undefined }[] = [];
     setSections(prev => {
       const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
       const weekA = next[a.sectionIndex].weeks[a.weekIndex];
@@ -958,11 +994,15 @@ export function PlanInstancesSection({ templates }: Props) {
         const dayA = weekA.days.find(d => d.day === dayB.day);
         if (!dayA) continue;
         const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
-        dayA.dsl = newA; dayA.notes = splitNote(newA).note;
-        dayB.dsl = newB; dayB.notes = splitNote(newB).note;
+        const newTimeA = dayB.scheduled_time;
+        const newTimeB = dayA.scheduled_time;
+        timePairs.push({ day: { ...dayA }, newScheduledTime: newTimeA }, { day: { ...dayB }, newScheduledTime: newTimeB });
+        dayA.dsl = newA; dayA.notes = splitNote(newA).note; dayA.scheduled_time = newTimeA;
+        dayB.dsl = newB; dayB.notes = splitNote(newB).note; dayB.scheduled_time = newTimeB;
       }
       return next;
     });
+    void persistSwappedScheduledTimes(timePairs);
   }
 
   // HRA-131: both entry points below now only stage a pending swap for
