@@ -911,21 +911,6 @@ export function PlanInstancesSection({ templates }: Props) {
   // for the two "swap with…" selectors below. A day's calendar date never
   // moves (only content exchanges), so date isn't part of the label — the
   // D-line workout text itself is the useful cue for telling rows apart.
-  function weekLabel(weekNumber: number): string {
-    return t("manage.planInstances.swapWeekLabel", `Week ${weekNumber}`, { n: weekNumber });
-  }
-  function dayOptions(): { value: string; label: string }[] {
-    const out: { value: string; label: string }[] = [];
-    sections.forEach((s, si) => s.weeks.forEach((w, wi) => w.days.forEach((d, di) => {
-      out.push({ value: `${si}-${wi}-${di}`, label: `${weekLabel(w.number)} — ${d.dsl}` });
-    })));
-    return out;
-  }
-  function weekOptions(): { value: string; label: string }[] {
-    const out: { value: string; label: string }[] = [];
-    sections.forEach((s, si) => s.weeks.forEach((w, wi) => out.push({ value: `${si}-${wi}`, label: weekLabel(w.number) })));
-    return out;
-  }
 
   // HRA-152 follow-up fix: scheduled_time is its own persisted column, not
   // part of the DSL text swapDayContent exchanges — a swap that only moved
@@ -1022,6 +1007,13 @@ export function PlanInstancesSection({ templates }: Props) {
     const [bSi, bWi] = swapWeekB.split("-").map(Number);
     setPendingWeekSwap({ a: { sectionIndex: aSi, weekIndex: aWi }, b: { sectionIndex: bSi, weekIndex: bWi } });
   }
+
+  // HRA-158: onSwapDays/onSwapWeeks are kept per the Story's AC (drag-and-drop
+  // reuses the same swap plumbing) even though their only caller, the picker
+  // UI, is now hidden — referenced here so the retained functions aren't
+  // flagged as unused.
+  void onSwapDays;
+  void onSwapWeeks;
 
   // HRA-127 follow-up: drag-and-drop, as an alternative UX to the picker
   // above for the same underlying swap — TrainingPlanAccordion calls these
@@ -1735,38 +1727,12 @@ export function PlanInstancesSection({ templates }: Props) {
           </div>
         )}
 
-        {/* HRA-127: day/week swap — only available while unapproved (AC3), a
-            per-picker "swap with…" selector. Swap only mutates local
-            `sections` state, persisted the same way any other day edit
-            already is — via the existing Save button (AC4). */}
-        {!isApproved && sections.length > 0 && (dayOptions().length >= 2 || weekOptions().length >= 2) && (
-          <div className="hra-border-strong" style={{ borderRadius: 8, padding: 12, marginBottom: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-            {dayOptions().length >= 2 && (
-              <Field label={t("manage.planInstances.swapDaysLabel", "Swap two days")}>
-                <div className="hra-row-wrap" style={{ alignItems: "center" }}>
-                  <Select value={swapDayA} onValueChange={setSwapDayA} options={dayOptions()} placeholder={t("manage.planInstances.swapPickDayPlaceholder", "Pick a day…")} triggerStyle={{ width: 260 }} />
-                  <span className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.swapWithLabel", "with")}</span>
-                  <Select value={swapDayB} onValueChange={setSwapDayB} options={dayOptions()} placeholder={t("manage.planInstances.swapPickDayPlaceholder", "Pick a day…")} triggerStyle={{ width: 260 }} />
-                  <button className="hra-btn" onClick={onSwapDays} disabled={!swapDayA || !swapDayB || swapDayA === swapDayB}>
-                    {t("manage.planInstances.swapButton", "Swap")}
-                  </button>
-                </div>
-              </Field>
-            )}
-            {weekOptions().length >= 2 && (
-              <Field label={t("manage.planInstances.swapWeeksLabel", "Swap two weeks")}>
-                <div className="hra-row-wrap" style={{ alignItems: "center" }}>
-                  <Select value={swapWeekA} onValueChange={setSwapWeekA} options={weekOptions()} placeholder={t("manage.planInstances.swapPickWeekPlaceholder", "Pick a week…")} triggerStyle={{ width: 160 }} />
-                  <span className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.swapWithLabel", "with")}</span>
-                  <Select value={swapWeekB} onValueChange={setSwapWeekB} options={weekOptions()} placeholder={t("manage.planInstances.swapPickWeekPlaceholder", "Pick a week…")} triggerStyle={{ width: 160 }} />
-                  <button className="hra-btn" onClick={onSwapWeeks} disabled={!swapWeekA || !swapWeekB || swapWeekA === swapWeekB}>
-                    {t("manage.planInstances.swapButton", "Swap")}
-                  </button>
-                </div>
-              </Field>
-            )}
-          </div>
-        )}
+        {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
+            buttons) is hidden — superseded by drag-and-drop swap in both List
+            (TrainingPlanAccordion's useDragSwap) and Agenda (PlanInstanceCalendar's
+            DayCellEvent drag handling). The underlying swap logic below (state,
+            swapDaysByRef/swapWeeksByRef, onSwapDays/onSwapWeeks) is kept — drag-and-drop
+            still calls into it. */}
 
         {sections.length > 0 && (
           <>
