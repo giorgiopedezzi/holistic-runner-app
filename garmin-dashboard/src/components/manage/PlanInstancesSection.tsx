@@ -28,14 +28,14 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge, AccordionCard, ConfirmModal } from "@/components/ui";
+import { Card, ErrorBanner, ConfirmModal } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
 import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
+import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
 import {
   aggregateDayViews, collectPlanAnchors, computeResolvedDayDistance, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
@@ -1540,44 +1540,6 @@ export function PlanInstancesSection({ templates }: Props) {
   // what gets stashed on collapse/row-switch.
   const isDirty = saveBucketDirty || regenerateBucketDirty;
 
-  // HRA-141 Ask #2/#4: a collapsed row's own status hint — a drafted (dirty
-  // but collapsed) row gets the warning icon; any other collapsed row gets
-  // the plain "Open to edit" hint. Mirrors PlanTemplatesSection's own
-  // rowStatusHint exactly.
-  function rowStatusHint(key: RowKey) {
-    if (drafts[String(key)]) {
-      return (
-        <span
-          title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}
-          className="hra-text-warning"
-          style={{ display: "inline-flex", alignItems: "center" }}
-        >
-          <AlertTriangle size={14} />
-        </span>
-      );
-    }
-    return (
-      <span className="hra-text-secondary" style={{ fontSize: 11, fontStyle: "italic" }}>
-        {t("manage.planInstances.openToEditHint", "Open to edit")}
-      </span>
-    );
-  }
-
-  function renderRowTitle(inst: PlanInstance) {
-    return (
-      <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{inst.name ?? t("manage.planInstances.untitled", "Untitled instance")}</span>
-        {inst.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${inst.event}`, inst.event)}</span>}
-        <span className="hra-text-muted" style={{ fontSize: 11 }}>{inst.start_date}</span>
-        <Badge
-          label={inst.approved_at ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}
-          color={inst.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
-        />
-        {activeKey !== inst.id && rowStatusHint(inst.id)}
-      </span>
-    );
-  }
-
   // HRA-141: everything that used to render as the whole `mode === "plan"`
   // screen (minus the outer Card/title-badge header, which the accordion's
   // own row title now covers) — shared by every row's AccordionCard, only
@@ -1859,44 +1821,30 @@ export function PlanInstancesSection({ templates }: Props) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
           {newDraftPending && (
-            <AccordionCard
-              title={
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-                  <span>{instName || t("manage.planInstances.instantiateTitle", "New instance")}</span>
-                  {activeKey !== "new" && rowStatusHint("new")}
-                </span>
-              }
+            <PlanInstanceRow
+              instance={null}
+              newInstanceName={instName}
               expanded={activeKey === "new"}
+              hasDraft={drafts["new"] != null}
               onToggle={() => onToggleRow("new", isDirty)}
             >
               {activeKey === "new" ? renderEditorFields() : null}
-            </AccordionCard>
+            </PlanInstanceRow>
           )}
           {instances.length === 0 && !newDraftPending ? (
             <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.empty", "No instances created yet.")}</div>
           ) : (
             instances.map(inst => (
-              // HRA-141 (same pattern as PlanTemplatesSection/HRA-140's own
-              // round-2 review fix): Delete is a real DOM SIBLING of the
-              // AccordionCard, overlaid on its collapsed header via
-              // position:absolute + z-index rather than living inside the
-              // header <button> (invalid HTML) or as a separate column
-              // beside the card. Works whether the row is expanded or
-              // collapsed.
-              <div key={inst.id} style={{ position: "relative" }}>
-                <AccordionCard title={renderRowTitle(inst)} expanded={activeKey === inst.id} onToggle={() => onToggleRow(inst.id, isDirty)}>
-                  {activeKey === inst.id ? renderEditorFields() : null}
-                </AccordionCard>
-                <button
-                  className="hra-btn" data-variant="danger"
-                  onClick={() => setDeleteConfirmId(inst.id)}
-                  title={t("common.delete", "Delete")}
-                  aria-label={t("common.delete", "Delete")}
-                  style={{ position: "absolute", top: 15, right: 46, zIndex: 1, padding: "4px 8px", display: "inline-flex", alignItems: "center" }}
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
+              <PlanInstanceRow
+                key={inst.id}
+                instance={inst}
+                expanded={activeKey === inst.id}
+                hasDraft={drafts[String(inst.id)] != null}
+                onToggle={() => onToggleRow(inst.id, isDirty)}
+                onDeleteClick={setDeleteConfirmId}
+              >
+                {activeKey === inst.id ? renderEditorFields() : null}
+              </PlanInstanceRow>
             ))
           )}
         </div>

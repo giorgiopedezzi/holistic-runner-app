@@ -66,7 +66,14 @@ holistic-runner-app/
         ├── hooks/useQuery.ts
         ├── domain/
         └── components/
+            ├── manage/         # PlanInstancesSection.tsx's own extracted pieces (HRA-166–171):
+            │                   # PlanInstancesSection.test.tsx, PlanInstanceAnchorTable.tsx,
+            │                   # PlanInstanceFormFields.tsx, PlanInstanceEditorActions.tsx,
+            │                   # PlanInstanceRow.tsx
+            └── ui/ConfirmModal.tsx  # HRA-167: shared confirm-dialog primitive
 ```
+
+`PlanInstancesSection.tsx` ends this extraction phase (HRA-166–171) at 1877 lines.
 
 The skeleton drifts. For the current source tree use:
 
