@@ -22,6 +22,7 @@ import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
+import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
 // below — plain index tuples, same "sectionIndex/weekIndex/dayIndex" shape
@@ -247,7 +248,12 @@ function InstanceDayRow({
   // on every edit (recomposeDayLine's patch.dsl replaces the whole line, so
   // dropping the prefix here would silently corrupt day.dsl otherwise).
   const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
-  const workoutText = day.dsl.slice(dayPrefix.length);
+  // HRA-161: the trailing "# note" is stripped here too — it's already shown
+  // in the separate Note input below, so leaving it in this field just
+  // duplicates it. On edit, the note is reattached via recomposeDayLine's own
+  // reattachment logic (not reimplemented here) before the patch goes out,
+  // so the existing note survives a DSL-only edit untouched.
+  const workoutText = splitNote(day.dsl.slice(dayPrefix.length)).main;
   // HRA-150: HH:MM 24-hour, matching <input type="time">'s own value format
   // — no explicit scheduled_time (undefined/null) displays the 08:00 default.
   const scheduledTime = day.scheduled_time ?? "08:00";
@@ -278,7 +284,7 @@ function InstanceDayRow({
           <input
             className={inputClass}
             value={workoutText}
-            onChange={e => onEdit({ dsl: `${dayPrefix}${e.target.value}` })}
+            onChange={e => onEdit({ dsl: recomposeDayLine(`${dayPrefix}${e.target.value}`, { notes: day.notes }) })}
             aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
             style={{ flex: 1, minWidth: 0, fontFamily: "monospace", fontSize: 13, padding: 6 }}
           />
