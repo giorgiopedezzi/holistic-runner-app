@@ -1705,23 +1705,29 @@ input:focus, select:focus { border-color: var(--accent); }
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
-  background: var(--accent);
   color: var(--on-accent);
   font-weight: 700;
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 20px;
   white-space: nowrap;
-  /* HRA-160: width/style only — deliberately no border-color here. The
-     badge is always paired with one of the .hra-agenda-cat-* classes
-     (categoryVisuals.tsx's CATEGORY_CARD_CLASS, same tokens the Agenda
-     view's cards/legend/popover already use), which is what supplies
-     border-color (--cat-color) — and because this class comes later in
-     the cascade, its own `background` above still wins over that class's
-     tinted background (equal specificity, later rule wins), so only the
-     border changes, not the pill's solid fill. */
-  border-width: 2px;
+  /* HRA-160/follow-up: the badge is always paired with one of the
+     .hra-agenda-cat-* classes (categoryVisuals.tsx's CATEGORY_CARD_CLASS,
+     same tokens the Agenda view's cards/legend/popover already use) purely
+     for the --cat-color custom property it sets — everything visual below
+     is computed here, from that variable, rather than taken from that
+     class's own background/border-color declarations (which are tuned for
+     the Agenda view's light card look, not this solid pill). --border-
+     strong is the fallback for `rest` (CATEGORY_CARD_CLASS has no entry for
+     it, so no --cat-color is set at all that day). Follow-up feedback:
+     border alone read as too subtle — background now carries a light
+     category tint too, and the border is thicker and a darkened shade of
+     the same token (not a flat opacity fade), so both stay visibly
+     "the same color, different weight" at a glance. */
+  background: color-mix(in srgb, var(--cat-color, var(--border-strong)) 20%, var(--accent));
+  border-width: 3px;
   border-style: solid;
+  border-color: color-mix(in srgb, var(--cat-color, var(--border-strong)) 70%, black);
 }
 
 /* ── Trend chart (SportTrendChart) — glassy combined tooltip + per-line glow
