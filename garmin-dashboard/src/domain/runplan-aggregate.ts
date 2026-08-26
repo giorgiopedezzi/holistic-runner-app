@@ -338,6 +338,12 @@ export interface DayView {
   // `metrics` above — classifyResolvedDay needs a ResolvedDay's resolved
   // segments, which a template DayEntry doesn't have yet.
   trainingLoadCategory?: TrainingLoadCategory;
+  // HRA-150: passthrough of ResolvedDay's own id/scheduled_time (only ever
+  // set on the instance path) — id is what InstanceDayRow's time field
+  // addresses via PATCH /plan-instances/:id/days/:id; scheduled_time is
+  // HH:MM 24-hour or undefined/null (display default 08:00).
+  id?: number;
+  scheduled_time?: string | null;
 }
 
 // Local alias so this file doesn't need to import ParseWarning just for this one signature.
@@ -411,6 +417,7 @@ export function buildInstanceSectionView(
       distance: computeResolvedDayDistance(day), date: day.date,
       metrics: computeResolvedDayMetrics(day),
       trainingLoadCategory: classifyResolvedDay(day, classificationContext),
+      id: day.id, scheduled_time: day.scheduled_time,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,

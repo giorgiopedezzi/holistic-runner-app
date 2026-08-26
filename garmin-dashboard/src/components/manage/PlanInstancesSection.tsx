@@ -683,6 +683,7 @@ export function PlanInstancesSection({ templates }: Props) {
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
+        id: d.id, scheduled_time: d.scheduled_time,
       }));
       const built = sectionsFromDays(days);
       setSections(built);
@@ -746,6 +747,7 @@ export function PlanInstancesSection({ templates }: Props) {
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
+        id: d.id, scheduled_time: d.scheduled_time,
       }));
       const built = sectionsFromDays(days);
       setSections(built);
@@ -845,6 +847,41 @@ export function PlanInstancesSection({ templates }: Props) {
       week.days = days; weeks[weekIndex] = week; section.weeks = weeks; sections[sectionIndex] = section;
       return sections;
     });
+  }
+
+  // HRA-150: unlike onDayEdit above (local-only, waits for the whole-day
+  // bulk Save), scheduled_time persists immediately via its own PATCH
+  // (docs/api.md's PATCH /plan-instances/:id/days/:dayId, HRA-149) — the
+  // Story's own AC3. Optimistic: the local edit lands before the request
+  // resolves so the input never visibly lags, and is rolled back on failure.
+  function dayStateAt(sectionIndex: number, weekIndex: number, dayIndex: number) {
+    return sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
+  }
+  function patchLocalDayScheduledTime(sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null | undefined) {
+    setSections(prev => {
+      const next = [...prev];
+      const section = { ...next[sectionIndex] };
+      const weeks = [...section.weeks];
+      const week = { ...weeks[weekIndex] };
+      const days = [...week.days];
+      days[dayIndex] = { ...days[dayIndex], scheduled_time: scheduledTime };
+      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
+      return next;
+    });
+  }
+  async function onScheduledTimeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null) {
+    if (editingId == null) return;
+    const day = dayStateAt(sectionIndex, weekIndex, dayIndex);
+    if (day?.id == null) return;
+    const previous = day.scheduled_time;
+    patchLocalDayScheduledTime(sectionIndex, weekIndex, dayIndex, scheduledTime);
+    try {
+      const updated = await api.planInstances.patchDay(editingId, day.id, { scheduled_time: scheduledTime });
+      patchLocalDayScheduledTime(sectionIndex, weekIndex, dayIndex, updated.scheduled_time);
+    } catch (e) {
+      patchLocalDayScheduledTime(sectionIndex, weekIndex, dayIndex, previous);
+      notify(e instanceof Error ? e.message : t("manage.planInstances.scheduledTimeFailed", "Failed to save scheduled time"), "error");
+    }
   }
 
   // HRA-127: day/week swap — flat, cross-week/cross-section pickable lists
@@ -984,6 +1021,7 @@ export function PlanInstancesSection({ templates }: Props) {
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
+        id: d.id, scheduled_time: d.scheduled_time,
       }));
       const built = sectionsFromDays(resolvedDays);
       setSections(built);
@@ -1085,6 +1123,7 @@ export function PlanInstancesSection({ templates }: Props) {
         suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
         segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
         activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
+        id: d.id, scheduled_time: d.scheduled_time,
       }));
       const built = sectionsFromDays(resolvedDays);
       setSections(built);
@@ -1663,6 +1702,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 readOnlyDays={isApproved}
                 onDaySwap={onDayDragSwap}
                 onWeekSwap={onWeekDragSwap}
+                onScheduledTimeEdit={onScheduledTimeEdit}
               />
             ) : (
               <PlanInstanceCalendar sections={sections} />

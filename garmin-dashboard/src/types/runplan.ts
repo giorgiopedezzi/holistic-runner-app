@@ -103,6 +103,13 @@ export interface ResolvedDay {
   activity_description?: string;
   notes?: string;
   needs_review: boolean;
+  // Only ever populated once a resolved day has been persisted as a
+  // plan_instance_days row (mirrors PlanInstanceDay's own id/scheduled_time,
+  // types/api.ts) — a fresh instantiate-preview ResolvedDay has neither yet.
+  // HRA-150: id is what the per-day PATCH (PATCH /plan-instances/:id/days/:id)
+  // addresses; scheduled_time is HH:MM 24-hour or null (display default 08:00).
+  id?: number;
+  scheduled_time?: string | null;
 }
 
 export type EventType = "5k" | "10k" | "half" | "marathon" | "custom";

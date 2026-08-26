@@ -10,7 +10,7 @@ import type {
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
-  PlanInstance, PlanInstanceWithDays, Palette,
+  PlanInstance, PlanInstanceWithDays, PlanInstanceDay, Palette,
 } from "@/types/api";
 import type { EventType, ParseWarning, RunPlan } from "@/types/runplan";
 
@@ -275,5 +275,13 @@ export const api = {
     regenerate: (id: number, body: { start_date: string; pace_overrides?: Record<string, string>; effective_from: string }) =>
       request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}/regenerate`, "POST", undefined, body),
     remove: (id: number) => request<null>(`/api/v1/plan-instances/${id}`, "DELETE"),
+    // PATCH /api/v1/plan-instances/:id/days/:dayId (HRA-149) — a single day's
+    // dsl/notes/scheduled_time, persisted independently of the bulk `update`
+    // above (which fully replaces the day set and never backfills
+    // scheduled_time — see that endpoint's own doc comment). HRA-150 uses
+    // this exclusively for scheduled_time, so a day edit persists immediately
+    // rather than waiting for the whole-day bulk Save.
+    patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>) =>
+      request<PlanInstanceDay>(`/api/v1/plan-instances/${instanceId}/days/${dayId}`, "PATCH", undefined, body),
   },
 };

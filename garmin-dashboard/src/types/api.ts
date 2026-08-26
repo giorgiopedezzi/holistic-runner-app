@@ -150,6 +150,9 @@ export interface PlanInstanceDay {
   activity_description:  string | null;
   notes:                 string | null;
   needs_review:          number;
+  // HRA-149: HH:MM 24-hour, or null (display default 08:00 — never persisted
+  // as the literal string, so a day the user hasn't touched stays null).
+  scheduled_time:        string | null;
 }
 
 export interface PlanInstanceWithDays extends PlanInstance {

@@ -896,6 +896,21 @@ otherwise silently corrupt `day.dsl` (losing the D-number that HRA-127's swap lo
 parser both key off). The read-only (`readOnlyDays`) text path already stripped the prefix
 identically before this fix; both paths now share the same `workoutText` derivation.
 
+**Scheduled time in the List view (HRA-150)**: `InstanceDayRow`'s second row now holds the Notes
+`<input>` (narrowed to `flex: 1`, was `width: 100%`) alongside a new `<input type="time">` —
+`flexShrink: 0`, so it sits in a fixed-width column aligned under the distance figure on the row
+above (also `flexShrink: 0`), matching this app's "no moving UI" rule for fields that sit beside a
+growing sibling. Value is `day.scheduled_time ?? "08:00"` (unset days show the 08:00 default,
+never persisted as that literal string); `readOnlyDays` swaps it for a plain text span, same pattern
+every other field in this row already uses. Unlike `dsl`/`notes` (local-only until the whole-day
+bulk Save), an edit here persists immediately via `PATCH /api/v1/plan-instances/:id/days/:dayId`
+(HRA-149) — `PlanInstancesSection.tsx`'s `onScheduledTimeEdit` applies the change to local `sections`
+state optimistically, then confirms/rolls back against the PATCH response, since the Story's own AC3
+says not to wait for Save. `ResolvedDay`/`DayView` both gained optional `id`/`scheduled_time` fields
+to carry this through — `id` is what the PATCH addresses, only ever populated for a day already
+persisted as a `plan_instance_days` row. The Agenda view (`PlanInstanceCalendar.tsx`) does not read
+`scheduled_time` yet — that's HRA-151's own slice, not this one's.
+
 `TemplateDayRow` (`day.date == null`) is the original accordion-with-textarea layout, verbatim,
 unmodified — templates were out of this Story's scope. The split into two components (rather than
 one `DayEditor` with an early return) exists specifically so each branch's `useState`/`useDragSwap`

@@ -60,6 +60,11 @@ interface TrainingPlanAccordionProps {
   // (an approved instance gets neither the picker panel nor drag-and-drop).
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
+  // HRA-150: instance-only — an instance day's scheduled_time persists via
+  // its own PATCH immediately on edit, unlike dsl/notes above (which stay
+  // local until the whole-day bulk Save). Optional: templates have no
+  // scheduled_time concept, so PlanTemplatesSection never passes this.
+  onScheduledTimeEdit?: (sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -204,7 +209,7 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit,
 }: {
   day: DayView;
   date: string;
@@ -212,6 +217,7 @@ function InstanceDayRow({
   readOnlyDays: boolean;
   dayRef?: DayRef;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
+  onScheduledTimeEdit?: (scheduledTime: string | null) => void;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
@@ -224,6 +230,9 @@ function InstanceDayRow({
   // dropping the prefix here would silently corrupt day.dsl otherwise).
   const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
   const workoutText = day.dsl.slice(dayPrefix.length);
+  // HRA-150: HH:MM 24-hour, matching <input type="time">'s own value format
+  // — no explicit scheduled_time (undefined/null) displays the 08:00 default.
+  const scheduledTime = day.scheduled_time ?? "08:00";
 
   return (
     <div
@@ -249,18 +258,37 @@ function InstanceDayRow({
         <span className="hra-text-secondary" style={{ fontSize: 12, flexShrink: 0 }}>{fmtDistance(day.distance, t)}</span>
         {day.needs_review && <WarningBadge t={t} />}
       </div>
-      {readOnlyDays ? (
-        day.notes && <div className="hra-text-muted" style={{ fontSize: 12, marginTop: 6 }}>{day.notes}</div>
-      ) : (
-        <input
-          className={inputClass}
-          value={day.notes ?? ""}
-          onChange={e => onEdit({ notes: e.target.value })}
-          placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-          aria-label={t("runplan.accordion.noteLabel", "Note")}
-          style={{ width: "100%", marginTop: 6, padding: 6, fontSize: 12 }}
-        />
-      )}
+      {/* HRA-150: the time field sits on this row, narrowing the note field
+          to make room — horizontally aligned (same right-hand column) with
+          the distance figure on the row above, matching that field's own
+          fixed, non-growing width so neither field shifts as the other's
+          content changes. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+        {readOnlyDays ? (
+          day.notes && <div className="hra-text-muted" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>{day.notes}</div>
+        ) : (
+          <input
+            className={inputClass}
+            value={day.notes ?? ""}
+            onChange={e => onEdit({ notes: e.target.value })}
+            placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+            aria-label={t("runplan.accordion.noteLabel", "Note")}
+            style={{ flex: 1, minWidth: 0, padding: 6, fontSize: 12 }}
+          />
+        )}
+        {readOnlyDays ? (
+          <span className="hra-text-secondary" style={{ fontSize: 12, flexShrink: 0 }}>{scheduledTime}</span>
+        ) : (
+          <input
+            type="time"
+            className={inputClass}
+            value={scheduledTime}
+            onChange={e => onScheduledTimeEdit?.(e.target.value || null)}
+            aria-label={t("runplan.accordion.scheduledTimeLabel", "Scheduled time")}
+            style={{ flexShrink: 0, padding: 6, fontSize: 12 }}
+          />
+        )}
+      </div>
       {day.needs_review && day.warnings.length > 0 && (
         <ul className="hra-text-danger" style={{ fontSize: 12, margin: "6px 0 0", paddingLeft: 18 }}>
           {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
@@ -354,6 +382,7 @@ function DayEditor(props: {
   readOnlyDays: boolean;
   dayRef?: DayRef;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
+  onScheduledTimeEdit?: (scheduledTime: string | null) => void;
 }) {
   return props.day.date != null
     ? <InstanceDayRow {...props} date={props.day.date} />
@@ -361,7 +390,7 @@ function DayEditor(props: {
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -372,6 +401,7 @@ function WeekEditor({
   readOnlyDays: boolean;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
+  onScheduledTimeEdit?: (dayIndex: number, scheduledTime: string | null) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -412,6 +442,7 @@ function WeekEditor({
             <DayEditor
               key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} readOnlyDays={readOnlyDays}
               dayRef={{ sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap}
+              onScheduledTimeEdit={onScheduledTimeEdit ? time => onScheduledTimeEdit(dayIndex, time) : undefined}
             />
           ))}
         </div>
@@ -421,7 +452,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -433,6 +464,7 @@ function SectionEditor({
   readOnlyDays: boolean;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
+  onScheduledTimeEdit?: (weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -491,6 +523,7 @@ function SectionEditor({
             readOnlyDays={readOnlyDays}
             onDaySwap={onDaySwap}
             onWeekSwap={onWeekSwap}
+            onScheduledTimeEdit={onScheduledTimeEdit ? (dayIndex, time) => onScheduledTimeEdit(weekIndex, dayIndex, time) : undefined}
           />
         ))}
       </div>
@@ -499,7 +532,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -516,6 +549,7 @@ export function TrainingPlanAccordion({
           readOnlyDays={readOnlyDays}
           onDaySwap={onDaySwap}
           onWeekSwap={onWeekSwap}
+          onScheduledTimeEdit={onScheduledTimeEdit ? (weekIndex, dayIndex, time) => onScheduledTimeEdit(sectionIndex, weekIndex, dayIndex, time) : undefined}
         />
       ))}
     </div>
