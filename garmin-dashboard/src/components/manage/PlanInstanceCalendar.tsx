@@ -489,6 +489,32 @@ function CategoryCriteriaPopover() {
   );
 }
 
+// HRA-157: persistent workout-type legend — icon + label per category,
+// reusing this file's own CATEGORY_ORDER/CATEGORY_LABEL_KEYS/CATEGORY_ICONS/
+// CATEGORY_CARD_CLASS (the same data CategoryCriteriaPopover above already
+// uses) so the legend and the popover can never drift apart. Exported for
+// PlanInstancesSection to render inline, always visible, shared by both List
+// and Agenda — `todo`/`other` are deliberately absent, same reasoning as the
+// popover (neither is a real classification category, see TODO_LABEL_KEY/
+// OTHER_LABEL_KEY above).
+export function CategoryLegend() {
+  const { t } = useTranslation();
+  return (
+    <div className="hra-workout-legend" role="list" aria-label={t("manage.planInstances.categoryLegendGroup", "Workout type legend")}>
+      {CATEGORY_ORDER.map(category => {
+        const Icon = CATEGORY_ICONS[category];
+        const [labelKey, labelFallback] = CATEGORY_LABEL_KEYS[category];
+        return (
+          <span key={category} role="listitem" className={`hra-workout-legend-item ${CATEGORY_CARD_CLASS[category] ?? ""}`}>
+            <Icon size={12} />
+            {t(labelKey, labelFallback)}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 // HRA-146 Ask #4: replaces react-big-calendar's own toolbar — title +
 // accordion-equivalent summary line, chevron nav, Month/Week toggle (Week
 // inert this slice, per the AC's own "may be visually present but inert").

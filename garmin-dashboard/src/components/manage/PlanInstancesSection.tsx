@@ -32,7 +32,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
-import { PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
+import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
   resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
@@ -1643,6 +1643,21 @@ export function PlanInstancesSection({ templates }: Props) {
           <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => onRestoreClick(isDirty)}>
             {t("common.restore", "Restore")}
           </button>
+          {/* HRA-157: List/Agenda switch relocated here from its own row
+              above the accordion/calendar — right-aligned via marginLeft:
+              auto in this flex row, while the buttons above stay
+              left-aligned. Only shown once there's something to switch
+              between, same gating the old location used. */}
+          {sections.length > 0 && (
+            <div className="hra-segment" style={{ marginLeft: "auto" }}>
+              <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
+                {t("manage.planInstances.viewList", "List")}
+              </button>
+              <button className="hra-segment-item" data-active={viewMode === "agenda"} onClick={() => setViewMode("agenda")}>
+                {t("manage.planInstances.viewAgenda", "Agenda")}
+              </button>
+            </div>
+          )}
         </div>
 
         {pendingNameChangeConfirm && (
@@ -1755,16 +1770,13 @@ export function PlanInstancesSection({ templates }: Props) {
 
         {sections.length > 0 && (
           <>
-            {/* HRA-143: List/Agenda toggle — same .hra-segment switch every
-                other in-view mode toggle in this app uses (Distance/Time in
-                ActivityChartSection, etc). Default List (AC2). */}
-            <div className="hra-segment" style={{ marginBottom: 12, width: "fit-content" }}>
-              <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
-                {t("manage.planInstances.viewList", "List")}
-              </button>
-              <button className="hra-segment-item" data-active={viewMode === "agenda"} onClick={() => setViewMode("agenda")}>
-                {t("manage.planInstances.viewAgenda", "Agenda")}
-              </button>
+            {/* HRA-157: the List/Agenda switch's old spot now holds the
+                always-visible workout-type legend instead — rendered once,
+                outside the viewMode branch below, so it stays mounted
+                (same node, same content) across List/Agenda toggling rather
+                than remounting. */}
+            <div style={{ marginBottom: 12 }}>
+              <CategoryLegend />
             </div>
             {viewMode === "list" ? (
               <TrainingPlanAccordion

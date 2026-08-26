@@ -625,6 +625,16 @@
 .hra-agenda-category-reference-label { font-size: var(--fs-meta); font-weight: 500; color: var(--text-primary); white-space: nowrap; padding: 5px 6px 5px 0; }
 .hra-agenda-category-reference-criteria { font-size: var(--fs-meta); color: var(--text-secondary); padding: 5px 4px 5px 0; }
 
+/* Persistent workout-type legend (HRA-157) — shares the same tinted
+   --cat-color language as the agenda cards and the criteria-reference
+   popover above, just icon + label, always visible in List and Agenda. */
+.hra-workout-legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hra-workout-legend-item {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-meta); color: var(--cat-color, var(--text-secondary));
+  white-space: nowrap;
+}
+
 html, body, #root { height: 100%; }
 
 body {
