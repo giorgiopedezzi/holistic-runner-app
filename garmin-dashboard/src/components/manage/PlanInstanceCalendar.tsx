@@ -330,6 +330,65 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
 // now) — PlanInstanceCalendar wraps it the same useMemo way EventComponent/
 // ToolbarComponent already are, for the same "stable identity, no
 // remount-per-render" reason.
+// HRA-165: the reserved slot beside the day number is too small for a
+// comfortable native <input type="time"> — its own OS-rendered HH/MM
+// sub-segments each need their own precise click, and it needed an
+// onClick stopPropagation workaround just to keep the cell's own "show
+// more"/day-navigation click from also firing. Fixed by moving the actual
+// editing surface OUT of the cramped cell entirely: the reserved slot now
+// holds a real <button> (a single, unified, larger click target — no
+// internal sub-segments to aim at) that opens a Popover with a
+// comfortably-sized time input, matching List view's own InstanceDayRow
+// input (the sibling this Story's own Context calls "noticeably easier to
+// use") rather than a scaled-down copy of it.
+//
+// Considered and rejected: just enlarging the inline input in place
+// (AC1's other option). Rejected because the month cell's date-header row
+// is fixed-width by the calendar grid itself — widening the input would
+// either shrink the day-number's own space or overflow into the event
+// card below it, and it wouldn't remove the underlying "fighting its
+// container" problem the Story's Context names (an OS time-input's
+// picker chrome doesn't shrink gracefully). A popover sidesteps both:
+// Radix's PopoverContent renders through a Portal (ui/Popover.tsx), so
+// it's not even a DOM descendant of the calendar cell — the actual time
+// input never needs its own stopPropagation guard (nothing here to
+// bubble into the cell's click handler), only the trigger button does,
+// same guard the old inline input already carried.
+function AgendaScheduledTimeEditor({ dayId, scheduledTime, onScheduledTimeEdit }: {
+  dayId: number;
+  scheduledTime: string;
+  onScheduledTimeEdit?: (dayId: number, scheduledTime: string | null) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const label = t("manage.planInstances.scheduledTimeLabel", "Scheduled time");
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button" className="hra-agenda-date-time-trigger"
+          onClick={e => e.stopPropagation()}
+          aria-label={label}
+        >
+          {scheduledTime}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start">
+        <label className="hra-text-secondary" style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+          {label}
+          <input
+            type="time"
+            className="hra-border-strong hra-bg-card hra-text-primary"
+            value={scheduledTime}
+            onChange={e => onScheduledTimeEdit?.(dayId, e.target.value || null)}
+            style={{ padding: 6, fontSize: 13 }}
+          />
+        </label>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function AgendaDateHeader({ date, label, event, readOnlyDays, onScheduledTimeEdit }: {
   date: Date;
   label: ReactNode;
@@ -337,7 +396,6 @@ function AgendaDateHeader({ date, label, event, readOnlyDays, onScheduledTimeEdi
   readOnlyDays: boolean;
   onScheduledTimeEdit?: (dayId: number, scheduledTime: string | null) => void;
 }) {
-  const { t } = useTranslation();
   const isToday = isSameCalendarDay(date, new Date());
   const showsChip = dayHasScheduledWorkout(event);
   const scheduledTime = event?.scheduledTime ?? "08:00";
@@ -348,18 +406,7 @@ function AgendaDateHeader({ date, label, event, readOnlyDays, onScheduledTimeEdi
           readOnlyDays || event?.dayId == null ? (
             <span className="hra-agenda-date-time-chip">{scheduledTime}</span>
           ) : (
-            <input
-              type="time"
-              className="hra-agenda-date-time-input"
-              value={scheduledTime}
-              // react-big-calendar's month cell wraps the date header in its
-              // own click handling (e.g. "show more" / day navigation) —
-              // stopPropagation keeps interacting with the input from also
-              // triggering that.
-              onClick={e => e.stopPropagation()}
-              onChange={e => onScheduledTimeEdit?.(event!.dayId!, e.target.value || null)}
-              aria-label={t("manage.planInstances.scheduledTimeLabel", "Scheduled time")}
-            />
+            <AgendaScheduledTimeEditor dayId={event!.dayId!} scheduledTime={scheduledTime} onScheduledTimeEdit={onScheduledTimeEdit} />
           )
         )}
       </span>
