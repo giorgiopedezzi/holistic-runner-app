@@ -1046,6 +1046,24 @@ export function PlanInstancesSection({ templates }: Props) {
   // persisted the same way any other day edit already is, via the existing
   // Save button; scheduled_time additionally persists right away (see
   // persistSwappedScheduledTimes above).
+  // HRA-164: a day's SLOT (day/suffix/category — the D<n>[suffix][tag]:
+  // prefix identity, plus date/id, the actual calendar position and backend
+  // row this content now lives in) never moves; everything else describes
+  // the CONTENT that just moved into that slot, so it has to travel WITH
+  // that content, not stay behind. The old code spread the OLD day object
+  // and only overrode dsl/notes/scheduled_time — leaving workout_type,
+  // needs_review, warnings, distance, metrics, trainingLoadCategory
+  // describing the day's PREVIOUS content while the visible dsl already
+  // showed the new one. Fixed by inverting which side is spread: take the
+  // OTHER day's entire object (its derived fields are already correct for
+  // the content that's arriving) and override only this slot's own
+  // position-identity fields back on top — no per-field copy list to keep in
+  // sync as DayView gains fields later (the AC's own "not a partial field
+  // list" concern). trainingLoadCategory is a still-approximate carryover in
+  // one case (a swap across week boundaries can change long_run's "week's
+  // longest run" context) — same known limitation flagged on HRA-163, not
+  // reintroduced here, not fixed here either (would need a full plan-wide
+  // reclassify, out of this bug's scope).
   function swapDaysByRef(a: { sectionIndex: number; weekIndex: number; dayIndex: number }, b: { sectionIndex: number; weekIndex: number; dayIndex: number }) {
     const dayA = sections[a.sectionIndex]?.weeks[a.weekIndex]?.days[a.dayIndex];
     const dayB = sections[b.sectionIndex]?.weeks[b.weekIndex]?.days[b.dayIndex];
@@ -1055,8 +1073,14 @@ export function PlanInstancesSection({ templates }: Props) {
     const newTimeB = dayA.scheduled_time;
     setSections(prev => {
       const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
-      next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = { ...dayA, dsl: newA, notes: splitNote(newA).note, scheduled_time: newTimeA };
-      next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = { ...dayB, dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB };
+      next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = {
+        ...dayB, dsl: newA, notes: splitNote(newA).note, scheduled_time: newTimeA,
+        day: dayA.day, suffix: dayA.suffix, category: dayA.category, date: dayA.date, id: dayA.id,
+      };
+      next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = {
+        ...dayA, dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB,
+        day: dayB.day, suffix: dayB.suffix, category: dayB.category, date: dayB.date, id: dayB.id,
+      };
       return next;
     });
     void persistSwappedScheduledTimes([
@@ -1070,6 +1094,13 @@ export function PlanInstancesSection({ templates }: Props) {
   // whose sections diverge) still swap every day-number both sides actually
   // share — a day-number present in only one side is left untouched rather
   // than guessed at, same "don't guess" discipline swapDayContent itself uses.
+  // HRA-164: same fix as swapDaysByRef above, per day pair — captures each
+  // day's full pre-mutation snapshot (originalA/originalB, already needed for
+  // timePairs below) and assigns the OTHER side's whole snapshot onto this
+  // slot before re-fixing the position-identity fields back on top, instead
+  // of mutating only dsl/notes/scheduled_time in place and leaving every
+  // other derived field (workout_type, needs_review, warnings, distance,
+  // metrics, trainingLoadCategory) describing the day's old content.
   function swapWeeksByRef(a: { sectionIndex: number; weekIndex: number }, b: { sectionIndex: number; weekIndex: number }) {
     const timePairs: { day: DayView; newScheduledTime: string | null | undefined }[] = [];
     setSections(prev => {
@@ -1082,9 +1113,17 @@ export function PlanInstancesSection({ templates }: Props) {
         const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
         const newTimeA = dayB.scheduled_time;
         const newTimeB = dayA.scheduled_time;
-        timePairs.push({ day: { ...dayA }, newScheduledTime: newTimeA }, { day: { ...dayB }, newScheduledTime: newTimeB });
-        dayA.dsl = newA; dayA.notes = splitNote(newA).note; dayA.scheduled_time = newTimeA;
-        dayB.dsl = newB; dayB.notes = splitNote(newB).note; dayB.scheduled_time = newTimeB;
+        const originalA = { ...dayA };
+        const originalB = { ...dayB };
+        timePairs.push({ day: originalA, newScheduledTime: newTimeA }, { day: originalB, newScheduledTime: newTimeB });
+        Object.assign(dayA, originalB, {
+          dsl: newA, notes: splitNote(newA).note, scheduled_time: newTimeA,
+          day: originalA.day, suffix: originalA.suffix, category: originalA.category, date: originalA.date, id: originalA.id,
+        });
+        Object.assign(dayB, originalA, {
+          dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB,
+          day: originalB.day, suffix: originalB.suffix, category: originalB.category, date: originalB.date, id: originalB.id,
+        });
       }
       return next;
     });
