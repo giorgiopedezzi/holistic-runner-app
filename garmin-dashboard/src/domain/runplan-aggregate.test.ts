@@ -185,10 +185,21 @@ describe("view-model builders", () => {
 
   it("buildInstanceSectionView groups flat resolved days and computes totals the same way", () => {
     const resolvedDay: ResolvedDay = { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", needs_review: false, segments: [{ type: "continuous", target: target("distance", 6000), resolved_pace_sec_per_km: 300, raw: "6km @ RG" }] };
-    const view = buildInstanceSectionView("Base", "SECTION \"Base\" WEEKS 1", [{ number: 1, days: [{ ...resolvedDay, dsl: "D1: 6km @ RG" }] }]);
+    const days = [{ ...resolvedDay, dsl: "D1: 6km @ RG" }];
+    const view = buildInstanceSectionView("Base", "SECTION \"Base\" WEEKS 1", [{ number: 1, days }], buildDayClassificationContext(days));
     expect(view.totals.distance).toEqual({ meters: 6000, approximate: false });
     expect(view.weeks[0].days[0].dsl).toBe("D1: 6km @ RG");
     expect(view.weeks[0].raw_dsl).toBe("");
+    // HRA-148: trainingLoadCategory is populated on the instance path (it's the week's
+    // only, and therefore longest, run day, so the long-run overlay wins here).
+    expect(view.weeks[0].days[0].trainingLoadCategory).toBe("long_run");
+  });
+
+  it("buildTemplateSectionView never sets trainingLoadCategory — classification needs a resolved pace, which a template day doesn't have yet", () => {
+    const week: Week = { number: 1, pace_policy: {}, raw_dsl: "WEEK 1", days: [day({})] };
+    const section: Section = { name: "Base", week_spec: "1", pace_policy: {}, raw_dsl: "SECTION \"Base\" WEEKS 1", weeks: [week] };
+    const view = buildTemplateSectionView(section, {});
+    expect(view.weeks[0].days[0].trainingLoadCategory).toBeUndefined();
   });
 });
 

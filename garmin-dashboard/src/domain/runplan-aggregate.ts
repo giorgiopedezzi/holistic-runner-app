@@ -333,6 +333,11 @@ export interface DayView {
   // prop through PlanInstanceCalendar, since both call the same underlying
   // computeResolvedDayDistance internally.
   metrics?: ResolvedDayMetrics;
+  // HRA-148: the badge PlanInstanceCalendar renders instead of raw
+  // workout_type. Only ever set on the instance path, same reasoning as
+  // `metrics` above — classifyResolvedDay needs a ResolvedDay's resolved
+  // segments, which a template DayEntry doesn't have yet.
+  trainingLoadCategory?: TrainingLoadCategory;
 }
 
 // Local alias so this file doesn't need to import ParseWarning just for this one signature.
@@ -396,7 +401,8 @@ export interface InstanceWeekInput {
 }
 
 export function buildInstanceSectionView(
-  sectionName: string, sectionRawDsl: string, weeks: InstanceWeekInput[], sectionNotes?: string,
+  sectionName: string, sectionRawDsl: string, weeks: InstanceWeekInput[],
+  classificationContext: DayClassificationContext, sectionNotes?: string,
 ): SectionView {
   const weekViews: WeekView[] = weeks.map(week => {
     const days: DayView[] = week.days.map(day => ({
@@ -404,6 +410,7 @@ export function buildInstanceSectionView(
       dsl: day.dsl, notes: day.notes, needs_review: day.needs_review, warnings: [],
       distance: computeResolvedDayDistance(day), date: day.date,
       metrics: computeResolvedDayMetrics(day),
+      trainingLoadCategory: classifyResolvedDay(day, classificationContext),
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,
@@ -624,10 +631,14 @@ export function groupResolvedDaysIntoSectionViews(days: (ResolvedDay & { dsl: st
     if (!weeks.has(day.week_number)) weeks.set(day.week_number, []);
     weeks.get(day.week_number)!.push(day);
   }
+  // Built once over the WHOLE instance (every section, every week) — HRA-147's
+  // pace tercile and long-run overlay are both explicitly instance-scoped, not
+  // per-section, so this must happen before splitting into per-section calls below.
+  const classificationContext = buildDayClassificationContext(days);
   return sectionOrder.map(sectionName => {
     const weeks = bySection.get(sectionName)!;
     const weekInputs: InstanceWeekInput[] = [...weeks.keys()].sort((a, b) => a - b)
       .map(number => ({ number, days: weeks.get(number)! }));
-    return buildInstanceSectionView(sectionName, "", weekInputs);
+    return buildInstanceSectionView(sectionName, "", weekInputs, classificationContext);
   });
 }

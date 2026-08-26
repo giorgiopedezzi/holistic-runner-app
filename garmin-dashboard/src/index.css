@@ -477,11 +477,8 @@
 .hra-agenda-date-num[data-today="true"] { background: var(--accent-green); color: var(--on-accent); font-weight: 600; }
 
 /* Category-tinted event card (Ask #2) — replaces the flat grey .rbc-event
-   slab. Reuses existing theme-invariant data tokens (--data-pace,
-   --accent-blue, --accent-orange) rather than inventing a new palette for a
-   3-bucket system HRA-147/148 will shortly replace with real classification.
-   .rbc-row-segment (the vendor's own per-day, per-event-row wrapper — one
-   per day column, never spanning multiple days for our always-single-day
+   slab. .rbc-row-segment (the vendor's own per-day, per-event-row wrapper —
+   one per day column, never spanning multiple days for our always-single-day
    events) becomes the positioning context for the card's absolute
    hover-anchor below; .rbc-event itself (the card's immediate DOM parent)
    is left `position: static` on purpose so the anchor "sees through" it to
@@ -502,9 +499,18 @@
   border-radius: var(--radius-sm); padding: 4px 6px 5px; border: 1px solid transparent;
   transition: box-shadow 150ms ease;
 }
-.hra-agenda-cat-run      { --cat-color: var(--data-pace);   background: color-mix(in srgb, var(--data-pace) 10%, transparent);   border-color: color-mix(in srgb, var(--data-pace) 22%, transparent); }
-.hra-agenda-cat-cross    { --cat-color: var(--accent-blue); background: color-mix(in srgb, var(--accent-blue) 10%, transparent); border-color: color-mix(in srgb, var(--accent-blue) 22%, transparent); }
-.hra-agenda-cat-strength { --cat-color: var(--accent-orange); background: color-mix(in srgb, var(--accent-orange) 10%, transparent); border-color: color-mix(in srgb, var(--accent-orange) 22%, transparent); }
+/* HRA-148: real classification categories replace HRA-146's 3-bucket
+   workout_type placeholder (run/cross/strength). Reuses existing
+   theme-invariant tokens (--data-pace/--data-muscle/--accent-*) rather than
+   inventing a new palette — 7 distinct tokens for the 7 carded categories,
+   `rest` deliberately uncarded (see .hra-agenda-rest-row below). */
+.hra-agenda-cat-easy-recovery   { --cat-color: var(--data-pace);    background: color-mix(in srgb, var(--data-pace) 10%, transparent);    border-color: color-mix(in srgb, var(--data-pace) 22%, transparent); }
+.hra-agenda-cat-long-run        { --cat-color: var(--data-muscle);  background: color-mix(in srgb, var(--data-muscle) 10%, transparent);  border-color: color-mix(in srgb, var(--data-muscle) 22%, transparent); }
+.hra-agenda-cat-intervals       { --cat-color: var(--accent-red);   background: color-mix(in srgb, var(--accent-red) 10%, transparent);   border-color: color-mix(in srgb, var(--accent-red) 22%, transparent); }
+.hra-agenda-cat-progressive     { --cat-color: var(--accent-green); background: color-mix(in srgb, var(--accent-green) 10%, transparent); border-color: color-mix(in srgb, var(--accent-green) 22%, transparent); }
+.hra-agenda-cat-threshold       { --cat-color: var(--accent-orange); background: color-mix(in srgb, var(--accent-orange) 10%, transparent); border-color: color-mix(in srgb, var(--accent-orange) 22%, transparent); }
+.hra-agenda-cat-tempo           { --cat-color: var(--accent-blue);  background: color-mix(in srgb, var(--accent-blue) 10%, transparent);  border-color: color-mix(in srgb, var(--accent-blue) 22%, transparent); }
+.hra-agenda-cat-cross-training  { --cat-color: var(--accent);       background: color-mix(in srgb, var(--accent) 10%, transparent);       border-color: color-mix(in srgb, var(--accent) 22%, transparent); }
 
 /* Canvas zoom on hover — corrected per explicit follow-up: growing the BOX
    (real width/height, via letting the unclamped title's real content
@@ -568,7 +574,12 @@
 
 /* REST/TODO — muted text + icon, no card at all (AC2's "instead of flat
    grey slabs" applies doubly here: these days had a bordered box before
-   this Story even though they carry no metrics). */
+   this Story even though they carry no metrics). HRA-148: Rest's icon/label
+   now come from classifyResolvedDay ("rest") same as every carded category,
+   just rendered muted instead of tinted — a muted gray reads as distinct
+   from all 7 carded categories' saturated tones without needing its own
+   --cat-color token. TODO keeps its own pre-classification treatment (it
+   isn't a real category — see TODO_LABEL_KEY in PlanInstanceCalendar.tsx). */
 .hra-agenda-rest-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); padding: 4px 2px; }
 
 /* Route/Clock3/Gauge ring trio (Ask #3) — a small donut per metric via
@@ -590,6 +601,18 @@
   background: conic-gradient(var(--gauge-fill, var(--accent-green)) calc(var(--gauge-pct) * 1%), var(--border-strong) 0);
 }
 .hra-agenda-gauge-ring::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--bg-card); }
+
+/* Criteria-reference popover (HRA-148 Ask #3) — category / icon / criteria,
+   one row per classification category, each row lightly tinted with that
+   category's own --cat-color so it reads as the same visual language as the
+   agenda cards themselves rather than a plain text list. */
+.hra-agenda-category-reference { width: 280px; }
+.hra-agenda-category-reference-title { font-size: var(--fs-label); font-weight: 600; color: var(--text-primary); margin: 2px 4px 8px; }
+.hra-agenda-category-reference-table { width: 100%; border-collapse: collapse; }
+.hra-agenda-category-reference-table tr { border-radius: var(--radius-sm); }
+.hra-agenda-category-reference-icon { width: 22px; padding: 5px 4px; }
+.hra-agenda-category-reference-label { font-size: var(--fs-meta); font-weight: 500; color: var(--text-primary); white-space: nowrap; padding: 5px 6px 5px 0; }
+.hra-agenda-category-reference-criteria { font-size: var(--fs-meta); color: var(--text-secondary); padding: 5px 4px 5px 0; }
 
 html, body, #root { height: 100%; }
 

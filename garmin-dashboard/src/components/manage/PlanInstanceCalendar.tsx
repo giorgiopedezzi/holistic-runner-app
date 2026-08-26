@@ -15,9 +15,12 @@
  * HRA-146 PR comment as a deliberate consolidation, not an oversight.
  * HRA-146 also replaced react-big-calendar's own toolbar/date-header
  * (`components.toolbar`/`components.dateHeader`) with custom ones matching
- * the published mockup, and category-tints each event card by
- * `workout_type` — a placeholder mapping HRA-147/148 will replace with a
- * real classification.
+ * the published mockup, and category-tinted each event card by
+ * `workout_type` as a placeholder. HRA-148 replaces that placeholder with
+ * HRA-147's real `classifyResolvedDay` output (8 categories: Easy/Recovery,
+ * Long run, Intervals, Progressive, Threshold, Tempo, Cross training, Rest —
+ * cross AND strength both fold into the single Cross training category, per
+ * HRA-147's own design) and adds the in-app criteria-reference popover.
  */
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -25,13 +28,17 @@ import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3, Dumbbell, Gauge, Route } from "lucide-react";
+import {
+  Activity, AlertTriangle, Bed, Bike, ChevronLeft, ChevronRight, CircleHelp, Clock3,
+  Feather, Gauge, Info, Repeat, Route, TrendingUp, Zap,
+} from "lucide-react";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
 import { fmtElapsedClock } from "@/domain/activity-chart";
-import type { SectionView, ResolvedDayMetrics } from "@/domain/runplan-aggregate";
+import type { SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
 import type { WorkoutType } from "@/types/runplan";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, speedUnitLabel } from "@/utils/units";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 
 // Month view only, per HRA-143's own scope ("verify month navigation" — no
 // week/day/agenda-view-type switching asked for). HRA-146's Month/Week
@@ -51,6 +58,7 @@ interface CalendarEvent {
   end: Date;
   allDay: true;
   workoutType: WorkoutType;
+  trainingLoadCategory: TrainingLoadCategory;
   needsReview: boolean;
   metrics: ResolvedDayMetrics;
 }
@@ -60,7 +68,12 @@ interface CalendarEvent {
 // Footprints as a stand-in. Per explicit instruction this app always uses a
 // runner glyph for "run" (matches the mockup's own hand-drawn icon, same
 // stroke language as every other lucide icon here: 24x24, stroke-based,
-// round caps/joins) — never Footprints.
+// round caps/joins) — never Footprints. HRA-148 keeps this as the Long run
+// category's icon specifically (still literally "a run"), while the other
+// two pace tiers (Threshold/Tempo) and Easy/Recovery get their own distinct
+// marks per that Story's own Ask #2 ("a distinct mark for Threshold vs
+// Tempo vs Easy/Recovery") — reconciling both instructions rather than
+// dropping either.
 function RunnerIcon({ size = 24 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -73,17 +86,28 @@ function RunnerIcon({ size = 24 }: { size?: number }) {
   );
 }
 
-// HRA-144 Ask #1: run/rest/strength/cross/todo -> icon.
-const WORKOUT_TYPE_ICONS: Record<WorkoutType, (props: { size?: number }) => ReactNode> = {
-  run: RunnerIcon, rest: Bed, strength: Dumbbell, cross: Bike, todo: CircleHelp,
+// HRA-148 Ask #2: one icon per HRA-147 classification category — Repeat for
+// Intervals, TrendingUp for Progressive (both named explicitly by the
+// Story), and a distinct mark each for Threshold/Tempo/Easy-Recovery so the
+// three pace tiers of a "run" day never read as visually the same badge.
+// Long run keeps RunnerIcon (see its own comment above). `todo` isn't a real
+// category (HRA-147 folds it into Easy/Recovery) — the compact row below
+// keeps its own historic CircleHelp treatment for it instead of using this
+// map (see DayCellEvent).
+const CATEGORY_ICONS: Record<TrainingLoadCategory, (props: { size?: number }) => ReactNode> = {
+  easy_recovery: Feather, long_run: RunnerIcon, intervals: Repeat, progressive: TrendingUp,
+  threshold: Zap, tempo: Activity, cross_training: Bike, rest: Bed,
 };
 
-// HRA-146 Ask #2: category tint per workout_type — run/cross/strength get a
-// translucent card; rest/todo get no card at all (see hra-agenda-rest-row
-// below). A placeholder mapping: HRA-147/148 replace this with a real
-// classification (Easy/Long/Intervals/Progressive/Threshold/Tempo).
-const WORKOUT_TYPE_CARD_CLASS: Partial<Record<WorkoutType, string>> = {
-  run: "hra-agenda-cat-run", cross: "hra-agenda-cat-cross", strength: "hra-agenda-cat-strength",
+// HRA-148 Ask #1/#2: category tint per classifyResolvedDay output, replacing
+// HRA-146's workout_type-only placeholder. `rest` intentionally has no card
+// class — it still renders as the compact no-card row (see
+// hra-agenda-rest-row below), just with its own icon/label now.
+const CATEGORY_CARD_CLASS: Partial<Record<TrainingLoadCategory, string>> = {
+  easy_recovery: "hra-agenda-cat-easy-recovery", long_run: "hra-agenda-cat-long-run",
+  intervals: "hra-agenda-cat-intervals", progressive: "hra-agenda-cat-progressive",
+  threshold: "hra-agenda-cat-threshold", tempo: "hra-agenda-cat-tempo",
+  cross_training: "hra-agenda-cat-cross-training",
 };
 
 function parseLocalDate(dateISO: string): Date {
@@ -131,22 +155,52 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
   for (const section of sections) {
     for (const week of section.weeks) {
       for (const day of week.days) {
-        if (day.date == null || day.metrics == null) continue;
+        // metrics and trainingLoadCategory are always set together (both instance-path-only
+        // fields on DayView — see runplan-aggregate.ts) — one guard covers both.
+        if (day.date == null || day.metrics == null || day.trainingLoadCategory == null) continue;
         const date = parseLocalDate(day.date);
         const title = day.dsl.replace(DAY_PREFIX_RE, "").trim() || day.dsl;
-        events.push({ title, start: date, end: date, allDay: true, workoutType: day.workout_type, needsReview: day.needs_review, metrics: day.metrics });
+        events.push({
+          title, start: date, end: date, allDay: true, workoutType: day.workout_type,
+          trainingLoadCategory: day.trainingLoadCategory, needsReview: day.needs_review, metrics: day.metrics,
+        });
       }
     }
   }
   return events;
 }
 
-const WORKOUT_TYPE_LABEL_KEYS: Record<WorkoutType, [string, string]> = {
-  run: ["manage.planInstances.workoutType.run", "Run"],
-  rest: ["manage.planInstances.workoutType.rest", "Rest"],
-  strength: ["manage.planInstances.workoutType.strength", "Strength"],
-  cross: ["manage.planInstances.workoutType.cross", "Cross training"],
-  todo: ["manage.planInstances.workoutType.todo", "To do"],
+// `todo` isn't a real classification category (HRA-147 folds it into
+// Easy/Recovery for the tercile math, but a not-yet-planned day showing an
+// "Easy/Recovery" badge would misinform a runner) — the compact row keeps
+// this dedicated, category-independent label+icon for it instead.
+const TODO_LABEL_KEY: [string, string] = ["manage.planInstances.workoutType.todo", "To do"];
+
+// HRA-148 Ask #3: category / icon / criteria, in the same order as HRA-147's
+// own description — also the order the criteria-reference popover lists
+// them in.
+const CATEGORY_ORDER: TrainingLoadCategory[] = [
+  "easy_recovery", "long_run", "intervals", "progressive", "threshold", "tempo", "cross_training", "rest",
+];
+const CATEGORY_LABEL_KEYS: Record<TrainingLoadCategory, [string, string]> = {
+  easy_recovery: ["manage.planInstances.category.easyRecovery", "Easy/Recovery"],
+  long_run: ["manage.planInstances.category.longRun", "Long run"],
+  intervals: ["manage.planInstances.category.intervals", "Intervals"],
+  progressive: ["manage.planInstances.category.progressive", "Progressive"],
+  threshold: ["manage.planInstances.category.threshold", "Threshold"],
+  tempo: ["manage.planInstances.category.tempo", "Tempo"],
+  cross_training: ["manage.planInstances.category.crossTraining", "Cross training"],
+  rest: ["manage.planInstances.category.rest", "Rest"],
+};
+const CATEGORY_CRITERIA_KEYS: Record<TrainingLoadCategory, [string, string]> = {
+  easy_recovery: ["manage.planInstances.categoryCriteria.easyRecovery", "Slowest pace third of the plan, or pace not yet resolved."],
+  long_run: ["manage.planInstances.categoryCriteria.longRun", "The week's longest run, by distance (or duration)."],
+  intervals: ["manage.planInstances.categoryCriteria.intervals", "Contains an interval segment (reps × work, with rest)."],
+  progressive: ["manage.planInstances.categoryCriteria.progressive", "Contains a progression segment (pace shifts start → end)."],
+  threshold: ["manage.planInstances.categoryCriteria.threshold", "Fastest pace third of the plan."],
+  tempo: ["manage.planInstances.categoryCriteria.tempo", "Middle pace third of the plan."],
+  cross_training: ["manage.planInstances.categoryCriteria.crossTraining", "A CROSS or STRENGTH day."],
+  rest: ["manage.planInstances.categoryCriteria.rest", "A REST day."],
 };
 
 function formatDistanceM(m: number): string {
@@ -178,23 +232,37 @@ function speedColorT(value: number, scaling: GaugeScaling): number {
 
 interface AgendaSummary { workouts: number; runs: number; rest: number; distanceM: number }
 
-// HRA-144 Ask #1-3 + HRA-145's metrics + HRA-146 Ask #2/#3: the day cell's
-// full content. REST/TODO days (no metrics ever) render as a muted row with
-// no card at all; every other day gets a category-tinted card with the
+// HRA-144 Ask #1-3 + HRA-145's metrics + HRA-146 Ask #2/#3 + HRA-148's real
+// classification. REST/TODO days (no metrics ever) render as a muted row
+// with no card at all; every other day gets a category-tinted card with the
 // Route/Clock3/Gauge ring trio, each ring independently suppressed when its
 // own metric isn't resolvable (Ask #3's own AC, mirroring HRA-145's
-// "no zero-length placeholder" rule).
+// "no zero-length placeholder" rule). Card color/icon now come from
+// classifyResolvedDay's category (HRA-148 Ask #1), not raw workout_type —
+// `todo` is the one exception, kept on its own dedicated label/icon since
+// it isn't a real category (see TODO_LABEL_KEY above).
 function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: GaugeScaling }) {
   const { t } = useTranslation();
-  const Icon = WORKOUT_TYPE_ICONS[event.workoutType];
-  const [key, fallback] = WORKOUT_TYPE_LABEL_KEYS[event.workoutType];
-  const workoutTypeLabel = t(key, fallback);
 
-  if (event.workoutType === "rest" || event.workoutType === "todo") {
+  if (event.workoutType === "todo") {
+    const [key, fallback] = TODO_LABEL_KEY;
+    return (
+      <span className="hra-agenda-rest-row">
+        <CircleHelp size={13} />
+        {t(key, fallback)}
+      </span>
+    );
+  }
+
+  const Icon = CATEGORY_ICONS[event.trainingLoadCategory];
+  const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory];
+  const categoryLabel = t(key, fallback);
+
+  if (event.workoutType === "rest") {
     return (
       <span className="hra-agenda-rest-row">
         <Icon size={13} />
-        {workoutTypeLabel}
+        {categoryLabel}
       </span>
     );
   }
@@ -212,9 +280,9 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
   const dslSegments = splitDslSegments(event.title);
 
   return (
-    <span className={`hra-agenda-event-card ${WORKOUT_TYPE_CARD_CLASS[event.workoutType] ?? ""}`}>
+    <span className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? ""}`}>
       <span className="hra-agenda-event-main-row" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
-        <span title={workoutTypeLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
+        <span title={categoryLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
           <Icon size={12} />
         </span>
         <span className="hra-agenda-event-title">
@@ -285,6 +353,53 @@ function AgendaDateHeader({ date, label }: { date: Date; label: ReactNode }) {
 
 const ICON_BTN_STYLE: CSSProperties = { width: 32, height: 32, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" };
 
+// HRA-148 Ask #3: an info affordance off the calendar header — a popover
+// (not a separate page) listing every category with its actual rule, so a
+// runner can see what drives a badge's color/icon rather than guessing.
+// `todo` is deliberately absent — it isn't a real classification category
+// (see TODO_LABEL_KEY above), so it has no "criteria" to document here.
+function CategoryCriteriaPopover() {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button" className="hra-btn" data-variant="outline" style={ICON_BTN_STYLE}
+          aria-label={t("manage.planInstances.categoryReferenceTrigger", "What do the agenda colors mean?")}
+        >
+          <Info size={15} />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end">
+        <div className="hra-agenda-category-reference">
+          <p className="hra-agenda-category-reference-title">
+            {t("manage.planInstances.categoryReferenceTitle", "Training-load categories")}
+          </p>
+          <table className="hra-agenda-category-reference-table">
+            <tbody>
+              {CATEGORY_ORDER.map(category => {
+                const Icon = CATEGORY_ICONS[category];
+                const [labelKey, labelFallback] = CATEGORY_LABEL_KEYS[category];
+                const [criteriaKey, criteriaFallback] = CATEGORY_CRITERIA_KEYS[category];
+                return (
+                  <tr key={category} className={CATEGORY_CARD_CLASS[category] ?? ""}>
+                    <td className="hra-agenda-category-reference-icon" style={{ color: "var(--cat-color, var(--text-muted))" }}>
+                      <Icon size={14} />
+                    </td>
+                    <td className="hra-agenda-category-reference-label">{t(labelKey, labelFallback)}</td>
+                    <td className="hra-agenda-category-reference-criteria">{t(criteriaKey, criteriaFallback)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // HRA-146 Ask #4: replaces react-big-calendar's own toolbar — title +
 // accordion-equivalent summary line, chevron nav, Month/Week toggle (Week
 // inert this slice, per the AC's own "may be visually present but inert").
@@ -325,6 +440,7 @@ function AgendaToolbar({ label, onNavigate, summary }: { label: ReactNode; onNav
             <ChevronRight size={15} />
           </button>
         </div>
+        <CategoryCriteriaPopover />
       </div>
     </div>
   );
