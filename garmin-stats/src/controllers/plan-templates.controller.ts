@@ -12,13 +12,13 @@
  * request validation, same split as activities.controller.ts.
  */
 import type { AppContext, Handler } from "../http/context.ts";
-import type { PlanTemplateRow } from "../db.ts";
+import type { PlanInstanceDayRow, PlanInstanceRow, PlanTemplateRow } from "../db.ts";
 import { parseRunPlanDSL, parsePaceValue, parseDayEntry } from "../domain/runplan/parser.ts";
 import { instantiatePlan, resolveDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
 import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
-import type { DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
+import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
@@ -478,6 +478,38 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, { ...updated, days });
   };
 
+  // Shared by the persisting PATCH (patchInstanceDay) and the parse-only
+  // preview (validateInstanceDay) below — both need this day's own effective
+  // section/week scope + PacePolicy to parseDayEntry the same way
+  // patchInstance's bulk days-replace resolves each day. Kept private to this
+  // controller: no other caller needs a day's parse without an instance+day.
+  function parseDayInScope(
+    instance: PlanInstanceRow, day: PlanInstanceDayRow, dsl: string,
+  ): { parsedDay: DayEntry; policy: PacePolicy } {
+    const template = templates.byId(instance.template_id);
+    if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
+    const plan = JSON.parse(template.parsed_plan) as RunPlan;
+    const instanceOverrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
+    const overriddenPlan: RunPlan = {
+      ...plan,
+      metadata: { ...plan.metadata, pace_policy: { ...plan.metadata.pace_policy, ...instanceOverrides } },
+    };
+    const section = overriddenPlan.sections.find(s => s.name === day.section_name);
+    const week = section?.weeks.find(w => w.number === day.week_number);
+    if (!section || !week) {
+      throw unprocessable(`Unknown section/week for this day: "${day.section_name}" week ${day.week_number}.`);
+    }
+    const policy = getEffectivePacePolicy(overriddenPlan, section, week);
+    const ctx: DayParseContext = {
+      unit: overriddenPlan.metadata.unit, offset_unit: overriddenPlan.metadata.offset_unit,
+      default_rest: overriddenPlan.metadata.default_rest, pacePolicy: policy,
+      // An instance's pace must actually resolve — no TBD leniency here,
+      // unlike template parsing (parser.ts's parseRunPlanDSL).
+      allowUnboundPace: false,
+    };
+    return { parsedDay: parseDayEntry(dsl, ctx), policy };
+  }
+
   // PATCH /api/v1/plan-instances/:id/days/:dayId (HRA-149) — a single day's
   // dsl/notes/scheduled_time, independently. Rejected outright on an already-
   // approved instance (mirrors HRA-126's intended "editable only until
@@ -515,26 +547,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     let dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined;
     if (hasDsl) {
       if (!body.dsl?.trim()) throw unprocessable("dsl must not be blank.");
-      const template = templates.byId(instance.template_id);
-      if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
-      const plan = JSON.parse(template.parsed_plan) as RunPlan;
-      const instanceOverrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
-      const overriddenPlan: RunPlan = {
-        ...plan,
-        metadata: { ...plan.metadata, pace_policy: { ...plan.metadata.pace_policy, ...instanceOverrides } },
-      };
-      const section = overriddenPlan.sections.find(s => s.name === day.section_name);
-      const week = section?.weeks.find(w => w.number === day.week_number);
-      if (!section || !week) {
-        throw unprocessable(`Unknown section/week for this day: "${day.section_name}" week ${day.week_number}.`);
-      }
-      const policy = getEffectivePacePolicy(overriddenPlan, section, week);
-      const ctx: DayParseContext = {
-        unit: overriddenPlan.metadata.unit, offset_unit: overriddenPlan.metadata.offset_unit,
-        default_rest: overriddenPlan.metadata.default_rest, pacePolicy: policy,
-        allowUnboundPace: false,
-      };
-      const parsedDay = parseDayEntry(body.dsl, ctx);
+      const { parsedDay, policy } = parseDayInScope(instance, day, body.dsl);
       if (parsedDay.needs_review) {
         throw unprocessable("Day still needs review — resolve every flag before saving.", {
           errors: parsedDay.warnings.map(w => ({ field: `week ${day.week_number} day ${parsedDay.day}`, message: w.message })),
@@ -553,6 +566,34 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
     const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime);
     return send(res, updated);
+  };
+
+  // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162) —
+  // parse-only preview of a day's DSL edit, never persists: what the List
+  // view's per-day editor calls (debounced) as the user types, so warning
+  // feedback updates live instead of only after the whole-day bulk Save
+  // round-trip. Deliberately reuses parseDayInScope — the exact same
+  // parseDayEntry call and ParseWarning taxonomy the persisting PATCH above
+  // validates against — never a separate client-side grammar
+  // reimplementation that could drift from parser.ts (docs/runplan-dsl.md's
+  // warnings-only model). Always 200: parseDayEntry itself never hard-rejects
+  // (docs/runplan-dsl.md), it only ever produces warnings — the caller reads
+  // needs_review/warnings from the body, same shape a DayEntry itself
+  // carries. No approved-instance guard (unlike the PATCH above): this never
+  // mutates anything, so there's nothing for that lock to protect.
+  const validateInstanceDay: Handler = async (req, res, url) => {
+    const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
+    if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
+    const instance = instancesRepo.instanceById(instanceId);
+    if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
+    const day = instancesRepo.dayById(dayId);
+    if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
+
+    const body = await readJsonBody<{ dsl?: string }>(req);
+    if (!body.dsl?.trim()) throw unprocessable("dsl is required.");
+
+    const { parsedDay } = parseDayInScope(instance, day, body.dsl);
+    return send(res, { needs_review: parsedDay.needs_review, warnings: parsedDay.warnings });
   };
 
   // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
@@ -630,6 +671,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, patchInstance, patchInstanceDay, regenerateInstance, approveInstance, removeInstance, listInstances,
+    instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay,
+    regenerateInstance, approveInstance, removeInstance, listInstances,
   };
 }

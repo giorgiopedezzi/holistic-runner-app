@@ -140,6 +140,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-templates\/\d+\/approve$/.test(route))     return await planTemplates.approveTemplate(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await planTemplates.regenerateInstance(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await planTemplates.approveInstance(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route)) return await planTemplates.validateInstanceDay(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);

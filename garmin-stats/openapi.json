@@ -635,6 +635,15 @@
         "responses": { "200": { "description": "The updated day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstanceDay" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
+    "/api/v1/plan-instances/{id}/days/{dayId}/validate": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Parse-only preview of a day's DSL edit, never persists (HRA-162)",
+        "description": "What the List view's per-day editor calls (debounced) as the user types, so warning feedback updates live instead of only after the whole-day bulk Save round-trip. Reuses the exact same parseDayEntry call and ParseWarning taxonomy the persisting PATCH .../days/{dayId} validates against, against this day's own existing section/week scope and the template's effective PacePolicy (merged with the instance's pace_overrides) — never a separate client-side grammar reimplementation. Always 200: parseDayEntry itself never hard-rejects (docs/runplan-dsl.md's warnings-only model), it only ever produces warnings. No approved-instance guard, unlike the PATCH above: this never mutates anything.",
+        "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["dsl"], "properties": { "dsl": { "type": "string", "description": "Raw D-line text, same grammar as a template, e.g. \"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10\"." } } } } } },
+        "responses": { "200": { "description": "The fresh parse of this DSL text.", "content": { "application/json": { "schema": { "type": "object", "properties": { "needs_review": { "type": "boolean" }, "warnings": { "type": "array", "items": { "$ref": "#/components/schemas/ParseWarning" } } } } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/plan-instances/{id}/approve": {
       "post": {
         "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113)",

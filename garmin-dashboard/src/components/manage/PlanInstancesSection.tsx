@@ -26,7 +26,7 @@
  * Restore confirm gate and the collapsed-row warning icon here — the exact
  * signal the Story's own Ask #3/#4 name.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
@@ -299,6 +299,14 @@ export function PlanInstancesSection({ templates }: Props) {
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
 
   const [sections, setSections] = useState<SectionView[]>([]);
+  // HRA-162: a ref mirror of `sections`, read (never written) inside the
+  // debounced live-validate callback below — that callback fires ~400ms
+  // after the keystroke that scheduled it, well past the render whose
+  // closure it was created in, so reading the `sections` state variable
+  // directly there would see a stale snapshot. The ref always has the
+  // latest value by the time the timeout fires.
+  const sectionsRef = useRef(sections);
+  useEffect(() => { sectionsRef.current = sections; }, [sections]);
   // HRA-143: List/Agenda toggle for the currently-open row's own accordion —
   // one shared state is enough since only one row is ever expanded at a
   // time (activeKey). Default List (AC2) — the pre-existing accordion,
@@ -835,19 +843,65 @@ export function PlanInstancesSection({ templates }: Props) {
   }
 
   function onDayEdit(sectionIndex: number, weekIndex: number, dayIndex: number, patch: { dsl?: string; notes?: string }) {
+    const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
+    if (!day) return;
+    const newLine = recomposeDayLine(day.dsl, patch);
     setSections(prev => {
       const sections = [...prev];
       const section = { ...sections[sectionIndex] };
       const weeks = [...section.weeks];
       const week = { ...weeks[weekIndex] };
       const days = [...week.days];
-      const day = days[dayIndex];
-      const newLine = recomposeDayLine(day.dsl, patch);
-      days[dayIndex] = { ...day, dsl: newLine, notes: splitNote(newLine).note };
+      days[dayIndex] = { ...days[dayIndex], dsl: newLine, notes: splitNote(newLine).note };
       week.days = days; weeks[weekIndex] = week; section.weeks = weeks; sections[sectionIndex] = section;
       return sections;
     });
+    // HRA-162: a DSL edit (not a bare notes edit) re-triggers live
+    // validation — the day's needs_review/warnings otherwise stay exactly
+    // what they were at last load/save, stale until the whole-day bulk Save.
+    if (patch.dsl !== undefined && day.id != null) scheduleLiveValidate(sectionIndex, weekIndex, dayIndex, day.id, newLine);
   }
+
+  // HRA-162: debounced per-day live validation as the user edits DSL text in
+  // List view (docs/runplan-dsl.md's "would be nice to validate on the fly"
+  // note, now implemented). Deliberately a server round-trip against the
+  // exact same parseDayEntry-backed endpoint the persisted
+  // PATCH .../days/:dayId already validates against — POST
+  // .../days/:dayId/validate (docs/api.md, HRA-162) — never a client-side
+  // grammar reimplementation, per the Story's own AC ("not a
+  // separate/duplicated rule set that could drift from parser.ts"). 400ms
+  // debounce so it doesn't fire on every keystroke; a response that arrives
+  // after the day's dsl has already moved on (a newer edit, a save, a row
+  // switch) is discarded rather than clobbering fresher feedback with a
+  // stale one — checked against sectionsRef (see its own comment above).
+  const validateTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  function scheduleLiveValidate(sectionIndex: number, weekIndex: number, dayIndex: number, dayId: number, dsl: string) {
+    clearTimeout(validateTimers.current[dayId]);
+    validateTimers.current[dayId] = setTimeout(() => {
+      delete validateTimers.current[dayId];
+      if (editingId == null) return;
+      api.planInstances.validateDay(editingId, dayId, dsl)
+        .then(result => {
+          const liveDay = sectionsRef.current[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
+          if (!liveDay || liveDay.id !== dayId || liveDay.dsl !== dsl) return; // stale — a newer edit/save has already superseded this
+          patchLocalDayWarnings(sectionIndex, weekIndex, dayIndex, result.needs_review, result.warnings);
+        })
+        .catch(() => {}); // never block typing on a transient network failure — the next debounced call (or the eventual Save) will surface it
+    }, 400);
+  }
+  function patchLocalDayWarnings(sectionIndex: number, weekIndex: number, dayIndex: number, needsReview: boolean, warnings: DayView["warnings"]) {
+    setSections(prev => {
+      const next = [...prev];
+      const section = { ...next[sectionIndex] };
+      const weeks = [...section.weeks];
+      const week = { ...weeks[weekIndex] };
+      const days = [...week.days];
+      days[dayIndex] = { ...days[dayIndex], needs_review: needsReview, warnings };
+      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
+      return next;
+    });
+  }
+  useEffect(() => () => { Object.values(validateTimers.current).forEach(clearTimeout); }, []);
 
   // HRA-150: unlike onDayEdit above (local-only, waits for the whole-day
   // bulk Save), scheduled_time persists immediately via its own PATCH

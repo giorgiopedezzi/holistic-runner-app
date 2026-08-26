@@ -283,5 +283,12 @@ export const api = {
     // rather than waiting for the whole-day bulk Save.
     patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>) =>
       request<PlanInstanceDay>(`/api/v1/plan-instances/${instanceId}/days/${dayId}`, "PATCH", undefined, body),
+    // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162) —
+    // parse-only preview, never persists (mirrors planTemplates.generate's
+    // own preview-vs-persist split above). What List view's per-day editor
+    // calls, debounced, on every DSL keystroke so warning feedback updates
+    // live instead of only after the whole-day bulk Save.
+    validateDay: (instanceId: number, dayId: number, dsl: string) =>
+      request<{ needs_review: boolean; warnings: ParseWarning[] }>(`/api/v1/plan-instances/${instanceId}/days/${dayId}/validate`, "POST", undefined, { dsl }),
   },
 };
