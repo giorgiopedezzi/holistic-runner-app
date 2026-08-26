@@ -65,10 +65,19 @@ describe("computeTemplateDayDistance — the distance rule", () => {
     expect(computeTemplateDayDistance(d, RG_ABSOLUTE)).toEqual({ meters: 0, approximate: false });
   });
 
-  it("multiplies an interval's work_target by reps, excludes the rest leg", () => {
+  it("multiplies an interval's (work + rest) leg by reps — bug fix, the rest leg used to be dropped", () => {
     const seg: WorkoutSegment = {
       type: "interval", reps: 4, work_target: target("distance", 1000), work_intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" },
       rest: { target: target("distance", 1000), raw: "r:1km" }, raw: "4x1000m @ RG-20 r:1km",
+    };
+    // 4 x (1000m work + 1000m rest) = 8000m — real ground covered on both legs.
+    expect(computeTemplateDayDistance(day({ segments: [seg] }), RG_ABSOLUTE)).toEqual({ meters: 8000, approximate: false });
+  });
+
+  it("an interval with no rest leg at all still sums work-only, unaffected by the fix above", () => {
+    const seg: WorkoutSegment = {
+      type: "interval", reps: 4, work_target: target("distance", 1000), work_intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" },
+      raw: "4x1000m @ RG-20",
     };
     expect(computeTemplateDayDistance(day({ segments: [seg] }), RG_ABSOLUTE)).toEqual({ meters: 4000, approximate: false });
   });
@@ -122,12 +131,20 @@ describe("computeResolvedDayDistance — same rule, already-resolved paces", () 
     expect(computeResolvedDayDistance(resolvedDay({ segments: [unresolved] }))).toEqual({ meters: 0, approximate: false });
   });
 
-  it("multiplies a resolved interval's work leg by reps, excludes rest", () => {
+  it("multiplies a resolved interval's (work + rest) leg by reps — bug fix", () => {
     const resolved: ResolvedSegment = {
       type: "interval", reps: 4, work_target: target("distance", 1000), work_resolved_pace_sec_per_km: 280,
       rest: { target: target("distance", 1000), resolved_pace_sec_per_km: 310, raw: "r:1km @ RG+10" }, raw: "4x1000m @ RG-20 r:1km @ RG+10",
     };
-    expect(computeResolvedDayDistance(resolvedDay({ segments: [resolved] }))).toEqual({ meters: 4000, approximate: false });
+    expect(computeResolvedDayDistance(resolvedDay({ segments: [resolved] }))).toEqual({ meters: 8000, approximate: false });
+  });
+
+  it("live bug report: 3x3000m @ 3:56/km r:1km @ 4:26/km totals 12km (3 work + 3 rest legs)", () => {
+    const resolved: ResolvedSegment = {
+      type: "interval", reps: 3, work_target: target("distance", 3000), work_resolved_pace_sec_per_km: 236,
+      rest: { target: target("distance", 1000), resolved_pace_sec_per_km: 266, raw: "r:1km @ 4:26/km" }, raw: "3x3000m @ 3:56/km r:1km @ 4:26/km",
+    };
+    expect(computeResolvedDayDistance(resolvedDay({ segments: [resolved] }))).toEqual({ meters: 12000, approximate: false });
   });
 });
 
@@ -274,13 +291,13 @@ describe("computeResolvedDayMetrics (HRA-145)", () => {
     expect(metrics).toEqual({ totalDistanceM: 6000, minSpeedKmh: 12, maxSpeedKmh: 12, totalDurationSec: 1800 });
   });
 
-  it("interval: multiplies work distance by reps, excludes the rest leg from speed but includes it in duration", () => {
+  it("interval: distance and duration both include the rest leg; speed excludes it (a recovery jog isn't the work effort)", () => {
     const seg: ResolvedSegment = {
       type: "interval", reps: 4, work_target: target("distance", 1000), work_resolved_pace_sec_per_km: 280,
       rest: { target: target("distance", 1000), resolved_pace_sec_per_km: 310, raw: "r:1km @ RG+10" }, raw: "4x1000m @ RG-20 r:1km @ RG+10",
     };
     const metrics = computeResolvedDayMetrics(resolvedDay({ segments: [seg] }));
-    expect(metrics.totalDistanceM).toBe(4000); // 4 x 1000m, rest leg excluded
+    expect(metrics.totalDistanceM).toBe(8000); // 4 x (1000m work + 1000m rest) — bug fix, rest leg used to be dropped
     expect(metrics.minSpeedKmh).toBeCloseTo(3600 / 280); // work-leg pace only
     expect(metrics.maxSpeedKmh).toBeCloseTo(3600 / 280);
     expect(metrics.totalDurationSec).toBe((280 + 310) * 4); // work + rest, x4 reps — real elapsed clock time

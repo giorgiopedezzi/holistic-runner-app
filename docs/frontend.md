@@ -786,12 +786,16 @@ deliberate hand-kept duplicate, same convention as every other API-shaped type i
   shallow-merge inheritance.
 - **The distance rule**: a `distance`-kind target sums directly; a `duration`-kind target converts
   via its resolved pace when one is available, and is excluded entirely otherwise (an unresolved
-  anchor, or a segment with `kind: "unknown"`). Two deliberate, documented assumptions where the
-  Story text didn't fully pin the behavior down (flagged in HRA-116's review comment as a real
-  design choice): **an interval's rest leg is excluded from the total — only `reps × work_target`
-  counts** (training-plan volume convention, "4x1000m" = 4km of work, not recovery jogs); **a
-  progression's duration→distance conversion uses the START intensity's resolved pace**, not an
-  average of start/end or the end pace alone.
+  anchor, or a segment with `kind: "unknown"`). **An interval's rest leg counts toward the total**
+  — `reps × (work_target + rest_target)`, mirroring `durationFromResolvedSegment`'s own
+  already-correct duration rule (the rest leg is real ground covered, e.g. a jog/walk recovery, not
+  just elapsed clock time) — corrected from an earlier "only `reps × work_target` counts" convention
+  (HRA-116's original review comment), which undercounted e.g. "3x3000m r:1km" as 9km instead of the
+  real 12km (live bug report, post-session). Speed characterization (`speedsFromResolvedSegment`)
+  still deliberately excludes the rest leg — unrelated to this fix, a recovery jog isn't the
+  segment's WORK effort. Separately: **a progression's duration→distance conversion uses the START
+  intensity's resolved pace**, not an average of start/end or the end pace alone (still a deliberate,
+  documented assumption per HRA-116's review, unaffected by the interval fix above).
 - **Day-count categorization**: `totalDays`/`activeDays` (every day whose `workout_type` isn't
   `rest`/`todo`)/`runningDays` (`workout_type === "run"` only)/`restDays`. Section and Week totals
   are the *same* reduction over a different day list — `aggregateTemplateWeek`/

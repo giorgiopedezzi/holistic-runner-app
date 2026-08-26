@@ -101,8 +101,19 @@ function distanceFromWorkoutSegment(seg: WorkoutSegment, policy: PacePolicy): Di
       return distanceFromTarget(seg.target, resolveIntensityPaceSecPerKm(seg.intensity, policy));
     case "interval": {
       if (seg.reps == null) return null;
-      const one = distanceFromTarget(seg.work_target, resolveIntensityPaceSecPerKm(seg.work_intensity, policy));
-      return one && { meters: one.meters * seg.reps, approximate: one.approximate };
+      const work = distanceFromTarget(seg.work_target, resolveIntensityPaceSecPerKm(seg.work_intensity, policy));
+      if (!work) return null;
+      // Bug fix: the rest leg between reps is real ground actually covered
+      // (a jog/walk recovery still adds to the day's total km, the same way
+      // it already counts toward totalDurationSec below) — it was
+      // previously dropped entirely, undercounting e.g. "3x3000m r:1km" as
+      // 9km instead of the correct 12km (3 work + 3 rest legs). An
+      // unresolvable rest distance (duration-kind with no pace) falls back
+      // to 0 contribution rather than voiding the otherwise-known work
+      // total, same null-tolerant convention sumDistances uses elsewhere.
+      const restPace = seg.rest?.intensity ? resolveIntensityPaceSecPerKm(seg.rest.intensity, policy) : null;
+      const rest = seg.rest ? distanceFromTarget(seg.rest.target, restPace) : null;
+      return { meters: (work.meters + (rest?.meters ?? 0)) * seg.reps, approximate: work.approximate || (rest?.approximate ?? false) };
     }
     case "progression":
       return distanceFromTarget(seg.target, resolveIntensityPaceSecPerKm(seg.start_intensity, policy));
@@ -119,8 +130,12 @@ function distanceFromResolvedSegment(seg: ResolvedSegment): DistanceTotal | null
       return distanceFromTarget(seg.target, seg.resolved_pace_sec_per_km);
     case "interval": {
       if (seg.reps == null) return null;
-      const one = distanceFromTarget(seg.work_target, seg.work_resolved_pace_sec_per_km);
-      return one && { meters: one.meters * seg.reps, approximate: one.approximate };
+      const work = distanceFromTarget(seg.work_target, seg.work_resolved_pace_sec_per_km);
+      if (!work) return null;
+      // Bug fix: mirrors distanceFromWorkoutSegment's own fix above — the
+      // rest leg is real ground covered between reps, not to be dropped.
+      const rest = seg.rest ? distanceFromTarget(seg.rest.target, seg.rest.resolved_pace_sec_per_km) : null;
+      return { meters: (work.meters + (rest?.meters ?? 0)) * seg.reps, approximate: work.approximate || (rest?.approximate ?? false) };
     }
     case "progression":
       return distanceFromTarget(seg.target, seg.start_resolved_pace_sec_per_km);
@@ -211,8 +226,11 @@ function durationFromResolvedSegment(seg: ResolvedSegment): number | null {
       if (seg.reps == null) return null;
       const workDur = durationFromTarget(seg.work_target, seg.work_resolved_pace_sec_per_km);
       if (workDur == null) return null;
-      // Unlike distance, the interval's rest leg IS real elapsed clock time
-      // on an actual run — included here, unlike speedsFromResolvedSegment.
+      // The interval's rest leg IS real elapsed clock time on an actual
+      // run — included here (and, since the bug fix above, in distance
+      // too), unlike speedsFromResolvedSegment below, which deliberately
+      // excludes it from speed characterization (a recovery jog isn't the
+      // segment's WORK effort).
       const restDur = seg.rest ? durationFromTarget(seg.rest.target, seg.rest.resolved_pace_sec_per_km) : null;
       return (workDur + (restDur ?? 0)) * seg.reps;
     }
