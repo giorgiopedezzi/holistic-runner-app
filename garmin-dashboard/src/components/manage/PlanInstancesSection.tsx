@@ -393,8 +393,23 @@ export function PlanInstancesSection({ templates }: Props) {
   const [persistedDsl, setPersistedDsl] = useState<Record<string, string>>({});
   // The "Modification start from" cutover date (HRA-134) — defaults to
   // today, floored there both client-side (DatePicker's own min) and
-  // server-side (never trusted from the client alone, HRA-132).
+  // server-side (never trusted from the client alone, HRA-132). Live
+  // follow-up: the actual floor is max(startDate, today), not today alone —
+  // a day before the instance's own (possibly just-changed) start date
+  // doesn't exist to regenerate from. ISO "YYYY-MM-DD" strings compare
+  // correctly with plain string comparison, so this needs no date parsing.
+  const minEffectiveFrom = startDate > isoToday() ? startDate : isoToday();
   const [effectiveFrom, setEffectiveFrom] = useState(isoToday());
+  // Live follow-up: DatePicker's own `min` only restricts what's newly
+  // SELECTABLE in the calendar popup — it doesn't retroactively correct an
+  // already-set value, so a startDate pushed later than the current
+  // effectiveFrom (e.g. the user bumps start date after already opening the
+  // picker) would otherwise leave effectiveFrom silently sitting below the
+  // real floor. Clamp it back up whenever the floor moves past it.
+  useEffect(() => {
+    if (effectiveFrom < minEffectiveFrom) setEffectiveFrom(minEffectiveFrom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minEffectiveFrom]);
   const [regenerateLoading, setRegenerateLoading] = useState(false);
   // Set while a regenerate is pending confirmation because it would discard
   // one or more manually-edited days on/after the cutover — same
@@ -1831,7 +1846,7 @@ export function PlanInstancesSection({ templates }: Props) {
               >
                 <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
                 <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex" }}>
-                  <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={regenerateDisabled} />
+                  <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled} />
                 </span>
               </div>
             </>
