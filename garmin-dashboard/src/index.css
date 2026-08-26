@@ -1311,7 +1311,21 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-regenerate-unit .hra-date-trigger:hover,
 .hra-regenerate-unit .hra-date-trigger[data-state="open"] { box-shadow: none; }
-.hra-regenerate-unit .hra-date-trigger-text { text-decoration: underline; text-underline-offset: 2px; }
+/* HRA-159: background-pill replaces the plain underline, with a real color
+   difference between enabled/disabled — not just the existing :disabled
+   opacity dimming above, which alone didn't read as a distinct state. Uses
+   --bg (not --accent-green or an inline hex) since that's the SAME token
+   this button's own `color: var(--bg)` (data-variant="green" rule above)
+   already relies on for text-vs-fill contrast in every theme — mixing it
+   into the fill at two different strengths keeps both pill states legible
+   against --accent-green regardless of theme. */
+.hra-regenerate-unit .hra-date-trigger-text {
+  display: inline-block; background: color-mix(in srgb, var(--bg) 22%, transparent);
+  border-radius: 999px; padding: 1px 8px;
+}
+.hra-regenerate-unit .hra-date-trigger:disabled .hra-date-trigger-text {
+  background: color-mix(in srgb, var(--bg) 8%, transparent);
+}
 
 /* One label class for every field in this form — Capital Case, matching
    the sibling PlanTemplatesSection's <label> convention (and the rest of

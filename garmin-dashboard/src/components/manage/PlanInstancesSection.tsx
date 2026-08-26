@@ -1627,13 +1627,17 @@ export function PlanInstancesSection({ templates }: Props) {
               >
                 <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
                 <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex" }}>
-                  <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={isApproved} />
+                  <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={isoToday()} disabled={regenerateDisabled} />
                 </span>
               </div>
             </>
           )}
+          {/* HRA-159: "Restore" renames to "Reset to previous values" here —
+              a dedicated key, not a change to the shared common.restore
+              key PlanTemplatesSection.tsx also uses, since this Story's ask
+              is scoped to the instance card only. */}
           <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => onRestoreClick(isDirty)}>
-            {t("common.restore", "Restore")}
+            {t("manage.planInstances.resetButton", "Reset to previous values")}
           </button>
           {/* HRA-157: List/Agenda switch relocated here from its own row
               above the accordion/calendar — right-aligned via marginLeft:
@@ -1713,14 +1717,14 @@ export function PlanInstancesSection({ templates }: Props) {
           <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelRestoreConfirm}>
             <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
               <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-                {t("manage.planInstances.restoreConfirmBody", "You have unsaved changes — discard them?")}
+                {t("manage.planInstances.restoreConfirmBody", "You have unsaved changes — reset them to the previous values?")}
               </div>
               <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
                 <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelRestoreConfirm}>
                   {t("common.cancel", "Cancel")}
                 </button>
                 <button className="hra-btn" data-variant="danger" onClick={doRestore}>
-                  {t("common.restore", "Restore")}
+                  {t("manage.planInstances.resetButton", "Reset to previous values")}
                 </button>
               </div>
             </div>
