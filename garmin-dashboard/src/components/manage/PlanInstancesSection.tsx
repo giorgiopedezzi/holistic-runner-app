@@ -884,6 +884,29 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
+  // HRA-151: PlanInstanceCalendar (the Agenda view) only ever has the day's
+  // own backend id at hand — react-big-calendar's dateHeader contract gives
+  // it a Date, not the section/week/day indices the List view already
+  // threads through. Resolves the same {sectionIndex, weekIndex, dayIndex}
+  // ref onScheduledTimeEdit above needs, then delegates to it — one PATCH +
+  // optimistic-update implementation shared by both views of the same
+  // `sections` state (the "sibling views share data" pattern this file's own
+  // template/instance list lift-up already established, CLAUDE.md).
+  function findDayIndicesById(dayId: number): { sectionIndex: number; weekIndex: number; dayIndex: number } | null {
+    for (let si = 0; si < sections.length; si++) {
+      for (let wi = 0; wi < sections[si].weeks.length; wi++) {
+        const dayIndex = sections[si].weeks[wi].days.findIndex(d => d.id === dayId);
+        if (dayIndex !== -1) return { sectionIndex: si, weekIndex: wi, dayIndex };
+      }
+    }
+    return null;
+  }
+  function onScheduledTimeEditByDayId(dayId: number, scheduledTime: string | null) {
+    const ref = findDayIndicesById(dayId);
+    if (!ref) return;
+    onScheduledTimeEdit(ref.sectionIndex, ref.weekIndex, ref.dayIndex, scheduledTime);
+  }
+
   // HRA-127: day/week swap — flat, cross-week/cross-section pickable lists
   // for the two "swap with…" selectors below. A day's calendar date never
   // moves (only content exchanges), so date isn't part of the label — the
@@ -1705,7 +1728,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 onScheduledTimeEdit={onScheduledTimeEdit}
               />
             ) : (
-              <PlanInstanceCalendar sections={sections} />
+              <PlanInstanceCalendar sections={sections} readOnlyDays={isApproved} onScheduledTimeEdit={onScheduledTimeEditByDayId} />
             )}
           </>
         )}

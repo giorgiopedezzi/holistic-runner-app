@@ -61,6 +61,12 @@ interface CalendarEvent {
   trainingLoadCategory: TrainingLoadCategory;
   needsReview: boolean;
   metrics: ResolvedDayMetrics;
+  // HRA-151: the day's own backend id (what the per-day PATCH addresses,
+  // HRA-149) and its persisted scheduled_time — both only ever set once a
+  // day is a real plan_instance_days row, same as DayView's own id/
+  // scheduled_time (HRA-150) this is threaded from.
+  dayId?: number;
+  scheduledTime?: string | null;
 }
 
 // Follow-up fix: lucide-react has no dedicated running-figure icon (checked
@@ -119,6 +125,25 @@ function isSameCalendarDay(a: Date, b: Date): boolean {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+// Inverse of parseLocalDate above (local calendar components, not UTC) — the
+// key eventsByDateKey below is looked up by (HRA-151, AgendaDateHeader needs
+// to find "this cell's own day" among the flat events list react-big-calendar
+// hands the date header no direct reference to).
+function toDateKey(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// HRA-151 Ask #1: "only on days with a workout" — the same REST/empty-cell
+// exclusion DayCellEvent's own gauges already apply (no event at all, or a
+// REST/TODO day, both render as the compact no-card row with nothing to
+// schedule around).
+function dayHasScheduledWorkout(event: CalendarEvent | undefined): boolean {
+  return event != null && event.workoutType !== "rest" && event.workoutType !== "todo";
+}
+
 // Follow-up fix: a complex day's DSL text (multiple segments, e.g.
 // "10x1000m @ RG; 2km @ jog") reads as one dense run-on when just wrapped —
 // splitting at each segment's own "; " separator (the exact join
@@ -163,6 +188,7 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
         events.push({
           title, start: date, end: date, allDay: true, workoutType: day.workout_type,
           trainingLoadCategory: day.trainingLoadCategory, needsReview: day.needs_review, metrics: day.metrics,
+          dayId: day.id, scheduledTime: day.scheduled_time,
         });
       }
     }
@@ -335,17 +361,49 @@ function DayCellEvent({ event, scaling }: { event: CalendarEvent; scaling: Gauge
   );
 }
 
-// HRA-146 Ask #5: a reserved time-indicator slot beside the day number —
-// empty this slice (HRA-151 wires real scheduled_time data into it), today
-// marked by a filled circle instead of the whole-cell highlight neutralized
-// in index.css. A stable module-scope component (no closure dependencies),
-// so — unlike EventComponent/ToolbarComponent below — it needs no useMemo
-// wrapper to keep a stable identity across renders.
-function AgendaDateHeader({ date, label }: { date: Date; label: ReactNode }) {
+// HRA-146 Ask #5's reserved time-indicator slot beside the day number, now
+// wired to real scheduled_time data (HRA-151) — inline-editable, per the
+// Refinement decision (agenda cells are small, so a lightweight
+// <input type="time"> in the reserved slot rather than a full picker
+// popover). Today is still marked by the day-number's own filled circle
+// (data-today), untouched by this Story. No longer a stable module-scope
+// component (it closes over per-cell event/readOnlyDays/edit-callback data
+// now) — PlanInstanceCalendar wraps it the same useMemo way EventComponent/
+// ToolbarComponent already are, for the same "stable identity, no
+// remount-per-render" reason.
+function AgendaDateHeader({ date, label, event, readOnlyDays, onScheduledTimeEdit }: {
+  date: Date;
+  label: ReactNode;
+  event?: CalendarEvent;
+  readOnlyDays: boolean;
+  onScheduledTimeEdit?: (dayId: number, scheduledTime: string | null) => void;
+}) {
+  const { t } = useTranslation();
   const isToday = isSameCalendarDay(date, new Date());
+  const showsChip = dayHasScheduledWorkout(event);
+  const scheduledTime = event?.scheduledTime ?? "08:00";
   return (
     <span className="hra-agenda-date-header">
-      <span className="hra-agenda-date-time" aria-hidden="true" />
+      <span className="hra-agenda-date-time">
+        {showsChip && (
+          readOnlyDays || event?.dayId == null ? (
+            <span className="hra-agenda-date-time-chip">{scheduledTime}</span>
+          ) : (
+            <input
+              type="time"
+              className="hra-agenda-date-time-input"
+              value={scheduledTime}
+              // react-big-calendar's month cell wraps the date header in its
+              // own click handling (e.g. "show more" / day navigation) —
+              // stopPropagation keeps interacting with the input from also
+              // triggering that.
+              onClick={e => e.stopPropagation()}
+              onChange={e => onScheduledTimeEdit?.(event!.dayId!, e.target.value || null)}
+              aria-label={t("manage.planInstances.scheduledTimeLabel", "Scheduled time")}
+            />
+          )
+        )}
+      </span>
       <span className="hra-agenda-date-num" data-today={isToday}>{label}</span>
     </span>
   );
@@ -448,10 +506,23 @@ function AgendaToolbar({ label, onNavigate, summary }: { label: ReactNode; onNav
 
 interface Props {
   sections: SectionView[];
+  // HRA-151: same "locked once approved" rule every other day-level edit in
+  // this app follows (HRA-126) — the chip becomes a plain read-only span
+  // instead of an <input>, same pattern InstanceDayRow's own fields use.
+  readOnlyDays: boolean;
+  onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
 }
 
-export function PlanInstanceCalendar({ sections }: Props) {
+export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEdit }: Props) {
   const events = useMemo(() => eventsFromSections(sections), [sections]);
+  // HRA-151: AgendaDateHeader gets one calendar Date per render (react-big-
+  // calendar's own dateHeader contract) with no direct link back to "this
+  // day's own resolved day" — a plain date-keyed lookup resolves it.
+  const eventsByDateKey = useMemo(() => {
+    const map = new Map<string, CalendarEvent>();
+    for (const e of events) map.set(toDateKey(e.start), e);
+    return map;
+  }, [events]);
   const [date, setDate] = useState<Date>(() => events[0]?.start ?? new Date());
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
@@ -509,6 +580,17 @@ export function PlanInstanceCalendar({ sections }: Props) {
     () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => <AgendaToolbar {...props} summary={summary} />,
     [summary],
   );
+  const DateHeaderComponent = useMemo(
+    () => (props: { date: Date; label: ReactNode }) => (
+      <AgendaDateHeader
+        {...props}
+        event={eventsByDateKey.get(toDateKey(props.date))}
+        readOnlyDays={readOnlyDays}
+        onScheduledTimeEdit={onScheduledTimeEdit}
+      />
+    ),
+    [eventsByDateKey, readOnlyDays, onScheduledTimeEdit],
+  );
 
   const { t } = useTranslation();
 
@@ -524,7 +606,7 @@ export function PlanInstanceCalendar({ sections }: Props) {
         date={date}
         onNavigate={setDate}
         style={{ height: "100%" }}
-        components={{ event: EventComponent, toolbar: ToolbarComponent, dateHeader: AgendaDateHeader }}
+        components={{ event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent }}
         messages={{
           noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range."),
         }}

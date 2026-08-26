@@ -458,7 +458,18 @@
    this slice) + the day number, today marked by a filled circle instead of
    the cell-wide highlight neutralized above. */
 .hra-agenda-date-header { display: flex; align-items: center; gap: 4px; padding: 1px 1px 0; }
-.hra-agenda-date-time { width: 30px; flex: none; }
+/* HRA-151: widened from the original 30px reserved-but-empty slot to fit a
+   native <input type="time"> (the Refinement-agreed lightweight inline
+   editor) — its own calendar-picker indicator is hidden below so the typed
+   HH:MM segments are all that has to fit. */
+.hra-agenda-date-time { width: 44px; flex: none; display: flex; align-items: center; }
+.hra-agenda-date-time-chip { font-family: var(--font-mono); font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+.hra-agenda-date-time-input {
+  width: 100%; border: none; background: transparent; padding: 0;
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary); cursor: pointer;
+}
+.hra-agenda-date-time-input::-webkit-calendar-picker-indicator { display: none; }
+.hra-agenda-date-time-input:focus { outline: 1px solid var(--border-strong); border-radius: 3px; }
 /* No explicit `color` here — inherits from the wrapping .rbc-off-range div
    (hsl(var(--muted-foreground))) for a prev/next-month day, or the normal
    text color otherwise, same distinction the vendor's own default date

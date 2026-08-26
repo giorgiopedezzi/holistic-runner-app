@@ -908,8 +908,27 @@ bulk Save), an edit here persists immediately via `PATCH /api/v1/plan-instances/
 state optimistically, then confirms/rolls back against the PATCH response, since the Story's own AC3
 says not to wait for Save. `ResolvedDay`/`DayView` both gained optional `id`/`scheduled_time` fields
 to carry this through — `id` is what the PATCH addresses, only ever populated for a day already
-persisted as a `plan_instance_days` row. The Agenda view (`PlanInstanceCalendar.tsx`) does not read
-`scheduled_time` yet — that's HRA-151's own slice, not this one's.
+persisted as a `plan_instance_days` row.
+
+**Agenda view's scheduled-time chip (HRA-151)**: `AgendaDateHeader` (`PlanInstanceCalendar.tsx`,
+HRA-146's own reserved-but-empty `.hra-agenda-date-time` slot beside the day number) now renders a
+native `<input type="time">` there — the Refinement-agreed lightweight inline editor (a full picker
+popover was the rejected heavier alternative; agenda cells are small). Shows only on a day with an
+actual workout (`dayHasScheduledWorkout()` — excludes REST/TODO and empty cells, the same "nothing
+to schedule" exclusion `DayCellEvent`'s own gauges already apply), value `event.scheduledTime ??
+"08:00"`. `readOnlyDays` (the instance's `approved_at`) swaps it for a plain `.hra-agenda-date-time-
+chip` span, same locked-field pattern the List view uses. Persists via the same per-day PATCH
+(HRA-149) `InstanceDayRow` uses — `PlanInstancesSection.tsx`'s `onScheduledTimeEditByDayId` resolves
+the day's `{sectionIndex, weekIndex, dayIndex}` from its `dayId` (react-big-calendar's `dateHeader`
+contract hands the component a `Date`, not those indices) and delegates to the same
+`onScheduledTimeEdit` HRA-150 built, so both views mutate the one shared `sections` state — no
+second PATCH/optimistic-update implementation. `AgendaDateHeader` stopped being a stable,
+closure-free module-scope component once it needed per-cell event/edit-callback data — it's now
+wrapped in `useMemo` (`DateHeaderComponent`) the same way `EventComponent`/`ToolbarComponent`
+already were, for the same "stable identity, no remount-per-cell-render" reason. `eventsByDateKey`
+(a `Map<"YYYY-MM-DD", CalendarEvent>`, `toDateKey()` the local-calendar inverse of `parseLocalDate`)
+is what resolves "which day is this cell" — the vendor's `dateHeader` prop only ever supplies a
+`Date`, no link back to the resolved day.
 
 `TemplateDayRow` (`day.date == null`) is the original accordion-with-textarea layout, verbatim,
 unmodified — templates were out of this Story's scope. The split into two components (rather than

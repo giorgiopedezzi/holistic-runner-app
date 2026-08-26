@@ -495,6 +495,7 @@
   "manage.planInstances.categoryReferenceTrigger": "What do the agenda colors mean?",
   "manage.planInstances.categoryReferenceTitle": "Training-load categories",
   "manage.planInstances.needsReviewTooltip": "Needs review",
+  "manage.planInstances.scheduledTimeLabel": "Scheduled time",
   "manage.planInstances.distanceTooltip": "Distance: {{value}}",
   "manage.planInstances.maxSpeedTooltip": "Max speed: {{value}}",
   "manage.planInstances.durationTooltip": "Duration: {{value}}",
