@@ -1,188 +1,45 @@
 /**
- * PlanInstancesSection.tsx (HRA-118, redesigned HRA-121, accordion-based
- * editing HRA-141)
- * Plans tab card: instantiate/edit/approve/delete plan instances, on top
- * of the shared accordion (HRA-116) and the plan-instances backend (HRA-112
- * through HRA-115, HRA-118's own list route, HRA-121's redesign). Structural
- * sibling of PlanTemplatesSection (HRA-117/HRA-140), but simpler at save
- * time: each day PUTs its own {section_name, week_number, date, dsl}
- * directly (HRA-115) — there's no whole-document dsl_source to
- * content-anchor-patch here, unlike the template card.
- *
- * HRA-141: the earlier `mode: "list" | "plan"` full-screen swap is gone,
- * same conversion HRA-140 already did for PlanTemplatesSection — each list
- * row is now its own `AccordionCard`, keyed by `activeKey: number | "new" |
- * null` instead of a page-level mode; `editingId` is a derived const. Only
- * ONE row's edits live in the "live" editor state at a time (the same
- * dozens of top-level useState fields this file already had — unchanged),
- * but unlike HRA-140's simpler single-dslSource draft, this card's own
- * per-row `Draft` also has to carry BOTH the live fields AND their own
- * baselines (`baselineInstName`/etc., `persistedDsl`) — collapsing a dirty
- * row and reopening it later must reproduce the exact same dirty-bucket
- * state HRA-136 already computes, not just the raw field values, or
- * `saveBucketDirty`/`regenerateBucketDirty` would silently read wrong the
- * moment a stashed draft is restored. `isDirty = saveBucketDirty ||
- * regenerateBucketDirty` (HRA-136's own union) is what drives both the
- * Restore confirm gate and the collapsed-row warning icon here — the exact
- * signal the Story's own Ask #3/#4 name.
+ * Plans tab card for creating, editing, approving, regenerating and deleting
+ * plan instances. Editor data/baselines are centralized in
+ * usePlanInstanceEditorState; day mutation/validation lives in usePlanDayEditor;
+ * pure dirty/mapping/pace logic and confirmation rendering live in sibling modules.
  */
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, ConfirmModal } from "@/components/ui";
-import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
+import { Card, ErrorBanner } from "@/components/ui";
+import { TrainingPlanAccordion, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
 import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
 import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
-import {
-  aggregateDayViews, collectPlanAnchors, computeResolvedDayDistance, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
-  resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
-} from "@/domain/runplan-aggregate";
-import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
+import { collectPlanAnchors, resolveIntensityPaceSecPerKm } from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
-import { instanceDayDateLabel } from "@/utils/fmt";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
-import type { EventType, OffsetUnit, PacePolicy, PaceValue, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
+import type { EventType, OffsetUnit, PacePolicy, RunPlan } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
+import {
+  NONE_ANCHOR, emptyAnchorRow, usePlanInstanceEditorState,
+  type AnchorRowState, type PlanInstanceDraft,
+} from "@/components/manage/plan-instances/planInstanceEditor.model";
+import {
+  formatGoalTimeDigits, formatGoalTimeFromSec, formatPaceSecPerKm, goalTimeToSec, pad2,
+  parsePaceOverrideInput, paceValueToAnchorRow, sanitizeGoalTimeInput, STANDARD_DISTANCE_M,
+} from "@/components/manage/plan-instances/planInstancePace";
+import { apiDaysToSections, snapshotDsl } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
+import {
+  addDaysISO, computeK0, daysBetween, editorWeek1AnchorMismatch, hasEnteredData, manualEditCount,
+  mondayBasedWeekday, selectDirtyState,
+} from "@/components/manage/plan-instances/planInstanceEditor.selectors";
+import { usePlanDayEditor } from "@/components/manage/plan-instances/usePlanDayEditor";
+import {
+  PlanInstanceConfirmations, type PlanInstanceConfirmation,
+} from "@/components/manage/plan-instances/PlanInstanceConfirmations";
 
-export const NONE_ANCHOR = "__none__";
+export { NONE_ANCHOR };
+export type { AnchorRowState };
 
-// Mirrors garmin-stats/src/controllers/plan-templates.controller.ts's own
-// STANDARD_DISTANCE_M — used only for the live client-side resolution
-// preview below (the anchor table); the real distance resolution for
-// goal_time still happens server-side, this just needs to match it closely
-// enough to show an accurate preview.
-const STANDARD_DISTANCE_M: Partial<Record<EventType, number>> = {
-  "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195,
-};
-const KM_PER_MILE = 1.60934;
-
-function daysBetween(fromISO: string, toISO: string): number {
-  return Math.round((Date.parse(`${toISO}T00:00:00Z`) - Date.parse(`${fromISO}T00:00:00Z`)) / 86400000);
-}
-function addDaysISO(dateISO: string, days: number): string {
-  const d = new Date(`${dateISO}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-}
-// Goal time's h/m/s are each a (possibly partial, possibly empty) digit
-// string sliced from the single masked HH:MM:SS input's own raw buffer
-// (HRA-137, see goalTimeDigits/formatGoalTimeDigits below) — this combines
-// them into total seconds, or null while any field isn't a valid
-// non-negative number. Number("") is 0, so an untyped/incomplete segment
-// counts as 0, same as the old three-separate-fields' own "0" default did.
-function goalTimeToSec(h: string, m: string, s: string): number | null {
-  const hn = Number(h), mn = Number(m), sn = Number(s);
-  if (![hn, mn, sn].every(n => Number.isFinite(n) && n >= 0)) return null;
-  return hn * 3600 + mn * 60 + sn;
-}
-function pad2(n: string): string {
-  return String(Math.max(0, Number(n) || 0)).padStart(2, "0");
-}
-// HRA-137: a single masked HH:MM:SS text input replaces the old three
-// separate H/M/S number fields — small custom mask per the Story's own
-// explicit "zero-dependency, not a new library" instruction. The raw state
-// is just the digits typed so far (0-6 chars, no colons); colons are
-// inserted for display once a segment is reached, not typed. Standard
-// "strip non-digits from whatever the browser reports as the new value"
-// mask technique — this also makes backspace work for free (deleting a
-// colon in the displayed text just gets stripped back out, net effect is
-// the last real digit is gone).
-function formatGoalTimeDigits(digits: string): string {
-  const h = digits.slice(0, 2), m = digits.slice(2, 4), s = digits.slice(4, 6);
-  if (digits.length <= 2) return h;
-  if (digits.length <= 4) return `${h}:${m}`;
-  return `${h}:${m}:${s}`;
-}
-function sanitizeGoalTimeInput(raw: string): string {
-  return raw.replace(/\D/g, "").slice(0, 6);
-}
-// HRA-137 Ask #3: the reverse direction — an absolute pace (from the
-// race-pace anchor's own table row) converted back to a clock time, for
-// display only (this input is read-only whenever it's showing this value —
-// see the JSX below). Mirrors formatPaceSecPerKm's own rounding style.
-function formatGoalTimeFromSec(totalSec: number): string {
-  const total = Math.round(totalSec);
-  const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
-function formatPaceSecPerKm(sec: number): string {
-  const total = Math.round(sec);
-  const min = Math.floor(total / 60);
-  const s = total % 60;
-  return `${min}:${String(s).padStart(2, "0")}/km`;
-}
-// Same grammar as a PACE line's right-hand side (garmin-stats/src/domain/
-// runplan/parser.ts's ABS_PACE_RE/OFFSET_RE) — for the live client-side
-// resolution preview only; the real parse/validation happens server-side
-// when this same raw string is sent as a pace_overrides value.
-function parsePaceOverrideInput(raw: string, offsetUnit: OffsetUnit): PaceValue | null {
-  const trimmed = raw.trim();
-  const abs = /^(\d+):(\d{2})\/(km|mi)$/.exec(trimmed);
-  if (abs) {
-    const totalSec = parseInt(abs[1], 10) * 60 + parseInt(abs[2], 10);
-    return { kind: "absolute", pace_sec_per_km: abs[3] === "km" ? totalSec : totalSec / KM_PER_MILE };
-  }
-  const off = /^([A-Za-z0-9_]+)([+-])(\d+(?:\.\d+)?)(s\/km|s\/mi)?$/.exec(trimmed);
-  if (off) {
-    const sign = off[2] === "+" ? 1 : -1;
-    const amount = parseFloat(off[3]);
-    const unit = (off[4] as OffsetUnit | undefined) ?? offsetUnit;
-    const offset_sec_per_km = unit === "s/km" ? sign * amount : (sign * amount) / KM_PER_MILE;
-    return { kind: "offset", anchor: off[1], offset_sec_per_km };
-  }
-  return null;
-}
-export interface AnchorRowState { absoluteValue: string; relativeTo: string; sign: "+" | "-"; seconds: string }
-function emptyAnchorRow(): AnchorRowState {
-  return { absoluteValue: "", relativeTo: "", sign: "+", seconds: "" };
-}
-function anchorRowIsEmpty(row: AnchorRowState): boolean {
-  return row.absoluteValue.trim() === "" && row.relativeTo === "" && row.seconds.trim() === "";
-}
-
-// HRA-124: K0 = lowest D-number the template's week 1 actually declares —
-// mirrors garmin-stats/src/domain/runplan/instantiate.ts's computeK0. Used
-// only for this form's non-blocking week-1-anchor warning below; the
-// backend does the real (authoritative) computation at instantiate time.
-function computeK0(plan: RunPlan): number | null {
-  let k0: number | null = null;
-  for (const section of plan.sections) {
-    for (const week of section.weeks) {
-      if (week.number !== 1) continue;
-      for (const day of week.days) {
-        if (k0 === null || day.day < k0) k0 = day.day;
-      }
-    }
-  }
-  return k0;
-}
-// Monday=0..Sunday=6 weekday index for an ISO date.
-function mondayBasedWeekday(dateISO: string): number {
-  return (new Date(`${dateISO}T00:00:00Z`).getUTCDay() + 6) % 7;
-}
-
-// HRA-130: the same non-blocking week-1 Monday-anchor check the instantiate
-// form's week1AnchorMismatch already does (HRA-124), but for the editor —
-// computed straight from the loaded instance's own resolved days (real
-// calendar dates + D-numbers already persisted) rather than re-parsing the
-// template DSL and a live startDate; the instance itself is the source of
-// truth for what actually got created. Checked per section (a plan can have
-// more than one "week 1" if a section restarts its own numbering), any
-// mismatch anywhere is enough to show the warning.
-function editorWeek1AnchorMismatch(sections: SectionView[]): boolean {
-  return sections.some(section => section.weeks.some(week => {
-    if (week.number !== 1 || week.days.length === 0) return false;
-    const k0Day = week.days.reduce((min, d) => (d.day < min.day ? d : min));
-    return k0Day.date != null && mondayBasedWeekday(k0Day.date) !== (k0Day.day - 1) % 7;
-  }));
-}
-
-// Every field in the instantiate form goes through this — label is always a
-// block above its control (never beside it), enforced structurally by the
-// column flex layout rather than left to each call site to get right.
 export function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -194,40 +51,9 @@ export function Field({ label, required, children }: { label: string; required?:
   );
 }
 
-// HRA-141: a row's identity — an existing instance's real id, or "new" for
-// the not-yet-created draft row. String-keyed in `drafts` (object keys are
-// always strings) but kept as this union everywhere else for type safety.
 type RowKey = number | "new";
 
-// HRA-141: what gets stashed when a dirty row is collapsed or switched away
-// from. Unlike PlanTemplatesSection's own Draft (HRA-140) — a single
-// dslSource string plus three scalars — this card's dirty state spans two
-// whole buckets (HRA-136's saveBucketDirty/regenerateBucketDirty), each with
-// its own baseline, so the draft has to carry BOTH the live fields and the
-// baselines they're diffed against: reopening a stashed draft must restore
-// the exact same dirty-bucket verdict it had when stashed, not just the raw
-// field values with a freshly-recomputed (and therefore wrong) baseline.
-interface Draft {
-  templateId: string; instName: string; raceName: string; raceDate: string; raceUrl: string;
-  startDate: string; daysBeforeRace: string; restDayLabel: string;
-  racePaceAnchor: string; paceMode: "anchor" | "goalTime"; goalTimeDigits: string; distanceM: string;
-  anchorRows: Record<string, AnchorRowState>;
-  sections: SectionView[];
-  effectiveFrom: string;
-  editApprovedAt: string | null;
-  saveForcedEnabled: boolean;
-  baselineInstName: string; baselineRaceName: string; baselineRaceDate: string; baselineRaceUrl: string;
-  baselineStartDate: string; baselineAnchorRows: Record<string, AnchorRowState>;
-  baselineRacePaceAnchor: string; baselinePaceMode: "anchor" | "goalTime";
-  baselineGoalTimeDigits: string; baselineDistanceM: string;
-  persistedDsl: Record<string, string>;
-}
-
 interface Props {
-  // Lifted to PlansTab (not fetched here) — a template saved in the
-  // sibling PlanTemplatesSection card must show up in this card's own
-  // picker/list immediately, including enabling "New instance" the moment
-  // the very first template exists.
   templates: PlanTemplate[] | null;
 }
 
@@ -235,191 +61,66 @@ export function PlanInstancesSection({ templates }: Props) {
   const { t } = useTranslation();
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-
-  // HRA-141: which row is expanded — an existing instance's id, "new" for
-  // the unsaved-draft row, or null (every row collapsed). Replaces the old
-  // page-level `mode`; `editingId` is now derived from this, not its own
-  // state (same conversion HRA-140 already did for PlanTemplatesSection).
   const [activeKey, setActiveKey] = useState<RowKey | null>(null);
   const editingId = typeof activeKey === "number" ? activeKey : null;
-  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, PlanInstanceDraft>>({});
+  const [confirmation, setConfirmation] = useState<PlanInstanceConfirmation>(null);
 
-  // HRA-141: rows with unsaved edits that are currently collapsed (or were
-  // never the active row to begin with, if a *different* row's live edits
-  // just got stashed here). Presence of a key drives the warning icon
-  // (Ask #4); an entry is removed only by a successful Save/Regenerate or an
-  // explicit Restore (Ask #3), never by simply reopening the row.
-  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  // HRA-141 Ask #3: confirm gate before Restore actually discards — only
-  // shown when the active row is genuinely dirty (either bucket); a clean
-  // row restores (closes) immediately.
-  const [pendingRestoreConfirm, setPendingRestoreConfirm] = useState(false);
+  const editor = usePlanInstanceEditorState();
+  const {
+    templateId, instName, raceName, raceDate, raceUrl, startDate, daysBeforeRace, restDayLabel,
+    racePaceAnchor, paceMode, goalTimeDigits, distanceM, anchorRows, sections, effectiveFrom,
+    editApprovedAt, baseline,
+  } = editor.state;
+  const { instName: baselineInstName, persistedDsl } = baseline;
 
-  // Shared "plan" screen fields — row 1 (identity). Link a race (HRA-121) is
-  // a plain free-text URL, not a picker over existing activities —
-  // target_activity_id stays a valid backend capability, just no longer
-  // surfaced by this form. `instName` is now the ONE name field for both
-  // creating a fresh instance and displaying an existing one's name (HRA-133
-  // unification — previously a separate `editName` existed purely because
-  // editor mode was a disjoint screen).
-  const [templateId, setTemplateId] = useState("");
-  const [instName, setInstName] = useState("");
-  const [raceName, setRaceName] = useState("");
-  const [raceDate, setRaceDate] = useState("");
-  const [raceUrl, setRaceUrl] = useState("");
-  // row 2 (timing) — startDate and daysBeforeRace are two views of one
-  // relationship once raceDate is set (see onStartDateChange/
-  // onDaysBeforeRaceChange/onRaceDateChange below).
-  const [startDate, setStartDate] = useState(isoToday());
-  const [daysBeforeRace, setDaysBeforeRace] = useState("");
-  // HRA-124: free-text label attached as `notes` on every day auto-filled as
-  // a REST day to plug a D-number gap the template left undeclared for a week.
-  const [restDayLabel, setRestDayLabel] = useState("");
-  // row 3 (pace) — racePaceAnchor defaults to NONE_ANCHOR (never auto-picks
-  // one of the template's anchors); paceMode is forced to "anchor" whenever
-  // it's NONE_ANCHOR (Goal time has nothing to convert to without a
-  // designated anchor). HRA-137: Goal time is one masked HH:MM:SS text
-  // input now — `goalTimeDigits` is its raw buffer (0-6 digit chars, no
-  // colons, "" = untouched); `goalH`/`goalM`/`goalS` below are DERIVED from
-  // it (2-char slices) rather than their own state, so every existing call
-  // site that already reads them (goalTimeToSec, pad2, the instantiate body
-  // builder, hasEnteredData) keeps working unchanged.
-  const [racePaceAnchor, setRacePaceAnchor] = useState(NONE_ANCHOR);
-  const [paceMode, setPaceMode] = useState<"anchor" | "goalTime">("anchor");
-  const [goalTimeDigits, setGoalTimeDigits] = useState("");
+  const setTemplateId = editor.setter("templateId");
+  const setInstName = editor.setter("instName");
+  const setRaceName = editor.setter("raceName");
+  const setRaceDate = editor.setter("raceDate");
+  const setRaceUrl = editor.setter("raceUrl");
+  const setStartDate = editor.setter("startDate");
+  const setDaysBeforeRace = editor.setter("daysBeforeRace");
+  const setRestDayLabel = editor.setter("restDayLabel");
+  const setRacePaceAnchor = editor.setter("racePaceAnchor");
+  const setPaceMode = editor.setter("paceMode");
+  const setGoalTimeDigits = editor.setter("goalTimeDigits");
+  const setDistanceM = editor.setter("distanceM");
+  const setAnchorRows = editor.setter("anchorRows");
+  const setSections = editor.setter("sections");
+  const setEffectiveFrom = editor.setter("effectiveFrom");
+  const setEditApprovedAt = editor.setter("editApprovedAt");
+  const setSaveForcedEnabled = editor.setter("saveForcedEnabled");
+  const setBaselineStartDate = editor.baselineSetter("startDate");
+  const setBaselineAnchorRows = editor.baselineSetter("anchorRows");
+  const setBaselineRacePaceAnchor = editor.baselineSetter("racePaceAnchor");
+  const setBaselinePaceMode = editor.baselineSetter("paceMode");
+  const setBaselineGoalTimeDigits = editor.baselineSetter("goalTimeDigits");
+  const setBaselineDistanceM = editor.baselineSetter("distanceM");
+  const setBaselineInstName = editor.baselineSetter("instName");
+  const setBaselineRaceName = editor.baselineSetter("raceName");
+  const setBaselineRaceDate = editor.baselineSetter("raceDate");
+  const setBaselineRaceUrl = editor.baselineSetter("raceUrl");
+  const setPersistedDsl = editor.baselineSetter("persistedDsl");
+
   const goalH = goalTimeDigits.slice(0, 2);
   const goalM = goalTimeDigits.slice(2, 4);
   const goalS = goalTimeDigits.slice(4, 6);
-  const [distanceM, setDistanceM] = useState("");
-  // One row per template anchor (HRA-121: a table, not add/remove rows) —
-  // keyed by anchor name, synced whenever the template changes.
-  const [anchorRows, setAnchorRows] = useState<Record<string, AnchorRowState>>({});
-  // Set while a template switch is pending confirmation (HRA-121: switching
-  // templates after real data has been entered warns before discarding it).
-  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(null);
+
   const [instantiateLoading, setInstantiateLoading] = useState(false);
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
-
-  const [sections, setSections] = useState<SectionView[]>([]);
-  // HRA-162: a ref mirror of `sections`, read (never written) inside the
-  // debounced live-validate callback below — that callback fires ~400ms
-  // after the keystroke that scheduled it, well past the render whose
-  // closure it was created in, so reading the `sections` state variable
-  // directly there would see a stale snapshot. The ref always has the
-  // latest value by the time the timeout fires.
-  const sectionsRef = useRef(sections);
-  useEffect(() => { sectionsRef.current = sections; }, [sections]);
-  // HRA-143: List/Agenda toggle for the currently-open row's own accordion —
-  // one shared state is enough since only one row is ever expanded at a
-  // time (activeKey). Default List (AC2) — the pre-existing accordion,
-  // unchanged; Agenda swaps it for a read-only calendar over the same
-  // `sections` data, no separate fetch. Not part of Draft/dirty-tracking —
-  // it's a view preference, not data, so switching rows doesn't need to
-  // stash/restore it.
   const [viewMode, setViewMode] = useState<"list" | "agenda">("list");
   const [editError, setEditError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
-  // HRA-126: once set, the plan view locks — Save/day-edit disabled, Approve
-  // disabled (no double-approve). Kept in sync at every point the instance's
-  // own approved_at could change: loading it (startEdit), creating it fresh
-  // (always null), saving (PUT clears approval, gate 2), approving.
-  const [editApprovedAt, setEditApprovedAt] = useState<string | null>(null);
-  // HRA-127: day/week swap — a per-picker "swap with…" selector (the
-  // interaction pattern was left open by the Story). Selection keys are
-  // "sectionIndex-weekIndex-dayIndex" / "sectionIndex-weekIndex" strings
-  // (Select needs string values, same convention every other Select in this
-  // file already uses, e.g. templateId). Swap only mutates local `sections`
-  // state — persisted on the existing Save flow like any other day edit.
-  const [swapDayA, setSwapDayA] = useState("");
-  const [swapDayB, setSwapDayB] = useState("");
-  const [swapWeekA, setSwapWeekA] = useState("");
-  const [swapWeekB, setSwapWeekB] = useState("");
-  // HRA-131: set while a swap (either entry point — the picker's Swap button
-  // OR a drag-and-drop drop) is pending confirmation, naming both sides
-  // concretely before anything actually mutates `sections`. Same
-  // pending-then-confirm/cancel shape as pendingTemplateId above.
-  const [pendingDaySwap, setPendingDaySwap] = useState<{ a: DayRef; b: DayRef } | null>(null);
-  const [pendingWeekSwap, setPendingWeekSwap] = useState<{ a: WeekRef; b: WeekRef } | null>(null);
-  // HRA-134: snapshots of startDate/anchorRows as of the last successful
-  // load/create/save/regenerate — the "pendingChange" comparison below diffs
-  // the live fields against these to decide whether to surface the cutover
-  // picker at all ("editing either surfaces..."), not against the raw
-  // persisted pace_overrides JSON, which is a resolved PaceValue, not the
-  // same shape as the UI's own absolute/relative row state — see startEdit's
-  // paceValueToAnchorRow for why that reverse mapping already exists).
-  const [baselineStartDate, setBaselineStartDate] = useState("");
-  const [baselineAnchorRows, setBaselineAnchorRows] = useState<Record<string, AnchorRowState>>({});
-  // HRA-136: the rest of the Regenerate-bucket's own baselines — the Story's
-  // dirty-bucket rule names "the goal-time/anchor-override toggle" and "the
-  // race-pace-anchor selection" as pace-anchor fields alongside the anchor
-  // table itself, so paceMode/racePaceAnchor need the same
-  // snapshot-then-diff treatment startDate/anchorRows already get. Goal
-  // time's own H/M/S + distance override aren't named individually in the
-  // Story's bucket list, but they're the only inputs behind "the goal-time
-  // toggle" when it's active — untracked, editing them wouldn't ever surface
-  // as Regenerate-bucket-dirty, so they get baselines too, only consulted
-  // while paceMode === "goalTime" (see regenerateBucketDirty below).
-  const [baselineRacePaceAnchor, setBaselineRacePaceAnchor] = useState(NONE_ANCHOR);
-  const [baselinePaceMode, setBaselinePaceMode] = useState<"anchor" | "goalTime">("anchor");
-  // HRA-137: one baseline for the whole masked digit buffer, mirroring the
-  // live goalTimeDigits it's diffed against — was three (baselineGoalH/M/S)
-  // before Goal time became a single input.
-  const [baselineGoalTimeDigits, setBaselineGoalTimeDigits] = useState("");
-  const [baselineDistanceM, setBaselineDistanceM] = useState("");
-  // HRA-136: the Save-bucket's own baselines — Name/Race name/date/url. Day
-  // content's own baseline is `persistedDsl` (already existed for HRA-134's
-  // manual-edit count) — reused below for the Save-bucket's day-dirty check.
-  const [baselineInstName, setBaselineInstName] = useState("");
-  const [baselineRaceName, setBaselineRaceName] = useState("");
-  const [baselineRaceDate, setBaselineRaceDate] = useState("");
-  const [baselineRaceUrl, setBaselineRaceUrl] = useState("");
-  // HRA-136 AC5: "a successful Regenerate re-enables Save unconditionally" —
-  // even when nothing in the Save-bucket happens to be dirty right after
-  // (e.g. Name never changed). Set true on a successful regenerate; cleared
-  // by a successful Save, by starting fresh, or the instant the
-  // Regenerate-bucket goes dirty again (that always wins over this flag —
-  // see saveEnabled below).
-  const [saveForcedEnabled, setSaveForcedEnabled] = useState(false);
-  // HRA-136 Ask #2: confirm popup before a Name change actually persists.
-  // Gated on the Save action (not per-keystroke — same
-  // pending-then-confirm/cancel shape pendingTemplateId/pendingDaySwap
-  // already use for a different consequential action) since a modal per
-  // character typed would be unusable.
-  const [pendingNameChangeConfirm, setPendingNameChangeConfirm] = useState(false);
-  // date -> dsl as of the last successful load/create/save/regenerate — the
-  // "manual edit" count below diffs live `sections` against this to find
-  // which days (on/after the cutover) actually diverged from what's really
-  // persisted right now, regardless of how they were touched (direct dsl
-  // edit, a day swap, or a week swap all mutate `sections` the same way).
-  const [persistedDsl, setPersistedDsl] = useState<Record<string, string>>({});
-  // The "Modification start from" cutover date (HRA-134) — defaults to
-  // today, floored there both client-side (DatePicker's own min) and
-  // server-side (never trusted from the client alone, HRA-132). Live
-  // follow-up: the actual floor is max(startDate, today), not today alone —
-  // a day before the instance's own (possibly just-changed) start date
-  // doesn't exist to regenerate from. ISO "YYYY-MM-DD" strings compare
-  // correctly with plain string comparison, so this needs no date parsing.
+  const [regenerateLoading, setRegenerateLoading] = useState(false);
+
   const minEffectiveFrom = startDate > isoToday() ? startDate : isoToday();
-  const [effectiveFrom, setEffectiveFrom] = useState(isoToday());
-  // Live follow-up: DatePicker's own `min` only restricts what's newly
-  // SELECTABLE in the calendar popup — it doesn't retroactively correct an
-  // already-set value, so a startDate pushed later than the current
-  // effectiveFrom (e.g. the user bumps start date after already opening the
-  // picker) would otherwise leave effectiveFrom silently sitting below the
-  // real floor. Clamp it back up whenever the floor moves past it.
   useEffect(() => {
     if (effectiveFrom < minEffectiveFrom) setEffectiveFrom(minEffectiveFrom);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minEffectiveFrom]);
-  const [regenerateLoading, setRegenerateLoading] = useState(false);
-  // Set while a regenerate is pending confirmation because it would discard
-  // one or more manually-edited days on/after the cutover — same
-  // pending-then-confirm/cancel shape pendingTemplateId/pendingDaySwap
-  // already established. null means "no manual edits in range," so
-  // onRegenerate proceeds immediately without asking.
-  const [pendingRegenerateCount, setPendingRegenerateCount] = useState<number | null>(null);
 
   function refreshInstances() {
     return api.planInstances.list().then(setInstances).catch(e => setListError(e instanceof Error ? e.message : t("manage.planInstances.loadFailed", "Failed to load instances")));
@@ -427,42 +128,14 @@ export function PlanInstancesSection({ templates }: Props) {
 
   useEffect(() => { refreshInstances(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function resetInstantiateForm() {
-    setTemplateId(""); setInstName(""); setRaceName(""); setRaceDate(""); setRaceUrl("");
-    setStartDate(isoToday()); setDaysBeforeRace(""); setRestDayLabel("");
-    setRacePaceAnchor(NONE_ANCHOR); setPaceMode("anchor");
-    setGoalTimeDigits(""); setDistanceM(""); setAnchorRows({});
-    setPendingTemplateId(null);
-    setInstantiateError(null);
-    setBaselineStartDate(""); setBaselineAnchorRows({});
-    setBaselineRacePaceAnchor(NONE_ANCHOR); setBaselinePaceMode("anchor");
-    setBaselineGoalTimeDigits(""); setBaselineDistanceM("");
-    setBaselineInstName(""); setBaselineRaceName(""); setBaselineRaceDate(""); setBaselineRaceUrl("");
-    setSaveForcedEnabled(false); setPendingNameChangeConfirm(false);
-    setEffectiveFrom(isoToday()); setPendingRegenerateCount(null);
-  }
-
-  function resetEditor() {
-    setSections([]); setEditError(null); setEditApprovedAt(null);
-    setSwapDayA(""); setSwapDayB(""); setSwapWeekA(""); setSwapWeekB("");
-    setPersistedDsl({});
-  }
-
-  // HRA-134: date -> dsl for every day currently in `sections` — the shape
-  // `persistedDsl` snapshots at each successful load/create/save/regenerate.
-  function snapshotDsl(secs: SectionView[]): Record<string, string> {
-    const map: Record<string, string> = {};
-    secs.forEach(s => s.weeks.forEach(w => w.days.forEach(d => { if (d.date != null) map[d.date] = d.dsl; })));
-    return map;
-  }
-
   // HRA-133: the unified "plan" screen's own reset — both the shared top
   // fields and the editor's own day-level state, since they now render
   // together. Used whenever leaving the screen entirely (Restore, back to
   // list) or starting completely fresh (New instance).
   function resetPlanScreen() {
-    resetInstantiateForm();
-    resetEditor();
+    editor.reset();
+    setInstantiateError(null);
+    setEditError(null);
   }
 
   // Row 2: Start date and Days-before-race are two views of one relationship
@@ -503,18 +176,12 @@ export function PlanInstancesSection({ templates }: Props) {
   // been created yet, so nothing is actually saved anywhere until Create is
   // clicked. Confirm first via the modal below instead.
   function onTemplateSelectChange(id: string) {
-    if (templateId !== "" && id !== templateId && hasEnteredData()) {
-      setPendingTemplateId(id);
+    if (templateId !== "" && id !== templateId && hasEnteredData(editor.state)) {
+      setConfirmation({ type: "switch-template", templateId: id });
       return;
     }
     applyTemplateChange(id);
   }
-  function confirmSwitchTemplate() {
-    if (pendingTemplateId != null) applyTemplateChange(pendingTemplateId);
-    setPendingTemplateId(null);
-  }
-  function cancelSwitchTemplate() { setPendingTemplateId(null); }
-
   // Goal time is only selectable while a race pace anchor is chosen — with
   // NONE_ANCHOR there's no anchor for it to convert to, so switching to
   // NONE_ANCHOR while Goal time was active forces Anchor override instead.
@@ -648,18 +315,6 @@ export function PlanInstancesSection({ templates }: Props) {
   const week1K0 = selectedPlan ? computeK0(selectedPlan) : null;
   const week1AnchorMismatch = week1K0 != null && startDate !== "" && mondayBasedWeekday(startDate) !== (week1K0 - 1) % 7;
 
-  // HRA-121: "non-default data" gating the template-switch warning — start
-  // date at today counts as default (nothing was deliberately typed there).
-  function hasEnteredData(): boolean {
-    if (instName.trim() !== "" || raceName.trim() !== "" || raceDate !== "" || raceUrl.trim() !== "") return true;
-    if (startDate !== isoToday()) return true;
-    if (daysBeforeRace.trim() !== "") return true;
-    if (restDayLabel.trim() !== "") return true;
-    if (goalTimeDigits !== "" || distanceM.trim() !== "") return true;
-    if (racePaceAnchor !== NONE_ANCHOR) return true;
-    return Object.values(anchorRows).some(row => !anchorRowIsEmpty(row));
-  }
-
   async function onInstantiate() {
     setInstantiateLoading(true); setInstantiateError(null);
     try {
@@ -711,14 +366,7 @@ export function PlanInstancesSection({ templates }: Props) {
       setBaselineInstName(created.name ?? "");
       setBaselineRaceName(raceName); setBaselineRaceDate(raceDate); setBaselineRaceUrl(raceUrl);
       setSaveForcedEnabled(false);
-      const days: ResolvedDay[] = created.days.map(d => ({
-        section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
-        suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
-        segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
-        activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
-        id: d.id, scheduled_time: d.scheduled_time,
-      }));
-      const built = sectionsFromDays(days);
+      const built = apiDaysToSections(created.days);
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
@@ -726,24 +374,6 @@ export function PlanInstancesSection({ templates }: Props) {
       setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
     }
     setInstantiateLoading(false);
-  }
-
-  function sectionsFromDays(days: ResolvedDay[]) {
-    return groupResolvedDaysIntoSectionViews(days.map(d => ({ ...d, dsl: reconstructDslFromResolvedDay(d) })));
-  }
-
-  // HRA-133: a stored PaceValue (JSON on plan_instances.pace_overrides) has
-  // the same absolute/offset shape parsePaceOverrideInput already parses raw
-  // text into — this is the reverse direction, formatting one back into the
-  // anchor table row's own display fields. Note: goal_time is collapsed into
-  // a plain absolute PaceValue at instantiate time (garmin-stats controller)
-  // — there is no persisted way to tell "this came from goal_time" apart
-  // from a raw absolute override, so a loaded instance always shows every
-  // override as an Anchor-override-style row, never Goal time (known,
-  // unavoidable display limitation — flagged in this Story's review).
-  function paceValueToAnchorRow(pv: PaceValue): AnchorRowState {
-    if (pv.kind === "absolute") return { absoluteValue: formatPaceSecPerKm(pv.pace_sec_per_km), relativeTo: "", sign: "+", seconds: "" };
-    return { absoluteValue: "", relativeTo: pv.anchor, sign: pv.offset_sec_per_km >= 0 ? "+" : "-", seconds: String(Math.abs(pv.offset_sec_per_km)) };
   }
 
   // HRA-133: populates the same shared top fields the create flow uses, from
@@ -775,14 +405,7 @@ export function PlanInstancesSection({ templates }: Props) {
     setBaselineAnchorRows(loadedAnchorRows);
     try {
       const full = await api.planInstances.getById(instance.id);
-      const days: ResolvedDay[] = full.days.map(d => ({
-        section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
-        suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
-        segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
-        activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
-        id: d.id, scheduled_time: d.scheduled_time,
-      }));
-      const built = sectionsFromDays(days);
+      const built = apiDaysToSections(full.days);
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
     } catch (e) {
@@ -790,41 +413,14 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
-  // HRA-141: captures every live field PLUS its own baseline into one Draft
-  // — see the interface's own comment for why the baselines have to travel
-  // with the live values rather than being recomputed on reopen.
-  function captureDraft(): Draft {
-    return {
-      templateId, instName, raceName, raceDate, raceUrl,
-      startDate, daysBeforeRace, restDayLabel,
-      racePaceAnchor, paceMode, goalTimeDigits, distanceM,
-      anchorRows, sections, effectiveFrom,
-      editApprovedAt, saveForcedEnabled,
-      baselineInstName, baselineRaceName, baselineRaceDate, baselineRaceUrl,
-      baselineStartDate, baselineAnchorRows,
-      baselineRacePaceAnchor, baselinePaceMode, baselineGoalTimeDigits, baselineDistanceM,
-      persistedDsl,
-    };
+  function captureDraft(): PlanInstanceDraft {
+    return editor.snapshot();
   }
-  // The inverse of captureDraft — restores every field from a stashed draft
-  // exactly as it was, live values AND baselines both, so the dirty-bucket
-  // verdict reopening a drafted row shows is identical to the one it had
-  // when collapsed.
-  function restoreDraft(draft: Draft) {
-    setTemplateId(draft.templateId); setInstName(draft.instName); setRaceName(draft.raceName);
-    setRaceDate(draft.raceDate); setRaceUrl(draft.raceUrl);
-    setStartDate(draft.startDate); setDaysBeforeRace(draft.daysBeforeRace); setRestDayLabel(draft.restDayLabel);
-    setRacePaceAnchor(draft.racePaceAnchor); setPaceMode(draft.paceMode);
-    setGoalTimeDigits(draft.goalTimeDigits); setDistanceM(draft.distanceM);
-    setAnchorRows(draft.anchorRows); setSections(draft.sections); setEffectiveFrom(draft.effectiveFrom);
-    setEditApprovedAt(draft.editApprovedAt); setSaveForcedEnabled(draft.saveForcedEnabled);
-    setBaselineInstName(draft.baselineInstName); setBaselineRaceName(draft.baselineRaceName);
-    setBaselineRaceDate(draft.baselineRaceDate); setBaselineRaceUrl(draft.baselineRaceUrl);
-    setBaselineStartDate(draft.baselineStartDate); setBaselineAnchorRows(draft.baselineAnchorRows);
-    setBaselineRacePaceAnchor(draft.baselineRacePaceAnchor); setBaselinePaceMode(draft.baselinePaceMode);
-    setBaselineGoalTimeDigits(draft.baselineGoalTimeDigits); setBaselineDistanceM(draft.baselineDistanceM);
-    setPersistedDsl(draft.persistedDsl);
-    setInstantiateError(null); setEditError(null); setPendingTemplateId(null);
+
+  function restoreDraft(draft: PlanInstanceDraft) {
+    editor.replace(draft);
+    setInstantiateError(null);
+    setEditError(null);
   }
 
   // HRA-141: called before switching away from whatever row is currently
@@ -867,434 +463,32 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
-  function onDayEdit(sectionIndex: number, weekIndex: number, dayIndex: number, patch: { dsl?: string; notes?: string }) {
-    const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
-    if (!day) return;
-    const newLine = recomposeDayLine(day.dsl, patch);
-    setSections(prev => {
-      const sections = [...prev];
-      const section = { ...sections[sectionIndex] };
-      const weeks = [...section.weeks];
-      const week = { ...weeks[weekIndex] };
-      const days = [...week.days];
-      days[dayIndex] = { ...days[dayIndex], dsl: newLine, notes: splitNote(newLine).note };
-      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; sections[sectionIndex] = section;
-      return sections;
-    });
-    // HRA-162: a DSL edit (not a bare notes edit) re-triggers live
-    // validation — the day's needs_review/warnings otherwise stay exactly
-    // what they were at last load/save, stale until the whole-day bulk Save.
-    if (patch.dsl !== undefined && day.id != null) scheduleLiveValidate(sectionIndex, weekIndex, dayIndex, day.id, newLine);
-  }
+  const dayEditor = usePlanDayEditor({ editingId, sections, setSections, t });
 
-  // HRA-162: debounced per-day live validation as the user edits DSL text in
-  // List view (docs/runplan-dsl.md's "would be nice to validate on the fly"
-  // note, now implemented). Deliberately a server round-trip against the
-  // exact same parseDayEntry-backed endpoint the persisted
-  // PATCH .../days/:dayId already validates against — POST
-  // .../days/:dayId/validate (docs/api.md, HRA-162) — never a client-side
-  // grammar reimplementation, per the Story's own AC ("not a
-  // separate/duplicated rule set that could drift from parser.ts"). 400ms
-  // debounce so it doesn't fire on every keystroke; a response that arrives
-  // after the day's dsl has already moved on (a newer edit, a save, a row
-  // switch) is discarded rather than clobbering fresher feedback with a
-  // stale one — checked against sectionsRef (see its own comment above).
-  const validateTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
-  function scheduleLiveValidate(sectionIndex: number, weekIndex: number, dayIndex: number, dayId: number, dsl: string) {
-    clearTimeout(validateTimers.current[dayId]);
-    validateTimers.current[dayId] = setTimeout(() => {
-      delete validateTimers.current[dayId];
-      if (editingId == null) return;
-      api.planInstances.validateDay(editingId, dayId, dsl)
-        .then(result => {
-          const liveDay = sectionsRef.current[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
-          if (!liveDay || liveDay.id !== dayId || liveDay.dsl !== dsl) return; // stale — a newer edit/save has already superseded this
-          // Live follow-up: the parse succeeding also resolves it now
-          // (docs/api.md), so workout_type/distance are included whenever
-          // parsing didn't fail — patch those too, not just needs_review/
-          // warnings, so this day's own total and its week/section rollups
-          // stay consistent with the DSL actually on screen instead of only
-          // updating at the next full Save/reload. When the parse itself
-          // failed, those fields are absent and only needs_review/warnings
-          // patch — same as before this change.
-          const patch: Partial<DayView> = { needs_review: result.needs_review, warnings: result.warnings };
-          if (result.workout_type !== undefined && result.segments !== undefined) {
-            patch.workout_type = result.workout_type;
-            patch.distance = computeResolvedDayDistance({
-              section_name: "", week_number: 0, date: liveDay.date ?? "", day: liveDay.day, suffix: liveDay.suffix, category: liveDay.category,
-              workout_type: result.workout_type, segments: result.segments,
-              activity_target: result.activity_target ?? undefined, activity_description: result.activity_description ?? undefined,
-              notes: liveDay.notes, needs_review: result.needs_review,
-            });
-          }
-          patchLocalDayResolved(sectionIndex, weekIndex, dayIndex, patch);
-        })
-        .catch(() => {}); // never block typing on a transient network failure — the next debounced call (or the eventual Save) will surface it
-    }, 400);
-  }
-  // Live follow-up: applies a patch to one day AND recomputes its owning
-  // week's/section's own AggregateTotals in the SAME state update (via
-  // aggregateDayViews, the DayView-shaped twin of aggregateResolvedDays
-  // every other Section/Week total already uses) — the single place any
-  // local (not-yet-saved) change to a day's workout_type/distance has to
-  // go through, so the accordion's title-row totals never drift from
-  // what's actually showing on screen. Used by the debounced live-validate
-  // result above and by the run/rest/other switch's own confirm below.
-  // Live follow-up: recomputes ONE week's and its owning section's own
-  // AggregateTotals from whatever `sections` array is handed in — pure, no
-  // state write itself, so both a single setSections updater (patchLocalDayResolved
-  // below) and a multi-day one (swapDaysByRef/swapWeeksByRef, whose own
-  // updater already builds the post-swap array before this runs) can call
-  // it as the last step, including twice in the same updater when a swap's
-  // two sides land in different weeks/sections.
-  function recomputeTotals(secs: SectionView[], sectionIndex: number, weekIndex: number): SectionView[] {
-    const next = [...secs];
-    const section = { ...next[sectionIndex] };
-    const weeks = [...section.weeks];
-    weeks[weekIndex] = { ...weeks[weekIndex], totals: aggregateDayViews(weeks[weekIndex].days) };
-    section.weeks = weeks;
-    section.totals = aggregateDayViews(weeks.flatMap(w => w.days));
-    next[sectionIndex] = section;
-    return next;
-  }
-  function patchLocalDayResolved(sectionIndex: number, weekIndex: number, dayIndex: number, patch: Partial<DayView>) {
-    setSections(prev => {
-      const next = [...prev];
-      const section = { ...next[sectionIndex] };
-      const weeks = [...section.weeks];
-      const days = [...weeks[weekIndex].days];
-      days[dayIndex] = { ...days[dayIndex], ...patch };
-      weeks[weekIndex] = { ...weeks[weekIndex], days };
-      section.weeks = weeks;
-      next[sectionIndex] = section;
-      return recomputeTotals(next, sectionIndex, weekIndex);
-    });
-  }
-  useEffect(() => () => { Object.values(validateTimers.current).forEach(clearTimeout); }, []);
-
-  // HRA-150: unlike onDayEdit above (local-only, waits for the whole-day
-  // bulk Save), scheduled_time persists immediately via its own PATCH
-  // (docs/api.md's PATCH /plan-instances/:id/days/:dayId, HRA-149) — the
-  // Story's own AC3. Optimistic: the local edit lands before the request
-  // resolves so the input never visibly lags, and is rolled back on failure.
-  function dayStateAt(sectionIndex: number, weekIndex: number, dayIndex: number) {
-    return sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
-  }
-  function patchLocalDayScheduledTime(sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null | undefined) {
-    setSections(prev => {
-      const next = [...prev];
-      const section = { ...next[sectionIndex] };
-      const weeks = [...section.weeks];
-      const week = { ...weeks[weekIndex] };
-      const days = [...week.days];
-      days[dayIndex] = { ...days[dayIndex], scheduled_time: scheduledTime };
-      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
-      return next;
-    });
-  }
-  async function onScheduledTimeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null) {
-    if (editingId == null) return;
-    const day = dayStateAt(sectionIndex, weekIndex, dayIndex);
-    if (day?.id == null) return;
-    const previous = day.scheduled_time;
-    patchLocalDayScheduledTime(sectionIndex, weekIndex, dayIndex, scheduledTime);
-    try {
-      const updated = await api.planInstances.patchDay(editingId, day.id, { scheduled_time: scheduledTime });
-      patchLocalDayScheduledTime(sectionIndex, weekIndex, dayIndex, updated.scheduled_time);
-    } catch (e) {
-      patchLocalDayScheduledTime(sectionIndex, weekIndex, dayIndex, previous);
-      notify(e instanceof Error ? e.message : t("manage.planInstances.scheduledTimeFailed", "Failed to save scheduled time"), "error");
-    }
-  }
-
-  // Live follow-up (post-HRA-163): the run/rest/other switch now writes the
-  // DSL TEXT field itself (REST/OTHER's own bare DSL keyword; RUN clears
-  // the body so a real workout can be typed) instead of a separate
-  // workout_type column — reusing onDayEdit below, the exact same
-  // local-only-until-Save path a manual DSL edit already goes through
-  // (HRA-149/150's own rule), rather than the HRA-163 immediate-PATCH
-  // mechanism this replaces (that backend field/endpoint support has been
-  // reverted — nothing calls it any more). This also means the switch no
-  // longer needs its own trainingLoadCategory approximation: it now has
-  // exactly the same (already-accepted) "distance/metrics/category stay
-  // stale until Save" behavior as typing REST/OTHER into the DSL box by
-  // hand, not a special case.
-  // Destructive (replaces whatever workout text/segments were there), so
-  // it stages a pending confirmation first — same "stage, render a confirm
-  // modal, mutate only once the user actually confirms" shape
-  // pendingDaySwap/pendingWeekSwap/pendingRegenerateCount already use.
-  const [pendingWorkoutTypeChange, setPendingWorkoutTypeChange] = useState<{
-    sectionIndex: number; weekIndex: number; dayIndex: number; workoutType: WorkoutTypeSwitchValue;
-  } | null>(null);
   function onWorkoutTypeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
-    setPendingWorkoutTypeChange({ sectionIndex, weekIndex, dayIndex, workoutType });
-  }
-  function cancelWorkoutTypeChange() { setPendingWorkoutTypeChange(null); }
-  function confirmWorkoutTypeChange() {
-    if (!pendingWorkoutTypeChange) return;
-    const { sectionIndex, weekIndex, dayIndex, workoutType } = pendingWorkoutTypeChange;
-    setPendingWorkoutTypeChange(null);
-    const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
-    if (!day) return;
-    const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
-    // RUN has no single canonical DSL body (unlike REST/OTHER's own bare
-    // keyword) — clears the body instead, so the day is ready for the user
-    // to type a real workout, same "confirm, then replace" shape either way.
-    const newBody = workoutType === "rest" ? "REST" : workoutType === "other" ? "OTHER" : "";
-    const newDsl = recomposeDayLine(`${dayPrefix}${newBody}`, { notes: day.notes });
-    onDayEdit(sectionIndex, weekIndex, dayIndex, { dsl: newDsl });
-    // Bug fix: onDayEdit only ever patches dsl/notes (matching a manual DSL
-    // edit) — day.workout_type/distance stay whatever they were at last
-    // load/Save until a real re-parse happens (onDayEdit's own debounced
-    // live-validate, ~400ms later), so the switch's own active button
-    // (workoutTypeSwitchValue(day.workout_type)) never moved after a
-    // confirm, and the row's/week's/section's totals kept showing this
-    // day's OLD content. Unlike a hand-typed edit, REST/OTHER/RUN-clear's
-    // outcome is fully known up front (no segments -> 0 distance) — patch
-    // workout_type+distance (and the owning week/section totals with them,
-    // via patchLocalDayResolved) immediately, rather than waiting on the
-    // debounce that's about to fire anyway and would just confirm the same
-    // values.
-    patchLocalDayResolved(sectionIndex, weekIndex, dayIndex, { workout_type: workoutType as WorkoutType, distance: { meters: 0, approximate: false } });
-    notify(t("manage.planInstances.workoutTypeChanged", "Day type updated — remember to Save."));
-  }
-
-  // HRA-151: PlanInstanceCalendar (the Agenda view) only ever has the day's
-  // own backend id at hand — react-big-calendar's dateHeader contract gives
-  // it a Date, not the section/week/day indices the List view already
-  // threads through. Resolves the same {sectionIndex, weekIndex, dayIndex}
-  // ref onScheduledTimeEdit above needs, then delegates to it — one PATCH +
-  // optimistic-update implementation shared by both views of the same
-  // `sections` state (the "sibling views share data" pattern this file's own
-  // template/instance list lift-up already established, CLAUDE.md).
-  function findDayIndicesById(dayId: number): { sectionIndex: number; weekIndex: number; dayIndex: number } | null {
-    for (let si = 0; si < sections.length; si++) {
-      for (let wi = 0; wi < sections[si].weeks.length; wi++) {
-        const dayIndex = sections[si].weeks[wi].days.findIndex(d => d.id === dayId);
-        if (dayIndex !== -1) return { sectionIndex: si, weekIndex: wi, dayIndex };
-      }
-    }
-    return null;
-  }
-  function onScheduledTimeEditByDayId(dayId: number, scheduledTime: string | null) {
-    const ref = findDayIndicesById(dayId);
-    if (!ref) return;
-    onScheduledTimeEdit(ref.sectionIndex, ref.weekIndex, ref.dayIndex, scheduledTime);
-  }
-
-  // HRA-127: day/week swap — flat, cross-week/cross-section pickable lists
-  // for the two "swap with…" selectors below. A day's calendar date never
-  // moves (only content exchanges), so date isn't part of the label — the
-  // D-line workout text itself is the useful cue for telling rows apart.
-
-  // HRA-152 follow-up fix: scheduled_time is its own persisted column, not
-  // part of the DSL text swapDayContent exchanges — a swap that only moved
-  // dsl/notes left each day's OLD scheduled_time behind at its own position,
-  // so the workout moved but its scheduled time didn't (reported live after
-  // shipping HRA-152). scheduled_time persists immediately regardless of the
-  // Save button (HRA-149/150's own rule, unlike dsl/notes which stay local
-  // until Save) — so a swap has to PATCH both sides' new scheduled_time
-  // right away too, or local state and the backend disagree the moment
-  // either day's chip is touched next. Best-effort: the local (already-
-  // swapped) state is the source of truth for display either way; a failed
-  // PATCH here only means the backend hasn't caught up yet, surfaced via the
-  // same error toast onScheduledTimeEdit already uses.
-  async function persistSwappedScheduledTimes(pairs: { day: DayView; newScheduledTime: string | null | undefined }[]) {
-    if (editingId == null) return;
-    const instanceId = editingId;
-    await Promise.allSettled(
-      pairs
-        .filter((p): p is { day: DayView & { id: number }; newScheduledTime: string | null | undefined } => p.day.id != null)
-        .map(({ day, newScheduledTime }) => api.planInstances.patchDay(instanceId, day.id, { scheduled_time: newScheduledTime ?? null })),
-    ).then(results => {
-      if (results.some(r => r.status === "rejected")) {
-        notify(t("manage.planInstances.scheduledTimeFailed", "Failed to save scheduled time"), "error");
-      }
+    setConfirmation({
+      type: "workout-type",
+      change: { sectionIndex, weekIndex, dayIndex, workoutType },
     });
   }
 
-  // Core swap mutations, parameterized by explicit refs so both the picker
-  // (Select) UI below AND the accordion's native drag-and-drop (HRA-127
-  // follow-up — TrainingPlanAccordion's onDaySwap/onWeekSwap props) share
-  // one implementation. dsl/notes only mutate local `sections` state —
-  // persisted the same way any other day edit already is, via the existing
-  // Save button; scheduled_time additionally persists right away (see
-  // persistSwappedScheduledTimes above).
-  // HRA-164: a day's SLOT (day/suffix/category — the D<n>[suffix][tag]:
-  // prefix identity, plus date/id, the actual calendar position and backend
-  // row this content now lives in) never moves; everything else describes
-  // the CONTENT that just moved into that slot, so it has to travel WITH
-  // that content, not stay behind. The old code spread the OLD day object
-  // and only overrode dsl/notes/scheduled_time — leaving workout_type,
-  // needs_review, warnings, distance, metrics, trainingLoadCategory
-  // describing the day's PREVIOUS content while the visible dsl already
-  // showed the new one. Fixed by inverting which side is spread: take the
-  // OTHER day's entire object (its derived fields are already correct for
-  // the content that's arriving) and override only this slot's own
-  // position-identity fields back on top — no per-field copy list to keep in
-  // sync as DayView gains fields later (the AC's own "not a partial field
-  // list" concern). trainingLoadCategory is a still-approximate carryover in
-  // one case (a swap across week boundaries can change long_run's "week's
-  // longest run" context) — same known limitation flagged on HRA-163, not
-  // reintroduced here, not fixed here either (would need a full plan-wide
-  // reclassify, out of this bug's scope).
-  function swapDaysByRef(a: { sectionIndex: number; weekIndex: number; dayIndex: number }, b: { sectionIndex: number; weekIndex: number; dayIndex: number }) {
-    const dayA = sections[a.sectionIndex]?.weeks[a.weekIndex]?.days[a.dayIndex];
-    const dayB = sections[b.sectionIndex]?.weeks[b.weekIndex]?.days[b.dayIndex];
-    if (!dayA || !dayB) return;
-    const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
-    const newTimeA = dayB.scheduled_time;
-    const newTimeB = dayA.scheduled_time;
-    setSections(prev => {
-      const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
-      next[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = {
-        ...dayB, dsl: newA, notes: splitNote(newA).note, scheduled_time: newTimeA,
-        day: dayA.day, suffix: dayA.suffix, category: dayA.category, date: dayA.date, id: dayA.id,
-      };
-      next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = {
-        ...dayA, dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB,
-        day: dayB.day, suffix: dayB.suffix, category: dayB.category, date: dayB.date, id: dayB.id,
-      };
-      // Live follow-up: each slot's own distance/workout_type already moved
-      // correctly WITH its content (the spread above), but the OWNING
-      // week's/section's own AggregateTotals are a separate, precomputed
-      // value that doesn't recompute itself — same-week swaps happen to
-      // still be numerically right (same days, same content, just
-      // reordered), but a cross-week/cross-section swap actually needs to
-      // move content out of one total and into the other. Recompute both
-      // sides unconditionally rather than special-casing same-vs-cross.
-      const afterA = recomputeTotals(next, a.sectionIndex, a.weekIndex);
-      return recomputeTotals(afterA, b.sectionIndex, b.weekIndex);
-    });
-    void persistSwappedScheduledTimes([
-      { day: dayA, newScheduledTime: newTimeA },
-      { day: dayB, newScheduledTime: newTimeB },
-    ]);
-  }
-
-  // Matches days by their own D-number (not array position) so weeks with
-  // different declared day-sets (a pre-HRA-124 partial week, or two weeks
-  // whose sections diverge) still swap every day-number both sides actually
-  // share — a day-number present in only one side is left untouched rather
-  // than guessed at, same "don't guess" discipline swapDayContent itself uses.
-  // HRA-164: same fix as swapDaysByRef above, per day pair — captures each
-  // day's full pre-mutation snapshot (originalA/originalB, already needed for
-  // timePairs below) and assigns the OTHER side's whole snapshot onto this
-  // slot before re-fixing the position-identity fields back on top, instead
-  // of mutating only dsl/notes/scheduled_time in place and leaving every
-  // other derived field (workout_type, needs_review, warnings, distance,
-  // metrics, trainingLoadCategory) describing the day's old content.
-  function swapWeeksByRef(a: { sectionIndex: number; weekIndex: number }, b: { sectionIndex: number; weekIndex: number }) {
-    const timePairs: { day: DayView; newScheduledTime: string | null | undefined }[] = [];
-    setSections(prev => {
-      const next = prev.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: w.days.map(d => ({ ...d })) })) }));
-      const weekA = next[a.sectionIndex].weeks[a.weekIndex];
-      const weekB = next[b.sectionIndex].weeks[b.weekIndex];
-      for (const dayB of weekB.days) {
-        const dayA = weekA.days.find(d => d.day === dayB.day);
-        if (!dayA) continue;
-        const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
-        const newTimeA = dayB.scheduled_time;
-        const newTimeB = dayA.scheduled_time;
-        const originalA = { ...dayA };
-        const originalB = { ...dayB };
-        timePairs.push({ day: originalA, newScheduledTime: newTimeA }, { day: originalB, newScheduledTime: newTimeB });
-        Object.assign(dayA, originalB, {
-          dsl: newA, notes: splitNote(newA).note, scheduled_time: newTimeA,
-          day: originalA.day, suffix: originalA.suffix, category: originalA.category, date: originalA.date, id: originalA.id,
-        });
-        Object.assign(dayB, originalA, {
-          dsl: newB, notes: splitNote(newB).note, scheduled_time: newTimeB,
-          day: originalB.day, suffix: originalB.suffix, category: originalB.category, date: originalB.date, id: originalB.id,
-        });
-      }
-      // Live follow-up: same reasoning as swapDaysByRef's own totals
-      // recompute above — each day's own distance/workout_type already
-      // moved correctly with its content, but the two weeks' (and their
-      // sections') own AggregateTotals need recomputing too, since a
-      // whole week's worth of content can cross a section boundary here.
-      const afterA = recomputeTotals(next, a.sectionIndex, a.weekIndex);
-      return recomputeTotals(afterA, b.sectionIndex, b.weekIndex);
-    });
-    void persistSwappedScheduledTimes(timePairs);
-  }
-
-  // HRA-131: both entry points below now only stage a pending swap for
-  // confirmation — neither mutates `sections` directly any more. The actual
-  // mutation happens in confirmDaySwap/confirmWeekSwap once the user
-  // confirms the modal (rendered further down, next to TrainingPlanAccordion).
-  function onSwapDays() {
-    if (!swapDayA || !swapDayB || swapDayA === swapDayB) return;
-    const [aSi, aWi, aDi] = swapDayA.split("-").map(Number);
-    const [bSi, bWi, bDi] = swapDayB.split("-").map(Number);
-    setPendingDaySwap({ a: { sectionIndex: aSi, weekIndex: aWi, dayIndex: aDi }, b: { sectionIndex: bSi, weekIndex: bWi, dayIndex: bDi } });
-  }
-
-  function onSwapWeeks() {
-    if (!swapWeekA || !swapWeekB || swapWeekA === swapWeekB) return;
-    const [aSi, aWi] = swapWeekA.split("-").map(Number);
-    const [bSi, bWi] = swapWeekB.split("-").map(Number);
-    setPendingWeekSwap({ a: { sectionIndex: aSi, weekIndex: aWi }, b: { sectionIndex: bSi, weekIndex: bWi } });
-  }
-
-  // HRA-158: onSwapDays/onSwapWeeks are kept per the Story's AC (drag-and-drop
-  // reuses the same swap plumbing) even though their only caller, the picker
-  // UI, is now hidden — referenced here so the retained functions aren't
-  // flagged as unused.
-  void onSwapDays;
-  void onSwapWeeks;
-
-  // HRA-127 follow-up: drag-and-drop, as an alternative UX to the picker
-  // above for the same underlying swap — TrainingPlanAccordion calls these
-  // with both rows' refs once a valid drop completes (it already guards
-  // against a drop onto the row's own self). HRA-131: stages the same
-  // pending-confirm state the picker path uses, rather than swapping
-  // immediately — one confirm modal covers both entry points.
   function onDayDragSwap(a: DayRef, b: DayRef) {
-    setPendingDaySwap({ a, b });
+    setConfirmation({ type: "day-swap", a, b });
   }
-  // HRA-152: PlanInstanceCalendar's own drag-and-drop only ever has each
-  // side's backend dayId (see its own Props comment) — resolves both to the
-  // {sectionIndex, weekIndex, dayIndex} refs onDayDragSwap above needs via
-  // the same findDayIndicesById HRA-151 already built for scheduled_time,
-  // then delegates to it. Same pending-confirm modal, same swapDaysByRef
-  // core, same notify() — only the entry point is new (Ask #1).
+
   function onDayDragSwapByDayId(aDayId: number, bDayId: number) {
-    const aRef = findDayIndicesById(aDayId);
-    const bRef = findDayIndicesById(bDayId);
-    if (!aRef || !bRef) return;
-    onDayDragSwap(aRef, bRef);
+    const a = dayEditor.findDayIndicesById(aDayId);
+    const b = dayEditor.findDayIndicesById(bDayId);
+    if (a && b) setConfirmation({ type: "day-swap", a, b });
   }
+
   function onWeekDragSwap(a: WeekRef, b: WeekRef) {
-    setPendingWeekSwap({ a, b });
+    setConfirmation({ type: "week-swap", a, b });
   }
 
-  function dayByRef(ref: DayRef): DayView | undefined {
-    return sections[ref.sectionIndex]?.weeks[ref.weekIndex]?.days[ref.dayIndex];
-  }
-  function weekByRef(ref: WeekRef): WeekView | undefined {
-    return sections[ref.sectionIndex]?.weeks[ref.weekIndex];
-  }
-
-  function confirmDaySwap() {
-    if (pendingDaySwap != null) {
-      swapDaysByRef(pendingDaySwap.a, pendingDaySwap.b);
-      notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
-    }
-    setPendingDaySwap(null);
-    setSwapDayA(""); setSwapDayB("");
-  }
-  function cancelDaySwap() { setPendingDaySwap(null); }
-
-  function confirmWeekSwap() {
-    if (pendingWeekSwap != null) {
-      swapWeeksByRef(pendingWeekSwap.a, pendingWeekSwap.b);
-      notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
-    }
-    setPendingWeekSwap(null);
-    setSwapWeekA(""); setSwapWeekB("");
-  }
-  function cancelWeekSwap() { setPendingWeekSwap(null); }
+  const onDayEdit = dayEditor.onDayEdit;
+  const onScheduledTimeEdit = dayEditor.onScheduledTimeEdit;
+  const onScheduledTimeEditByDayId = dayEditor.onScheduledTimeEditByDayId;
 
   // HRA-136: now also persists Race name/date/url (HRA-135's PATCH accepts
   // them alongside name/days) — always sent (not conditionally, unlike
@@ -1312,14 +506,7 @@ export function PlanInstancesSection({ templates }: Props) {
       const updated = await api.planInstances.update(editingId, {
         name, race_name: raceName.trim() || null, race_date: raceDate || null, race_url: raceUrl.trim() || null, days,
       });
-      const resolvedDays: ResolvedDay[] = updated.days.map(d => ({
-        section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
-        suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
-        segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
-        activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
-        id: d.id, scheduled_time: d.scheduled_time,
-      }));
-      const built = sectionsFromDays(resolvedDays);
+      const built = apiDaysToSections(updated.days);
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);
@@ -1343,15 +530,11 @@ export function PlanInstancesSection({ templates }: Props) {
     setSaveLoading(false);
   }
 
-  // HRA-136 Ask #2: Save is gated on a confirm popup only when Name actually
-  // changed — checked at click time against the Save-bucket's own baseline,
-  // not per-keystroke (see pendingNameChangeConfirm's own comment above).
+  // Save is gated on a confirmation only when the persisted name changes.
   function onSaveClick() {
-    if (instName.trim() !== baselineInstName) { setPendingNameChangeConfirm(true); return; }
+    if (instName.trim() !== baselineInstName) { setConfirmation({ type: "rename" }); return; }
     onSave();
   }
-  function confirmNameChange() { setPendingNameChangeConfirm(false); onSave(); }
-  function cancelNameChange() { setPendingNameChangeConfirm(false); }
 
   async function onApprove() {
     if (editingId == null) return;
@@ -1396,17 +579,8 @@ export function PlanInstancesSection({ templates }: Props) {
   // Counts days in the CURRENT `sections` (not the persisted baseline) whose
   // date falls on/after `cutover` and whose dsl has diverged from
   // `persistedDsl` — i.e. days a regenerate call would silently discard.
-  function manualEditCount(cutover: string): number {
-    let count = 0;
-    sections.forEach(s => s.weeks.forEach(w => w.days.forEach(d => {
-      if (d.date != null && d.date >= cutover && persistedDsl[d.date] !== undefined && persistedDsl[d.date] !== d.dsl) count++;
-    })));
-    return count;
-  }
-
   async function doRegenerate() {
     if (editingId == null) return;
-    setPendingRegenerateCount(null);
     setRegenerateLoading(true); setEditError(null);
     try {
       const updated = await api.planInstances.regenerate(editingId, {
@@ -1414,14 +588,7 @@ export function PlanInstancesSection({ templates }: Props) {
         pace_overrides: buildPaceOverridesForRegenerate(),
         effective_from: effectiveFrom,
       });
-      const resolvedDays: ResolvedDay[] = updated.days.map(d => ({
-        section_name: d.section_name, week_number: d.week_number, date: d.date, day: d.day,
-        suffix: d.suffix ?? undefined, category: d.category ?? undefined, workout_type: d.workout_type as WorkoutType,
-        segments: JSON.parse(d.segments), activity_target: d.activity_target ? JSON.parse(d.activity_target) : undefined,
-        activity_description: d.activity_description ?? undefined, notes: d.notes ?? undefined, needs_review: d.needs_review === 1,
-        id: d.id, scheduled_time: d.scheduled_time,
-      }));
-      const built = sectionsFromDays(resolvedDays);
+      const built = apiDaysToSections(updated.days);
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);
@@ -1447,16 +614,12 @@ export function PlanInstancesSection({ templates }: Props) {
     setRegenerateLoading(false);
   }
 
-  // HRA-134: warn before discarding manually-edited days on/after the
-  // cutover — same pending-then-confirm/cancel shape pendingTemplateId/
-  // pendingDaySwap already established. No manual edits in range means
-  // nothing to warn about, so regenerate proceeds immediately.
+  // Warn before regeneration discards manually edited days on/after the cutover.
   function onRegenerateClick() {
-    const count = manualEditCount(effectiveFrom);
-    if (count > 0) { setPendingRegenerateCount(count); return; }
+    const count = manualEditCount(sections, persistedDsl, effectiveFrom);
+    if (count > 0) { setConfirmation({ type: "regenerate", manualEditCount: count }); return; }
     doRegenerate();
   }
-  function cancelRegenerate() { setPendingRegenerateCount(null); }
 
   // HRA-141 Ask #3: "Restore" (renamed from Cancel) discards the active
   // row's unsaved edits and collapses it — since the list row itself only
@@ -1465,11 +628,10 @@ export function PlanInstancesSection({ templates }: Props) {
   // to the last-saved values"; there's nothing to re-populate. Gated on a
   // confirm only when genuinely dirty (either bucket, HRA-136's own union).
   function onRestoreClick(dirty: boolean) {
-    if (dirty) { setPendingRestoreConfirm(true); return; }
+    if (dirty) { setConfirmation({ type: "restore" }); return; }
     doRestore();
   }
   function doRestore() {
-    setPendingRestoreConfirm(false);
     if (activeKey != null) {
       const key = String(activeKey);
       setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
@@ -1477,19 +639,58 @@ export function PlanInstancesSection({ templates }: Props) {
     resetPlanScreen();
     setActiveKey(null);
   }
-  function cancelRestoreConfirm() { setPendingRestoreConfirm(false); }
 
   async function onDelete(id: number) {
     setDeleteError(null);
     try {
       await api.planInstances.remove(id);
-      setDeleteConfirmId(null);
+      setConfirmation(null);
       setDrafts(prev => { const key = String(id); if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
       if (activeKey === id) { resetPlanScreen(); setActiveKey(null); }
       await refreshInstances();
       notify(t("manage.planInstances.deleteSucceeded", "Instance deleted."));
     } catch (e) {
       setDeleteError(e instanceof Error ? e.message : t("manage.planInstances.deleteFailed", "Failed to delete instance"));
+    }
+  }
+
+  function confirmPendingAction() {
+    if (!confirmation) return;
+
+    switch (confirmation.type) {
+      case "switch-template":
+        applyTemplateChange(confirmation.templateId);
+        setConfirmation(null);
+        break;
+      case "rename":
+        setConfirmation(null);
+        void onSave();
+        break;
+      case "regenerate":
+        setConfirmation(null);
+        void doRegenerate();
+        break;
+      case "restore":
+        setConfirmation(null);
+        doRestore();
+        break;
+      case "workout-type":
+        dayEditor.applyWorkoutTypeChange(confirmation.change);
+        setConfirmation(null);
+        break;
+      case "day-swap":
+        dayEditor.swapDaysByRef(confirmation.a, confirmation.b);
+        notify(t("manage.planInstances.daySwapped", "Days swapped — remember to Save."));
+        setConfirmation(null);
+        break;
+      case "week-swap":
+        dayEditor.swapWeeksByRef(confirmation.a, confirmation.b);
+        notify(t("manage.planInstances.weekSwapped", "Weeks swapped — remember to Save."));
+        setConfirmation(null);
+        break;
+      case "delete":
+        void onDelete(confirmation.instanceId);
+        break;
     }
   }
 
@@ -1513,32 +714,9 @@ export function PlanInstancesSection({ templates }: Props) {
   // Never true before an instance exists (fieldsLocked false) or once
   // approved (editing an approved instance is out of scope, same HRA-126
   // lock every other write already respects).
-  const anchorRowsChanged = JSON.stringify(anchorRows) !== JSON.stringify(baselineAnchorRows);
-  const goalTimeFieldsChanged = paceMode === "goalTime" && (goalTimeDigits !== baselineGoalTimeDigits || distanceM !== baselineDistanceM);
-  const regenerateBucketDirty = fieldsLocked && !isApproved && (
-    startDate !== baselineStartDate || racePaceAnchor !== baselineRacePaceAnchor || paceMode !== baselinePaceMode
-    || anchorRowsChanged || goalTimeFieldsChanged
-  );
-  const anyDayDirty = sections.some(s => s.weeks.some(w => w.days.some(d => d.date != null && persistedDsl[d.date] !== undefined && persistedDsl[d.date] !== d.dsl)));
-  const saveBucketDirty = fieldsLocked && !isApproved && (
-    instName.trim() !== baselineInstName || raceName.trim() !== baselineRaceName || raceDate !== baselineRaceDate
-    || raceUrl.trim() !== baselineRaceUrl || anyDayDirty
-  );
-  // AC3: Regenerate-bucket-dirty always wins, disabling Save entirely even
-  // when the Save-bucket is also currently dirty. AC5: a successful
-  // Regenerate re-enables Save unconditionally (saveForcedEnabled) — but
-  // still loses to a fresh Regenerate-bucket edit made after that, same as
-  // any other Save-bucket dirtiness would.
-  const saveEnabled = !regenerateBucketDirty && (saveBucketDirty || saveForcedEnabled);
-  // The Regenerate-unit div below isn't a real <button> (it nests a
-  // DatePicker inside it), so its own disabled state has to be computed and
-  // applied by hand instead of a `disabled` attribute — same three
-  // conditions the old plain <button> used.
-  const regenerateDisabled = regenerateLoading || !regenerateBucketDirty || isApproved;
-  // HRA-141: the single "does this row have anything unsaved" signal the
-  // Story's own Ask #3/#4 name — drives both the Restore confirm gate and
-  // what gets stashed on collapse/row-switch.
-  const isDirty = saveBucketDirty || regenerateBucketDirty;
+  const {
+    regenerateBucketDirty, saveEnabled, regenerateDisabled, isDirty,
+  } = selectDirtyState(editor.state, { fieldsLocked, isApproved, regenerateLoading });
 
   // HRA-141: everything that used to render as the whole `mode === "plan"`
   // screen (minus the outer Card/title-badge header, which the accordion's
@@ -1630,64 +808,6 @@ export function PlanInstancesSection({ templates }: Props) {
           setViewMode={setViewMode}
         />
 
-        <ConfirmModal
-          open={pendingNameChangeConfirm}
-          title={
-            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-              {t("manage.planInstances.renameConfirmBody", "This will rename the current plan — it won't create a copy. Continue?")}
-            </div>
-          }
-          confirmLabel={t("manage.planInstances.renameConfirmButton", "Rename")}
-          variant="green"
-          onConfirm={confirmNameChange}
-          onCancel={cancelNameChange}
-        />
-
-        <ConfirmModal
-          open={pendingTemplateId != null}
-          title={
-            <>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
-                {t("manage.planInstances.switchTemplateTitle", "Discard current instance data?")}
-              </div>
-              <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
-                {t("manage.planInstances.switchTemplateBody", "This instance hasn't been created yet. Picking a different template will lose the name, dates, and pace values you've already entered.")}
-              </div>
-            </>
-          }
-          confirmLabel={t("manage.planInstances.switchTemplateConfirm", "Switch template")}
-          variant="danger"
-          onConfirm={confirmSwitchTemplate}
-          onCancel={cancelSwitchTemplate}
-        />
-
-        <ConfirmModal
-          open={pendingRegenerateCount != null}
-          title={
-            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
-              {t("manage.planInstances.regenerateConfirmTitle", `Regenerating will discard ${pendingRegenerateCount ?? 0} manual edit(s) — continue?`, { count: pendingRegenerateCount ?? 0 })}
-            </div>
-          }
-          confirmLabel={t("manage.planInstances.regenerateConfirmButton", "Regenerate")}
-          variant="danger"
-          maxWidth={400}
-          onConfirm={doRegenerate}
-          onCancel={cancelRegenerate}
-        />
-
-        <ConfirmModal
-          open={pendingRestoreConfirm}
-          title={
-            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-              {t("manage.planInstances.restoreConfirmBody", "You have unsaved changes — reset them to the previous values?")}
-            </div>
-          }
-          confirmLabel={t("manage.planInstances.resetButton", "Reset to previous values")}
-          variant="danger"
-          onConfirm={doRestore}
-          onCancel={cancelRestoreConfirm}
-        />
-
         {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
             buttons) is hidden — superseded by drag-and-drop swap in both List
             (TrainingPlanAccordion's useDragSwap) and Agenda (PlanInstanceCalendar's
@@ -1729,79 +849,6 @@ export function PlanInstancesSection({ templates }: Props) {
           </>
         )}
 
-        {pendingWorkoutTypeChange != null && (() => {
-          const { sectionIndex, weekIndex, dayIndex, workoutType } = pendingWorkoutTypeChange;
-          const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
-          const currentText = day ? day.dsl.replace(DAY_PREFIX_RE, "") : "";
-          const dateLabel = day?.date ? instanceDayDateLabel(day.date) : "";
-          const typeLabel = workoutType === "rest"
-            ? t("runplan.accordion.workoutTypeRest", "Rest")
-            : workoutType === "other"
-              ? t("runplan.accordion.workoutTypeOther", "Other")
-              : t("runplan.accordion.workoutTypeRun", "Run");
-          const title = workoutType === "run"
-            ? t("manage.planInstances.workoutTypeConfirmClearTitle", `Clear ${dateLabel}'s workout text ("${currentText}") so you can enter a new run?`, { date: dateLabel, body: currentText })
-            : t("manage.planInstances.workoutTypeConfirmSetTitle", `Set ${dateLabel} to ${typeLabel}? This replaces the current workout text ("${currentText}").`, { date: dateLabel, type: typeLabel, body: currentText });
-          return (
-            <ConfirmModal
-              open
-              title={
-                <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
-                  {title}
-                </div>
-              }
-              confirmLabel={t("common.confirm", "Confirm")}
-              maxWidth={420}
-              onConfirm={confirmWorkoutTypeChange}
-              onCancel={cancelWorkoutTypeChange}
-            />
-          );
-        })()}
-
-        {pendingDaySwap != null && (() => {
-          const dayA = dayByRef(pendingDaySwap.a);
-          const dayB = dayByRef(pendingDaySwap.b);
-          const labelFor = (d: DayView) => `${instanceDayDateLabel(d.date!)} (${d.dsl.replace(DAY_PREFIX_RE, "")})`;
-          const bodyText = dayA && dayB ? `${labelFor(dayA)} with ${labelFor(dayB)}` : "";
-          return (
-            <ConfirmModal
-              open
-              title={
-                <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
-                  {t("manage.planInstances.daySwapConfirmTitle", `Swap ${bodyText}?`, { body: bodyText })}
-                </div>
-              }
-              confirmLabel={t("manage.planInstances.swapConfirmButton", "Swap")}
-              maxWidth={420}
-              onConfirm={confirmDaySwap}
-              onCancel={cancelDaySwap}
-            />
-          );
-        })()}
-
-        {pendingWeekSwap != null && (() => {
-          const weekA = weekByRef(pendingWeekSwap.a);
-          const weekB = weekByRef(pendingWeekSwap.b);
-          const rangeA = weekA ? weekDateRange(weekA) : null;
-          const rangeB = weekB ? weekDateRange(weekB) : null;
-          const bodyText = rangeA && rangeB
-            ? `week ${instanceDayDateLabel(rangeA.start)} → ${instanceDayDateLabel(rangeA.end)} with week ${instanceDayDateLabel(rangeB.start)} → ${instanceDayDateLabel(rangeB.end)}`
-            : "";
-          return (
-            <ConfirmModal
-              open
-              title={
-                <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 16, lineHeight: 1.5 }}>
-                  {t("manage.planInstances.weekSwapConfirmTitle", `Swap ${bodyText}?`, { body: bodyText })}
-                </div>
-              }
-              confirmLabel={t("manage.planInstances.swapConfirmButton", "Swap")}
-              maxWidth={420}
-              onConfirm={confirmWeekSwap}
-              onCancel={cancelWeekSwap}
-            />
-          );
-        })()}
       </>
     );
   }
@@ -1841,7 +888,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 expanded={activeKey === inst.id}
                 hasDraft={drafts[String(inst.id)] != null}
                 onToggle={() => onToggleRow(inst.id, isDirty)}
-                onDeleteClick={setDeleteConfirmId}
+                onDeleteClick={id => setConfirmation({ type: "delete", instanceId: id })}
               >
                 {activeKey === inst.id ? renderEditorFields() : null}
               </PlanInstanceRow>
@@ -1857,20 +904,11 @@ export function PlanInstancesSection({ templates }: Props) {
         <div className="hra-text-muted" style={{ fontSize: 11, marginTop: 6 }}>{t("manage.planInstances.noTemplates", "Save a template first — an instance is always created from one.")}</div>
       )}
 
-      {/* One shared confirm modal (not per-row) — deleteConfirmId already
-          uniquely identifies the target, and only one can ever be pending
-          at a time. */}
-      <ConfirmModal
-        open={deleteConfirmId != null}
-        title={
-          <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
-            {t("manage.planInstances.deleteConfirm", "Delete this instance?")}
-          </div>
-        }
-        confirmLabel={t("common.yesDelete", "Yes, delete")}
-        variant="danger"
-        onConfirm={() => deleteConfirmId != null && onDelete(deleteConfirmId)}
-        onCancel={() => setDeleteConfirmId(null)}
+      <PlanInstanceConfirmations
+        confirmation={confirmation}
+        sections={sections}
+        onConfirm={confirmPendingAction}
+        onCancel={() => setConfirmation(null)}
       />
     </Card>
   );
