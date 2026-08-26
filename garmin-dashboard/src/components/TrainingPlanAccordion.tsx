@@ -16,8 +16,9 @@
  * derived by walking children (any day -> any week -> any section), never
  * stored, matching docs/runplan-dsl.md's own documented rule for this.
  */
-import { useState, type DragEvent } from "react";
+import { useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Bed, CircleHelp, Play } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -67,6 +68,11 @@ interface TrainingPlanAccordionProps {
   // local until the whole-day bulk Save). Optional: templates have no
   // scheduled_time concept, so PlanTemplatesSection never passes this.
   onScheduledTimeEdit?: (sectionIndex: number, weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
+  // HRA-163: instance-only, same "own PATCH, independent of the dsl/notes
+  // bulk-Save path" shape as onScheduledTimeEdit above — the note row's
+  // run/rest/other switch. Optional: templates have no per-day manual type
+  // override, so PlanTemplatesSection never passes this.
+  onWorkoutTypeEdit?: (sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -150,6 +156,27 @@ function compactTotals(totals: AggregateTotals, t: Translate): string {
 // workout text this file already uses for InstanceDayRow's editable field.
 export const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 
+// HRA-163: the note row's run/rest/other switch — a manual override of the
+// day's workout_type, independent of the DSL text (the DSL stays whatever it
+// was; only the stored workout_type column changes, via its own PATCH field,
+// see TrainingPlanAccordion.tsx's onWorkoutTypeEdit and docs/api.md). Only 3
+// values are ever WRITTEN through this control (todo/cross/strength stay
+// DSL-only, edited via the D-line's own keywords) — but every WorkoutType
+// value must READ into one of the 3 buttons, so a day whose real type isn't
+// run/rest folds into "other" for display (AC4: never silently shows "run").
+export type WorkoutTypeSwitchValue = "run" | "rest" | "other";
+const WORKOUT_TYPE_SWITCH_ICONS: Record<WorkoutTypeSwitchValue, (props: { size?: number }) => ReactNode> = {
+  run: Play, rest: Bed, other: CircleHelp,
+};
+const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, string]> = {
+  run: ["runplan.accordion.workoutTypeRun", "Run"],
+  rest: ["runplan.accordion.workoutTypeRest", "Rest"],
+  other: ["runplan.accordion.workoutTypeOther", "Other"],
+};
+function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
+  return workoutType === "run" || workoutType === "rest" ? workoutType : "other";
+}
+
 // HRA-125: an instance day's title shows its real calendar date + weekday
 // instead of the "D<n>" placeholder — templates have no calendar dates
 // (day.date is only ever set for instance days, runplan-aggregate.ts's
@@ -219,7 +246,7 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit,
 }: {
   day: DayView;
   date: string;
@@ -228,6 +255,7 @@ function InstanceDayRow({
   dayRef?: DayRef;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onScheduledTimeEdit?: (scheduledTime: string | null) => void;
+  onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
@@ -257,6 +285,11 @@ function InstanceDayRow({
   // HRA-150: HH:MM 24-hour, matching <input type="time">'s own value format
   // — no explicit scheduled_time (undefined/null) displays the 08:00 default.
   const scheduledTime = day.scheduled_time ?? "08:00";
+  // HRA-163: AC2/AC4 — reflects the day's real workout_type, folding every
+  // non-run/rest value (todo/cross/strength/other) into "other" for display.
+  const workoutTypeValue = workoutTypeSwitchValue(day.workout_type);
+  const ActiveWorkoutTypeIcon = WORKOUT_TYPE_SWITCH_ICONS[workoutTypeValue];
+  const [workoutTypeKey, workoutTypeFallback] = WORKOUT_TYPE_SWITCH_LABEL_KEYS[workoutTypeValue];
 
   return (
     <div
@@ -298,17 +331,33 @@ function InstanceDayRow({
           fixed, non-growing width so neither field shifts as the other's
           content changes. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
-        {/* HRA-160: an invisible clone of row 1's date badge — reserves the
-            exact same leading width (same content, same classes, so it's
-            pixel-identical regardless of locale/date-format/icon) so the
-            Note input's flex:1 share below ends up the same width as the
-            DSL input's above, without hardcoding a width that would drift
-            the moment the badge's own content changes. visibility:hidden
-            (not display:none) keeps the layout box while hiding the paint. */}
-        <span className={`hra-day-date-badge ${categoryCatClass}`} style={{ visibility: "hidden" }} aria-hidden="true">
-          {dateBadge}
-          <CategoryIcon size={12} />
-        </span>
+        {/* HRA-163: the run/rest/other switch — "directly below the date
+            pill" (AC1) means literally here, in row 1's own invisible-clone
+            alignment slot (HRA-160's own comment above explains why that
+            slot exists). Replaces the invisible clone rather than sitting
+            beside it: this row only ever needs one leading control. */}
+        {readOnlyDays ? (
+          <span className="hra-text-secondary" style={{ display: "flex", alignItems: "center", flexShrink: 0 }} title={t(workoutTypeKey, workoutTypeFallback)}>
+            <ActiveWorkoutTypeIcon size={14} />
+          </span>
+        ) : (
+          <div className="hra-segment" role="group" aria-label={t("runplan.accordion.workoutTypeSwitchLabel", "Day type")} style={{ flexShrink: 0 }}>
+            {(["run", "rest", "other"] as const).map(v => {
+              const Icon = WORKOUT_TYPE_SWITCH_ICONS[v];
+              const [key, fallback] = WORKOUT_TYPE_SWITCH_LABEL_KEYS[v];
+              const label = t(key, fallback);
+              return (
+                <button
+                  key={v} type="button" className="hra-segment-item" data-active={workoutTypeValue === v}
+                  onClick={() => onWorkoutTypeEdit?.(v)} title={label} aria-label={label}
+                  style={{ padding: "4px 8px", display: "flex", alignItems: "center" }}
+                >
+                  <Icon size={14} />
+                </button>
+              );
+            })}
+          </div>
+        )}
         {readOnlyDays ? (
           day.notes && <div className="hra-text-muted" style={{ flex: 1, minWidth: 0, fontSize: 12 }}>{day.notes}</div>
         ) : (
@@ -428,6 +477,7 @@ function DayEditor(props: {
   dayRef?: DayRef;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onScheduledTimeEdit?: (scheduledTime: string | null) => void;
+  onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
 }) {
   return props.day.date != null
     ? <InstanceDayRow {...props} date={props.day.date} />
@@ -435,7 +485,7 @@ function DayEditor(props: {
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -447,6 +497,7 @@ function WeekEditor({
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
   onScheduledTimeEdit?: (dayIndex: number, scheduledTime: string | null) => void;
+  onWorkoutTypeEdit?: (dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -488,6 +539,7 @@ function WeekEditor({
               key={dayIndex} day={day} onEdit={patch => onDayEdit(dayIndex, patch)} readOnlyDays={readOnlyDays}
               dayRef={{ sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap}
               onScheduledTimeEdit={onScheduledTimeEdit ? time => onScheduledTimeEdit(dayIndex, time) : undefined}
+              onWorkoutTypeEdit={onWorkoutTypeEdit ? workoutType => onWorkoutTypeEdit(dayIndex, workoutType) : undefined}
             />
           ))}
         </div>
@@ -497,7 +549,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -510,6 +562,7 @@ function SectionEditor({
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   onWeekSwap?: (a: WeekRef, b: WeekRef) => void;
   onScheduledTimeEdit?: (weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
+  onWorkoutTypeEdit?: (weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -569,6 +622,7 @@ function SectionEditor({
             onDaySwap={onDaySwap}
             onWeekSwap={onWeekSwap}
             onScheduledTimeEdit={onScheduledTimeEdit ? (dayIndex, time) => onScheduledTimeEdit(weekIndex, dayIndex, time) : undefined}
+            onWorkoutTypeEdit={onWorkoutTypeEdit ? (dayIndex, workoutType) => onWorkoutTypeEdit(weekIndex, dayIndex, workoutType) : undefined}
           />
         ))}
       </div>
@@ -577,7 +631,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -595,6 +649,7 @@ export function TrainingPlanAccordion({
           onDaySwap={onDaySwap}
           onWeekSwap={onWeekSwap}
           onScheduledTimeEdit={onScheduledTimeEdit ? (weekIndex, dayIndex, time) => onScheduledTimeEdit(sectionIndex, weekIndex, dayIndex, time) : undefined}
+          onWorkoutTypeEdit={onWorkoutTypeEdit ? (weekIndex, dayIndex, workoutType) => onWorkoutTypeEdit(sectionIndex, weekIndex, dayIndex, workoutType) : undefined}
         />
       ))}
     </div>

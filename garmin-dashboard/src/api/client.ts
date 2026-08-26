@@ -281,7 +281,9 @@ export const api = {
     // scheduled_time — see that endpoint's own doc comment). HRA-150 uses
     // this exclusively for scheduled_time, so a day edit persists immediately
     // rather than waiting for the whole-day bulk Save.
-    patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>) =>
+    // HRA-163: workout_type ("run" | "rest" | "other") is a fourth independent
+    // field on this same endpoint — the List view's manual type switch.
+    patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null; workout_type: "run" | "rest" | "other" }>) =>
       request<PlanInstanceDay>(`/api/v1/plan-instances/${instanceId}/days/${dayId}`, "PATCH", undefined, body),
     // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162) —
     // parse-only preview, never persists (mirrors planTemplates.generate's

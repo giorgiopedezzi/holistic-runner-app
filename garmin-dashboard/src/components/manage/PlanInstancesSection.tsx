@@ -31,11 +31,11 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, DatePicker, Select, AccordionCard } from "@/components/ui";
-import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import {
   collectPlanAnchors, groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay,
-  resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView,
+  resolveIntensityPaceSecPerKm, weekDateRange, type SectionView, type DayView, type WeekView, type TrainingLoadCategory,
 } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
 import { notify } from "@/utils/toast";
@@ -938,6 +938,53 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
+  // HRA-163: the List view's run/rest/other switch — same "own PATCH,
+  // optimistic, rolled back on failure" shape as onScheduledTimeEdit above.
+  // Unlike scheduled_time, workout_type also drives trainingLoadCategory
+  // (classifyResolvedDay, runplan-aggregate.ts), which is baked into DayView
+  // at build time and needs a full plan-wide DayClassificationContext (pace
+  // terciles, week's longest run) to recompute properly — context this
+  // single-day PATCH doesn't have, and a full re-fetch+rebuild here would
+  // clobber any *other* day's unsaved dsl/notes edits (still local-only until
+  // the whole-day bulk Save, HRA-149/150's own rule). So this only
+  // approximates the category locally, mirroring classifyResolvedDay's own
+  // deterministic branches for the two cases that don't need context (rest
+  // -> "rest", other -> "easy_recovery"); switching to "run" with no real
+  // segments yet also falls back to "easy_recovery" (same treatment
+  // classifyResolvedDay already gives todo/other) until the day's DSL is
+  // actually edited into a real run and the section is next rebuilt from a
+  // full fetch (Save/reload), at which point the real classification takes
+  // over. Flagged as a residual-risk approximation in this Story's review.
+  function fallbackCategoryForWorkoutType(workoutType: WorkoutTypeSwitchValue): TrainingLoadCategory {
+    return workoutType === "rest" ? "rest" : "easy_recovery";
+  }
+  function patchLocalDayWorkoutType(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: string, category: TrainingLoadCategory | undefined) {
+    setSections(prev => {
+      const next = [...prev];
+      const section = { ...next[sectionIndex] };
+      const weeks = [...section.weeks];
+      const week = { ...weeks[weekIndex] };
+      const days = [...week.days];
+      days[dayIndex] = { ...days[dayIndex], workout_type: workoutType as WorkoutType, trainingLoadCategory: category };
+      week.days = days; weeks[weekIndex] = week; section.weeks = weeks; next[sectionIndex] = section;
+      return next;
+    });
+  }
+  async function onWorkoutTypeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
+    if (editingId == null) return;
+    const day = dayStateAt(sectionIndex, weekIndex, dayIndex);
+    if (day?.id == null) return;
+    const previousType = day.workout_type;
+    const previousCategory = day.trainingLoadCategory;
+    patchLocalDayWorkoutType(sectionIndex, weekIndex, dayIndex, workoutType, fallbackCategoryForWorkoutType(workoutType));
+    try {
+      await api.planInstances.patchDay(editingId, day.id, { workout_type: workoutType });
+    } catch (e) {
+      patchLocalDayWorkoutType(sectionIndex, weekIndex, dayIndex, previousType, previousCategory);
+      notify(e instanceof Error ? e.message : t("manage.planInstances.workoutTypeFailed", "Failed to save day type"), "error");
+    }
+  }
+
   // HRA-151: PlanInstanceCalendar (the Agenda view) only ever has the day's
   // own backend id at hand — react-big-calendar's dateHeader contract gives
   // it a Date, not the section/week/day indices the List view already
@@ -1814,6 +1861,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 onDaySwap={onDayDragSwap}
                 onWeekSwap={onWeekDragSwap}
                 onScheduledTimeEdit={onScheduledTimeEdit}
+                onWorkoutTypeEdit={onWorkoutTypeEdit}
               />
             ) : (
               <PlanInstanceCalendar

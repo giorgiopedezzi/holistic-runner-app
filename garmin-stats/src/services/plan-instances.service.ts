@@ -115,6 +115,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined,
     notes: string | null | undefined,
     scheduledTime: string | null | undefined,
+    workoutType: string | undefined,
   ): PlanInstanceDayRow {
     db.exec("BEGIN");
     try {
@@ -125,6 +126,12 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       }
       if (scheduledTime !== undefined) {
         instances.updateDayScheduledTime(dayId, scheduledTime);
+      }
+      // HRA-163: applied after dslFields above so an explicit workout_type
+      // always wins over whatever the fresh dsl parse resolved — same
+      // "explicit override wins" precedent `notes` follows above.
+      if (workoutType !== undefined) {
+        instances.updateDayWorkoutType(dayId, workoutType);
       }
       db.exec("COMMIT");
     } catch (e) {

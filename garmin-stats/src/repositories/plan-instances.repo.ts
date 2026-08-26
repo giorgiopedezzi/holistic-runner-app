@@ -48,6 +48,9 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   `);
   const updateDayNotesStmt = db.prepare("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
   const updateDayScheduledTimeStmt = db.prepare("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
+  // HRA-163: the List view's run/rest/other switch — independent of the
+  // dsl-derived columns above, same "one statement per field" style.
+  const updateDayWorkoutTypeStmt = db.prepare("UPDATE plan_instance_days SET workout_type = ? WHERE id = ?");
   // HRA-155: replaces the earlier HRA-132 `deleteDaysFromDate` (a raw
   // `date >= fromDate` threshold) — that comparison silently broke whenever
   // `start_date` changed as part of the same regenerate call, since the OLD
@@ -137,6 +140,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     },
     updateDayNotes: (dayId: number, notes: string | null) => { updateDayNotesStmt.run(notes, dayId); },
     updateDayScheduledTime: (dayId: number, scheduledTime: string | null) => { updateDayScheduledTimeStmt.run(scheduledTime, dayId); },
+    updateDayWorkoutType: (dayId: number, workoutType: string) => { updateDayWorkoutTypeStmt.run(workoutType, dayId); },
     approve: (id: number): PlanInstanceRow => {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;

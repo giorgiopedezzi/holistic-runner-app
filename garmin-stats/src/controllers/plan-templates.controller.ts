@@ -29,6 +29,12 @@ const GOAL_TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
 // HRA-149: scheduled_time is HH:MM, 24-hour, no seconds — distinct from
 // GOAL_TIME_RE above (HH:MM:SS, an elapsed duration, not a time of day).
 const SCHEDULED_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+// HRA-163: the List view's run/rest/other switch writes this column directly,
+// independent of dsl/segments — restricted to the 3 values the switch itself
+// offers (not the full WorkoutType enum: todo/cross/strength stay DSL-only,
+// edited via the D-line text as REST/TODO/CROSS/STRENGTH keywords, same as
+// before this Story).
+const SWITCH_WORKOUT_TYPES = new Set(["run", "rest", "other"]);
 
 // Mirrors the standard-distance seed values in db.ts's activity_types table
 // (5k/10k/half/marathon) — custom has no fixed distance, which is why
@@ -93,7 +99,13 @@ type RegenerateBody = Partial<{ start_date: string; pace_overrides: Record<strin
 // re-parsed+resolved the same way the bulk day-replace path does, notes and
 // scheduled_time are independent columns (notes overrides whatever the dsl
 // parse itself produced, when both are supplied in the same request).
-type DayPatchBody = Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>;
+// HRA-163: workout_type is a fourth independent column, restricted to
+// run/rest/other (SWITCH_WORKOUT_TYPES) — the List view's manual type
+// switch, bypassing dsl parsing entirely (unlike the dsl-derived
+// workout_type resolveDay produces). Same "explicit override wins"
+// precedent as notes above: when both dsl and workout_type are supplied,
+// workout_type wins over whatever the fresh dsl parse resolved.
+type DayPatchBody = Partial<{ dsl: string; notes: string | null; scheduled_time: string | null; workout_type: string }>;
 
 // HRA-113: nothing in the tree is a hard error anymore — walk plan-scoped
 // (ParseResult.warnings) plus every day's own DayEntry.warnings so a 422 body
@@ -532,8 +544,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const hasDsl = "dsl" in body;
     const hasNotes = "notes" in body;
     const hasScheduledTime = "scheduled_time" in body;
-    if (!hasDsl && !hasNotes && !hasScheduledTime) {
-      throw unprocessable("At least one of dsl, notes, scheduled_time is required.");
+    const hasWorkoutType = "workout_type" in body;
+    if (!hasDsl && !hasNotes && !hasScheduledTime && !hasWorkoutType) {
+      throw unprocessable("At least one of dsl, notes, scheduled_time, workout_type is required.");
     }
 
     let scheduledTime: string | null | undefined;
@@ -542,6 +555,14 @@ export function createPlanTemplatesController(ctx: AppContext) {
         throw unprocessable("scheduled_time must be in HH:MM 24-hour format.");
       }
       scheduledTime = body.scheduled_time ?? null;
+    }
+
+    let workoutType: string | undefined;
+    if (hasWorkoutType) {
+      if (!body.workout_type || !SWITCH_WORKOUT_TYPES.has(body.workout_type)) {
+        throw unprocessable("workout_type must be one of run, rest, other.");
+      }
+      workoutType = body.workout_type;
     }
 
     let dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined;
@@ -564,7 +585,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
     const notes = hasNotes ? (body.notes?.trim() || null) : undefined;
 
-    const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime);
+    const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime, workoutType);
     return send(res, updated);
   };
 
