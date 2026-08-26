@@ -416,6 +416,141 @@ export function buildInstanceSectionView(
   };
 }
 
+// ── training-load classification (HRA-147) ──────────────────────────────
+// Pure, never persisted — recomputed fresh every time the agenda renders
+// (explicit user instruction: an on-the-fly estimate, not a DB column).
+// Structural categories (read straight off the DSL's own segment shape)
+// always win over the pace heuristic, regardless of pace. The heuristic
+// buckets a continuous-only run day's own resolved pace into a tercile of
+// every resolved pace across the WHOLE plan instance (not just the visible
+// week/month), reusing the same linear-interpolated-percentile technique as
+// domain/activity-chart.ts's `percentile()`. Long run is a final overlay on
+// top of the pace tier only — a day that's already Intervals/Progressive/
+// Cross training/Rest keeps that category even if it's also its week's
+// longest run (the AC only asks the overlay to override "the pace-tier
+// badge").
+
+export type TrainingLoadCategory =
+  | "easy_recovery" | "long_run" | "intervals" | "progressive"
+  | "threshold" | "tempo" | "cross_training" | "rest";
+
+// Linear-interpolated percentile over an ascending-sorted array — mirrors
+// domain/activity-chart.ts's `percentile()`, not imported from it to avoid
+// a chart-module dependency from this plan/agenda-only file for one helper.
+function linearPercentile(sortedAsc: number[], p: number): number {
+  const idx = (sortedAsc.length - 1) * p;
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  if (lo === hi) return sortedAsc[lo];
+  return sortedAsc[lo] + (sortedAsc[hi] - sortedAsc[lo]) * (idx - lo);
+}
+
+// Every continuous-segment resolved pace across the whole plan instance —
+// the population the pace tercile is computed against. Interval/progression
+// paces are excluded: those days are already structurally classified, so
+// their pace shouldn't skew the tercile boundaries used for the remaining
+// continuous-only days.
+function collectContinuousPaces(days: ResolvedDay[]): number[] {
+  const paces: number[] = [];
+  for (const day of days) {
+    if (day.workout_type !== "run") continue;
+    for (const seg of day.segments) {
+      if (seg.type === "continuous" && seg.resolved_pace_sec_per_km != null) paces.push(seg.resolved_pace_sec_per_km);
+    }
+  }
+  return paces;
+}
+
+// A day's own representative pace for the heuristic — the mean of its
+// continuous segments' resolved paces (almost always a single segment;
+// averaged for the rare multi-segment continuous day, e.g. "5km @ RG ;
+// 2km @ FL"). null when nothing resolves — the "no resolvable pace at all"
+// AC case, which must fall to Easy/Recovery, never crash.
+function dayRepresentativePace(day: ResolvedDay): number | null {
+  const paces = day.segments
+    .filter((seg): seg is Extract<ResolvedSegment, { type: "continuous" }> => seg.type === "continuous")
+    .map(seg => seg.resolved_pace_sec_per_km)
+    .filter((p): p is number => p != null);
+  if (paces.length === 0) return null;
+  return paces.reduce((a, b) => a + b, 0) / paces.length;
+}
+
+function structuralCategory(day: ResolvedDay): "intervals" | "progressive" | null {
+  if (day.segments.some(seg => seg.type === "interval")) return "intervals";
+  if (day.segments.some(seg => seg.type === "progression")) return "progressive";
+  return null;
+}
+
+// The volume the Long-run overlay compares within a week: total distance,
+// falling back to total duration only when distance doesn't resolve at all
+// (per the Story's "total_distance_m (or duration)").
+function dayVolume(day: ResolvedDay): number {
+  const meters = computeResolvedDayDistance(day).meters;
+  return meters > 0 ? meters : computeResolvedDayMetrics(day).totalDurationSec;
+}
+
+function dayKey(day: ResolvedDay): string {
+  return `${day.section_name}::${day.week_number}::${day.day}${day.suffix ?? ""}`;
+}
+
+export interface DayClassificationContext {
+  // Ascending pace_sec_per_km tercile boundaries (fastest → slowest) over
+  // the whole plan instance; null when the instance has no resolvable
+  // continuous pace at all (every heuristic day then falls to Easy/Recovery).
+  paceTercileBounds: { fastBound: number; midBound: number } | null;
+  // "section::week" -> the dayKey() of that week's strict-max-volume run
+  // day. A tie (no unique outlier) leaves the week absent from the map, so
+  // no day gets the overlay that week — safer than guessing a winner.
+  weekLongRunDay: Map<string, string>;
+}
+
+export function buildDayClassificationContext(days: ResolvedDay[]): DayClassificationContext {
+  const paces = collectContinuousPaces(days).sort((a, b) => a - b);
+  const paceTercileBounds = paces.length > 0
+    ? { fastBound: linearPercentile(paces, 1 / 3), midBound: linearPercentile(paces, 2 / 3) }
+    : null;
+
+  const byWeek = new Map<string, ResolvedDay[]>();
+  for (const day of days) {
+    if (day.workout_type !== "run") continue;
+    const key = `${day.section_name}::${day.week_number}`;
+    if (!byWeek.has(key)) byWeek.set(key, []);
+    byWeek.get(key)!.push(day);
+  }
+  const weekLongRunDay = new Map<string, string>();
+  for (const [weekKey, weekDays] of byWeek) {
+    let bestKey: string | null = null, bestVolume = -Infinity, tie = false;
+    for (const day of weekDays) {
+      const volume = dayVolume(day);
+      if (volume > bestVolume) { bestKey = dayKey(day); bestVolume = volume; tie = false; }
+      else if (volume === bestVolume) tie = true;
+    }
+    if (bestKey && !tie && bestVolume > 0) weekLongRunDay.set(weekKey, bestKey);
+  }
+  return { paceTercileBounds, weekLongRunDay };
+}
+
+export function classifyResolvedDay(day: ResolvedDay, context: DayClassificationContext): TrainingLoadCategory {
+  // CROSS/STRENGTH are grouped together here the same way computeResolvedDayDistance
+  // groups them (both non-running, structured activity types).
+  if (day.workout_type === "cross" || day.workout_type === "strength") return "cross_training";
+  if (day.workout_type === "rest") return "rest";
+  if (day.workout_type === "todo") return "easy_recovery"; // not yet planned — no load info to classify by
+
+  const structural = structuralCategory(day);
+  if (structural) return structural;
+
+  const pace = dayRepresentativePace(day);
+  let tier: TrainingLoadCategory;
+  if (pace == null || context.paceTercileBounds == null) tier = "easy_recovery";
+  else if (pace <= context.paceTercileBounds.fastBound) tier = "threshold";
+  else if (pace <= context.paceTercileBounds.midBound) tier = "tempo";
+  else tier = "easy_recovery";
+
+  const weekKey = `${day.section_name}::${day.week_number}`;
+  if (context.weekLongRunDay.get(weekKey) === dayKey(day)) return "long_run";
+  return tier;
+}
+
 // ── instance day-line reconstruction (HRA-118) ──────────────────────────
 // plan_instance_days stores only resolved segments, never the original
 // D-line text — resolveDay (backend instantiate.ts) preserves each

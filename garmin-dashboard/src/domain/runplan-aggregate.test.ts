@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
-  buildInstanceSectionView, buildTemplateSectionView, computeResolvedDayDistance,
+  buildDayClassificationContext, buildInstanceSectionView, buildTemplateSectionView,
+  classifyResolvedDay, computeResolvedDayDistance,
   computeResolvedDayMetrics, computeTemplateDayDistance, getEffectivePacePolicy,
   groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
 } from "./runplan-aggregate";
@@ -295,6 +296,88 @@ describe("computeResolvedDayMetrics (HRA-145)", () => {
       workout_type: "cross", activity_target: { kind: "duration", duration_sec: 2700, raw: "45min" },
     }));
     expect(metrics).toEqual({ totalDistanceM: 0, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 2700 });
+  });
+});
+
+describe("classifyResolvedDay / buildDayClassificationContext (HRA-147)", () => {
+  function resolvedDay(overrides: Partial<ResolvedDay>): ResolvedDay {
+    return { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", needs_review: false, segments: [], ...overrides };
+  }
+  function continuousSeg(paceSecPerKm: number | null, distanceM = 5000): ResolvedSegment {
+    return { type: "continuous", target: target("distance", distanceM), resolved_pace_sec_per_km: paceSecPerKm, raw: `${distanceM}m` };
+  }
+
+  it("structural categories (cross/rest/interval/progression) always win over the pace heuristic, regardless of pace", () => {
+    const ctx = buildDayClassificationContext([]);
+    const interval: ResolvedSegment = { type: "interval", reps: 4, work_target: target("distance", 1000), work_resolved_pace_sec_per_km: 900, raw: "4x1000m" }; // deliberately very slow pace
+    const progression: ResolvedSegment = { type: "progression", target: target("distance", 5000), start_resolved_pace_sec_per_km: 900, end_resolved_pace_sec_per_km: 900, raw: "5km PROG" };
+    expect(classifyResolvedDay(resolvedDay({ segments: [interval] }), ctx)).toBe("intervals");
+    expect(classifyResolvedDay(resolvedDay({ segments: [progression] }), ctx)).toBe("progressive");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "cross" }), ctx)).toBe("cross_training");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "strength" }), ctx)).toBe("cross_training");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "rest" }), ctx)).toBe("rest");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "todo" }), ctx)).toBe("easy_recovery");
+  });
+
+  it("buckets a continuous day's resolved pace into a tercile of every resolved pace across the whole instance", () => {
+    // Six days, paces 200..300s/km in steps of 20 — the population the tercile bounds are computed against.
+    const days = [200, 220, 240, 260, 280, 300].map((pace, i) =>
+      resolvedDay({ day: i + 1, segments: [continuousSeg(pace)] }));
+    const ctx = buildDayClassificationContext(days);
+    // fastBound ~= 233.33, midBound ~= 266.67 (linear-interpolated 1/3 and 2/3 percentiles)
+    expect(classifyResolvedDay(days[0], ctx)).toBe("threshold"); // 200 <= fastBound
+    expect(classifyResolvedDay(days[2], ctx)).toBe("tempo"); // 240, between the two bounds
+    expect(classifyResolvedDay(days[5], ctx)).toBe("easy_recovery"); // 300, slowest third
+  });
+
+  it("a day with zero resolvable pace classifies as Easy/Recovery, never crashes or falls through to undefined", () => {
+    // An unknown-kind target with no resolved pace has zero volume (neither distance nor
+    // duration resolves), so this day is never a week's "long run" outlier by accident here.
+    const zeroVolumeDay = () => resolvedDay({
+      segments: [{ type: "continuous", target: target("unknown"), resolved_pace_sec_per_km: null, raw: "? @ ?" }],
+    });
+    const ctx = buildDayClassificationContext([zeroVolumeDay()]);
+    expect(classifyResolvedDay(zeroVolumeDay(), ctx)).toBe("easy_recovery");
+    // Also true when the whole instance has no resolvable pace at all (empty tercile population).
+    const emptyCtx = buildDayClassificationContext([]);
+    expect(classifyResolvedDay(resolvedDay({ segments: [continuousSeg(250)] }), emptyCtx)).toBe("easy_recovery");
+  });
+
+  it("Long-run overlay overrides the pace-tier badge on the week's strict-max-volume run day", () => {
+    const longDay = resolvedDay({ day: 1, segments: [continuousSeg(260, 15000)] }); // tempo-tier pace, but by far the week's longest
+    const shortDay1 = resolvedDay({ day: 3, segments: [continuousSeg(200, 5000)] });
+    const shortDay2 = resolvedDay({ day: 5, segments: [continuousSeg(320, 6000)] });
+    const ctx = buildDayClassificationContext([longDay, shortDay1, shortDay2]);
+    expect(classifyResolvedDay(longDay, ctx)).toBe("long_run"); // would otherwise be "tempo" by pace alone
+    expect(classifyResolvedDay(shortDay1, ctx)).toBe("threshold"); // not the week's outlier — keeps its own pace tier
+  });
+
+  it("Long-run overlay never fires on a tie for the week's max volume — falls back to the pace tier", () => {
+    const dayA = resolvedDay({ day: 1, segments: [continuousSeg(250, 10000)] });
+    const dayB = resolvedDay({ day: 3, segments: [continuousSeg(250, 10000)] }); // exact tie
+    const ctx = buildDayClassificationContext([dayA, dayB]);
+    expect(classifyResolvedDay(dayA, ctx)).toBe("threshold"); // same pace for both → both fall at the tercile's fastest bound
+    expect(classifyResolvedDay(dayB, ctx)).toBe("threshold");
+  });
+
+  it("Long-run overlay never overrides a structural category, even on the week's longest day", () => {
+    const interval: ResolvedSegment = { type: "interval", reps: 8, work_target: target("distance", 2000), work_resolved_pace_sec_per_km: 250, raw: "8x2000m" };
+    const longIntervalDay = resolvedDay({ day: 1, segments: [interval] }); // 16000m — the week's longest by far
+    const shortRun = resolvedDay({ day: 3, segments: [continuousSeg(250, 5000)] });
+    const ctx = buildDayClassificationContext([longIntervalDay, shortRun]);
+    expect(classifyResolvedDay(longIntervalDay, ctx)).toBe("intervals");
+  });
+
+  it("week grouping for the Long-run overlay is scoped by section AND week_number, not week_number alone", () => {
+    // Both sections have a "week 1" — if grouping ignored section_name, these
+    // four days would be pooled into one group and only the 20000m day would win.
+    const baseLong = resolvedDay({ section_name: "Base", week_number: 1, day: 1, segments: [continuousSeg(200, 5000)] });
+    const baseShort = resolvedDay({ section_name: "Base", week_number: 1, day: 3, segments: [continuousSeg(200, 3000)] });
+    const peakLong = resolvedDay({ section_name: "Peak", week_number: 1, day: 1, segments: [continuousSeg(200, 20000)] });
+    const peakShort = resolvedDay({ section_name: "Peak", week_number: 1, day: 3, segments: [continuousSeg(200, 2000)] });
+    const ctx = buildDayClassificationContext([baseLong, baseShort, peakLong, peakShort]);
+    expect(classifyResolvedDay(baseLong, ctx)).toBe("long_run"); // wins its own section's week 1, despite being far shorter than Peak's
+    expect(classifyResolvedDay(peakLong, ctx)).toBe("long_run");
   });
 });
 
