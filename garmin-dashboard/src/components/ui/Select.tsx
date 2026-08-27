@@ -12,7 +12,9 @@ interface SelectProps {
   onValueChange: (v: string) => void;
   options: SelectOption[];
   placeholder?: string;
-  triggerStyle?: CSSProperties;
+  triggerClassName?: string;
+  triggerWidth?: CSSProperties["width"];
+  triggerHeight?: CSSProperties["height"];
   // HRA-133: optional — Radix's own Root already supports this, just wasn't
   // forwarded yet (no caller needed it before the plan-instance screen's
   // template picker, which must actually lock once an instance exists, not
@@ -25,15 +27,27 @@ interface SelectProps {
 // their own state and side effects (what fetch a change triggers) unchanged.
 // :hover/[data-highlighted]/[data-state] pseudo-states need a real class
 // (same reason ui.tsx's Card uses .card:hover — see index.css).
-export function Select({ value, onValueChange, options, placeholder, triggerStyle, disabled }: SelectProps) {
+export function Select({ value, onValueChange, options, placeholder, triggerClassName, triggerWidth, triggerHeight, disabled }: SelectProps) {
   // The selected option's label, for the trigger's native `title` — lets a
   // truncated (ellipsized) trigger still show the full text on hover, same
   // as each open-list item below.
   const selectedLabel = options.find(o => o.value === value)?.label;
+  const triggerVars = triggerWidth != null || triggerHeight != null
+    ? {
+        "--select-trigger-width": typeof triggerWidth === "number" ? `${triggerWidth}px` : triggerWidth,
+        "--select-trigger-height": typeof triggerHeight === "number" ? `${triggerHeight}px` : triggerHeight,
+      } as CSSProperties
+    : undefined;
   return (
     <SelectPrimitive.Root value={value} onValueChange={onValueChange} disabled={disabled}>
-      <SelectPrimitive.Trigger className="hra-select-trigger" style={{ minWidth: 0, ...triggerStyle }} title={selectedLabel}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+      <SelectPrimitive.Trigger
+        className={["hra-select-trigger", triggerClassName].filter(Boolean).join(" ")}
+        style={triggerVars}
+        data-runtime-width={triggerWidth != null ? "true" : undefined}
+        data-runtime-height={triggerHeight != null ? "true" : undefined}
+        title={selectedLabel}
+      >
+        <span className="hra-select-value">
           <SelectPrimitive.Value placeholder={placeholder} />
         </span>
         <SelectPrimitive.Icon>

@@ -68,7 +68,8 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
         onValueChange={v => setSelectedTypeId(Number(v))}
         options={eligibleTypes.map(at => ({ value: String(at.id), label: at.name }))}
         placeholder={t("activity.typePicker.typePlaceholder", "Type")}
-        triggerStyle={selectWidth != null ? { width: selectWidth, height } : undefined}
+        triggerWidth={selectWidth}
+        triggerHeight={height}
       />
       <Popover open={open} onOpenChange={o => {
         setOpen(o);

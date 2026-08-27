@@ -86,7 +86,7 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
   }
 
   return (
-    <Card style={{ marginBottom: 16 }}>
+    <Card className="mb-4">
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
           <div className="hra-block-title">{t("manage.syncAll.title", "Sync all")}</div>

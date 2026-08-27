@@ -592,7 +592,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 onValueChange={v => onEventChange(v as EventType)}
                 options={eventOptions}
                 placeholder={eventPlaceholder}
-                triggerStyle={{ width: `${eventSelectWidth}ch` }}
+                triggerWidth={`${eventSelectWidth}ch`}
               />
             </div>
           </label>

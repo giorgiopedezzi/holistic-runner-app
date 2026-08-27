@@ -262,7 +262,7 @@ export function ClassificationCard({ activity, onUpdate, splitMeters: splitMeter
   const color = statusColor(status);
 
   return (
-    <Card style={{ marginBottom: 16 }}>
+    <Card className="mb-4">
       <div className="hra-control-row" style={{ gap: 10, marginBottom: 10 }}>
         {status === "confirmed" && activity.final_classification ? (
           <span className="hra-dyn-border hra-dyn-color" style={{

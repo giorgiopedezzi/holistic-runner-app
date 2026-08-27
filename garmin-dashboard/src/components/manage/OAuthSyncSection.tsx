@@ -115,7 +115,7 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
   const canSync   = status !== "running" && connected;
 
   return (
-    <Card style={{ marginBottom: 16 }}>
+    <Card className="mb-4">
       <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.oauth.syncTitle", `Sync ${label} ${noun}`, { label, noun })}</div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         {description}

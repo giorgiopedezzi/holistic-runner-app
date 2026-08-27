@@ -364,5 +364,9 @@
   "activity.classify.pendingReview": "Ausstehende Prüfung",
   "activity.classify.splitTooltip": "Split-Granularität für die (Neu-)Klassifizierung — feinere Splits können kurze Intervallstrukturen zeigen, die ein gröberer Split glättet",
   "activity.classify.split1km": "1km",
-  "activity.classify.split05km": "0,5km"
+  "activity.classify.split05km": "0,5km",
+  "runplan.targetBands.title": "Geplante Zieltempo-Bereiche",
+  "runplan.targetBands.distanceAxis": "Geplante Distanz ({{unit}})",
+  "runplan.targetBands.paceAxis": "Tempo ({{unit}})",
+  "runplan.targetBands.tooltipPace": "Zieltempo"
 }

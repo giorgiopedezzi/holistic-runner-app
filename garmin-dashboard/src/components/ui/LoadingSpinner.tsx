@@ -12,7 +12,7 @@ export function LoadingSpinner({ label, compact }: { label?: string; compact?: b
   return (
     <div className="hra-loading" data-compact={compact ? "true" : "false"}>
       <div className="hra-loading-track"><div className="hra-loading-bar" /></div>
-      <span className="hra-text-muted" style={{ fontSize: 12 }}>{label ?? t("common.loading", "Loading…")}</span>
+      <span className="hra-loading-label">{label ?? t("common.loading", "Loading…")}</span>
     </div>
   );
 }

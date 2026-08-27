@@ -665,7 +665,7 @@ export function ActivityChartSection({
         const cardData = key === "heart_rate" ? hrRecoveryChartData : chartData;
         return (
           <div key={key} style={{ marginTop: 16 }}>
-            <Label style={{ marginBottom: 4 }}>
+            <Label className="mb-1">
               {key === "speed"
                 ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
                 : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}

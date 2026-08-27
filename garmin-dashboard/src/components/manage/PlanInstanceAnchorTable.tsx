@@ -111,7 +111,7 @@ export function PlanInstanceAnchorTable({
                         value={row.relativeTo} onValueChange={v => setAnchorRelativeTo(anchor, v)}
                         options={templateAnchors.filter(a => a !== anchor).map(a => ({ value: a, label: a }))}
                         placeholder="—"
-                        triggerStyle={{ width: "100%" }}
+                        triggerClassName="w-full"
                         disabled={fieldDisabled}
                       />
                     </td>

@@ -1,8 +1,8 @@
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 interface LabelProps {
   children: ReactNode;
-  style?: CSSProperties;
+  className?: string;
 }
 
 // Micro-label primitive (HRA-96): uppercase, 11px, tracking-widest, secondary
@@ -12,9 +12,9 @@ interface LabelProps {
 // `.hra-label` class (index.css) — callers only ever pass `style` for
 // structural spacing overrides (margin), never color, so that stays a plain
 // passthrough (correction pass, CLAUDE.md's "styles live in index.css").
-export function Label({ children, style }: LabelProps) {
+export function Label({ children, className }: LabelProps) {
   return (
-    <div className="hra-label" style={style}>
+    <div className={["hra-label", className].filter(Boolean).join(" ")}>
       {children}
     </div>
   );

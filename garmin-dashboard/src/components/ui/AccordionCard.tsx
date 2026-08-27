@@ -19,22 +19,19 @@ interface AccordionCardProps {
 // expand state — this component is purely presentational, one section.
 export function AccordionCard({ title, expanded, onToggle, children }: AccordionCardProps) {
   return (
-    <div style={{ marginBottom: 16 }}>
+    <div className="hra-accordion-card">
       <button
-        className="card hra-text-primary"
+        type="button"
+        className="card hra-accordion-trigger"
         onClick={onToggle}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          width: "100%", textAlign: "left", padding: "14px 18px",
-          borderRadius: expanded ? "16px 16px 0 0" : "16px",
-          fontSize: 15, fontWeight: 600, cursor: "pointer",
-        }}
+        aria-expanded={expanded}
+        data-expanded={expanded}
       >
         {title}
-        <span className="hra-text-muted" style={{ fontSize: 12 }}>{expanded ? "▲" : "▼"}</span>
+        <span className="hra-accordion-chevron" aria-hidden="true">{expanded ? "▲" : "▼"}</span>
       </button>
       {expanded && (
-        <div className="card hra-card-joined-bottom" style={{ padding: "18px" }}>
+        <div className="card hra-card-joined-bottom hra-accordion-panel">
           {children}
         </div>
       )}

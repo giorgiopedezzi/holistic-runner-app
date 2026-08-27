@@ -1,0 +1,51 @@
+# .codex/rules/default.rules
+
+# Repository/source discovery.
+prefix_rule(
+    pattern = ["rg", "--files"],
+    decision = "allow",
+    justification = "Read-only repository file discovery.",
+)
+
+prefix_rule(
+    pattern = ["rg", "-n"],
+    decision = "allow",
+    justification = "Read-only source search.",
+)
+
+prefix_rule(
+    pattern = ["rg", "-n", "-i"],
+    decision = "allow",
+    justification = "Read-only case-insensitive source search.",
+)
+
+# Safe git inspection.
+prefix_rule(
+    pattern = ["git", "status"],
+    decision = "allow",
+    justification = "Read-only repository status inspection.",
+)
+
+prefix_rule(
+    pattern = ["git", "diff"],
+    decision = "allow",
+    justification = "Read-only diff inspection.",
+)
+
+prefix_rule(
+    pattern = ["git", "log"],
+    decision = "allow",
+    justification = "Read-only history inspection.",
+)
+
+prefix_rule(
+    pattern = ["git", "show"],
+    decision = "allow",
+    justification = "Read-only Git object/history inspection.",
+)
+
+prefix_rule(
+    pattern = ["git", "branch", "--show-current"],
+    decision = "allow",
+    justification = "Read-only branch inspection.",
+)

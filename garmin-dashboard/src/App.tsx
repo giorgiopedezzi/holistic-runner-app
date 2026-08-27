@@ -101,7 +101,7 @@ function AppShell() {
       value={currentRaceId != null ? String(currentRaceId) : NO_RACE}
       onValueChange={pickRace}
       placeholder={t("dateRange.pickRace", "Pick a race…")}
-      triggerStyle={{ flex: "1 1 220px", minWidth: 0 }}
+      triggerClassName="hra-select-grow"
       options={[
         { value: NO_RACE, label: t("dateRange.noneOption", "— none —") },
         ...races.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) })),

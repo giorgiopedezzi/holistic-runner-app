@@ -23,19 +23,15 @@
      value so the two stay in sync if the header's own sizing ever changes. */
   --header-height:  48px;
 
-  /* Typography scale (dashboard design-system rework) — deliberately just 6
-     sizes app-wide, hierarchy comes from weight/spacing, not more sizes.
-     display = page titles/hero values; heading = section/card titles; body =
-     normal text; data = KPI values/important numbers; label = controls/
-     legends; meta = secondary/comparison text. Applied throughout this file;
-     literal font-size/font-weight values inside individual component TSX
-     files are a separate, later sweep (out of this pass's scope). */
-  --fs-display: 22px; --fw-display: 600;
-  --fs-heading: 18px; --fw-heading: 600;
-  --fs-body:    15px; --fw-body:    400;
-  --fs-data:    16px; --fw-data:    600;
-  --fs-label:   13px; --fw-label:   500;
-  --fs-meta:    11px; --fw-meta:    400;
+  /* Temporary compatibility aliases for the pre-Tailwind typography names.
+     The authoritative role values live once in @theme static below. HRA-181
+     removes these aliases after HRA-178/179/180 migrate every consumer. */
+  --fs-display: var(--text-display); --fw-display: var(--text-display--font-weight);
+  --fs-heading: var(--text-heading); --fw-heading: var(--text-heading--font-weight);
+  --fs-body:    var(--text-body);    --fw-body:    var(--text-body--font-weight);
+  --fs-data:    var(--text-data);    --fw-data:    var(--text-data--font-weight);
+  --fs-label:   var(--text-label);   --fw-label:   var(--text-label--font-weight);
+  --fs-meta:    var(--text-meta);    --fw-meta:    var(--text-meta--font-weight);
 
   /* Dark Metal — the primary/default theme (dashboard design-system
      rework). :root duplicates its values directly (not just a fallback) so
@@ -95,13 +91,6 @@
      The flat --data-pace/--data-hr tokens above remain each series'
      identity color for legend, axis ticks and tooltip text. */
 
-  --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
-  --font-mono: "JetBrains Mono", "Fira Code", monospace;
-
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
-
   /* Uniform control height (manage/PlanInstancesSection.tsx's instantiate
      form) — applied to every editable control in a row (text input, Select
      trigger, DatePicker trigger, segmented switch) so mixed control types
@@ -159,13 +148,54 @@
   --dyn-color:    var(--text-primary);
   --dyn-bg:       var(--bg-card);
   --dyn-border:   var(--border);
+  --badge-color: var(--accent);
+  --checkbox-color: var(--accent);
+  --checkbox-size: 14px;
+  --confirm-modal-max-width: 360px;
+  --progress-color: var(--accent-green);
+  --progress-width: 0%;
+  --select-trigger-width: auto;
+  --select-trigger-height: auto;
 
   color-scheme: dark;
 }
 
+@theme static {
+  --font-sans: "Geist Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+
+  /* Six roles only. Tailwind's font-size metadata makes each text-* utility
+     set its approved weight together with its one authoritative size. */
+  --text-display: 22px; --text-display--font-weight: 600;
+  --text-heading: 18px; --text-heading--font-weight: 600;
+  --text-body:    15px; --text-body--font-weight:    400;
+  --text-data:    16px; --text-data--font-weight:    600;
+  --text-label:   13px; --text-label--font-weight:   500;
+  --text-meta:    11px; --text-meta--font-weight:    400;
+}
+
 @theme inline {
+  /* Generated utilities resolve through the runtime properties above, so
+     the active :root[data-theme][data-palette] selector remains authoritative. */
+  --color-background:           var(--bg);
+  --color-surface:              var(--bg-surface);
+  --color-card:                 var(--bg-card);
+  --color-danger-surface:       var(--bg-danger);
+  --color-border:               var(--border);
+  --color-border-strong:        var(--border-strong);
+  --color-foreground:           var(--text-primary);
+  --color-foreground-secondary: var(--text-secondary);
+  --color-foreground-muted:     var(--text-muted);
   --color-accent:      var(--accent);
   --color-on-accent:   var(--on-accent);
+  --color-success:     var(--accent-green);
+  --color-info:        var(--accent-blue);
+  --color-danger:      var(--accent-red);
+  --color-warning:     var(--accent-orange);
   --color-data-pace:   var(--data-pace);
   --color-data-hr:     var(--data-hr);
   --color-data-elev:   var(--data-elev);
@@ -1386,6 +1416,125 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-calendar .rdp-outside .rdp-day_button { color: var(--text-muted); opacity: 0.5; }
 .hra-calendar .rdp-disabled .rdp-day_button { color: var(--text-muted); opacity: 0.3; cursor: not-allowed; }
 
+/* Shared primitives (HRA-178). Static recipes live here; component-side
+   style props now carry only the runtime custom properties declared above. */
+.hra-accordion-card { margin-bottom: 16px; }
+.hra-accordion-trigger {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 14px 18px; border-radius: var(--radius-lg);
+  color: var(--text-primary); font-size: var(--text-body); font-weight: 600;
+  text-align: left; cursor: pointer;
+}
+.hra-accordion-trigger[data-expanded="true"] { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+.hra-accordion-chevron { color: var(--text-muted); font-size: var(--text-meta); }
+.hra-accordion-panel { padding: 18px; }
+
+.hra-badge {
+  display: inline-block; padding: 2px 9px; border-radius: 20px;
+  color: var(--badge-color); background: color-mix(in srgb, var(--badge-color) 13%, transparent);
+  font-size: var(--text-meta); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+}
+
+.hra-chart-card { padding: 16px 8px 8px; }
+.hra-chart-card-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px; padding: 0 8px;
+}
+.hra-chart-card-title { color: var(--text-secondary); font-size: var(--text-label); font-weight: var(--text-label--font-weight); }
+.hra-chart-card-controls { margin-bottom: 8px; padding: 0 8px; }
+.hra-chart-card-subheader { margin-bottom: 10px; padding: 0 8px; }
+.hra-chart-pill-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.hra-checkbox {
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: var(--checkbox-size); height: var(--checkbox-size); border: 1px solid var(--border-strong);
+  border-radius: 4px; background: transparent; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.hra-checkbox[data-state="checked"] { border-color: var(--checkbox-color); background: var(--checkbox-color); }
+.hra-checkbox[data-disabled] { cursor: not-allowed; opacity: 0.4; }
+.hra-checkbox-indicator { display: flex; }
+
+.hra-confirm-modal-backdrop {
+  position: fixed; inset: 0; z-index: 100; display: flex;
+  align-items: center; justify-content: center; padding: 24px;
+}
+.hra-confirm-modal {
+  width: 100%; max-width: var(--confirm-modal-max-width); padding: 20px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-surface);
+}
+.hra-confirm-modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.hra-confirm-modal-cancel {
+  padding: 6px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: none; color: var(--text-secondary); font-size: var(--text-meta); cursor: pointer;
+}
+
+.hra-empty { padding: 40px 0; color: var(--text-muted); font-size: var(--text-label); text-align: center; }
+.hra-loading-label { color: var(--text-muted); font-size: var(--text-meta); }
+
+.hra-pagination {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 12px; margin-top: 14px; color: var(--text-secondary); font-size: var(--text-meta);
+}
+.hra-pagination-size, .hra-pagination-controls, .hra-pagination-page { display: flex; align-items: center; }
+.hra-pagination-size, .hra-pagination-page { gap: 6px; }
+.hra-pagination-controls { gap: 4px; }
+.hra-pagination-page { margin: 0 6px; }
+.hra-pagination-select { padding: 3px 8px; font-size: var(--text-meta); }
+.hra-pagination-button {
+  padding: 4px 9px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--bg-card); color: var(--text-primary); font-size: var(--text-meta); cursor: pointer;
+}
+.hra-pagination-button:disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.5; }
+.hra-pagination-input { width: 48px; padding: 3px 6px; font-size: var(--text-meta); text-align: center; }
+
+.hra-progress-label {
+  display: flex; justify-content: space-between; margin-bottom: 6px;
+  color: var(--text-secondary); font-size: var(--text-meta);
+}
+.hra-progress-track { position: relative; height: 6px; overflow: hidden; border-radius: 999px; background: var(--border); }
+.hra-progress-bar {
+  width: var(--progress-width); height: 100%; border-radius: 999px;
+  background: var(--progress-color); transition: width 0.2s ease;
+}
+.hra-progress-bar[data-indeterminate] {
+  position: absolute; top: 0; bottom: 0; width: 40%;
+  animation: progress-indeterminate 1.1s ease-in-out infinite;
+}
+
+.hra-section-title {
+  margin: 24px 0 12px; color: var(--text-secondary);
+  font-size: var(--text-label); font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase;
+}
+.hra-select-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hra-select-trigger[data-runtime-width] { width: var(--select-trigger-width); }
+.hra-select-trigger[data-runtime-height] { height: var(--select-trigger-height); }
+.hra-select-trigger[data-disabled] { cursor: not-allowed; opacity: 0.4; }
+.hra-select-window { width: 90px; }
+.hra-select-grow { flex: 1 1 220px; min-width: 0; }
+.hra-select-race { flex: 1.5 1 100px; min-width: 0; }
+.hra-select-first-column { flex: 2 1 120px; min-width: 0; }
+.hra-select-placeholder-hidden { visibility: hidden; pointer-events: none; }
+.hra-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.hra-stat-label { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.hra-sport-summary-card {
+  display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+  font-size: var(--text-label);
+}
+
+.hra-status-line {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+  color: var(--text-secondary); font-size: var(--text-meta);
+}
+.hra-status-line-icon { color: var(--text-muted); font-size: 10px; }
+.hra-status-line[data-state="ok"] .hra-status-line-icon { color: var(--accent-green); }
+.hra-status-line[data-state="error"] .hra-status-line-icon { color: var(--accent-red); }
+.hra-status-line-recheck {
+  padding: 2px 5px; border: none; border-radius: var(--radius-sm);
+  background: none; color: var(--text-muted); font-size: var(--text-label); line-height: 1; cursor: pointer;
+}
+.hra-status-line-recheck:disabled { cursor: not-allowed; }
+
 @keyframes progress-indeterminate {
   0%   { transform: translateX(-40%); }
   100% { transform: translateX(220%); }
@@ -1598,7 +1747,8 @@ input:focus, select:focus { border-color: var(--accent); }
    per-instance hook (Stat's existing `accent` prop threads straight through
    to it), defaulting to --text-primary. */
 .hra-label {
-  font-size: var(--fs-meta); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+  font-size: var(--text-meta); font-weight: var(--text-meta--font-weight);
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
 }
 .hra-kpi-value {
   font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em; line-height: 1; white-space: nowrap;

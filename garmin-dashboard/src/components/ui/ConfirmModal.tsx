@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 // HRA-167: extracted from PlanInstancesSection.tsx's 8 hand-rolled confirm
@@ -22,14 +22,20 @@ export function ConfirmModal({ open, title, confirmLabel, cancelLabel, variant =
   const { t } = useTranslation();
   if (!open) return null;
   return (
-    <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={onCancel}>
-      <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth, padding: 20 }} onClick={e => e.stopPropagation()}>
+    <div className="hra-modal-backdrop hra-confirm-modal-backdrop" onClick={onCancel}>
+      <div
+        className="hra-confirm-modal hra-bg-surface hra-border"
+        role="dialog"
+        aria-modal="true"
+        style={{ "--confirm-modal-max-width": `${maxWidth}px` } as CSSProperties}
+        onClick={e => e.stopPropagation()}
+      >
         {title}
-        <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={onCancel}>
+        <div className="hra-confirm-modal-actions">
+          <button type="button" className="hra-confirm-modal-cancel" onClick={onCancel} autoFocus>
             {cancelLabel ?? t("common.cancel", "Cancel")}
           </button>
-          <button className="hra-btn" data-variant={variant === "default" ? undefined : variant} onClick={onConfirm}>
+          <button type="button" className="hra-btn" data-variant={variant === "default" ? undefined : variant} onClick={onConfirm}>
             {confirmLabel}
           </button>
         </div>

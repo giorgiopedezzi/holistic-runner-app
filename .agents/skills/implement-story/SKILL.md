@@ -194,11 +194,27 @@ State in the review comment exactly which objective criterion fired and the supp
 
 ## 9. Jira write safety
 
-### ADF checklists
+## Acceptance Criteria — Jira ADF action items
 
-A Story Acceptance Criteria checklist may be a real ADF `taskList` / `taskItem`, not markdown.
+Read and follow:
 
-Never replace a real checklist with literal `- [ ]` / `- [x]` markdown. If checklist state must be changed, preserve the entire description as ADF and change only the task item state. If the available tool cannot safely preserve ADF, leave the checklist unchanged and report it.
+`.agents/workflows/jira-acceptance-criteria.md`
+
+Acceptance Criteria are real Jira ADF `taskList` / `taskItem` nodes.
+
+During this Story:
+
+- verify each Acceptance Criterion individually;
+- mark only objectively verified criteria `DONE`;
+- leave unproven criteria `TODO`;
+- preserve the full description as ADF;
+- never round-trip the description through markdown;
+- never substitute literal `- [x]` text for Jira action items.
+
+Checklist completion is part of the verification evidence, not a cosmetic final step.
+
+If the Jira tool cannot safely preserve ADF, do not modify the checklist; report that limitation in the In Review comment.
+
 
 ### Issue links
 
@@ -215,6 +231,7 @@ When implementation and verification are complete:
 1. Set `Actual thinking effort` using the rule above.
 2. Transition the Story to **In Review** using the actual transition available in Jira.
 3. Post a PR-style review comment containing:
+   - Acceptance Criteria checklist state, including any criterion left `TODO` and why;
    - scope implemented;
    - files changed;
    - verification evidence;

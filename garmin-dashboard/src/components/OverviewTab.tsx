@@ -1343,7 +1343,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
       <div className="hra-sticky-summary">
         {dateRangeBar}
       </div>
-      {linkedRaceRow && <Card style={{ marginBottom: 20 }}>{linkedRaceRow}</Card>}
+      {linkedRaceRow && <Card className="mb-5">{linkedRaceRow}</Card>}
 
       <TrendsBySport from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} compareEnabled={compareRange.enabled}
         run={run} prevRun={prevRun} viewMode={viewMode} setViewMode={setViewMode}
@@ -1369,7 +1369,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
                 <Card
                   key={s.sport}
                   tooltip={tooltip}
-                  style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 16px", fontSize: 14 }}
+                  className="hra-sport-summary-card"
                 >
                   <Badge label={s.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][s.sport ?? "other"] ?? "#888"} />
                   <span className="hra-text-primary" style={{ flex: 1, fontWeight: 500 }}>

@@ -1,4 +1,3 @@
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 
 // "● connected" / "○ not connected" indicator with an optional manual
@@ -12,30 +11,20 @@ interface StatusLineProps {
   onRecheck?: () => void;
 }
 
-const STATUS_COLOR: Record<StatusLineProps["state"], string> = {
-  checking: "var(--text-muted)",
-  ok:       "var(--accent-green)",
-  warn:     "var(--text-muted)",
-  error:    "var(--accent-red)",
-};
-
 export function StatusLine({ state, message, onRecheck }: StatusLineProps) {
   const { t } = useTranslation();
   const checking = state === "checking";
   return (
-    <div className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, fontSize: 12 }}>
-      <span className="hra-dyn-color" style={{ "--dyn-color": STATUS_COLOR[state], fontSize: 10 } as CSSProperties}>{checking ? "⏳" : "●"}</span>
+    <div className="hra-status-line" data-state={state}>
+      <span className="hra-status-line-icon" aria-hidden="true">{checking ? "⏳" : "●"}</span>
       <span>{message}</span>
       {onRecheck && (
         <button
-          className="hra-nav-hover hra-text-muted"
+          type="button"
+          className="hra-status-line-recheck"
           onClick={onRecheck}
           disabled={checking}
           title={t("common.recheck", "Recheck")}
-          style={{
-            background: "none", border: "none", borderRadius: "var(--radius-sm)",
-            cursor: checking ? "not-allowed" : "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1,
-          }}
         >
           ⟳
         </button>

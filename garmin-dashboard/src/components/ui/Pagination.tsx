@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Select } from "./Select";
 
@@ -28,42 +27,35 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
     setJumpTo(String(n));
   }
 
-  const btnStyle = (disabled: boolean): CSSProperties => ({
-    fontSize: 12, padding: "4px 9px", borderRadius: 6,
-    "--dyn-color": disabled ? "var(--text-muted)" : "var(--text-primary)",
-    cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.5 : 1,
-  } as CSSProperties);
-  const btnClass = "hra-border-strong hra-bg-card hra-dyn-color";
-
   return (
-    <div className="hra-text-secondary" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, marginTop: 14, fontSize: 12 }}>
-      <div className="hra-row" style={{ gap: 6 }}>
+    <div className="hra-pagination">
+      <div className="hra-pagination-size">
         <span>{t("common.perPage", "Per page")}</span>
         <Select
           value={String(perPage)}
           onValueChange={v => onPerPageChange(Number(v))}
           options={perPageOptions.map(n => ({ value: String(n), label: String(n) }))}
-          triggerStyle={{ fontSize: 12, padding: "3px 8px" }}
+          triggerClassName="hra-pagination-select"
         />
         <span className="hra-text-muted">{t("common.totalCount", `· ${totalItems} total`, { n: totalItems })}</span>
       </div>
 
-      <div className="hra-row" style={{ gap: 4 }}>
-        <button className={btnClass} onClick={() => onPageChange(1)} disabled={page <= 1} style={btnStyle(page <= 1)}>«</button>
-        <button className={btnClass} onClick={() => onPageChange(page - 1)} disabled={page <= 1} style={btnStyle(page <= 1)}>‹</button>
-        <span className="hra-row" style={{ gap: 6, margin: "0 6px" }}>
+      <div className="hra-pagination-controls">
+        <button type="button" className="hra-pagination-button" onClick={() => onPageChange(1)} disabled={page <= 1}>«</button>
+        <button type="button" className="hra-pagination-button" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>‹</button>
+        <span className="hra-pagination-page">
           {t("common.pageLabel", "Page")}
           <input
             type="number" min={1} max={totalPages} value={jumpTo}
             onChange={e => setJumpTo(e.target.value)}
             onBlur={commitJump}
             onKeyDown={e => e.key === "Enter" && commitJump()}
-            style={{ width: 48, fontSize: 12, padding: "3px 6px", textAlign: "center" }}
+            className="hra-pagination-input"
           />
           {t("common.ofTotalPages", `of ${totalPages}`, { n: totalPages })}
         </span>
-        <button className={btnClass} onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>›</button>
-        <button className={btnClass} onClick={() => onPageChange(totalPages)} disabled={page >= totalPages} style={btnStyle(page >= totalPages)}>»</button>
+        <button type="button" className="hra-pagination-button" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>›</button>
+        <button type="button" className="hra-pagination-button" onClick={() => onPageChange(totalPages)} disabled={page >= totalPages}>»</button>
       </div>
     </div>
   );

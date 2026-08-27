@@ -1,0 +1,25 @@
+# Project-scoped Codex defaults.
+# This file is honored only when the repository is trusted.
+# Authenticate Codex with "Sign in with ChatGPT"; do not put API keys in this repo.
+
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+model_reasoning_summary = "concise"
+model_verbosity = "low"
+
+# Keep the human in the loop for commands that need escalation.
+approval_policy = "on-request"
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+network_access = false
+
+# Jira / Confluence via Atlassian Rovo MCP.
+# OAuth credentials are stored outside the repo by Codex.
+[mcp_servers.atlassian]
+url = "https://mcp.atlassian.com/v1/mcp/authv2"
+enabled = true
+required = false
+default_tools_approval_mode = "writes"
+startup_timeout_sec = 20
+tool_timeout_sec = 60

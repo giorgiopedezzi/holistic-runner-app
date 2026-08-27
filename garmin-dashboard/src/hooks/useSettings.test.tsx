@@ -9,7 +9,7 @@
  * (including the load-bearing unit-propagation regression) stay unmodified.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import App from "@/App";
 import { installFetch, paginated, type Routes } from "@/test/api-stub";
 import {
@@ -66,7 +66,7 @@ describe("settings — single fetch across the app (HRA-76)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Overview & Trends" }));
+    fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "Overview & Trends" }));
     // Longer timeout than the default 1000ms — remounting Overview after a
     // full cycle through every other tab, on top of the graph-first layout's
     // extra nested rendering, is the slowest of this test's checks in this

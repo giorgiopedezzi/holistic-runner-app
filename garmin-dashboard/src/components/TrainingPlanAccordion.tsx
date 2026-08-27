@@ -24,6 +24,7 @@ import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
+import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
 // below — plain index tuples, same "sectionIndex/weekIndex/dayIndex" shape
@@ -436,6 +437,7 @@ function InstanceDayRow({
           />
         )}
       </div>
+      {day.paceTargetBands && <PlannedPaceTargetChart model={day.paceTargetBands} />}
       {day.needs_review && day.warnings.length > 0 && (
         <ul className="hra-text-danger" style={{ fontSize: 12, margin: "6px 0 0", paddingLeft: 18 }}>
           {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}

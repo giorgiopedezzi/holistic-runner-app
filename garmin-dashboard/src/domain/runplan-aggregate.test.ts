@@ -222,6 +222,9 @@ describe("view-model builders", () => {
     expect(view.totals.distance).toEqual({ meters: 6000, approximate: false });
     expect(view.weeks[0].days[0].dsl).toBe("D1: 6km @ RG");
     expect(view.weeks[0].raw_dsl).toBe("");
+    expect(view.weeks[0].days[0].paceTargetBands?.pieces[0]).toMatchObject({
+      kind: "band", startDistanceM: 0, endDistanceM: 6000,
+    });
     // HRA-148: trainingLoadCategory is populated on the instance path (it's the week's
     // only, and therefore longest, run day, so the long-run overlay wins here).
     expect(view.weeks[0].days[0].trainingLoadCategory).toBe("long_run");

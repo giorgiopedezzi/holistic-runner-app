@@ -27,15 +27,15 @@ interface ChartCardProps {
 
 export function ChartCard({ title, legend, controlsRow, subHeader, children }: ChartCardProps) {
   return (
-    <Card style={{ padding: "16px 8px 8px" }}>
+    <Card className="hra-chart-card">
       {(title || legend) && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "0 8px" }}>
-          {title && <div className="hra-text-secondary" style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>}
+        <div className="hra-chart-card-header">
+          {title && <div className="hra-chart-card-title">{title}</div>}
           {legend}
         </div>
       )}
-      {controlsRow && <div style={{ marginBottom: 8, padding: "0 8px" }}>{controlsRow}</div>}
-      {subHeader && <div style={{ marginBottom: 10, padding: "0 8px" }}>{subHeader}</div>}
+      {controlsRow && <div className="hra-chart-card-controls">{controlsRow}</div>}
+      {subHeader && <div className="hra-chart-card-subheader">{subHeader}</div>}
       {children}
     </Card>
   );
@@ -95,7 +95,7 @@ interface ChartPillLegendProps {
 
 export function ChartPillLegend({ items, onToggle }: ChartPillLegendProps) {
   return (
-    <div className="hra-chip-row" style={{ gap: 6 }}>
+    <div className="hra-chart-pill-legend">
       {items.map(item => (
         // --legend-color is the one per-series hook; every actual visual
         // (border/background/glow/dim-when-off) is owned by .hra-legend-chip

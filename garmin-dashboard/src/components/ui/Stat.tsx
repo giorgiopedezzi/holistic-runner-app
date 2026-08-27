@@ -40,7 +40,7 @@ export function Stat({ label, value, sub, accent, tooltip, icon, deltaText, delt
   const { main, unit } = splitUnit(value);
   return (
     <Card className="hra-lift" tooltip={tooltip}>
-      <Label style={{ marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
+      <Label className="hra-stat-label">
         {icon && <span className="hra-stat-icon" aria-hidden="true">{icon}</span>}
         {label}
       </Label>

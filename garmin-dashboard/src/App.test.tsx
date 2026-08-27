@@ -9,7 +9,7 @@
  * "optimises" tabs to stay mounted, THIS test is what fails.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import App from "./App";
 import { installFetch, paginated, json, type Routes } from "@/test/api-stub";
 import {
@@ -100,7 +100,7 @@ describe("unit-system propagation across tabs (load-bearing)", () => {
 
     // Switch back to Overview — the tab remounts and re-reads the (now
     // imperial) module unit system.
-    fireEvent.click(screen.getByRole("button", { name: "Overview & Trends" }));
+    fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "Overview & Trends" }));
     await waitFor(() => expect(screen.getByText("min/mi")).toBeInTheDocument());
     expect(screen.queryByText("min/km")).not.toBeInTheDocument();
   });

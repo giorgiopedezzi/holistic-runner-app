@@ -100,7 +100,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           // whatever's selected ("7d" vs "Custom range" vs a longer preset
           // label), which drifted out of sync with the spacer's fixed
           // content and broke that alignment.
-          triggerStyle={{ width: 90 }}
+          triggerClassName="hra-select-window"
           options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
         <span className="hra-text-muted" style={orStyle}>or</span>
@@ -112,7 +112,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
           onValueChange={pickCurrent}
           placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
-          triggerStyle={{ flex: "1 1 220px", minWidth: 0 }}
+          triggerClassName="hra-select-grow"
           options={[
             { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
             ...savedRanges.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
@@ -143,7 +143,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
                 value={NO_NAMED_RANGE}
                 onValueChange={() => {}}
                 placeholder={t("dateRange.customRange", "Custom range")}
-                triggerStyle={{ width: 90, visibility: "hidden", pointerEvents: "none" }}
+                triggerClassName="hra-select-window hra-select-placeholder-hidden"
                 options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
               />
               <span className="hra-text-muted" style={{ ...orStyle, visibility: "hidden" }}>or</span>
@@ -156,7 +156,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
               value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}
               onValueChange={pickCompare}
               placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
-              triggerStyle={{ flex: "1 1 220px", minWidth: 0 }}
+              triggerClassName="hra-select-grow"
               options={[
                 { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
                 ...eligibleForCompare.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),

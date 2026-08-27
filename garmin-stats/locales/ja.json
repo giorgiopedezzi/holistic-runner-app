@@ -364,5 +364,9 @@
   "activity.classify.pendingReview": "レビュー待ち",
   "activity.classify.splitTooltip": "（再）分類に使用するスプリット粒度。細かいスプリットは、粗いスプリットではならされる短いインターバル構造を表面化できます",
   "activity.classify.split1km": "1km",
-  "activity.classify.split05km": "0.5km"
+  "activity.classify.split05km": "0.5km",
+  "runplan.targetBands.title": "計画ペース目標帯",
+  "runplan.targetBands.distanceAxis": "計画距離（{{unit}}）",
+  "runplan.targetBands.paceAxis": "ペース（{{unit}}）",
+  "runplan.targetBands.tooltipPace": "目標ペース"
 }

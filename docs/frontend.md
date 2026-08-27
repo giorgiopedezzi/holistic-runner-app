@@ -711,14 +711,49 @@ Light Metal: --accent #2563EB  --accent-green #16A34A  --accent-red #DC2626  --a
 Light Warm:  --accent #F59E0B  --accent-green #22C55E  --accent-red #D14343  --accent-orange #b45309
 ```
 
-**Two further token families sit on top of the above (HRA-94, Design System Foundation), each with its own `@theme inline` mapping in `index.css` so they're usable both as `var(--x)` and as Tailwind utility classes (`bg-accent`, `text-data-pace`, …):**
+**Runtime theme values and generated utilities (HRA-177).** The existing bare `:root` fallback and
+`:root[data-theme][data-palette]` selectors remain the authority for colors. Tailwind's top-level
+`@theme inline` block maps those runtime properties into generated semantic utilities, so changing the
+active attributes changes both existing `var(--x)` consumers and Tailwind consumers. The mappings are:
+
+- surfaces: `bg-background`, `bg-surface`, `bg-card`, `bg-danger-surface`;
+- text: `text-foreground`, `text-foreground-secondary`, `text-foreground-muted`;
+- borders: `border-border`, `border-border-strong` (the color tokens also work with other color-aware utilities);
+- chrome/status: `bg-accent`, `text-on-accent`, and the `success`, `info`, `danger`, `warning` color names;
+- data: the `data-pace`, `data-hr`, `data-elev`, `data-weight`, `data-fat`, and `data-muscle` color names.
+
+The generated names are the component-facing API; do not copy a palette literal into a component.
+Values that vary at runtime remain ordinary CSS properties (`--bg*`, `--text-*`, `--border*`,
+`--accent*`, `--data-*`). Theme-invariant fonts, radii, and typography-role definitions live in a
+separate `@theme static` block. `static` ensures their CSS variables are emitted even before component
+migration, which keeps existing CSS compatibility aliases valid while also generating utilities.
 
 - **Fixed semantic data colors** — `--data-pace` (`#4A8FC7`), `--data-hr` (`#C92F3D`), `--data-elev` (`#3a8ef5`), `--data-weight` (`#3a8ef5`), `--data-fat` (`#d97706`), `--data-muscle` (`#15965f`). Same metric = same color everywhere; these do **not** vary per theme — declared once in bare `:root`, not repeated per theme×palette block. `--data-pace`/`--data-hr` are each their ramp's fastest/highest anchor (the actual continuous gradients live in `components/activity/shared.ts`'s `SPEED_COLOR_STOPS`/`HR_COLOR_STOPS`, see the Activity detail chart section) and are deliberately theme-invariant by design (dashboard design-system rework sections 4/7) — never derived from `--accent`, unlike the chrome tokens above. `--data-hr` is deliberately its own red, distinct from `--accent-red` (system danger) — see section 8.
 - **`--accent`** now governs interactive chrome only (buttons, active pills, links, rings, focus) and is fixed per theme×palette block (see the table above) — no longer independently user-selectable (the HRA-95 `AccentPicker` was removed in the dashboard design-system rework; see the Appearance section).
 
 **Tailwind v4 + shadcn/ui setup**: `@tailwindcss/vite` plugin in `vite.config.ts`, `@import "tailwindcss";` at the top of `index.css`, `components.json` at the `garmin-dashboard/` root (style `new-york`, `cssVariables: true`, baseColor `zinc`), and `src/lib/utils.ts`'s `cn()` (clsx + tailwind-merge) for the `shadcn` CLI to target when later stories start adding components. No `tailwind.config.*` file — v4 is CSS-first, all configuration lives in `index.css`'s `@theme` block.
 
-**Typography scale (dashboard design-system rework)** — 6 sizes app-wide, `--fs-display`(22px)/`--fs-heading`(18px)/`--fs-body`(15px)/`--fs-data`(16px)/`--fs-label`(13px)/`--fs-meta`(11px), each paired with an `--fw-*` weight (600/600/400/600/500/400). Applied throughout `index.css`'s own classes (KPI values, labels, buttons, tooltips, etc.); hierarchy comes from weight/spacing, not from adding more sizes. Literal font-size/font-weight values inside individual component TSX files (inline styles) are a separate, later sweep — not yet done.
+**Shared primitive styling contracts (HRA-178).** Files under `components/ui` keep static layout,
+typography, state, and ellipsis recipes in semantic `hra-*` classes, with Tailwind utilities composed
+at caller boundaries for ordinary spacing and width. `Card` and `Label` accept `className`; `Select`
+accepts `triggerClassName` plus narrowly typed `triggerWidth` and `triggerHeight` runtime hooks;
+`Checkbox` accepts `className` plus its runtime `color` and `size`. Per-instance color, dimension,
+modal-width, and progress values cross the JSX/CSS boundary through declared custom properties, so a
+primitive never mixes runtime variables with static inline declarations. `ConfirmModal` retains its
+legacy `hra-bg-surface` and `hra-border` hooks as part of the existing caller/test contract.
+
+**Typography scale (dashboard design-system rework)** — exactly six authoritative Tailwind roles:
+`text-display` (22px/600), `text-heading` (18px/600), `text-body` (15px/400), `text-data`
+(16px/600), `text-label` (13px/500), and `text-meta` (11px/400). Each role's size and default
+weight are defined once as `--text-<role>` and `--text-<role>--font-weight` in `@theme static`, so the
+one utility applies both. There is deliberately no 12px role; do not introduce `text-[12px]` (map
+metadata to 11px or labels to 13px according to meaning). `font-sans`, `font-mono`, and
+`rounded-sm`/`rounded-md`/`rounded-lg` are governed by the same CSS-first block.
+
+`--fs-*` and `--fw-*` now exist only as compatibility aliases for CSS classes that predate the
+Tailwind contract. HRA-178/HRA-179/HRA-180 migrate those consumers; final enforcement Story HRA-181
+must remove the aliases. Existing literal component typography belongs to those migration Stories,
+not this contract Story.
 
 Per-instance custom-property hooks declared in :root (2026-08-17) — --swatch-color (default var(--accent)), --kpi-color (default var(--text-primary)), --legend-color (default var(--text-secondary)). Components set them inline only where a value is genuinely per-instance; declaring them with defaults keeps every var() reference valid CSS without the inline hook and lets IDE inspection (WebStorm) resolve the names (it previously warned on all three).
 --accent-glow removed (2026-08-17) — the fixed cyan pairing token existed for the two-glow ambient and the pill's second gradient stop; both went single-hue/monochromatic on 2026-08-17, so the token was deleted. --accent-light now serves both the hero ring (--accent-strong → --accent-light) and the active pill gradient.

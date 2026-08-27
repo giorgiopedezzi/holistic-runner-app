@@ -364,5 +364,9 @@
   "activity.classify.pendingReview": "Revisión pendiente",
   "activity.classify.splitTooltip": "Granularidad de splits usada para (re)clasificar; splits más finos pueden revelar estructura de intervalos cortos que un split más grueso suaviza",
   "activity.classify.split1km": "1km",
-  "activity.classify.split05km": "0,5km"
+  "activity.classify.split05km": "0,5km",
+  "runplan.targetBands.title": "Bandas de ritmo objetivo planificadas",
+  "runplan.targetBands.distanceAxis": "Distancia planificada ({{unit}})",
+  "runplan.targetBands.paceAxis": "Ritmo ({{unit}})",
+  "runplan.targetBands.tooltipPace": "Ritmo objetivo"
 }

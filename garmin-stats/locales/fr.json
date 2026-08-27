@@ -364,5 +364,9 @@
   "activity.classify.pendingReview": "Vérification en attente",
   "activity.classify.splitTooltip": "Granularité des splits utilisée pour (re)classer — des splits plus fins peuvent révéler une structure d’intervalles courts qu’un split plus grossier lisse",
   "activity.classify.split1km": "1 km",
-  "activity.classify.split05km": "0,5 km"
+  "activity.classify.split05km": "0,5 km",
+  "runplan.targetBands.title": "Zones d’allure cible planifiées",
+  "runplan.targetBands.distanceAxis": "Distance planifiée ({{unit}})",
+  "runplan.targetBands.paceAxis": "Allure ({{unit}})",
+  "runplan.targetBands.tooltipPace": "Allure cible"
 }

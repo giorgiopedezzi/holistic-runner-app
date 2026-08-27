@@ -81,7 +81,7 @@ export function PlanInstanceFormFields({
             value={templateId} onValueChange={onTemplateSelectChange}
             options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
             placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
-            triggerStyle={{ width: "100%" }}
+            triggerClassName="w-full"
             disabled={fieldsLocked}
           />
         </Field>

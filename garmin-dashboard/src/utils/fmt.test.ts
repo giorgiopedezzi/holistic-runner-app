@@ -71,12 +71,11 @@ describe("fmtWeight / fmtElevation / fmtSpeed", () => {
 });
 
 describe("fmtDate", () => {
-  // Built independently of fmt.ts's own implementation (same Intl call, but a
-  // second instance here) so this actually catches a regression rather than
-  // comparing the implementation to itself.
-  const localeFormat = new Intl.DateTimeFormat(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  // The app's default is literal UK and the test i18n language is English.
+  // It is deliberately independent of the machine/Node process locale.
+  const localeFormat = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 
-  it("formats a YYYY-MM-DD date using the runtime's own locale/date order", () => {
+  it("formats a YYYY-MM-DD date using the selected app format", () => {
     expect(fmtDate("2026-08-01")).toBe(localeFormat.format(new Date(2026, 7, 1)));
   });
   it("parses as a LOCAL calendar date, not UTC — no timezone day-shift", () => {

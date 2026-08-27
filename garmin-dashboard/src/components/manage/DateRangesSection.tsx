@@ -168,7 +168,7 @@ export function DateRangesSection() {
   const canCreate = createName.trim().length > 0 && createFrom <= createTo && !creating;
 
   return (
-    <Card style={{ marginBottom: 16 }}>
+    <Card className="mb-4">
       <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.dateRanges.title", "Named date ranges")}</div>
       <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
         {t("manage.dateRanges.description", "Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only races that took place after the range's end date are selectable.")}
@@ -192,7 +192,7 @@ export function DateRangesSection() {
           value={createRaceId}
           onValueChange={setCreateRaceId}
           placeholder={t("manage.dateRanges.linkRacePlaceholder", "Link a race (optional)")}
-          triggerStyle={{ flex: "1.5 1 100px", minWidth: 0 }}
+          triggerClassName="hra-select-race"
           options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
@@ -213,7 +213,7 @@ export function DateRangesSection() {
           value={loaded != null ? String(loaded.id) : NO_SELECTION}
           onValueChange={handlePickExisting}
           placeholder={t("manage.dateRanges.pickToEdit", "Pick a saved range to edit…")}
-          triggerStyle={firstColumnStyle}
+          triggerClassName="hra-select-first-column"
           options={[{ value: NO_SELECTION, label: t("manage.dateRanges.pickRangeOption", "— pick a range —") }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
         <DatePicker value={updateFrom} onChange={setUpdateFrom} max={updateTo} />
@@ -223,7 +223,7 @@ export function DateRangesSection() {
           value={updateRaceId}
           onValueChange={setUpdateRaceId}
           placeholder={t("manage.dateRanges.linkRacePlaceholder", "Link a race (optional)")}
-          triggerStyle={{ flex: "1.5 1 100px", minWidth: 0 }}
+          triggerClassName="hra-select-race"
           options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
@@ -245,7 +245,7 @@ export function DateRangesSection() {
           value={deleteId}
           onValueChange={v => { setDeleteId(v); setConfirmingDelete(false); }}
           placeholder={t("manage.dateRanges.pickToDelete", "Pick a saved range to delete…")}
-          triggerStyle={firstColumnStyle}
+          triggerClassName="hra-select-first-column"
           options={[{ value: NO_SELECTION, label: t("manage.dateRanges.pickRangeOption", "— pick a range —") }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
         {confirmingDelete ? (

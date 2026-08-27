@@ -43,6 +43,34 @@ Use the active harness's `implement-story` workflow:
 
 The workflow is the authority for Jira mechanics, effort classification, ADF checklist safety, transitions, and review comments.
 
+### Tracked AI refinement prompts
+
+A Jira **Research/Spike** labeled `ai-prompt` is an immutable source-intent artifact.
+
+Its description contains the original human prompt. Once refinement starts, never rewrite that description to incorporate later decisions; clarifications and decisions belong in Jira comments so the original input remains auditable.
+
+Any request to analyze/refine an `ai-prompt` issue or derive an Epic/Stories from it must follow:
+
+`.agents/workflows/refine-prompt.md`
+
+Generated delivery items must retain provenance back to the source prompt.
+
+The active harness adapters are:
+- Claude Code: `/generate-user-stories`
+- Codex: `$generate-user-stories`
+
+---
+
+## Jira Acceptance Criteria — ADF invariant
+
+Acceptance Criteria are real Jira ADF `taskList` / `taskItem` nodes.
+
+Both Story refinement/creation and Story implementation must follow:
+
+`.agents/workflows/jira-acceptance-criteria.md`
+
+Never degrade Jira action items into markdown checkboxes.
+
 ---
 
 ## Editing and shell safety
@@ -61,7 +89,9 @@ holistic-runner-app/
 ├── AGENTS.md                  # shared global instructions (source of truth)
 ├── CLAUDE.md                  # thin Claude adapter importing AGENTS.md
 ├── .claude/rules/             # shared path-scoped invariants; native to Claude
-├── .agents/skills/            # Codex repo skills
+├── .claude/commands/          # thin Claude workflow adapters
+├── .agents/workflows/         # shared task workflows (source of truth)
+├── .agents/skills/            # thin Codex workflow adapters
 ├── .codex/config.toml         # Codex project configuration
 ├── docs/                      # descriptive/reference context, read on demand
 ├── start.sh
@@ -117,7 +147,8 @@ Descriptive or task-specific detail lives outside global instructions and must b
 | Working on… | Read / use |
 |---|---|
 | Story implementation / Jira workflow | active `implement-story` workflow |
-| Story decomposition / refinement | Codex `$generate-user-stories` or the equivalent human-reviewed Claude workflow |
+| AI prompt refinement / Epic + Story generation | `.agents/workflows/refine-prompt.md` via `/generate-user-stories` (Claude) or `$generate-user-stories` (Codex) |
+| Jira Acceptance Criteria creation/completion | `.agents/workflows/jira-acceptance-criteria.md` |
 | DB schema, columns, soft delete/trash/purge | `docs/schema.md` |
 | HTTP endpoints, bodies, status codes, CORS | `docs/api.md` |
 | Garmin MTP, Withings OAuth, Strava, FIT cross-validation | `docs/ingestion.md` |
@@ -151,7 +182,7 @@ Keep this file small enough to deserve unconditional loading.
 
 1. **Global-only:** keep here only rules needed in virtually every session.
 2. **Path-specific prevention:** keep in `.claude/rules/`; Codex consumes those same files through the routing table.
-3. **Task-specific procedure:** keep in a skill/workflow; descriptive reference belongs in `docs/`.
+3. **Task-specific procedure:** keep shared procedure in `.agents/workflows/`; harness-specific skills/commands should be thin adapters. Descriptive reference belongs in `docs/`.
 4. **Prevent vs describe:** prevention stays in instructions; description belongs in `docs/`.
 5. **Reachability:** anything moved out must remain reachable from this routing table, a path rule, or a named workflow.
 6. **Delete settled history.** Git/Jira are the history; do not preserve obsolete status notes here.
