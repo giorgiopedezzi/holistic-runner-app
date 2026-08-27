@@ -1,0 +1,68 @@
+# Codex project rules for the mandatory Story Git lifecycle.
+# These permissions intentionally cover only the local, non-destructive
+# Git operations required by `.agents/workflows/story-git-lifecycle.md`.
+#
+# NOT allowed here: push, pull, fetch, merge, rebase, reset, clean,
+# branch deletion, force operations, or generic `git` access.
+
+ROOT = "C:/Projects/PERSONAL/holistic-runner-app"
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "status"],
+    decision = "allow",
+    justification = "Read-only Story working-tree inspection",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "branch", "--show-current"],
+    decision = "allow",
+    justification = "Read-only current-branch inspection",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "diff"],
+    decision = "allow",
+    justification = "Read-only Story diff inspection",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "log"],
+    decision = "allow",
+    justification = "Read-only Git history inspection",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "show"],
+    decision = "allow",
+    justification = "Read-only commit inspection",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "rev-parse"],
+    decision = "allow",
+    justification = "Read-only repository/commit resolution",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "switch", "-c"],
+    decision = "allow",
+    justification = "Create the dedicated branch required for one approved Jira Story",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "switch"],
+    decision = "allow",
+    justification = "Create or resume the dedicated local branch required for an approved Jira Story",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "add", "--"],
+    decision = "allow",
+    justification = "Stage only explicitly named files from the approved Story",
+)
+
+prefix_rule(
+    pattern = ["git", "-C", ROOT, "commit", "-m"],
+    decision = "allow",
+    justification = "Create the required local commit for the approved Story before In Review",
+)

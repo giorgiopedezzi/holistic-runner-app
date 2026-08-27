@@ -73,6 +73,23 @@ Never degrade Jira action items into markdown checkboxes.
 
 ---
 
+## Story Git lifecycle — mandatory
+
+Every implementation Story must follow:
+
+`.agents/workflows/story-git-lifecycle.md`
+
+A Story reaching **In Review** must have:
+- a dedicated Story branch;
+- a verified Story commit;
+- the branch name and commit hash recorded in the Jira review comment.
+
+No branch + no commit = not ready for In Review.
+
+`git push` is never implied by Story implementation.
+
+---
+
 ## Editing and shell safety
 
 - **Never mutate tracked source files with raw line-number shell edits** (`sed -i 'X,Yd'`, `awk NR...`, equivalents). Use a content-aware patch/edit mechanism so drift fails loudly.
@@ -149,6 +166,7 @@ Descriptive or task-specific detail lives outside global instructions and must b
 | Story implementation / Jira workflow | active `implement-story` workflow |
 | AI prompt refinement / Epic + Story generation | `.agents/workflows/refine-prompt.md` via `/generate-user-stories` (Claude) or `$generate-user-stories` (Codex) |
 | Jira Acceptance Criteria creation/completion | `.agents/workflows/jira-acceptance-criteria.md` |
+| Story Git branch / commit lifecycle | `.agents/workflows/story-git-lifecycle.md` |
 | DB schema, columns, soft delete/trash/purge | `docs/schema.md` |
 | HTTP endpoints, bodies, status codes, CORS | `docs/api.md` |
 | Garmin MTP, Withings OAuth, Strava, FIT cross-validation | `docs/ingestion.md` |

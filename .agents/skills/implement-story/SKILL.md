@@ -9,7 +9,7 @@ This skill is the Codex authority for Story execution and Jira workflow.
 
 ## Non-negotiable outcome
 
-Execute exactly one approved Story, verify it, move it to **In Review**, post the review evidence, then STOP.
+Execute exactly one approved Story on a dedicated Story branch, verify it, commit the verified Story changes, move it to **In Review**, post the review evidence including branch + commit, then STOP.
 
 Never move a Story to Done.
 
@@ -73,7 +73,21 @@ Your first output line must be:
 
 `Agent: Codex · Model: <jira-model> · Planned effort: <jira-effort> — <one-sentence commitment>`
 
-## 3. Read before editing
+## 3. Establish the Story Git branch
+
+Read and follow exactly:
+
+`.agents/workflows/story-git-lifecycle.md`
+
+After the Jira launch gate passes and before any source edit:
+
+- verify the working tree is safe to use;
+- create or reuse the dedicated Story branch required by the shared workflow;
+- transition Jira from Ready to Develop to In Progress when applicable.
+
+Do not begin implementation on the base branch.
+
+## 4. Read before editing
 
 Read:
 1. `AGENTS.md`.
@@ -84,7 +98,7 @@ Read:
 
 Do not infer a file list from the repository skeleton when it can be verified.
 
-## 4. Execute the Planned effort
+## 5. Execute the Planned effort
 
 The level is a behavioral commitment, not a spend target.
 
@@ -125,7 +139,7 @@ Everything at `high`, plus:
 - Report what was ruled out and why.
 - If the issue cannot be reproduced, STOP and report; never fix blind.
 
-## 5. Scope discipline
+## 6. Scope discipline
 
 - Implement only the Story slice and its approved Acceptance Criteria.
 - Do not re-plan the Epic.
@@ -133,13 +147,13 @@ Everything at `high`, plus:
 - Put worthwhile out-of-scope findings in the final review comment as **candidates**.
 - API contract/client-type work belongs to HRA-36 unless the Story explicitly owns it.
 
-## 6. Editing discipline
+## 7. Editing discipline
 
 Follow `AGENTS.md` and all loaded path rules.
 
 Use content-aware patch/edit operations. Never perform blind line-number source mutations.
 
-## 7. Verification
+## 8. Verification
 
 Verification must be evidence, not “looks good”.
 
@@ -152,7 +166,7 @@ Record:
 - manual/live observations;
 - any unresolved risk.
 
-## 8. Determine Actual thinking effort objectively
+## 9. Determine Actual thinking effort objectively
 
 `Actual thinking effort` is `customfield_10152`. It is the one effort field the agent writes.
 
@@ -192,7 +206,7 @@ The Jira field is multi-select. Write it as an array containing one option objec
 
 State in the review comment exactly which objective criterion fired and the supporting facts.
 
-## 9. Jira write safety
+## 10. Jira write safety
 
 ## Acceptance Criteria — Jira ADF action items
 
@@ -224,13 +238,22 @@ For Jira `Blocks` links:
 
 Do not create/change links unless the Story requires it. Ask the human to visually verify direction after a link write.
 
-## 10. In Review handoff
+## 11. In Review handoff
 
 When implementation and verification are complete:
 
-1. Set `Actual thinking effort` using the rule above.
-2. Transition the Story to **In Review** using the actual transition available in Jira.
-3. Post a PR-style review comment containing:
+1. Complete the shared Git lifecycle in `.agents/workflows/story-git-lifecycle.md`:
+   - stage only explicit Story files;
+   - inspect the staged diff;
+   - create the Story commit;
+   - record branch name and commit hash;
+   - confirm no relevant Story changes remain uncommitted.
+2. Update only objectively verified Acceptance Criteria task items to `DONE`.
+3. Set `Actual thinking effort` using the rule above.
+4. Transition the Story to **In Review** using the actual transition available in Jira.
+5. Post a PR-style review comment containing:
+   - branch name;
+   - commit hash;
    - Acceptance Criteria checklist state, including any criterion left `TODO` and why;
    - scope implemented;
    - files changed;
@@ -242,6 +265,6 @@ When implementation and verification are complete:
    - for `high+`: alternative considered/rejected;
    - for `xhigh`: before/after coverage counts and skipped sites;
    - for `max`: hypothesis, falsification attempt, reproduction before/after, and what was ruled out.
-4. STOP.
+6. STOP.
 
 Do not begin another Story in the same session.
