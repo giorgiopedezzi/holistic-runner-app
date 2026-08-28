@@ -6,7 +6,7 @@ import {
   metricUnit, fmtMetricValue, fmtElapsedClock,
   type MetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
-import { METRIC_DEFS, ttStyle } from "./shared";
+import { METRIC_DEFS } from "./shared";
 
 export function TrackTooltip({ active, payload, xMode, metrics, speedMode }: {
   active?: boolean; payload?: Array<{ payload: ChartRow }>;
@@ -18,8 +18,8 @@ export function TrackTooltip({ active, payload, xMode, metrics, speedMode }: {
 
   if (row.pauseDurationSec != null) {
     return (
-      <div style={ttStyle.contentStyle}>
-        <div style={{ padding: "6px 10px" }}>{(() => {
+      <div className="hra-chart-tooltip">
+        <div className="py-1.5 px-2.5">{(() => {
           const duration = fmtPauseDuration(row.pauseDurationSec);
           return t("activity.runner.paused", `⏸ Paused ${duration}`, { duration });
         })()}</div>
@@ -29,9 +29,9 @@ export function TrackTooltip({ active, payload, xMode, metrics, speedMode }: {
   if (row.realX == null) return null;
 
   return (
-    <div style={ttStyle.contentStyle}>
-      <div style={{ padding: "6px 10px" }}>
-        <div className="hra-text-muted" style={{ marginBottom: 4 }}>
+    <div className="hra-chart-tooltip">
+      <div className="py-1.5 px-2.5">
+        <div className="hra-text-muted mb-1">
           {xMode === "time" ? fmtElapsedClock(row.realX) : fmtKm(row.realX)}
         </div>
         {metrics.map(key => {

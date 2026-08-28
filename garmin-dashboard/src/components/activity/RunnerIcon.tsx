@@ -70,15 +70,15 @@ export const RunnerIcon = forwardRef<RunnerIconHandle>(function RunnerIcon(_prop
   const animClass = pose === "stand" ? "hra-runner-hop" : state.dwelling ? "hra-runner-dwell" : undefined;
   return (
     <div
-      className={animClass}
+      className={`hra-runner-icon absolute -translate-x-1/2 -translate-y-1/2 pointer-events-none ${animClass ?? ""}`}
       style={{
         // The altitude ride (1m = 1px) goes on `top`, NOT on this element's
         // transform: `.hra-runner-hop` animates transform and would drop any
         // offset expressed there (the same reason its keyframes have to
         // repeat the centering translate). The row reserves
         // RUNNER_ELEVATION_MAX_PX above and below its center for this.
-        position: "absolute", left: state.cx, top: `calc(50% - ${state.dynamics.elevationPx}px)`,
-        transform: "translate(-50%, -50%)", pointerEvents: "none",
+        "--runner-x": `${state.cx}px`,
+        "--runner-elevation": `${state.dynamics.elevationPx}px`,
         "--runner-color": state.color,
       } as CSSProperties}
     >

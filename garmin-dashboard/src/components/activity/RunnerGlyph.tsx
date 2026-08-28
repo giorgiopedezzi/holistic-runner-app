@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 type Pose = "a" | "b" | "stand" | "bent";
 
 // `color` stays a plain prop (not read from a CSS var internally) — the
@@ -12,19 +10,17 @@ export function RunnerGlyph({
   color = "currentColor",
   size = 18,
   className,
-  style,
 }: {
   pose?: Pose;
   color?: string;
   size?: number;
   className?: string;
-  style?: CSSProperties;
 }) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-      className={className} style={style}
+      className={className}
     >
       {pose === "bent" ? (
         // Hands-on-knees, bent forward at the waist — a longer pause (>=

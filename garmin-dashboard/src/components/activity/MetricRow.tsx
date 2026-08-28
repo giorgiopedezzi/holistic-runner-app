@@ -30,20 +30,14 @@ export function MetricRow({ mKey, label, state, onToggle }: {
   const { active, available, cardOn } = state;
   const color = METRIC_DEFS[mKey].color;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", flexWrap: "wrap" }}>
+    <div className="flex items-center gap-2 py-0.75 flex-wrap">
       <button
         onClick={() => onToggle("active")}
         disabled={!available}
         title={available ? undefined : t("activity.metric.noData", "No data for this metric")}
-        className="hra-dyn-border hra-dyn-bg hra-dyn-color"
-        style={{
-          fontSize: 11, padding: "4px 10px", borderRadius: 999, textAlign: "left",
-          cursor: available ? "pointer" : "not-allowed",
-          opacity: available ? 1 : 0.4,
-          "--dyn-border": active ? color : "var(--border-strong)",
-          "--dyn-bg": active ? `color-mix(in srgb, ${color} 13%, transparent)` : "transparent",
-          "--dyn-color": active ? color : "var(--text-secondary)",
-        } as CSSProperties}
+        className="hra-metric-toggle hra-dyn-border hra-dyn-bg hra-dyn-color text-meta py-1 px-2.5 rounded-full text-left"
+        data-active={active}
+        style={{ "--metric-color": color } as CSSProperties}
       >
         {label}
       </button>
@@ -53,7 +47,7 @@ export function MetricRow({ mKey, label, state, onToggle }: {
           metric itself is off, since its standalone card never renders
           regardless of cardOn's stored value in that state (see
           ActivityChartSection.tsx's effectiveActive.filter(showCard) gate). */}
-      <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, cursor: active ? "pointer" : "not-allowed", opacity: active ? 1 : 0.4 }}>
+      <label className="hra-metric-card-toggle hra-text-muted flex items-center gap-1 text-meta" data-active={active}>
         <Checkbox size={11} checked={active && cardOn} onCheckedChange={() => onToggle("card")} disabled={!active} /> {t("activity.metric.card", "Card")}
       </label>
     </div>

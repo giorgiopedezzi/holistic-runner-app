@@ -83,9 +83,9 @@ export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>
             : t(`activity.metricShort.${key}`, METRIC_LABEL_SHORT[key]);
           const unit = key === "heart_rate" ? "" : ` ${metricUnit(key, speedMode)}`;
           return (
-            <span key={key} style={{ display: "contents" }}>
+            <span key={key} className="contents">
               <span className="hra-chart-tooltip-sep">·</span>
-              <span className="hra-dyn-color" style={{ "--dyn-color": METRIC_DEFS[key].color, fontWeight: 600 } as CSSProperties}>
+              <span className="hra-dyn-color font-semibold" style={{ "--dyn-color": METRIC_DEFS[key].color } as CSSProperties}>
                 {label} {fmtMetricValue(key, v, speedMode)}{unit}
               </span>
             </span>

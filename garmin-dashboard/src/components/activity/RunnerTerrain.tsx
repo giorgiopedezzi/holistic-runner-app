@@ -44,7 +44,7 @@ export function RunnerTerrain({ dynamics, xs, height }: RunnerTerrainProps) {
   return (
     <svg
       width="100%" height={height} aria-hidden
-      style={{ position: "absolute", inset: 0, pointerEvents: "none" }}
+      className="absolute inset-0 pointer-events-none"
     >
       {/* Solid along the ridge, fading to almost nothing at the row's floor —
           the fill reads as ground the runner stands on rather than as a block

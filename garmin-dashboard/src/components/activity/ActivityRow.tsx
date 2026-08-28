@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 import { api } from "@/api/client";
@@ -92,49 +92,34 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
           for free. onClick here only fires for clicks OUTSIDE column 2,
           which stops its own propagation. */}
       <div
-        className="card hra-text-primary"
+        className="hra-activity-row card hra-text-primary grid items-center gap-3 py-3 px-3.5 text-label cursor-pointer"
+        data-expanded={expanded}
         role="button"
         tabIndex={0}
         onClick={onClick}
         onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
-        style={{
-          // `fr`, not `%` — percentages don't account for `gap` (grid adds
-          // gap ON TOP of percentage widths, not by shrinking them), which
-          // was pushing the whole row ~24px past the card's own edge,
-          // taking column 3's chevron with it. `fr` units divide up the
-          // space that's ALREADY had the gaps subtracted, so 42/42/16 stays
-          // the real proportion of what's actually left for content.
-          display: "grid", gridTemplateColumns: "40fr 44fr 15fr", alignItems: "center", gap: 12,
-          padding: "12px 14px",
-          borderRadius: expanded ? "16px 16px 0 0" : "16px", fontSize: 14,
-          cursor: "pointer",
-        }}
       >
         {/* Column 1 (40%) — read-only info at a glance. minWidth:0 lets a
             long activity_name wrap within this column's own fixed width
             instead of forcing the column itself wider. */}
-        <div className="hra-row-wrap" style={{ gap: 12, minWidth: 0 }}>
+        <div className="hra-row-wrap gap-3 min-w-0">
           <Badge label={a.sport ?? "other"} color={color} />
-          <span className="hra-text-muted" style={{ fontSize: 12 }}>{fmtDate(a.date_only)}</span>
+          <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
           {a.activity_name && (
             // Ellipsized, not wrapped — a long race name now truncates
             // within its own budget instead of pushing the row taller (or,
             // before the fr fix above, wider than the card). `title` is the
             // plain native tooltip so the full name is still one hover away.
             <span
-              className="hra-text-secondary"
+              className="hra-text-secondary italic text-label max-w-40 truncate"
               title={a.activity_name}
-              style={{
-                fontStyle: "italic", fontSize: 13,
-                maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              }}
             >
               {a.activity_name}
             </span>
           )}
-          <span style={{ fontWeight: 600 }}>{fmtKm(a.distance_m)}</span>
+          <span className="font-semibold">{fmtKm(a.distance_m)}</span>
           {a.source && (
-            <span className="hra-text-muted" style={{ fontSize: 11 }}>{t("activity.detail.viaSource", `via ${a.source}`, { source: a.source })}</span>
+            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${a.source}`, { source: a.source })}</span>
           )}
         </div>
 
@@ -142,7 +127,7 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             row's one interactive cluster. stopPropagation — otherwise a
             click on the type picker's select/save or the Delete button
             would ALSO fire the row's own expand/collapse onClick above. */}
-        <div className="hra-row-wrap" style={{ gap: 8, minWidth: 0 }} onClick={e => e.stopPropagation()}>
+        <div className="hra-row-wrap gap-2 min-w-0" onClick={e => e.stopPropagation()}>
           {/* onUpdate is a no-op: nothing else in this row's own UI depends
               on activity_type_id (unlike ActivityDetailBody, which
               re-renders its classification section from it) — the picker
@@ -152,12 +137,9 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             selectWidth={TYPE_SELECT_WIDTH} actionWidth={ACTION_BUTTON_WIDTH} height={ACTION_CONTROL_HEIGHT} />
           {!confirmDelete ? (
             <button
-              className="hra-btn"
+              className="hra-activity-row-action hra-btn flex items-center justify-center gap-1.5 shrink-0"
               data-variant="cta"
-              style={{
-                "--btn-color": "var(--accent-red)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                width: ACTION_BUTTON_WIDTH, height: ACTION_CONTROL_HEIGHT, flexShrink: 0,
-              } as CSSProperties}
+              data-tone="red"
               onClick={() => setConfirmDelete(true)}
               title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
             >
@@ -165,35 +147,34 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
               {t("activity.detail.deleteButton", "Remove activity")}
             </button>
           ) : (
-            <div className="hra-row" style={{ gap: 6 }}>
-              <span className="hra-text-danger" style={{ fontSize: 12 }}>{t("activity.detail.moveToTrash", "Move to trash?")}</span>
+            <div className="hra-row gap-1.5">
+              <span className="hra-text-danger text-meta">{t("activity.detail.moveToTrash", "Move to trash?")}</span>
               <button
                 className="hra-btn" data-variant="cta"
-                style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                data-tone="red"
                 onClick={handleDelete} disabled={deleting}
               >
                 {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
               </button>
               <button onClick={() => setConfirmDelete(false)}
-                className="hra-border-strong hra-text-secondary"
-                style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
+                className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
                 {t("common.cancel", "Cancel")}
               </button>
             </div>
           )}
-          {error && <span className="hra-text-danger" style={{ fontSize: 11 }}>{error}</span>}
+          {error && <span className="hra-text-danger text-meta">{error}</span>}
         </div>
 
         {/* Column 3 (15%) — duration/HR/pace, untouched, still right-aligned. */}
-        <div className="hra-row-wrap" style={{ gap: 12, justifyContent: "flex-end", minWidth: 0 }}>
-          <span className="hra-text-secondary" style={{ fontSize: 13 }}>{fmtDuration(a.duration_sec)}</span>
-          {a.avg_hr         && <span className="hra-text-danger" style={{ fontSize: 13 }}>♥ {a.avg_hr}</span>}
-          {a.avg_pace_minkm && <span className="hra-text-muted" style={{ fontSize: 13 }}>{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
-          <span className="hra-text-muted" style={{ fontSize: 11 }}>{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
+        <div className="hra-row-wrap gap-3 justify-end min-w-0">
+          <span className="hra-text-secondary text-label">{fmtDuration(a.duration_sec)}</span>
+          {a.avg_hr         && <span className="hra-text-danger text-label">♥ {a.avg_hr}</span>}
+          {a.avg_pace_minkm && <span className="hra-text-muted text-label">{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
+          <span className="hra-text-muted text-meta">{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
         </div>
       </div>
       {expanded && expandedContent && (
-        <div className="card hra-card-joined-bottom" style={{ padding: "16px 14px" }}>
+        <div className="card hra-card-joined-bottom py-4 px-3.5">
           {expandedContent}
         </div>
       )}

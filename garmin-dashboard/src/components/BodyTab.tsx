@@ -43,9 +43,9 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
   const [view, setView] = useState<"chart" | "table">("chart");
 
   return (
-    <div style={{ marginBottom: 24 }}>
+    <div className="mb-6">
       <div className="hra-row-between">
-        <div className="hra-text-secondary" style={{ fontSize: 13, fontWeight: 500 }}>{title}</div>
+        <div className="hra-text-secondary text-label font-medium">{title}</div>
         <div className="hra-segment">
           <button className="hra-segment-item" data-active={view === "chart"} onClick={() => setView("chart")}>{t("body.chart.chartView", "Chart")}</button>
           <button className="hra-segment-item" data-active={view === "table"} onClick={() => setView("table")}>{t("body.chart.tableView", "Table")}</button>
@@ -86,13 +86,13 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
             </AreaChart>
           </ResponsiveContainer>
         ) : (
-          <div style={{ maxHeight: 260, overflow: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div className="max-h-65 overflow-auto">
+            <table className="w-full border-collapse text-meta">
               <thead>
                 <tr>
-                  <th className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "left", padding: "6px 8px", position: "sticky", top: 0 }}>{t("body.chart.dateColumn", "Date")}</th>
+                  <th className="hra-text-muted hra-border-bottom hra-bg-card sticky top-0 py-1.5 px-2 text-left">{t("body.chart.dateColumn", "Date")}</th>
                   {series.map(s => (
-                    <th key={s.key} className="hra-text-muted hra-border-bottom hra-bg-card" style={{ textAlign: "right", padding: "6px 8px", position: "sticky", top: 0 }}>
+                    <th key={s.key} className="hra-text-muted hra-border-bottom hra-bg-card sticky top-0 py-1.5 px-2 text-right">
                       {s.label}{s.unit ? ` (${s.unit})` : ""}
                     </th>
                   ))}
@@ -101,11 +101,11 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
               <tbody>
                 {tableData.map((row, i) => (
                   <tr key={i}>
-                    <td className="hra-text-secondary hra-border-bottom" style={{ padding: "5px 8px" }}>{fmtDate(row.date_only)}</td>
+                    <td className="hra-text-secondary hra-border-bottom py-1.25 px-2">{fmtDate(row.date_only)}</td>
                     {series.map(s => {
                       const v = row[s.key];
                       return (
-                        <td key={s.key} className="hra-text-primary hra-border-bottom" style={{ textAlign: "right", padding: "5px 8px" }}>
+                        <td key={s.key} className="hra-text-primary hra-border-bottom py-1.25 px-2 text-right">
                           {typeof v === "number" ? v.toFixed(1) : "—"}
                         </td>
                       );
@@ -169,7 +169,7 @@ export function BodyTab({ from, to }: Props) {
   const displayList = list.map(convertRow);
 
   const checkbox = (label: string, checked: boolean, onChange: () => void, color: string) => (
-    <label className="hra-dyn-color" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, cursor: "pointer", "--dyn-color": checked ? color : "var(--text-secondary)" } as CSSProperties}>
+    <label className="hra-dyn-color flex items-center gap-1 text-meta cursor-pointer" style={{ "--dyn-color": checked ? color : "var(--text-secondary)" } as CSSProperties}>
       <Checkbox checked={checked} onCheckedChange={onChange} color={color} />
       {label}
     </label>
@@ -194,10 +194,7 @@ export function BodyTab({ from, to }: Props) {
 
       <SectionTitle>{t("body.metricsSectionTitle", `Body metrics — ${from} to ${to}`, { from, to })}</SectionTitle>
 
-      <div className="hra-border-strong" style={{
-        display: "inline-flex", gap: 14, alignItems: "center", padding: "6px 14px",
-        borderRadius: 999, marginBottom: 16,
-      }}>
+      <div className="hra-border-strong inline-flex gap-3.5 items-center py-1.5 px-3.5 rounded-full mb-4">
         {checkbox(t("body.metric.weight_kg", METRIC_DEFS.weight_kg.label), showWeight, () => setShowWeight(v => !v), METRIC_DEFS.weight_kg.color)}
         {checkbox(t("body.metric.fat_mass_kg", METRIC_DEFS.fat_mass_kg.label), showFatMass, () => setShowFatMass(v => !v), METRIC_DEFS.fat_mass_kg.color)}
         {checkbox(t("body.metric.muscle_mass_kg", METRIC_DEFS.muscle_mass_kg.label), showMuscleMass, () => setShowMuscleMass(v => !v), METRIC_DEFS.muscle_mass_kg.color)}
@@ -212,7 +209,7 @@ export function BodyTab({ from, to }: Props) {
         emptyMessage={t("body.chart.checkMetric", "Check at least one metric above to plot.")}
       />
 
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+      <div className="flex gap-1.5 flex-wrap mb-4">
         {OTHER_METRICS.map(key => {
           const def = METRIC_DEFS[key];
           const isActive = activeOthers.includes(key);
@@ -223,15 +220,9 @@ export function BodyTab({ from, to }: Props) {
               disabled={!available}
               onClick={() => setActiveOthers(a => isActive ? a.filter(k => k !== key) : [...a, key])}
               title={available ? undefined : t("body.chart.noDataInRange", "No data for this metric in range")}
-              className="hra-dyn-border hra-dyn-bg hra-dyn-color"
-              style={{
-                fontSize: 11, padding: "4px 10px", borderRadius: 999,
-                cursor: available ? "pointer" : "not-allowed",
-                opacity: available ? 1 : 0.4,
-                "--dyn-border": isActive ? def.color : "var(--border-strong)",
-                "--dyn-bg": isActive ? `color-mix(in srgb, ${def.color} 13%, transparent)` : "transparent",
-                "--dyn-color": isActive ? def.color : "var(--text-secondary)",
-              } as CSSProperties}
+              className="hra-metric-toggle hra-dyn-border hra-dyn-bg hra-dyn-color text-meta py-1 px-2.5 rounded-full"
+              data-active={isActive}
+              style={{ "--metric-color": def.color } as CSSProperties}
             >
               {t(`body.metric.${key}`, def.label)}
             </button>

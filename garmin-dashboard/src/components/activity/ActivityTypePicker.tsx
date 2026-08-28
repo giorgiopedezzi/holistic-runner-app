@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { Save } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
@@ -62,7 +62,7 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
   }
 
   return (
-    <div className="hra-row" style={{ gap: 6 }}>
+    <div className="hra-row gap-1.5">
       <Select
         value={String(selectedTypeId)}
         onValueChange={v => setSelectedTypeId(Number(v))}
@@ -83,19 +83,19 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
           title={hasName
             ? t("activity.typePicker.renameTooltip", "Change this activity's saved name")
             : t("activity.typePicker.saveTooltip", "Save the selected type and optionally name this activity")}
-          className="hra-btn"
+          className="hra-activity-type-action hra-btn flex items-center justify-center gap-1.5 text-meta py-1 px-2.5 shrink-0"
           data-variant="cta"
           style={{
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 6, fontSize: 12, padding: "4px 10px",
-            width: actionWidth, height, flexShrink: 0,
-          }}
+            "--activity-action-width": actionWidth != null ? `${actionWidth}px` : undefined,
+            "--activity-action-height": height != null ? `${height}px` : undefined,
+          } as CSSProperties}
         >
           <Save size={13} />
           {actionLabel}
         </PopoverTrigger>
         <PopoverContent>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, minWidth: 200 }}>
-            <span className="hra-text-secondary" style={{ fontSize: 12, fontWeight: 600 }}>
+          <div className="flex flex-col gap-2 min-w-50">
+            <span className="hra-text-secondary text-meta font-semibold">
               {(() => {
                 const typeName = types.find(at => at.id === selectedTypeId)?.name.toLowerCase() ?? t("activity.typePicker.sessionFallback", "session");
                 return hasName
@@ -109,16 +109,12 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
               onChange={e => setName(e.target.value)}
               placeholder={t("activity.typePicker.namePlaceholder", "e.g. Berlin Marathon")}
               autoFocus
-              className="hra-border-strong hra-bg-card hra-text-primary"
-              style={{
-                fontSize: 13, padding: "6px 8px", borderRadius: 6,
-              }}
+              className="hra-border-strong hra-bg-card hra-text-primary text-label py-1.5 px-2 rounded-md"
             />
-            {error && <span className="hra-text-danger" style={{ fontSize: 11 }}>{error}</span>}
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            {error && <span className="hra-text-danger text-meta">{error}</span>}
+            <div className="flex gap-2 justify-end">
               <button onClick={() => setOpen(false)}
-                className="hra-border-strong hra-text-secondary"
-                style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
+                className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
                 {t("common.cancel", "Cancel")}
               </button>
               <button className="hra-btn" data-variant="cta" onClick={handleSave} disabled={saving}>

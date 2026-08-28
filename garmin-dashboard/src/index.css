@@ -1814,6 +1814,54 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-help-copy { line-height: 1.6; }
 .hra-template-name-field { flex: 0 0 400px; }
 .hra-template-distance-input { width: 100px; }
+
+/* HRA-180 analytics layout, finite states, and runtime bridges. */
+.hra-activity-modal { max-width: 680px; max-height: 90vh; }
+.hra-activity-type-action {
+  width: var(--activity-action-width, auto);
+  height: var(--activity-action-height, auto);
+}
+.hra-activity-row {
+  grid-template-columns: 40fr 44fr 15fr;
+  border-radius: 16px;
+}
+.hra-activity-row[data-expanded="true"] { border-radius: 16px 16px 0 0; }
+.hra-activity-row-action { width: 177px; height: 30px; }
+.hra-metric-toggle {
+  --dyn-border: var(--border-strong);
+  --dyn-bg: transparent;
+  --dyn-color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 1;
+}
+.hra-metric-toggle[data-active="true"] {
+  --dyn-border: var(--metric-color);
+  --dyn-bg: color-mix(in srgb, var(--metric-color) 13%, transparent);
+  --dyn-color: var(--metric-color);
+}
+.hra-metric-toggle:disabled { cursor: not-allowed; opacity: 0.4; }
+.hra-metric-card-toggle { cursor: pointer; opacity: 1; }
+.hra-metric-card-toggle[data-active="false"] { cursor: not-allowed; opacity: 0.4; }
+.hra-speed-segment { --segment-color: var(--data-pace); }
+.hra-activity-chart-selectors { grid-template-columns: 1fr auto 1fr; }
+.hra-activity-chart-controls {
+  padding-left: var(--chart-controls-left);
+  padding-right: var(--chart-controls-right);
+}
+.hra-runner-row { height: var(--runner-row-height); }
+.hra-activity-chart-placeholder { height: var(--activity-chart-placeholder-height); }
+.hra-runner-icon {
+  left: var(--runner-x);
+  top: calc(50% - var(--runner-elevation));
+}
+.hra-overview-header-inset { padding-left: var(--overview-header-left); }
+.hra-overview-controls-row { padding-right: var(--overview-header-right); }
+.hra-series-swatch--line,
+.hra-series-swatch--bar { display: inline-block; width: 14px; }
+.hra-series-swatch--bar { height: 8px; }
+.hra-trend-layout { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; }
+.hra-trend-main { flex: 3 1 480px; min-width: 0; }
+.hra-trend-sidebar { flex: 1 1 110px; max-width: 130px; }
 .hra-kpi-value {
   font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em; line-height: 1; white-space: nowrap;
   color: var(--kpi-color, var(--text-primary));

@@ -72,9 +72,9 @@ export function PlannedPaceTargetChart({ model }: { model: PaceTargetBandModel }
   const domainPoints = bands.flatMap(bandPoints);
 
   return (
-    <div data-testid="planned-pace-target-chart" role="img" aria-label={title} style={{ marginTop: 10 }}>
+    <div data-testid="planned-pace-target-chart" role="img" aria-label={title} className="mt-2.5">
       <ChartCard title={title}>
-        <div style={{ height: 210 }}>
+        <div className="h-52.5">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={domainPoints} margin={{ top: 8, right: 12, bottom: 28, left: 12 }}>
               <defs>

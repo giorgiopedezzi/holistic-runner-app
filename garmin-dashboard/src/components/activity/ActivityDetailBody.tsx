@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty } from "@/components/ui";
-import { ClassificationCard, statusColor } from "../ClassificationCard";
+import { ClassificationCard } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
 import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type TrackPoint, type WorkoutClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
@@ -186,46 +185,44 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
             summary already showed). Left untouched for the popup, which has
             no ActivityRow wrapping it to show this instead. */}
         {onClose && (
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div className="flex items-center gap-3 mb-5">
           {activity && (
             <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][activity.sport ?? "other"] ?? "#888"} />
           )}
-          <span className="hra-text-secondary" style={{ fontSize: 13 }}>{activity && fmtDate(activity.date_only)}</span>
+          <span className="hra-text-secondary text-label">{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
-            <span className="hra-text-muted" style={{ fontSize: 11 }}>{t("activity.detail.viaSource", `via ${activity.source}`, { source: activity.source })}</span>
+            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${activity.source}`, { source: activity.source })}</span>
           )}
-          <div style={{ flex: 1 }} />
+          <div className="flex-1" />
           {activity && <ActivityTypePicker activity={activity} onUpdate={setActivity} />}
           {!confirmDelete ? (
             <button
               className="hra-btn"
               data-variant="cta"
-              style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+              data-tone="red"
               onClick={() => setConfirmDelete(true)}
               title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
             >
               {t("activity.detail.deleteButton", "Remove activity")}
             </button>
           ) : (
-            <div className="hra-row" style={{ gap: 6 }}>
-              <span className="hra-text-danger" style={{ fontSize: 12 }}>{t("activity.detail.moveToTrash", "Move to trash?")}</span>
+            <div className="hra-row gap-1.5">
+              <span className="hra-text-danger text-meta">{t("activity.detail.moveToTrash", "Move to trash?")}</span>
               <button
                 className="hra-btn" data-variant="cta"
-                style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                data-tone="red"
                 onClick={handleDelete} disabled={deleting}
               >
                 {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
               </button>
               <button onClick={() => setConfirmDelete(false)}
-                className="hra-border-strong hra-text-secondary"
-                style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
+                className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
                 {t("common.cancel", "Cancel")}
               </button>
             </div>
           )}
           <button onClick={onClose}
-            className="hra-text-muted"
-            style={{ fontSize: 18, border: "none", background: "none", cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>
+            className="hra-text-muted text-heading border-0 bg-transparent cursor-pointer leading-none px-1">
             ×
           </button>
         </div>
@@ -253,18 +250,18 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                   expanded={classificationExpanded}
                   onToggle={() => setClassificationExpanded(e => !e)}
                   title={
-                    <div className="hra-row-wrap" style={{ gap: 14 }}>
+                    <div className="hra-row-wrap gap-3.5">
                       <span>{t("activity.classify.title", "Classification")}</span>
                       {/* Collapsed summary — sized/weighted as meta text
                           (secondary info), not a competing headline. */}
-                      <span className="hra-text-secondary" style={{ fontSize: "var(--fs-meta)", fontWeight: "var(--fw-meta)" } as CSSProperties}>
+                      <span className="hra-text-secondary text-meta">
                         {t("activity.classify.summaryAi", `AI: ${classificationLabel(activity.ai_classification)}`, { classification: classificationLabel(activity.ai_classification) })}
                         {" · "}
                         {t("activity.classify.summaryStatistical", `Statistical: ${classificationLabel(activity.statistical_classification)}`, { classification: classificationLabel(activity.statistical_classification) })}
                         {" · "}
                         {t("activity.classify.summarySampling", `Sampling: ${splitMeters === 1000 ? "1km" : "0.5km"}`, { sampling: splitMeters === 1000 ? "1km" : "0.5km" })}
                         {" · "}
-                        <span className="hra-dyn-color" style={{ "--dyn-color": statusColor(status), fontWeight: 600 } as CSSProperties}>
+                        <span className="hra-classification-status hra-dyn-color font-semibold" data-status={status}>
                           {statusLabel}
                         </span>
                       </span>

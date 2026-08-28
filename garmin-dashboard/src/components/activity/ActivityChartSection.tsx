@@ -496,7 +496,7 @@ export function ActivityChartSection({
   const runnerReady = plotWidth !== 0 && chartData.length > 0;
 
   return (
-    <div style={{ marginTop: 24 }}>
+    <div className="mt-6">
       {/* Three-column selector row (dashboard design-system rework,
           "reorganize activity layout"): left = Distance/Time + Speed/Pace
           switches; center = pause-threshold + outlier checkbox; right =
@@ -508,11 +508,8 @@ export function ActivityChartSection({
           centers the middle column independent of how wide the two side
           groups are, which justify-content: space-between can't guarantee
           for a 3-child row. */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr auto 1fr", alignItems: "center",
-        gap: 16, marginBottom: 12,
-      }}>
-        <div className="hra-row-wrap" style={{ gap: 16 }}>
+      <div className="hra-activity-chart-selectors grid items-center gap-4 mb-3">
+        <div className="hra-row-wrap gap-4">
           <div className="hra-segment">
             {(["distance", "time"] as XMode[]).map(m => (
               <button key={m} onClick={() => setXMode(m)}
@@ -526,7 +523,7 @@ export function ActivityChartSection({
               Tinted to the metric's own color via --segment-color rather
               than the app accent — the one switch app-wide with a
               per-instance tint. */}
-          <div className="hra-segment" style={{ "--segment-color": METRIC_DEFS.speed.color } as CSSProperties}>
+          <div className="hra-speed-segment hra-segment">
             {(["speed", "pace"] as SpeedMode[]).map(m => (
               <button key={m} onClick={() => setSpeedMode(m)}
                 className="hra-segment-item" data-active={speedMode === m}>
@@ -537,21 +534,21 @@ export function ActivityChartSection({
             ))}
           </div>
         </div>
-        <div className="hra-row-wrap" style={{ gap: 16, justifyContent: "center" }}>
-          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+        <div className="hra-row-wrap gap-4 justify-center">
+          <label className="hra-text-muted flex items-center gap-1.5 text-meta">
             {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
             <input type="number" min={5} step={5} value={pauseThreshold}
               onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
-              style={{ width: 56, fontSize: 11, padding: "2px 6px" }} />
+              className="w-14 text-meta py-0.5 px-1.5" />
             sec
           </label>
-          <label className="hra-text-muted" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, cursor: "pointer" }}
+          <label className="hra-text-muted flex items-center gap-1.5 text-meta cursor-pointer"
             title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
             <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
             {t("activity.chart.removeOutliers", "Remove outliers")}
           </label>
         </div>
-        <div className="hra-row-wrap" style={{ gap: 16, justifyContent: "flex-end" }}>
+        <div className="hra-row-wrap gap-4 justify-end">
           {OPTIONAL_METRIC_ORDER.map(key => (
             <MetricRow
               key={key}
@@ -581,12 +578,15 @@ export function ActivityChartSection({
           rework: "the row INSIDE the graph card must be the same width as
           the terrain/graph lines"). */}
       <ChartCard controlsRow={
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, paddingLeft: CHART_HEADER_EXTRA_LEFT, paddingRight: CHART_HEADER_EXTRA_RIGHT }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div className="hra-activity-chart-controls flex items-center justify-between gap-3" style={{
+          "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
+          "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
+        } as CSSProperties}>
+          <div className="flex items-center gap-1.5">
             <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
             <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
           </div>
-          <div className="hra-row-wrap" style={{ gap: 8, justifyContent: "flex-end" }}>
+          <div className="hra-row-wrap gap-2 justify-end">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
               value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
             <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
@@ -611,7 +611,7 @@ export function ActivityChartSection({
           glyph clipping at a summit or a valley. */}
       {chartMounted ? (
         <>
-          <div style={{ position: "relative", height: RUNNER_ROW_HEIGHT, marginBottom: 4 }}>
+          <div className="hra-runner-row relative mb-1" style={{ "--runner-row-height": `${RUNNER_ROW_HEIGHT}px` } as CSSProperties}>
             {runnerReady ? (
               <>
                 <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
@@ -625,7 +625,7 @@ export function ActivityChartSection({
               <LoadingSpinner compact label={t("activity.chart.preparingRunner", "Preparing the runner…")} />
             )}
           </div>
-          <div ref={plotRef} style={{ position: "relative" }}>
+          <div ref={plotRef} className="relative">
           <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
           <MainOverlayChart
             chartData={chartData} displayTrack={displayTrack} xTicks={xTicks} xMode={xMode}
@@ -649,7 +649,7 @@ export function ActivityChartSection({
         // ResponsiveContainer height (220) — the one place that number
         // exists outside OverlayCharts.tsx, so it's named here rather than
         // repeated as a bare literal.
-        <div style={{ height: RUNNER_ROW_HEIGHT + 4 + MAIN_CHART_HEIGHT }}>
+        <div className="hra-activity-chart-placeholder" style={{ "--activity-chart-placeholder-height": `${RUNNER_ROW_HEIGHT + 4 + MAIN_CHART_HEIGHT}px` } as CSSProperties}>
           <LoadingSpinner compact label={t("activity.chart.preparingRunner", "Preparing the runner…")} />
         </div>
       )}
@@ -664,12 +664,12 @@ export function ActivityChartSection({
         // across the pause, not the pause's duration).
         const cardData = key === "heart_rate" ? hrRecoveryChartData : chartData;
         return (
-          <div key={key} style={{ marginTop: 16 }}>
+          <div key={key} className="mt-4">
             <Label className="mb-1">
               {key === "speed"
                 ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
                 : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
-              {key === "heart_rate" && <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
+              {key === "heart_rate" && <span className="ml-2 font-normal normal-case tracking-normal">{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
             </Label>
             <MetricStandaloneCard
               metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}

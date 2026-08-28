@@ -161,8 +161,10 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
   const height = size === "lg" ? 460 : size === "sm" ? 160 : 220;
 
   return (
-    <div style={{ marginBottom: 12 }}>
-      <ChartCard title={title} legend={legend} controlsRow={controlsRow} subHeader={subHeader && <div style={{ paddingLeft: HEADER_EXTRA_LEFT }}>{subHeader}</div>}>
+    <div className="mb-3">
+      <ChartCard title={title} legend={legend} controlsRow={controlsRow} subHeader={subHeader && (
+        <div className="hra-overview-header-inset" style={{ "--overview-header-left": `${HEADER_EXTRA_LEFT}px` } as CSSProperties}>{subHeader}</div>
+      )}>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={points}>
           <defs>
@@ -204,9 +206,9 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
               // colored to match its series — instead of one long inline
               // line, or Recharts' default three separately-swatched rows.
               return (
-                <div className="hra-chart-tooltip hra-col" style={{ gap: 2 }}>
+                <div className="hra-chart-tooltip hra-col gap-0.5">
                   <span className="hra-chart-tooltip-label">{label}</span>
-                  <div className="hra-row" style={{ gap: 6 }}>
+                  <div className="hra-row gap-1.5">
                     {typeof kmVal === "number" && (
                       <span className="hra-chart-tooltip-km">{kmVal.toFixed(1)} {distanceUnit}</span>
                     )}
@@ -313,19 +315,19 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   // mute color being the real representation," i.e. the chart follows the
   // legend, not the other way around).
   const currentCompareLegend = compareEnabled && (
-    <div className="hra-text-muted" style={{ display: "flex", gap: 14, alignItems: "center", fontSize: 11, flexWrap: "wrap" }}>
+    <div className="hra-text-muted flex gap-3.5 items-center text-meta flex-wrap">
       {([
         [t("overview.stat.distance", "Distance"), "var(--data-pace)", "bar"],
         [t("overview.stat.avgPace", "Avg pace"), PACE_LINE_COLOR, "line"],
         [t("overview.stat.avgHr", "Avg HR"), hrColor, "line"],
       ] as const).map(([metricLabel, color, kind]) => (
-        <span key={metricLabel} className="hra-row-inline" style={{ gap: 6 }}>
+        <span key={metricLabel} className="hra-row-inline gap-1.5">
           {metricLabel}:
           <span className="hra-row-inline" style={{ "--legend-color": color } as CSSProperties} title={t("overview.legend.current", "current")}>
-            <span className={kind === "bar" ? "hra-series-swatch--bar" : "hra-series-swatch--line"} style={{ display: "inline-block", width: 14, height: kind === "bar" ? 8 : 0 }} />
+            <span className={kind === "bar" ? "hra-series-swatch--bar" : "hra-series-swatch--line"} />
           </span>
-          <span className="hra-row-inline" style={{ "--legend-color": color, opacity: 0.5 } as CSSProperties} title={t("overview.legend.previous", "previous")}>
-            <span className={kind === "bar" ? "hra-series-swatch--bar" : "hra-series-swatch--line"} style={{ display: "inline-block", width: 14, height: kind === "bar" ? 8 : 0 }} />
+          <span className="hra-row-inline opacity-50" style={{ "--legend-color": color } as CSSProperties} title={t("overview.legend.previous", "previous")}>
+            <span className={kind === "bar" ? "hra-series-swatch--bar" : "hra-series-swatch--line"} />
           </span>
         </span>
       ))}
@@ -333,9 +335,9 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   );
 
   return (
-    <div className="hra-overlap-card-enter" style={{ marginBottom: 12 }}>
+    <div className="hra-overlap-card-enter mb-3">
       <ChartCard title={title} legend={legend} controlsRow={controlsRow} subHeader={(currentCompareLegend || subHeader) && (
-        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap", paddingLeft: HEADER_EXTRA_LEFT }}>
+        <div className="hra-overview-header-inset flex gap-4 items-center flex-wrap" style={{ "--overview-header-left": `${HEADER_EXTRA_LEFT}px` } as CSSProperties}>
           {currentCompareLegend || subHeader}
         </div>
       )}>
@@ -368,22 +370,22 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
               // same convention as SportTrendChart's tooltip, rather than
               // one long inline line per side.
               const metricsRow = (km: number | null, pace: number | null, hr: number | null) => (
-                <div className="hra-row" style={{ gap: 6 }}>
+                <div className="hra-row gap-1.5">
                   {km != null && <span className="hra-chart-tooltip-km">{km.toFixed(1)} {distanceUnit}</span>}
                   {pace != null && <>{km != null && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-pace">{t("overview.chartTooltip.pace", "pace")} {fmtMinSecRaw(pace)}{paceUnit}</span></>}
                   {hr != null && <>{(km != null || pace != null) && <span className="hra-chart-tooltip-sep">·</span>}<span className="hra-chart-tooltip-hr">{t("overview.chartTooltip.hr", "HR")} {Math.round(hr)}</span></>}
                 </div>
               );
               return (
-                <div className="hra-chart-tooltip hra-col" style={{ gap: 6 }}>
+                <div className="hra-chart-tooltip hra-col gap-1.5">
                   {p.currentLabel != null && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <div className="flex flex-col gap-0.5">
                       <span className="hra-chart-tooltip-label">{p.currentLabel}</span>
                       {metricsRow(p.currentKm, p.currentPace, p.currentHr)}
                     </div>
                   )}
                   {compareEnabled && p.compareLabel != null && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 2, opacity: 0.75 }}>
+                    <div className="flex flex-col gap-0.5 opacity-75">
                       <span className="hra-chart-tooltip-label">{p.compareLabel}</span>
                       {metricsRow(p.compareKm, p.comparePace, p.compareHr)}
                     </div>
@@ -457,10 +459,10 @@ function TrendSeriesLegend({ paceUnit }: { paceUnit: string }) {
     [t("overview.legend.hrAxis", "Avg HR (bpm)"), "var(--data-hr)"],
   ];
   return (
-    <div className="hra-text-muted" style={{ display: "flex", gap: 12, alignItems: "center", fontSize: 11, flexWrap: "wrap" }}>
+    <div className="hra-text-muted flex gap-3 items-center text-meta flex-wrap">
       {items.map(([label, color]) => (
         <span key={label} className="hra-row-inline" style={{ "--legend-color": color } as CSSProperties}>
-          <span className="hra-series-swatch--line" style={{ display: "inline-block", width: 14 }} />
+          <span className="hra-series-swatch--line" />
           {label}
         </span>
       ))}
@@ -624,12 +626,12 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
     ? t("overview.mainGraphPeriodCompare", `${periodLabel} vs ${comparePeriodLabel}`, { current: periodLabel, compare: comparePeriodLabel })
     : periodLabel;
   const buildGraphTitle = (period: string) => (
-    <span className="hra-row-inline" style={{ gap: 8, fontSize: 15, fontWeight: 600, flexWrap: "wrap" }}>
+    <span className="hra-row-inline gap-2 text-body font-semibold flex-wrap">
       <RunnerGlyph pose="a" color="var(--accent)" size={20} />
       <span className="hra-text-primary">
         {t("overview.mainGraphTitle", `${t(`sport.${sport}`, label)} – Andamento distanza e ritmo`, { sport: t(`sport.${sport}`, label) })}
       </span>
-      <span className="hra-text-muted" style={{ fontSize: 12, fontWeight: 400 }}>({period})</span>
+      <span className="hra-text-muted text-meta font-normal">({period})</span>
     </span>
   );
   const graphTitle = primary ? buildGraphTitle(overlapTitlePeriod) : undefined;
@@ -646,12 +648,12 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
     // uses, so the KPI cards' right edge still lines up with the last bar
     // (explicit feedback, carried over from when these lived in a separate
     // row) even though they've moved up to share this one with the pills.
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, paddingRight: HEADER_EXTRA_RIGHT }}>
-      <div className="hra-row-inline" style={{ gap: 8 }}>
+    <div className="hra-overview-controls-row flex justify-between items-center flex-wrap gap-2" style={{ "--overview-header-right": `${HEADER_EXTRA_RIGHT}px` } as CSSProperties}>
+      <div className="hra-row-inline gap-2">
         {alignToggle}
         {headerControls}
       </div>
-      {kpis && <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{kpis}</div>}
+      {kpis && <div className="flex gap-2 shrink-0">{kpis}</div>}
     </div>
   ) : undefined;
   // Row 2 (subHeader) for the CURRENT/overlap chart: the "graph legend" —
@@ -672,23 +674,23 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // for the legend beside the KPI cards), this row only ever holds
   // legend+badges, so it fits both without wrapping.
   const compareBadgesRow = primary && (subHeader || compareKpis) ? (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8, paddingRight: HEADER_EXTRA_RIGHT }}>
+    <div className="hra-overview-controls-row flex justify-between items-center flex-wrap gap-2" style={{ "--overview-header-right": `${HEADER_EXTRA_RIGHT}px` } as CSSProperties}>
       {subHeader}
-      {compareKpis && <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>{compareKpis}</div>}
+      {compareKpis && <div className="flex gap-2 shrink-0">{compareKpis}</div>}
     </div>
   ) : undefined;
 
   return (
-    <div style={{ marginBottom: 20 }}>
+    <div className="mb-5">
       {/* Badge + activity-count row — every other sport's original header,
           unchanged. The primary graph replaces this entirely with its own
           title/controls rows (graphTitle/graphControlsRow above), per the
           exact-layout spec: nothing besides those two rows sits between the
           filters and the graph. */}
       {!primary && (
-        <div className="hra-control-row" style={{ gap: 10, marginBottom: 8 }}>
+        <div className="hra-control-row gap-2.5 mb-2">
           <Badge label={sport} color={SPORT_COLOR[getResolvedTheme()][sport] ?? "#888"} />
-          <span className="hra-text-muted" style={{ fontSize: 11 }}>
+          <span className="hra-text-muted text-meta">
             {compareEnabled
               ? t("overview.sportCounts.withCompare", `${curPoints.length} current ${nounLabel} · ${cmpPoints.length} compare ${nounLabel}`, { count: curPoints.length, noun: nounLabel, compareCount: cmpPoints.length })
               : t("overview.sportCounts.base", `${curPoints.length} current ${nounLabel}`, { count: curPoints.length, noun: nounLabel })}
@@ -752,7 +754,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
         // with `.hra-unmerge-down` (which starts from this identical
         // footprint) instead of the static `.hra-merged`.
         const mergedPair = (overlayClass = "hra-merged") => (
-          <div style={{ position: "relative" }}>
+          <div className="relative">
             {currentChart}
             {compareCard && <div className={overlayClass}>{compareCard}</div>}
           </div>
@@ -770,9 +772,9 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
         // (explicit feedback: "data in the Other metric of the second graph
         // must be the data of the second graph," not a repeat of the first).
         const withSidebar = (graph: ReactNode, sidebar: ReactNode = otherKeyMetrics) => primary && sidebar ? (
-          <div style={{ display: "flex", gap: 16, alignItems: "stretch", flexWrap: "wrap" }}>
-            <div style={{ flex: "3 1 480px", minWidth: 0 }}>{graph}</div>
-            <div style={{ flex: "1 1 110px", maxWidth: 130, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div className="hra-trend-layout">
+            <div className="hra-trend-main">{graph}</div>
+            <div className="hra-trend-sidebar flex flex-col gap-2.5">
               {sidebar}
             </div>
           </div>
@@ -785,7 +787,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <>
                 {withSidebar(currentChart)}
-                {compareCard && <div style={{ marginTop: 12 }}>{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+                {compareCard && <div className="mt-3">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
           case "d2o-move":
@@ -802,7 +804,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <>
                 {withSidebar(currentChart)}
-                {compareCard && <div className="hra-merge-up" style={{ marginTop: 12 }}>{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+                {compareCard && <div className="hra-merge-up mt-3">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
           case "d2o-fade":
@@ -835,7 +837,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <>
                 {withSidebar(currentChart)}
-                {compareCard && <div className="hra-unmerge-down" style={{ marginTop: 12 }}>{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+                {compareCard && <div className="hra-unmerge-down mt-3">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
         }
@@ -960,7 +962,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   // into running's own card header (below), the page's one primary graph,
   // since that's the only chart these controls visually belong beside now.
   const modeControls = (
-    <div className="hra-row" style={{ gap: 8 }}>
+    <div className="hra-row gap-2">
       {compareEnabled && (
         <div className="hra-segment">
           {(["overlap", "distinct"] as const).map(v => (
@@ -1068,7 +1070,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
       {otherEntries.length > 0 && (
         <>
           {!runningEntry && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 24, marginBottom: 4, flexWrap: "wrap", gap: 8 }}>
+            <div className="flex items-center justify-between mt-6 mb-1 flex-wrap gap-2">
               <SectionTitle>{t("overview.trendSectionTitle", "Distance & pace/HR trend")}</SectionTitle>
               {modeControls}
             </div>
@@ -1193,7 +1195,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // Tightened from 20px (graph-first reorg, spec: "reduce unnecessary
   // vertical spacing around the filters so the main graph appears sooner").
   const dateRangeBar = (
-    <div style={{ marginBottom: 8 }}>
+    <div className="mb-2">
       <DateRangeBar {...range} compare={compareRange} savedRanges={savedRanges} />
     </div>
   );
@@ -1288,7 +1290,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // distinct." Passed to TrendsBySport, which renders it as a vertical
   // sidebar beside the main graph.
   const otherKeyMetrics = (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+    <div className="grid grid-cols-1 gap-2.5">
       {totals.acts > 0 && (
         <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
           deltaText={showDiff ? comparisonTooltip(totals.km / totals.acts, prevAvgDistance, v => fmtKm(v * 1000)) : undefined}
@@ -1316,7 +1318,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // reasoning as compareKpis) — explicit feedback: "data in the Other
   // metric of the second graph must be the data of the second graph."
   const compareOtherKeyMetrics = hasPrevData ? (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}>
+    <div className="grid grid-cols-1 gap-2.5">
       {prevActs ? (
         <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
       ) : null}
@@ -1352,7 +1354,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
       {sports.length > 1 && (
         <>
           <SectionTitle>{t("overview.bySportSectionTitle", "By sport")}</SectionTitle>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div className="grid gap-2">
             {sports.map(s => {
               const prevSport = prevSportStats(prevBySport.get(s.sport ?? "other") ?? []);
               // One combined tooltip covering every comparable figure on the
@@ -1372,15 +1374,15 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
                   className="hra-sport-summary-card"
                 >
                   <Badge label={s.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][s.sport ?? "other"] ?? "#888"} />
-                  <span className="hra-text-primary" style={{ flex: 1, fontWeight: 500 }}>
+                  <span className="hra-text-primary flex-1 font-medium">
                     {fmtKm(s.total_km * 1000)}
                   </span>
                   <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", `${s.total_activities} sessions`, { count: s.total_activities })}</span>
                   {s.avg_hr && (
-                    <span className="hra-text-danger" style={{ fontSize: 13 }}>♥ {s.avg_hr}</span>
+                    <span className="hra-text-danger text-label">♥ {s.avg_hr}</span>
                   )}
                   {s.avg_pace && (
-                    <span className="hra-text-muted" style={{ fontSize: 13 }}>{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
+                    <span className="hra-text-muted text-label">{fmtPace(s.avg_pace)}/{distanceUnitLabel()}</span>
                   )}
                 </Card>
               );

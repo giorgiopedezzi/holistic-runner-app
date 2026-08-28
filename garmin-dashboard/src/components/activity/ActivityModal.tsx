@@ -11,18 +11,9 @@ interface Props {
 export function ActivityModal({ activityId, onClose, onDelete }: Props) {
   return (
     <div
-      className="hra-modal-backdrop"
-      style={{
-        position: "fixed", inset: 0,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 100, padding: "24px",
-      }}
+      className="hra-modal-backdrop hra-modal-layer fixed inset-0 flex items-center justify-center p-6"
     >
-      <div className="hra-bg-surface hra-border" style={{
-        borderRadius: 16, width: "100%", maxWidth: 680,
-        maxHeight: "90vh", overflowY: "auto",
-        padding: "24px",
-      }}>
+      <div className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6">
         <ActivityDetailBody activityId={activityId} onDelete={onDelete} onClose={onClose} />
       </div>
     </div>
