@@ -1,4 +1,4 @@
-import type { ResolvedSegment, Target } from "@/types/runplan";
+import type { ResolvedSegment, RestType, Target } from "@/types/runplan";
 
 export interface PaceTargetBand {
   kind: "band";
@@ -16,6 +16,15 @@ export interface PaceTargetGap {
   kind: "gap";
   startDistanceM: number;
   endDistanceM: number;
+  // Only ever set for an interval/rest_block rest leg — a plain unpaced
+  // continuous/progression leg's gap carries neither. restDurationSec is
+  // only populated for a "stand" rest given as a duration target — a
+  // standing rest has no pace to convert duration -> distance with, so this
+  // gap is real (zero-width): distance must stay exact, never inflated to
+  // make room for a marker. The chart places the "stand" flag AT this point
+  // rather than reserving space for it.
+  restType?: RestType;
+  restDurationSec?: number;
 }
 
 export type PaceTargetPiece = PaceTargetBand | PaceTargetGap;
@@ -78,6 +87,7 @@ export function buildPaceTargetBandModel(segments: ResolvedSegment[]): PaceTarge
     startPaceSecPerKm: number | null | undefined,
     endPaceSecPerKm = startPaceSecPerKm,
     distanceOverride?: number | null,
+    restType?: RestType,
   ) => {
     const rawLegDistanceM = distanceOverride === undefined
       ? distanceFor(target, startPaceSecPerKm)
@@ -101,7 +111,8 @@ export function buildPaceTargetBandModel(segments: ResolvedSegment[]): PaceTarge
         endPaceUpperSecPerKm: endPaceSecPerKm * UPPER_PACE_FACTOR,
       });
     } else {
-      pieces.push({ kind: "gap", startDistanceM, endDistanceM });
+      const restDurationSec = restType === "stand" && target.kind === "duration" ? target.duration_sec : undefined;
+      pieces.push({ kind: "gap", startDistanceM, endDistanceM, restType, restDurationSec });
     }
     distanceM = endDistanceM;
   };
@@ -118,7 +129,12 @@ export function buildPaceTargetBandModel(segments: ResolvedSegment[]): PaceTarge
         }
         for (let repetition = 0; repetition < segment.reps; repetition++) {
           appendLeg(segment.work_target, segment.work_resolved_pace_sec_per_km);
-          if (segment.rest) appendLeg(segment.rest.target, segment.rest.resolved_pace_sec_per_km);
+          if (segment.rest) {
+            appendLeg(
+              segment.rest.target, segment.rest.resolved_pace_sec_per_km,
+              segment.rest.resolved_pace_sec_per_km, undefined, segment.rest.rest_type,
+            );
+          }
         }
         break;
       case "progression": {
@@ -135,7 +151,7 @@ export function buildPaceTargetBandModel(segments: ResolvedSegment[]): PaceTarge
         break;
       }
       case "rest_block":
-        appendLeg(segment.target, null);
+        appendLeg(segment.target, null, null, undefined, segment.rest_type);
         break;
     }
   }

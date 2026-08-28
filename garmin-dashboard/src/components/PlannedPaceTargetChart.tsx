@@ -1,9 +1,10 @@
 import { useId } from "react";
 import { useTranslation } from "react-i18next";
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Area, ComposedChart, CartesianGrid, ReferenceArea, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartCard, chartGrid, chartTick, chartTooltipStyle } from "@/components/ui";
 import { speedRampColor } from "@/components/activity/shared";
-import { computePaceTargetStats, type PaceTargetBand, type PaceTargetBandModel } from "@/domain/planned-workout";
+import { PauseFlagShape } from "@/components/activity/PauseFlagShape";
+import { computePaceTargetStats, type PaceTargetBand, type PaceTargetGap, type PaceTargetBandModel } from "@/domain/planned-workout";
 import { fmtPace } from "@/utils/fmt";
 import { distanceUnitLabel, getUnitSystem, kmToMi, paceUnitLabel } from "@/utils/units";
 
@@ -70,13 +71,33 @@ export function PlannedPaceTargetChart({ model }: { model: PaceTargetBandModel }
   );
   const tooltipName = t("runplan.targetBands.tooltipPace", "Target pace");
   const domainPoints = bands.flatMap(bandPoints);
+  // A "stand" rest is real (zero-width) distance — the axis/total must never
+  // move to make room for it (distance shown must match the actual planned
+  // distance). So the little visual gap is purely a paint-over: a narrow
+  // background-colored ReferenceArea erasing the seam between the two
+  // touching bands, a couple of it wide either side of the rest's real
+  // position, with the pause-flag pill on top of it. Neither the axis domain
+  // (fixed at [0, totalDistanceM]) nor any plotted distance value changes.
+  const standRestGaps = model.pieces.filter(
+    (piece): piece is PaceTargetGap => piece.kind === "gap" && piece.restType === "stand" && piece.restDurationSec != null,
+  );
+  const gapHalfWidthM = Math.max(model.totalDistanceM * 0.01, 8);
+  // Mirrors the real-activity pause flag (PauseFlagShape/`pauseDurationSec`)
+  // so a "stand" rest reads the same way here as an actual GPS pause does on
+  // the activity chart — same shape, same field name, reused directly.
+  const standRestFlags = standRestGaps.map(gap => ({
+    distanceM: (gap.startDistanceM + gap.endDistanceM) / 2, flag: 1, pauseDurationSec: gap.restDurationSec,
+  }));
 
   return (
     <div data-testid="planned-pace-target-chart" role="img" aria-label={title} className="mt-2.5">
       <ChartCard title={title}>
         <div className="h-52.5">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={domainPoints} margin={{ top: 8, right: 12, bottom: 28, left: 12 }}>
+            {/* top:16 (not the chart's own default) gives the reused
+                pause-flag pill room — see OverlayCharts.tsx's identical
+                margin comment for why a smaller top margin clips it. */}
+            <ComposedChart data={domainPoints} margin={{ top: 16, right: 12, bottom: 28, left: 12 }}>
               <defs>
                 {bands.map((band, index) => {
                   const start = speedRampColor(paceRampPosition(band.startTargetPaceSecPerKm, slowest, mean, fastest));
@@ -140,7 +161,24 @@ export function PlannedPaceTargetChart({ model }: { model: PaceTargetBandModel }
                   />
                 );
               })}
-            </AreaChart>
+              {standRestGaps.map((gap, index) => (
+                <ReferenceArea
+                  key={index}
+                  x1={Math.max(0, gap.startDistanceM - gapHalfWidthM)}
+                  x2={Math.min(model.totalDistanceM, gap.endDistanceM + gapHalfWidthM)}
+                  fill="var(--bg-card)"
+                  fillOpacity={1}
+                  stroke="none"
+                  ifOverflow="visible"
+                />
+              ))}
+              {standRestFlags.length > 0 && (
+                <>
+                  <YAxis yAxisId="restFlag" domain={[0, 1]} hide width={0} />
+                  <Scatter yAxisId="restFlag" data={standRestFlags} dataKey="flag" shape={PauseFlagShape} isAnimationActive={false} />
+                </>
+              )}
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </ChartCard>

@@ -87,6 +87,36 @@ describe("buildPaceTargetBandModel", () => {
     ]);
   });
 
+  it("tags a duration-based stand rest with its duration but keeps distance exact (zero-width, never inflated)", () => {
+    const segments: ResolvedSegment[] = [{
+      type: "interval", reps: 2, work_target: distance(1000), work_resolved_pace_sec_per_km: 240,
+      rest: { target: duration(60), resolved_pace_sec_per_km: null, rest_type: "stand", raw: "r:60s stand" },
+      raw: "2x1km @ 4:00/km r:60s stand",
+    }];
+
+    const model = buildPaceTargetBandModel(segments);
+    const gaps = model.pieces.filter((piece) => piece.kind === "gap");
+    expect(gaps).toHaveLength(2); // one rest leg after each of the 2 reps
+    for (const gap of gaps) {
+      expect(gap.restType).toBe("stand");
+      expect(gap.restDurationSec).toBe(60);
+      expect(gap.endDistanceM).toBe(gap.startDistanceM); // no width reserved for the flag
+    }
+    expect(model.totalDistanceM).toBe(2000); // planned distance is never inflated
+  });
+
+  it("leaves a distance-based walk rest's real width untouched (no notch, no flag)", () => {
+    const segments: ResolvedSegment[] = [{
+      type: "interval", reps: 1, work_target: distance(1000), work_resolved_pace_sec_per_km: 240,
+      rest: { target: distance(500), resolved_pace_sec_per_km: null, rest_type: "walk", raw: "r:500m walk" },
+      raw: "1x1km @ 4:00/km r:500m walk",
+    }];
+
+    const model = buildPaceTargetBandModel(segments);
+    const gaps = model.pieces.filter((piece) => piece.kind === "gap");
+    expect(gaps).toEqual([{ kind: "gap", startDistanceM: 1000, endDistanceM: 1500, restType: "walk", restDurationSec: undefined }]);
+  });
+
   it("computes the workout-wide mean by real planned distance for ramp normalization", () => {
     const model = buildPaceTargetBandModel([
       { type: "continuous", target: distance(1000), resolved_pace_sec_per_km: 300, raw: "1km @ 5:00/km" },
