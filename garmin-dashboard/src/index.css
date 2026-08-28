@@ -377,6 +377,7 @@
    pre-attribute-resolution duplication above) — covers the brief window
    before App.tsx's useAppearance() sets data-theme/data-palette on <html>. */
 .hra-agenda-calendar {
+  height: 560px;
   --radius: var(--radius-md);
   --background: 220 49% 8%; --foreground: 208 35% 93%;
   --card: 221 41% 12%; --card-foreground: 208 35% 93%;
@@ -750,7 +751,15 @@ body {
   border-radius: 999px;
   color: var(--text-secondary);
   cursor: pointer;
+  padding: 5px 12px;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-body);
 }
+.hra-agenda-gauge-distance { --gauge-fill: var(--data-pace); }
+.hra-agenda-gauge-duration { --gauge-fill: var(--accent-green); }
+.hra-category-color { color: var(--cat-color, var(--text-muted)); }
+.hra-icon-button { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+.hra-nav-pill.hra-pill-active { padding: 6px 16px; font-weight: var(--fw-data); }
 .hra-pill-active {
   /* Monochromatic two-stop ramp (corrected 2026-08-17) — the second stop
      used to be a 55% mix toward the fixed --accent-glow cyan, which pulled
@@ -1326,9 +1335,11 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-instantiate-form .hra-date-trigger,
 .hra-instantiate-form .hra-select-trigger,
 .hra-instantiate-form .hra-segment { height: var(--hra-field-h); font-size: var(--fs-label); }
+.hra-instantiate-form input { padding: 0 10px; }
 .hra-instantiate-form .hra-anchor-table input,
 .hra-instantiate-form .hra-anchor-table .hra-select-trigger,
 .hra-instantiate-form .hra-anchor-table .hra-segment { height: 28px; }
+.hra-instantiate-form .hra-anchor-table input { padding: 0 8px; }
 /* .hra-date-trigger's own default width (128px, fixed for a different call
    site — see index.css's DateRangeBar comment) doesn't stretch on its own;
    DatePicker's style prop must be passed { width: "100%" } at any call site
@@ -1425,6 +1436,8 @@ input:focus, select:focus { border-color: var(--accent); }
   color: var(--text-primary); font-size: var(--text-body); font-weight: 600;
   text-align: left; cursor: pointer;
 }
+.hra-btn[data-tone="green"] { --btn-color: var(--accent-green); }
+.hra-btn[data-tone="red"] { --btn-color: var(--accent-red); }
 .hra-accordion-trigger[data-expanded="true"] { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .hra-accordion-chevron { color: var(--text-muted); font-size: var(--text-meta); }
 .hra-accordion-panel { padding: 18px; }
@@ -1750,6 +1763,57 @@ input:focus, select:focus { border-color: var(--accent); }
   font-size: var(--text-meta); font-weight: var(--text-meta--font-weight);
   color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
 }
+
+/* HRA-179 workflow/control surface layout and finite-state classes. */
+.hra-app-main { max-width: 1240px; }
+.hra-compare-range[data-enabled="false"] { opacity: 0.4; pointer-events: none; }
+.hra-preview-pill { padding: 5px 14px; }
+.hra-plan-day-grid { grid-template-columns: auto minmax(0, 1fr) auto; }
+[data-swappable="true"] { cursor: grab; }
+.hra-warning-list { padding-left: 18px; }
+.hra-classification-method { flex: 1 1 240px; }
+.hra-classification-kicker { letter-spacing: 0.04em; }
+.hra-classification-pill {
+  gap: 5px; padding: 2px 9px; border-radius: 20px; letter-spacing: 0.04em;
+  --dyn-border: var(--border-strong); --dyn-color: var(--text-primary);
+}
+.hra-classification-pill[data-verdict-source="true"],
+.hra-classification-pill[data-tone="confirmed"] {
+  --dyn-border: var(--accent-green); --dyn-color: var(--accent-green);
+}
+.hra-classification-pill[data-tone="muted"] { --dyn-border: var(--text-muted); --dyn-color: var(--text-muted); }
+.hra-classification-pill[data-tone="pending"] { --dyn-border: var(--accent-orange); --dyn-color: var(--accent-orange); }
+.hra-classification-pill-compact { padding: 1px 7px; letter-spacing: 0.03em; }
+.hra-feedback-button { --dyn-border: var(--border-strong); --dyn-color: var(--text-secondary); }
+.hra-feedback-button[data-selected="true"][data-tone="green"] { --dyn-border: var(--accent-green); --dyn-color: var(--accent-green); }
+.hra-feedback-button[data-selected="true"][data-tone="red"] { --dyn-border: var(--accent-red); --dyn-color: var(--accent-red); }
+.hra-classification-status[data-status="confirmed"] { --dyn-border: var(--accent-green); --dyn-color: var(--accent-green); }
+.hra-classification-status[data-status="pending"] { --dyn-color: var(--accent-orange); font-weight: var(--fw-data); }
+.hra-classification-status[data-status="unclassified"] { --dyn-color: var(--text-muted); font-weight: var(--fw-body); }
+.hra-classification-segment-item { padding: 3px 8px; }
+.hra-classify-row { padding: 3px 4px; border-radius: 4px; transition: background-color 2.5s ease-out; }
+.hra-classify-row[data-just-confirmed="true"] { background: color-mix(in srgb, var(--accent-green) 18%, transparent); }
+.hra-classify-date { min-width: 86px; }
+.hra-date-range-row { display: flex; gap: 8px; align-items: center; width: 100%; margin-bottom: 12px; }
+.hra-date-range-name { flex: 2 1 120px; min-width: 0; font-size: var(--fs-label); padding: 6px 8px; border-radius: 6px; }
+.hra-date-range-action { flex: 0 0 auto; width: 100px; }
+.hra-chip-action { padding: 3px 10px; }
+.hra-control-action { padding: 5px 14px; }
+.hra-list-row { padding: 3px 0; }
+.hra-icon-action { border-radius: var(--radius-sm); padding: 2px 5px; }
+.hra-instance-identity-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.hra-instance-timing-grid { grid-template-columns: 160px 160px 220px; }
+.hra-goal-time-input { width: 90px; }
+.hra-tight-action { border-radius: 5px; padding: 5px 10px; }
+.hra-resolution-hint { color: var(--text-muted); }
+.hra-resolution-hint[data-unresolved="true"] { color: var(--accent-red); }
+.hra-card-delete-action { top: 15px; right: 46px; z-index: 1; }
+.hra-modal-layer { z-index: 100; }
+.hra-help-modal { max-height: 85vh; }
+.hra-help-section { margin-bottom: 18px; }
+.hra-help-copy { line-height: 1.6; }
+.hra-template-name-field { flex: 0 0 400px; }
+.hra-template-distance-input { width: 100px; }
 .hra-kpi-value {
   font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em; line-height: 1; white-space: nowrap;
   color: var(--kpi-color, var(--text-primary));

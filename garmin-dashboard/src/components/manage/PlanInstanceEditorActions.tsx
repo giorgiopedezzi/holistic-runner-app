@@ -45,7 +45,7 @@ export function PlanInstanceEditorActions({
   const { t } = useTranslation();
 
   return (
-    <div className="hra-row-wrap" style={{ marginBottom: 12, alignItems: "center" }}>
+    <div className="hra-row-wrap mb-3 items-center" >
       {!fieldsLocked ? (
         <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
           {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
@@ -70,17 +70,16 @@ export function PlanInstanceEditorActions({
               DatePicker's own click is wrapped in a stopPropagation span
               so opening the calendar doesn't also fire Regenerate. */}
           <div
-            className="hra-btn hra-regenerate-unit" data-variant="green"
+            className="hra-btn hra-regenerate-unit inline-flex items-center gap-1.5" data-variant="green"
             role="button" tabIndex={regenerateDisabled ? -1 : 0}
             onClick={() => { if (!regenerateDisabled) onRegenerateClick(); }}
             onKeyDown={e => { if (!regenerateDisabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
             data-disabled={regenerateDisabled || undefined}
             aria-disabled={regenerateDisabled}
             title={!isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
-            style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
           >
             <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
-            <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex" }}>
+            <span onClick={e => e.stopPropagation()} className="inline-flex">
               <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled} />
             </span>
           </div>
@@ -90,7 +89,7 @@ export function PlanInstanceEditorActions({
           a dedicated key, not a change to the shared common.restore
           key PlanTemplatesSection.tsx also uses, since this Story's ask
           is scoped to the instance card only. */}
-      <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => onRestoreClick(isDirty)}>
+      <button className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer" onClick={() => onRestoreClick(isDirty)}>
         {t("manage.planInstances.resetButton", "Reset to previous values")}
       </button>
       {/* HRA-157: List/Agenda switch relocated here from its own row
@@ -99,7 +98,7 @@ export function PlanInstanceEditorActions({
           left-aligned. Only shown once there's something to switch
           between, same gating the old location used. */}
       {hasSections && (
-        <div className="hra-segment" style={{ marginLeft: "auto" }}>
+        <div className="hra-segment ml-auto">
           <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
             {t("manage.planInstances.viewList", "List")}
           </button>

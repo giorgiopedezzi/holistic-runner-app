@@ -75,7 +75,7 @@ export function PlanInstanceFormFields({
           instance — startEdit() populates every field from the instance's
           own persisted values, fieldsLocked/fieldDisabled just gate
           interactivity, not visibility (AC1's "same screen shape"). */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 10, marginBottom: 6 }}>
+      <div className="hra-instance-identity-grid grid gap-2.5 mb-1.5">
         <Field label={t("manage.planInstances.templateLabel", "Template")} required>
           <Select
             value={templateId} onValueChange={onTemplateSelectChange}
@@ -86,61 +86,59 @@ export function PlanInstanceFormFields({
           />
         </Field>
         <Field label={t("manage.planTemplates.nameLabel", "Name")} required>
-          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={instName} onChange={e => setInstName(e.target.value)} disabled={fieldDisabled} style={{ width: "100%", padding: "0 10px" }} />
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary w-full" value={instName} onChange={e => setInstName(e.target.value)} disabled={fieldDisabled} />
         </Field>
         <Field label={t("manage.planInstances.raceNameLabel", "Race name")}>
-          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={fieldDisabled} placeholder={t("common.optional", "Optional")} style={{ width: "100%", padding: "0 10px" }} />
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary w-full" value={raceName} onChange={e => setRaceName(e.target.value)} disabled={fieldDisabled} placeholder={t("common.optional", "Optional")} />
         </Field>
         <Field label={t("manage.planInstances.raceDateLabel", "Race date")}>
           <DatePicker value={raceDate} onChange={onRaceDateChange} disabled={fieldDisabled} />
         </Field>
         <Field label={t("manage.planInstances.linkRaceLabel", "Link a race")}>
-          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} style={{ width: "100%", padding: "0 10px" }} />
+          <input type="text" className="hra-border-strong hra-bg-card hra-text-primary w-full" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} />
         </Field>
       </div>
-      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+      <div className="hra-text-muted text-meta mb-4" >
         <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
         {!fieldsLocked && !formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
       </div>
 
       {/* Row 2 — timing. */}
-      <div style={{ display: "grid", gridTemplateColumns: "160px 160px 220px", gap: 10, marginBottom: 6 }}>
+      <div className="hra-instance-timing-grid grid gap-2.5 mb-1.5">
         <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
           <DatePicker value={startDate} onChange={onStartDateChange} disabled={fieldDisabled} />
         </Field>
         <Field label={t("manage.planInstances.daysBeforeRaceLabel", "Days before race")}>
           <input
-            className="hra-border-strong hra-bg-card hra-text-primary"
+            className="hra-border-strong hra-bg-card hra-text-primary w-full"
             value={daysBeforeRace} onChange={e => onDaysBeforeRaceChange(e.target.value)}
             type="number" disabled={fieldDisabled || !raceDate}
             placeholder={raceDate ? undefined : t("manage.planInstances.daysBeforeRaceUnavailable", "Set a race date above")}
-            style={{ width: "100%", padding: "0 10px" }}
           />
         </Field>
         <Field label={t("manage.planInstances.restDayLabelLabel", "Rest day label")}>
           <input
-            className="hra-border-strong hra-bg-card hra-text-primary"
+            className="hra-border-strong hra-bg-card hra-text-primary w-full"
             value={restDayLabel} onChange={e => setRestDayLabel(e.target.value)}
             disabled={fieldDisabled} placeholder={t("manage.planInstances.restDayLabelPlaceholder", "e.g. Easy jog")}
-            style={{ width: "100%", padding: "0 10px" }}
           />
         </Field>
       </div>
-      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 4 }}>
+      <div className="hra-text-muted text-meta mb-1" >
         {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
       </div>
-      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+      <div className="hra-text-muted text-meta mb-4" >
         {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
       </div>
       {showWeek1AnchorWarning && (
-        <div className="hra-text-warning" style={{ fontSize: 11, marginBottom: 16 }}>
+        <div className="hra-text-warning text-meta mb-4" >
           {t("manage.planInstances.week1AnchorWarning", "Start date doesn't land the plan's implied Monday on an actual Monday — the plan will still be created, but check your dates.")}
         </div>
       )}
 
       {/* Row 3 — pace: Race pace anchor + Pace input mode + Goal time all on
           one line (HRA-137 Ask #1). */}
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "flex-start", gap: 24, marginBottom: 6 }}>
+      <div className="flex flex-wrap items-start gap-6 mb-1.5">
         <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
           <div className="hra-segment">
             {[NONE_ANCHOR, ...templateAnchors].map(a => (
@@ -157,13 +155,13 @@ export function PlanInstanceFormFields({
           </div>
         </Field>
         <Field label={t("manage.planInstances.goalTimeLabel", "Goal time")}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div className="flex items-center gap-1.5">
             <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
+              className="hra-goal-time-input hra-border-strong hra-bg-card hra-text-primary"
               value={goalTimeDisplayValue}
               onChange={e => onGoalTimeInput(e.target.value)}
               disabled={fieldDisabled || paceMode !== "goalTime"}
-              inputMode="numeric" maxLength={8} style={{ width: 90 }}
+              inputMode="numeric" maxLength={8}
               placeholder={t("manage.planInstances.goalTimePlaceholder", "HH:MM:SS")}
               aria-label={t("manage.planInstances.goalTimeAria", "Goal time (HH:MM:SS)")}
             />
@@ -173,19 +171,19 @@ export function PlanInstanceFormFields({
           </div>
         </Field>
       </div>
-      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+      <div className="hra-text-muted text-meta mb-3.5" >
         {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
       </div>
 
       {hasRacePaceAnchor && paceMode === "goalTime" && showDistanceOverride && (
-        <div style={{ marginBottom: 16 }}>
+        <div className="mb-4">
           <Field label={t("manage.planInstances.distanceLabel", "Distance (m) — optional override, defaults to the template's own distance")}>
-            <input className="hra-border-strong hra-bg-card hra-text-primary" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldDisabled} type="number" style={{ width: 200, padding: "0 10px" }} placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
+            <input className="hra-border-strong hra-bg-card hra-text-primary w-50" value={distanceM} onChange={e => setDistanceM(e.target.value)} disabled={fieldDisabled} type="number" placeholder={t("manage.planInstances.distancePlaceholder", "e.g. 21097")} />
           </Field>
         </div>
       )}
       {hasRacePaceAnchor && paceMode === "anchor" && (
-        <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 16 }}>
+        <div className="hra-text-muted text-meta mb-4" >
           {t("manage.planInstances.anchorModeHint", "Set {{anchor}}'s pace directly in its row in the table below.", { anchor: racePaceAnchor })}
         </div>
       )}

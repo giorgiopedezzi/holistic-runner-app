@@ -26,7 +26,7 @@ interface Props {
 
 function ModalTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+    <div className="hra-text-primary text-label font-semibold leading-normal mb-4">
       {children}
     </div>
   );
@@ -63,10 +63,10 @@ export function PlanInstanceConfirmations({ confirmation, sections, onConfirm, o
           open
           title={
             <>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              <div className="hra-text-primary text-label font-semibold mb-2">
                 {t("manage.planInstances.switchTemplateTitle", "Discard current instance data?")}
               </div>
-              <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 16 }}>
+              <div className="hra-text-secondary text-meta leading-normal mb-4">
                 {t("manage.planInstances.switchTemplateBody", "This instance hasn't been created yet. Picking a different template will lose the name, dates, and pace values you've already entered.")}
               </div>
             </>

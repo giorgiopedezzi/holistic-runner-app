@@ -218,7 +218,7 @@ function sectionHasWarnings(section: SectionView): boolean {
 
 function WarningBadge({ t }: { t: Translate }) {
   return (
-    <span className="hra-text-danger" style={{ fontSize: 12 }} title={t("runplan.accordion.needsReviewBadge", "Needs review")}>
+    <span className="hra-text-danger text-meta"  title={t("runplan.accordion.needsReviewBadge", "Needs review")}>
       ⚠
     </span>
   );
@@ -234,7 +234,7 @@ function WarningBadge({ t }: { t: Translate }) {
 // whole-instance and per-day granularity.
 function UnsavedBadge({ t }: { t: Translate }) {
   return (
-    <span className="hra-text-warning" style={{ display: "inline-flex", alignItems: "center" }} title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}>
+    <span className="hra-text-warning inline-flex items-center"  title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}>
       <AlertTriangle size={12} />
     </span>
   );
@@ -243,7 +243,7 @@ function UnsavedBadge({ t }: { t: Translate }) {
 function NoteIcon({ note }: { note?: string }) {
   if (!note) return null;
   return (
-    <span className="hra-tooltip hra-text-muted" data-tooltip={note} style={{ fontSize: 12, cursor: "help" }}>
+    <span className="hra-tooltip hra-text-muted text-meta cursor-help" data-tooltip={note} >
       ⓘ
     </span>
   );
@@ -257,9 +257,9 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
   label: string; summary?: string; hasWarning?: boolean; note?: string; t: Translate;
 }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flex: 1, gap: 10, minWidth: 0 }}>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{label}</span>
-      <span className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, fontWeight: 400, flexShrink: 0 }}>
+    <div className="flex items-center justify-between flex-1 gap-2.5 min-w-0">
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
+      <span className="hra-text-secondary flex items-center gap-2 text-meta font-normal shrink-0" >
         {summary}
         {hasWarning && <WarningBadge t={t} />}
         <NoteIcon note={note} />
@@ -330,7 +330,7 @@ function InstanceDayRow({
     <div
       {...drag.handlers}
       className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
-      style={drag.swappable ? { cursor: "grab" } : undefined}
+      data-swappable={drag.swappable || undefined}
     >
       {/* Live follow-up (post-HRA-165): both rows are now ONE CSS Grid,
           columns [leading auto][middle 1fr][trailing auto], instead of two
@@ -355,7 +355,7 @@ function InstanceDayRow({
           8 throughout (row 2's own gap, unchanged, per instruction; row 1's
           own gap shrinks by 2px as a minor, flagged side effect of sharing
           one grid). */}
-      <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr) auto", alignItems: "center", columnGap: 8, rowGap: 6 }}>
+      <div className="hra-plan-day-grid grid items-center gap-x-2 gap-y-1.5">
         {/* HRA-160: border color now comes from the day's classified
             category (--cat-color, set by the same hra-agenda-cat-* class
             the Agenda view uses) — the badge's own later-declared
@@ -363,24 +363,23 @@ function InstanceDayRow({
             class's own tinted background, so only the border changes here,
             not the pill's solid fill. Icon (same CATEGORY_ICONS map)
             renders after the date text. */}
-        <span className={`hra-day-date-badge ${categoryCatClass}`} style={{ gridRow: 1, gridColumn: 1 }}>
+        <span className={[`hra-day-date-badge ${categoryCatClass}`, "row-start-1 col-start-1"].filter(Boolean).join(" ")} >
           {dateBadge}
           <CategoryIcon size={12} />
         </span>
         {/* HRA-126: once approved, the dsl/note inputs simply don't render —
             plain text takes their place so the row still reads correctly. */}
         {readOnlyDays ? (
-          <span style={{ gridRow: 1, gridColumn: 2, minWidth: 0 }}>{workoutText}</span>
+          <span className="row-start-1 col-start-2 min-w-0">{workoutText}</span>
         ) : (
           <input
-            className={inputClass}
+            className={[inputClass, "row-start-1 col-start-2 w-full min-w-0 font-mono text-label p-1.5"].filter(Boolean).join(" ")}
             value={workoutText}
             onChange={e => onEdit({ dsl: recomposeDayLine(`${dayPrefix}${e.target.value}`, { notes: day.notes }) })}
             aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
-            style={{ gridRow: 1, gridColumn: 2, width: "100%", minWidth: 0, fontFamily: "monospace", fontSize: 13, padding: 6 }}
           />
         )}
-        <span className="hra-text-secondary" style={{ gridRow: 1, gridColumn: 3, display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+        <span className="hra-text-secondary row-start-1 col-start-3 flex items-center gap-2 text-meta" >
           {fmtDistance(day.distance, t)}
           {dirty && <UnsavedBadge t={t} />}
           {day.needs_review && <WarningBadge t={t} />}
@@ -391,20 +390,19 @@ function InstanceDayRow({
             so the two share a width by construction (see the grid comment
             above) rather than an invisible clone. */}
         {readOnlyDays ? (
-          <span className="hra-text-secondary" style={{ gridRow: 2, gridColumn: 1, display: "flex", alignItems: "center" }} title={t(workoutTypeKey, workoutTypeFallback)}>
+          <span className="hra-text-secondary row-start-2 col-start-1 flex items-center"  title={t(workoutTypeKey, workoutTypeFallback)}>
             <ActiveWorkoutTypeIcon size={14} />
           </span>
         ) : (
-          <div className="hra-segment" role="group" aria-label={t("runplan.accordion.workoutTypeSwitchLabel", "Day type")} style={{ gridRow: 2, gridColumn: 1, width: "100%" }}>
+          <div className="hra-segment row-start-2 col-start-1 w-full" role="group" aria-label={t("runplan.accordion.workoutTypeSwitchLabel", "Day type")} >
             {(["run", "rest", "other"] as const).map(v => {
               const Icon = WORKOUT_TYPE_SWITCH_ICONS[v];
               const [key, fallback] = WORKOUT_TYPE_SWITCH_LABEL_KEYS[v];
               const label = t(key, fallback);
               return (
                 <button
-                  key={v} type="button" className="hra-segment-item" data-active={workoutTypeValue === v}
+                  key={v} type="button" className="hra-segment-item flex-1 py-1 px-2 flex items-center justify-center" data-active={workoutTypeValue === v}
                   onClick={() => v !== workoutTypeValue && onWorkoutTypeEdit?.(v)} title={label} aria-label={label}
-                  style={{ flex: 1, padding: "4px 8px", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   <Icon size={14} />
                 </button>
@@ -413,38 +411,36 @@ function InstanceDayRow({
           </div>
         )}
         {readOnlyDays ? (
-          day.notes && <div className="hra-text-muted" style={{ gridRow: 2, gridColumn: 2, minWidth: 0, fontSize: 12 }}>{day.notes}</div>
+          day.notes && <div className="hra-text-muted row-start-2 col-start-2 min-w-0 text-meta" >{day.notes}</div>
         ) : (
           <input
-            className={inputClass}
+            className={[inputClass, "row-start-2 col-start-2 w-full min-w-0 p-1.5 text-meta"].filter(Boolean).join(" ")}
             value={day.notes ?? ""}
             onChange={e => onEdit({ notes: e.target.value })}
             placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
             aria-label={t("runplan.accordion.noteLabel", "Note")}
-            style={{ gridRow: 2, gridColumn: 2, width: "100%", minWidth: 0, padding: 6, fontSize: 12 }}
           />
         )}
         {readOnlyDays ? (
-          <span className="hra-text-secondary" style={{ gridRow: 2, gridColumn: 3, fontSize: 12 }}>{scheduledTime}</span>
+          <span className="hra-text-secondary row-start-2 col-start-3 text-meta" >{scheduledTime}</span>
         ) : (
           <input
             type="time"
-            className={inputClass}
+            className={[inputClass, "row-start-2 col-start-3 w-full p-1.5 text-meta"].filter(Boolean).join(" ")}
             value={scheduledTime}
             onChange={e => onScheduledTimeEdit?.(e.target.value || null)}
             aria-label={t("runplan.accordion.scheduledTimeLabel", "Scheduled time")}
-            style={{ gridRow: 2, gridColumn: 3, width: "100%", padding: 6, fontSize: 12 }}
           />
         )}
       </div>
       {day.paceTargetBands && <PlannedPaceTargetChart model={day.paceTargetBands} />}
       {day.needs_review && day.warnings.length > 0 && (
-        <ul className="hra-text-danger" style={{ fontSize: 12, margin: "6px 0 0", paddingLeft: 18 }}>
+        <ul className="hra-warning-list hra-text-danger text-meta mt-1.5 mb-0">
           {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
         </ul>
       )}
       {day.needs_review && day.warnings.length === 0 && (
-        <div className="hra-text-danger" style={{ fontSize: 12, marginTop: 6 }}>
+        <div className="hra-text-danger text-meta mt-1.5" >
           {t("runplan.accordion.needsReview", "This day needs review before it can be saved.")}
         </div>
       )}
@@ -474,46 +470,44 @@ function TemplateDayRow({
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
   // at a glance, instead of a redundant bare "D3".
   return (
-    <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
+    <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} data-swappable={drag.swappable || undefined}>
       <AccordionCard
         title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div className="flex flex-col gap-2">
           {/* HRA-126: once approved, the dsl/note inputs simply don't render —
               same "hide the input, the title/tooltip already shows the value"
               pattern readOnlySectionWeek already uses for Section/Week above. */}
           {!readOnlyDays && (
             <>
-              <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+              <label className="hra-text-secondary text-meta" >
                 {t("runplan.accordion.dslLabel", "Workout (DSL)")}
                 <textarea
-                  className={inputClass}
+                  className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}
                   value={day.dsl}
                   onChange={e => onEdit({ dsl: e.target.value })}
                   rows={2}
-                  style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 6 }}
                 />
               </label>
-              <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+              <label className="hra-text-secondary text-meta" >
                 {t("runplan.accordion.noteLabel", "Note")}
                 <input
-                  className={inputClass}
+                  className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
                   value={day.notes ?? ""}
                   onChange={e => onEdit({ notes: e.target.value })}
                   placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-                  style={{ width: "100%", marginTop: 4, padding: 6 }}
                 />
               </label>
             </>
           )}
           {day.needs_review && day.warnings.length > 0 && (
-            <ul className="hra-text-danger" style={{ fontSize: 12, margin: 0, paddingLeft: 18 }}>
+            <ul className="hra-warning-list hra-text-danger text-meta m-0">
               {day.warnings.map((w, i) => <li key={i}>{w.message}</li>)}
             </ul>
           )}
           {day.needs_review && day.warnings.length === 0 && (
-            <div className="hra-text-danger" style={{ fontSize: 12 }}>
+            <div className="hra-text-danger text-meta" >
               {t("runplan.accordion.needsReview", "This day needs review before it can be saved.")}
             </div>
           )}
@@ -573,21 +567,20 @@ function WeekEditor({
   const summary = compactTotals(week.totals, t);
 
   return (
-    <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} style={drag.swappable ? { cursor: "grab" } : undefined}>
+    <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} data-swappable={drag.swappable || undefined}>
       <AccordionCard
         title={<TitleRow label={label} summary={summary} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div className="flex flex-col gap-3">
           {!readOnlySectionWeek && (
-            <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+            <label className="hra-text-secondary text-meta" >
               {t("runplan.accordion.noteLabel", "Note")}
               <input
-                className={inputClass}
+                className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
                 value={week.notes ?? ""}
                 onChange={e => onWeekEdit({ notes: e.target.value })}
                 placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-                style={{ width: "100%", marginTop: 4, padding: 6 }}
               />
             </label>
           )}
@@ -640,31 +633,29 @@ function SectionEditor({
       title={<TitleRow label={displayName} summary={compactTotals(section.totals, t)} hasWarning={sectionHasWarnings(section)} note={isDefaultSection ? undefined : section.notes} t={t} />}
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div className="flex flex-col gap-3">
         {isDefaultSection ? (
-          <div className="hra-text-muted" style={{ fontSize: 12 }}>
+          <div className="hra-text-muted text-meta" >
             {t("runplan.accordion.defaultSectionName", `Name follows the plan's own name — ${ownerName}`, { name: ownerName })}
           </div>
         ) : !readOnlySectionWeek && (
-          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+          <label className="hra-text-secondary text-meta" >
             {t("runplan.accordion.sectionNameLabel", "Section name")}
             <input
-              className={inputClass}
+              className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
               value={section.name}
               onChange={e => onSectionEdit({ name: e.target.value })}
-              style={{ width: "100%", marginTop: 4, padding: 6 }}
             />
           </label>
         )}
         {!isDefaultSection && !readOnlySectionWeek && (
-          <label className="hra-text-secondary" style={{ fontSize: 12 }}>
+          <label className="hra-text-secondary text-meta" >
             {t("runplan.accordion.noteLabel", "Note")}
             <input
-              className={inputClass}
+              className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
               value={section.notes ?? ""}
               onChange={e => onSectionEdit({ notes: e.target.value })}
               placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-              style={{ width: "100%", marginTop: 4, padding: 6 }}
             />
           </label>
         )}

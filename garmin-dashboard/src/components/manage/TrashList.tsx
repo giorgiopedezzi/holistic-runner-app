@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorBanner, Checkbox } from "@/components/ui";
 
@@ -43,22 +42,22 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
   }
 
   return (
-    <div style={{ marginBottom: 16 }}>
-      <div className="hra-block-title" style={{ fontSize: 13, marginBottom: 8 }}>{title}</div>
-      {loading && <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>}
+    <div className="mb-4">
+      <div className="hra-block-title text-label mb-2" >{title}</div>
+      {loading && <div className="hra-text-muted text-meta" >{t("common.loading", "Loading…")}</div>}
       {error && <ErrorBanner message={error} />}
       {!loading && !error && items && items.length === 0 && (
-        <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.trash.empty", "Trash is empty.")}</div>
+        <div className="hra-text-muted text-meta" >{t("manage.trash.empty", "Trash is empty.")}</div>
       )}
       {!loading && !error && items && items.length > 0 && (
         <>
-          <div className="hra-border" style={{ maxHeight: 200, overflow: "auto", borderRadius: 6, padding: 8, marginBottom: 10 }}>
-            <label className="hra-text-muted hra-border-bottom" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", marginBottom: 6, paddingBottom: 6 }}>
+          <div className="hra-border max-h-50 overflow-auto rounded-md p-2 mb-2.5" >
+            <label className="hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5" >
               <Checkbox checked={selected.size === items.length} onCheckedChange={toggleAll} />
               {t("manage.trash.selectAll", `Select all (${items.length})`, { n: items.length })}
             </label>
             {items.map(item => (
-              <label key={item.id} className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer", padding: "3px 0" }}>
+              <label key={item.id} className="hra-list-row hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer">
                 <Checkbox checked={selected.has(item.id)} onCheckedChange={() => toggle(item.id)} />
                 {renderRow(item)}
               </label>
@@ -73,7 +72,7 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
             {!confirmPurge ? (
               <button
                 className="hra-btn" data-variant="cta"
-                style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                data-tone="red"
                 onClick={() => setConfirmPurge(true)} disabled={selected.size === 0 || busy}
                 title={t("manage.trash.purgeTooltip", "Permanently deletes the selected item(s) — this can't be undone. The filename/date is still kept internally so a resync won't bring it back.")}
               >
@@ -81,17 +80,16 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
               </button>
             ) : (
               <>
-                <span className="hra-text-danger" style={{ fontSize: 12 }}>{t("manage.trash.confirmPurge", `Permanently delete ${selected.size} item(s)? This can't be undone.`, { n: selected.size })}</span>
+                <span className="hra-text-danger text-meta" >{t("manage.trash.confirmPurge", `Permanently delete ${selected.size} item(s)? This can't be undone.`, { n: selected.size })}</span>
                 <button
                   className="hra-btn" data-variant="cta"
-                  style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+                  data-tone="red"
                   onClick={doPurge} disabled={busy}
                 >
                   {busy ? "…" : t("common.confirm", "Confirm")}
                 </button>
                 <button onClick={() => setConfirmPurge(false)}
-                  className="hra-border-strong hra-text-secondary"
-                  style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }}>
+                  className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer">
                   {t("common.cancel", "Cancel")}
                 </button>
               </>

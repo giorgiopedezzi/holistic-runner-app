@@ -33,18 +33,17 @@ export function TrashSection() {
 
   return (
     <Card>
-      <div className="hra-row" style={{ gap: 8, marginBottom: 4 }}>
+      <div className="hra-row gap-2 mb-1" >
         <div className="hra-block-title">{t("manage.trash.title", "Trash")}</div>
         <button
-          className="hra-nav-hover hra-text-muted"
+          className="hra-icon-action hra-nav-hover hra-text-muted bg-transparent border-0 cursor-pointer text-label leading-none"
           onClick={() => { refreshActivities(); refreshMeasurements(); }}
           title={t("manage.trash.refreshTooltip", "Refresh — e.g. after deleting something above")}
-          style={{ background: "none", border: "none", borderRadius: "var(--radius-sm)", cursor: "pointer", fontSize: 13, padding: "2px 5px", lineHeight: 1 }}
         >
           ⟳
         </button>
       </div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 16 }}>
+      <div className="hra-text-secondary text-meta mb-4" >
         {t("manage.trash.description", "Items deleted above land here first. Restore brings them straight back; emptying the trash permanently deletes them (their data is wiped to reclaim space, but enough is kept internally that a resync still won't reimport them).")}
       </div>
 

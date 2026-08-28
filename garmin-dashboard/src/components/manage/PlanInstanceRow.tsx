@@ -31,25 +31,24 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
       return (
         <span
           title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}
-          className="hra-text-warning"
-          style={{ display: "inline-flex", alignItems: "center" }}
+          className="hra-text-warning inline-flex items-center"
         >
           <AlertTriangle size={14} />
         </span>
       );
     }
     return (
-      <span className="hra-text-secondary" style={{ fontSize: 11, fontStyle: "italic" }}>
+      <span className="hra-text-secondary text-meta italic" >
         {t("manage.planInstances.openToEditHint", "Open to edit")}
       </span>
     );
   }
 
   const title = instance ? (
-    <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{instance.name ?? t("manage.planInstances.untitled", "Untitled instance")}</span>
-      {instance.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${instance.event}`, instance.event)}</span>}
-      <span className="hra-text-muted" style={{ fontSize: 11 }}>{instance.start_date}</span>
+    <span className="flex items-center gap-2 flex-1 min-w-0">
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{instance.name ?? t("manage.planInstances.untitled", "Untitled instance")}</span>
+      {instance.event && <span className="hra-text-muted text-meta" >{t(`manage.planTemplates.event.${instance.event}`, instance.event)}</span>}
+      <span className="hra-text-muted text-meta" >{instance.start_date}</span>
       <Badge
         label={instance.approved_at ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}
         color={instance.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
@@ -57,7 +56,7 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
       {!expanded && rowStatusHint()}
     </span>
   ) : (
-    <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+    <span className="flex items-center gap-2 flex-1 min-w-0">
       <span>{newInstanceName || t("manage.planInstances.instantiateTitle", "New instance")}</span>
       {!expanded && rowStatusHint()}
     </span>
@@ -78,16 +77,15 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
     // rather than living inside the header <button> (invalid HTML) or as a
     // separate column beside the card. Works whether the row is expanded or
     // collapsed.
-    <div style={{ position: "relative" }}>
+    <div className="relative">
       <AccordionCard title={title} expanded={expanded} onToggle={onToggle}>
         {children}
       </AccordionCard>
       <button
-        className="hra-btn" data-variant="danger"
+        className="hra-card-delete-action hra-btn absolute py-1 px-2 inline-flex items-center" data-variant="danger"
         onClick={() => onDeleteClick?.(instance.id)}
         title={t("common.delete", "Delete")}
         aria-label={t("common.delete", "Delete")}
-        style={{ position: "absolute", top: 15, right: 46, zIndex: 1, padding: "4px 8px", display: "inline-flex", alignItems: "center" }}
       >
         <Trash2 size={13} />
       </button>

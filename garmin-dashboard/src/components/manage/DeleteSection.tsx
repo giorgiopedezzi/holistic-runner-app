@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
@@ -75,39 +74,38 @@ export function DeleteSection() {
 
   return (
     <Card className="hra-card-danger-border">
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>
-        {t("manage.delete.title", "Delete data range")} <span className="hra-text-muted" style={{ fontSize: 11, fontWeight: 400 }}>· {t("manage.delete.localOnly", "local database only")}</span>
+      <div className="hra-block-title mb-1" >
+        {t("manage.delete.title", "Delete data range")} <span className="hra-text-muted text-meta font-normal" >· {t("manage.delete.localOnly", "local database only")}</span>
       </div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 16 }}>
+      <div className="hra-text-secondary text-meta mb-4" >
         {t("manage.delete.description", "Moves records to the local database's trash (below) rather than removing them outright — restore them any time, or empty the trash to permanently reclaim the space. Nothing is touched on your Garmin watch, Strava, or Withings account either way, and a resync won't bring a trashed (or permanently deleted) item back on its own.")}
       </div>
 
-      <div className="hra-control-row" style={{ gap: 16, marginBottom: 12 }}>
-        <label className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+      <div className="hra-control-row gap-4 mb-3" >
+        <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
           <Checkbox checked={delActivities} onCheckedChange={setDelActivities} />
           {t("manage.delete.activitiesLabel", "Activities (Garmin + Strava)")}
         </label>
-        <label className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+        <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
           <Checkbox checked={delBody} onCheckedChange={setDelBody} />
           {t("manage.delete.bodyLabel", "Withings measurements")}
         </label>
         <button
           onClick={() => { setDelActivities(true); setDelBody(true); }}
-          className="hra-border-strong hra-text-muted"
-          style={{ fontSize: 11, padding: "3px 10px", borderRadius: 999, background: "transparent", cursor: "pointer" }}
+          className="hra-chip-action hra-border-strong hra-text-muted text-meta rounded-full bg-transparent cursor-pointer"
         >
           {t("manage.delete.selectAll", "Select all")}
         </button>
       </div>
 
-      <div className="hra-control-row" style={{ gap: 8, marginBottom: 12 }}>
+      <div className="hra-control-row gap-2 mb-3" >
         <DatePicker value={from} onChange={setFrom} max={to} />
-        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
+        <span className="hra-text-muted text-meta" >→</span>
         <DatePicker value={to} onChange={setTo} min={from} />
       </div>
 
       {canDelete && (
-        <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
+        <div className="hra-text-secondary text-meta mb-2.5" >
           {t("manage.delete.willDelete", "This will delete")}{" "}
           {delActivities && <strong className="hra-text-danger">{t("manage.delete.activitiesCount", `${activityCount ?? "…"} activities`, { n: activityCount ?? "…" })}</strong>}
           {delActivities && delBody && t("manage.delete.partsJoiner", " and ")}
@@ -117,20 +115,20 @@ export function DeleteSection() {
       )}
 
       {canDelete && (
-        <label className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, marginBottom: 10, cursor: "pointer" }}>
+        <label className="hra-text-secondary flex items-center gap-1.5 text-meta mb-2.5 cursor-pointer" >
           <Checkbox checked={showData} onCheckedChange={setShowData} />
           {t("manage.delete.showData", "Show data")}
         </label>
       )}
 
       {showData && delActivities && (
-        <div className="hra-border" style={{ maxHeight: 160, overflow: "auto", marginBottom: 10, borderRadius: 6, padding: 8 }}>
+        <div className="hra-border max-h-40 overflow-auto mb-2.5 rounded-md p-2" >
           {activityPreview === null ? (
-            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
+            <div className="hra-text-muted text-meta" >{t("common.loading", "Loading…")}</div>
           ) : activityPreview.length === 0 ? (
-            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.delete.noActivitiesInRange", "No activities in this range.")}</div>
+            <div className="hra-text-muted text-meta" >{t("manage.delete.noActivitiesInRange", "No activities in this range.")}</div>
           ) : activityPreview.map(a => (
-            <div key={a.id} className="hra-text-secondary" style={{ fontSize: 12, padding: "3px 0" }}>
+            <div key={a.id} className="hra-list-row hra-text-secondary text-meta">
               {fmtDate(a.date_only)} — {a.sport ?? "other"} — {fmtKm(a.distance_m)} — {a.source ?? "garmin"}
             </div>
           ))}
@@ -138,13 +136,13 @@ export function DeleteSection() {
       )}
 
       {showData && delBody && (
-        <div className="hra-border" style={{ maxHeight: 160, overflow: "auto", marginBottom: 10, borderRadius: 6, padding: 8 }}>
+        <div className="hra-border max-h-40 overflow-auto mb-2.5 rounded-md p-2" >
           {bodyPreview === null ? (
-            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
+            <div className="hra-text-muted text-meta" >{t("common.loading", "Loading…")}</div>
           ) : bodyPreview.length === 0 ? (
-            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.delete.noMeasurementsInRange", "No measurements in this range.")}</div>
+            <div className="hra-text-muted text-meta" >{t("manage.delete.noMeasurementsInRange", "No measurements in this range.")}</div>
           ) : bodyPreview.map((m, i) => (
-            <div key={i} className="hra-text-secondary" style={{ fontSize: 12, padding: "3px 0" }}>
+            <div key={i} className="hra-list-row hra-text-secondary text-meta">
               {fmtDate(m.date_only)} — {fmtWeight(m.weight_kg)}
             </div>
           ))}
@@ -154,32 +152,31 @@ export function DeleteSection() {
       {!confirm ? (
         <button
           className="hra-btn" data-variant="cta"
-          style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+          data-tone="red"
           onClick={() => setConfirm(true)} disabled={!canDelete}
         >
           {t("manage.delete.moveToTrashButton", "Move to trash…")}
         </button>
       ) : (
         <div className="hra-row-wrap">
-          <span className="hra-text-danger" style={{ fontSize: 12 }}>
+          <span className="hra-text-danger text-meta" >
             {t("manage.delete.moveToTrashConfirm", `Move to trash, ${from} to ${to}?`, { from, to })}
           </span>
           <button
             className="hra-btn" data-variant="cta"
-            style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+            data-tone="red"
             onClick={doDelete} disabled={loading}
           >
             {loading ? "…" : t("common.confirm", "Confirm")}
           </button>
           <button onClick={() => setConfirm(false)}
-            className="hra-border-strong hra-text-secondary"
-            style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }}>
+            className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer">
             {t("common.cancel", "Cancel")}
           </button>
         </div>
       )}
 
-      {result && <div className="hra-text-success" style={{ marginTop: 10, fontSize: 12 }}>{result}</div>}
+      {result && <div className="hra-text-success mt-2.5 text-meta" >{result}</div>}
       {error  && <ErrorBanner message={error} />}
     </Card>
   );

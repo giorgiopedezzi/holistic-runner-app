@@ -266,8 +266,8 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
       className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? ""}${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
       {...dragProps}
     >
-      <span className="hra-agenda-event-main-row" style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0, width: "100%" }}>
-        <span title={categoryLabel} style={{ display: "inline-flex", alignItems: "center", flexShrink: 0, color: "var(--cat-color)" }}>
+      <span className="hra-agenda-event-main-row flex items-center gap-1 min-w-0 w-full" >
+        <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
           <Icon size={12} />
         </span>
         <span className="hra-agenda-event-title">
@@ -278,8 +278,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
         {event.needsReview && (
           <span
             title={t("manage.planInstances.needsReviewTooltip", "Needs review")}
-            className="hra-text-warning"
-            style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}
+            className="hra-text-warning inline-flex items-center shrink-0"
           >
             <AlertTriangle size={12} />
           </span>
@@ -291,7 +290,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
           {hasDistance && (
             <span className="hra-agenda-gauge" title={t("manage.planInstances.distanceTooltip", `Distance: ${formatDistanceM(metrics.totalDistanceM)}`, { value: formatDistanceM(metrics.totalDistanceM) })}>
               <Route size={11} />
-              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": distancePct, "--gauge-fill": "var(--data-pace)" } as CSSProperties} />
+              <span className="hra-agenda-gauge-ring hra-agenda-gauge-distance" style={{ "--gauge-pct": distancePct } as CSSProperties} />
             </span>
           )}
           {hasDuration && (
@@ -305,7 +304,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
                   rendering this ring invisible in every state, always —
                   --accent-green isn't a shadowed name, so it resolves to the
                   app's real token as intended. */}
-              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": durationPct, "--gauge-fill": "var(--accent-green)" } as CSSProperties} />
+              <span className="hra-agenda-gauge-ring hra-agenda-gauge-duration" style={{ "--gauge-pct": durationPct } as CSSProperties} />
             </span>
           )}
           {hasIntensity && (
@@ -374,14 +373,13 @@ function AgendaScheduledTimeEditor({ dayId, scheduledTime, onScheduledTimeEdit }
         </button>
       </PopoverTrigger>
       <PopoverContent align="start">
-        <label className="hra-text-secondary" style={{ fontSize: 12, display: "flex", flexDirection: "column", gap: 4 }}>
+        <label className="hra-text-secondary text-meta flex flex-col gap-1" >
           {label}
           <input
             type="time"
-            className="hra-border-strong hra-bg-card hra-text-primary"
+            className="hra-border-strong hra-bg-card hra-text-primary p-1.5 text-label"
             value={scheduledTime}
             onChange={e => onScheduledTimeEdit?.(dayId, e.target.value || null)}
-            style={{ padding: 6, fontSize: 13 }}
           />
         </label>
       </PopoverContent>
@@ -415,8 +413,6 @@ function AgendaDateHeader({ date, label, event, readOnlyDays, onScheduledTimeEdi
   );
 }
 
-const ICON_BTN_STYLE: CSSProperties = { width: 32, height: 32, padding: 0, display: "inline-flex", alignItems: "center", justifyContent: "center" };
-
 // HRA-148 Ask #3: an info affordance off the calendar header — a popover
 // (not a separate page) listing every category with its actual rule, so a
 // runner can see what drives a badge's color/icon rather than guessing.
@@ -429,7 +425,7 @@ function CategoryCriteriaPopover() {
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
-          type="button" className="hra-btn" data-variant="outline" style={ICON_BTN_STYLE}
+          type="button" className="hra-icon-button hra-btn" data-variant="outline"
           aria-label={t("manage.planInstances.categoryReferenceTrigger", "What do the agenda colors mean?")}
         >
           <Info size={15} />
@@ -448,7 +444,7 @@ function CategoryCriteriaPopover() {
                 const [criteriaKey, criteriaFallback] = CATEGORY_CRITERIA_KEYS[category];
                 return (
                   <tr key={category} className={CATEGORY_CARD_CLASS[category] ?? ""}>
-                    <td className="hra-agenda-category-reference-icon" style={{ color: "var(--cat-color, var(--text-muted))" }}>
+                    <td className="hra-agenda-category-reference-icon hra-category-color">
                       <Icon size={14} />
                     </td>
                     <td className="hra-agenda-category-reference-label">{t(labelKey, labelFallback)}</td>
@@ -520,13 +516,13 @@ function AgendaToolbar({ label, onNavigate, summary }: { label: ReactNode; onNav
           </button>
         </div>
         <div className="hra-agenda-nav">
-          <button type="button" className="hra-btn" data-variant="outline" style={ICON_BTN_STYLE} onClick={() => onNavigate("PREV")} aria-label={t("manage.planInstances.calendarPrevious", "Previous month")}>
+          <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("PREV")} aria-label={t("manage.planInstances.calendarPrevious", "Previous month")}>
             <ChevronLeft size={15} />
           </button>
           <button type="button" className="hra-btn" data-variant="outline" onClick={() => onNavigate("TODAY")}>
             {t("manage.planInstances.calendarToday", "Today")}
           </button>
-          <button type="button" className="hra-btn" data-variant="outline" style={ICON_BTN_STYLE} onClick={() => onNavigate("NEXT")} aria-label={t("manage.planInstances.calendarNext", "Next month")}>
+          <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("NEXT")} aria-label={t("manage.planInstances.calendarNext", "Next month")}>
             <ChevronRight size={15} />
           </button>
         </div>
@@ -653,7 +649,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   const { t } = useTranslation();
 
   return (
-    <div className="hra-agenda-calendar" style={{ height: 560 }}>
+    <div className="hra-agenda-calendar">
       <ShadcnBigCalendar
         localizer={localizer}
         events={events}
@@ -663,7 +659,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
         defaultView="month"
         date={date}
         onNavigate={setDate}
-        style={{ height: "100%" }}
+        className="h-full"
         components={{ event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent }}
         messages={{
           noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range."),

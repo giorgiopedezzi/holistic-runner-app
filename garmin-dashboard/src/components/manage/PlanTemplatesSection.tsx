@@ -534,15 +534,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       return (
         <span
           title={t("manage.planTemplates.unsavedChanges", "Unsaved changes")}
-          className="hra-text-warning"
-          style={{ display: "inline-flex", alignItems: "center" }}
+          className="hra-text-warning inline-flex items-center"
         >
           <AlertTriangle size={14} />
         </span>
       );
     }
     return (
-      <span className="hra-text-secondary" style={{ fontSize: 11, fontStyle: "italic" }}>
+      <span className="hra-text-secondary text-meta italic" >
         {t("manage.planTemplates.openToEditHint", "Open to edit")}
       </span>
     );
@@ -550,9 +549,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   function renderRowTitle(tpl: PlanTemplate) {
     return (
-      <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tpl.name}</span>
-        {tpl.event && <span className="hra-text-muted" style={{ fontSize: 11 }}>{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
+      <span className="flex items-center gap-2 flex-1 min-w-0">
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{tpl.name}</span>
+        {tpl.event && <span className="hra-text-muted text-meta" >{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
         <Badge
           label={tpl.approved_at ? t("manage.planTemplates.approved", "Approved") : t("manage.planTemplates.notApproved", "Not approved")}
           color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
@@ -573,20 +572,19 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             UI" rule). Distance/km-mi stay on screen at all times (not
             conditionally mounted) — only their enabled state depends on
             Event type — so nothing ever appears/disappears in this row. */}
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 400px" }}>
+        <div className="flex items-start gap-2.5 flex-wrap mb-2.5">
+          <label className="hra-template-name-field hra-text-secondary text-meta">
             {t("manage.planTemplates.nameLabel", "Name")}
             <input
-              className="hra-border-strong hra-bg-card hra-text-primary"
+              className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
               value={name}
               onChange={e => setName(e.target.value)}
-              style={{ width: "100%", marginTop: 4, padding: 6 }}
             />
           </label>
 
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
+          <label className="shrink-0 hra-text-secondary text-meta">
             {t("manage.planTemplates.eventLabel", "Event type")}
-            <div style={{ marginTop: 4 }}>
+            <div className="mt-1">
               <Select
                 value={event}
                 onValueChange={v => onEventChange(v as EventType)}
@@ -603,16 +601,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               it can be seen and selected/copied but not changed, unlike
               disabled which would also dim it. Only Custom makes both
               writable. */}
-          <label className="hra-text-secondary" style={{ fontSize: 12, flex: "0 0 auto" }}>
+          <label className="shrink-0 hra-text-secondary text-meta">
             {t("manage.planTemplates.distanceLabel", "Distance")}
-            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+            <div className="flex gap-1.5 mt-1">
               <input
-                className="hra-border-strong hra-bg-card hra-text-primary"
+                className="hra-template-distance-input hra-border-strong hra-bg-card hra-text-primary p-1.5"
                 value={distanceValue}
                 onChange={e => setDistanceValue(e.target.value)}
                 type="number"
                 readOnly={!isCustomEvent}
-                style={{ width: 100, padding: 6 }}
               />
               <div className="hra-segment">
                 <button className="hra-segment-item" data-active={distanceUnit === "km"} onClick={() => switchDistanceUnit("km")}>km</button>
@@ -622,22 +619,21 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </label>
         </div>
 
-        <label className="hra-text-secondary" style={{ fontSize: 12, display: "block", marginBottom: 6 }}>
+        <label className="hra-text-secondary text-meta block mb-1.5" >
           {t("manage.planTemplates.dslSourceLabel", "DSL text")}
           <textarea
-            className="hra-border-strong hra-bg-card hra-text-primary"
+            className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
             value={editor.dslSource}
             onChange={e => setEditor({ dslSource: e.target.value, sections: [] })}
             rows={8}
-            style={{ width: "100%", marginTop: 4, fontFamily: "monospace", fontSize: 12, padding: 8 }}
           />
         </label>
 
-        <div className="hra-row-wrap" style={{ marginBottom: 12 }}>
-          <label className="hra-btn" style={{ cursor: "pointer" }}>
+        <div className="hra-row-wrap mb-3" >
+          <label className="hra-btn cursor-pointer" >
             {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
             <input
-              type="file" accept=".txt,.csv" style={{ display: "none" }}
+              type="file" accept=".txt,.csv" className="hidden"
               onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
             />
           </label>
@@ -650,7 +646,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           <button className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading}>
             {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
           </button>
-          <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "5px 14px", fontSize: 12, cursor: "pointer" }} onClick={onRestoreClick}>
+          <button className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer" onClick={onRestoreClick}>
             {t("common.restore", "Restore")}
           </button>
         </div>
@@ -660,7 +656,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         {saveError && <ErrorBanner message={saveError} />}
 
         {planWarnings.length > 0 && (
-          <ul className="hra-text-danger" style={{ fontSize: 12, marginBottom: 12 }}>
+          <ul className="hra-text-danger text-meta mb-3" >
             {planWarnings.map((w, i) => <li key={i}>{w.message}</li>)}
           </ul>
         )}
@@ -676,13 +672,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         )}
 
         {pendingRestoreConfirm && (
-          <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={cancelRestoreConfirm}>
-            <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
-              <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+          <div className="hra-modal-layer hra-modal-backdrop fixed inset-0 flex items-center justify-center p-6" onClick={cancelRestoreConfirm}>
+            <div className="hra-bg-surface hra-border rounded-xl w-full max-w-90 p-5"  onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary text-label font-semibold leading-normal mb-4" >
                 {t("manage.planTemplates.restoreConfirmBody", "You have unsaved changes — discard them?")}
               </div>
-              <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-                <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={cancelRestoreConfirm}>
+              <div className="hra-row-wrap justify-end" >
+                <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1.5 px-3.5 text-meta cursor-pointer"  onClick={cancelRestoreConfirm}>
                   {t("common.cancel", "Cancel")}
                 </button>
                 <button className="hra-btn" data-variant="danger" onClick={doRestore}>
@@ -701,26 +697,26 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   return (
     <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+      <div className="flex items-center justify-between mb-1">
         <div className="hra-block-title">{t("manage.planTemplates.title", "Training-plan templates")}</div>
-        <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer" }} onClick={() => setShowHelp(true)}>
+        <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1 px-2.5 text-meta cursor-pointer"  onClick={() => setShowHelp(true)}>
           {t("manage.planTemplates.howToUse", "How to use it")}
         </button>
       </div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+      <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.planTemplates.description", "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.")}
       </div>
       {showHelp && <PlanTemplateHelpModal onClose={() => setShowHelp(false)} />}
       {templatesError && <ErrorBanner message={templatesError} />}
 
       {templates === null ? (
-        <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>
+        <div className="hra-text-muted text-meta" >{t("common.loading", "Loading…")}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        <div className="flex flex-col gap-2 mb-3">
           {newDraftPending && (
             <AccordionCard
               title={
-                <span style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
+                <span className="flex items-center gap-2 flex-1 min-w-0">
                   <span>{name || t("manage.planTemplates.createTitle", "New template")}</span>
                   {activeKey !== "new" && rowStatusHint("new")}
                 </span>
@@ -732,7 +728,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             </AccordionCard>
           )}
           {templates.length === 0 && !newDraftPending ? (
-            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
+            <div className="hra-text-muted text-meta" >{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
           ) : (
             templates.map(tpl => (
               // HRA-140 review, round 2: Delete is a real DOM SIBLING of the
@@ -745,16 +741,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               // rather than a separate column beside it — and, as a bonus
               // over the round-1 fix, works whether the row is expanded or
               // collapsed, same as before this Story touched it at all.
-              <div key={tpl.id} style={{ position: "relative" }}>
+              <div key={tpl.id} className="relative">
                 <AccordionCard title={renderRowTitle(tpl)} expanded={activeKey === tpl.id} onToggle={() => onToggleRow(tpl.id)}>
                   {activeKey === tpl.id ? renderEditorFields() : null}
                 </AccordionCard>
                 <button
-                  className="hra-btn" data-variant="danger"
+                  className="hra-card-delete-action hra-btn absolute py-1 px-2 inline-flex items-center" data-variant="danger"
                   onClick={() => setDeleteConfirmId(tpl.id)}
                   title={t("common.delete", "Delete")}
                   aria-label={t("common.delete", "Delete")}
-                  style={{ position: "absolute", top: 15, right: 46, zIndex: 1, padding: "4px 8px", display: "inline-flex", alignItems: "center" }}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -772,13 +767,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           uniquely identifies the target, and only one can ever be pending
           at a time. */}
       {deleteConfirmId != null && (
-        <div className="hra-modal-backdrop" style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }} onClick={() => setDeleteConfirmId(null)}>
-          <div className="hra-bg-surface hra-border" style={{ borderRadius: 12, width: "100%", maxWidth: 360, padding: 20 }} onClick={e => e.stopPropagation()}>
-            <div className="hra-text-primary" style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.5, marginBottom: 16 }}>
+        <div className="hra-modal-layer hra-modal-backdrop fixed inset-0 flex items-center justify-center p-6" onClick={() => setDeleteConfirmId(null)}>
+          <div className="hra-bg-surface hra-border rounded-xl w-full max-w-90 p-5"  onClick={e => e.stopPropagation()}>
+            <div className="hra-text-primary text-label font-semibold leading-normal mb-4" >
               {t("manage.planTemplates.deleteConfirm", "Delete? This also removes every instance derived from it.")}
             </div>
-            <div className="hra-row-wrap" style={{ justifyContent: "flex-end" }}>
-              <button className="hra-border-strong hra-text-secondary" style={{ background: "none", borderRadius: 6, padding: "6px 14px", fontSize: 12, cursor: "pointer" }} onClick={() => setDeleteConfirmId(null)}>
+            <div className="hra-row-wrap justify-end" >
+              <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1.5 px-3.5 text-meta cursor-pointer"  onClick={() => setDeleteConfirmId(null)}>
                 {t("common.cancel", "Cancel")}
               </button>
               <button className="hra-btn" data-variant="danger" onClick={() => onDelete(deleteConfirmId)}>

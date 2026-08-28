@@ -110,7 +110,7 @@ function AppShell() {
   );
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+    <div className="min-h-screen flex flex-col">
       {/* Ambient glow is a pure body::before (index.css) now — no JS-rendered
           layer here (correction pass). */}
 
@@ -149,11 +149,6 @@ function AppShell() {
                   ].filter(Boolean).join(" ")}
                   data-active={tabDef.id === "manage" ? tab === tabDef.id : undefined}
                   onClick={() => setTab(tabDef.id)}
-                  style={{
-                    padding: tab === tabDef.id ? "6px 16px" : "5px 12px",
-                    fontSize: 13,
-                    fontWeight: tab === tabDef.id ? 600 : 400,
-                  }}
                 >
                   {t(tabDef.labelKey, tabDef.fallback)}
                 </button>
@@ -166,10 +161,10 @@ function AppShell() {
       </header>
 
       {/* ── main ─────────────────────────────────────────────────────── */}
-      <main style={{ flex: 1, maxWidth: 1240, width: "100%", margin: "0 auto", padding: "24px 24px 48px" }}>
+      <main className="hra-app-main flex-1 w-full my-0 mx-auto pt-6 px-6 pb-12">
 
         {online === false && (
-          <div style={{ marginBottom: 20 }}>
+          <div className="mb-5">
             <ErrorBanner message={t("app.serverUnreachable", "API server unreachable — run: cd garmin-stats && node src/server.ts")} />
           </div>
         )}
@@ -180,7 +175,7 @@ function AppShell() {
             header — see OverviewTab.tsx), so it's excluded here to avoid a
             duplicate bar. */}
         {showDateRange && tab !== "overview" && (
-          <div style={{ marginBottom: 20 }}>
+          <div className="mb-5">
             <DateRangeBar {...range} savedRanges={savedRanges} racePicker={tab === "activities" ? racePicker : undefined} />
           </div>
         )}

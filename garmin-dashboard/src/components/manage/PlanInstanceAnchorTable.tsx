@@ -49,21 +49,21 @@ export function PlanInstanceAnchorTable({
   return (
     <>
       {templateAnchors.length === 0 ? (
-        <div className="hra-text-muted" style={{ fontSize: 12, marginBottom: 12 }}>
+        <div className="hra-text-muted text-meta mb-3" >
           {formEnabled
             ? t("manage.planInstances.resolutionEmpty", "This template references no symbolic pace anchors — nothing to resolve.")
             : t("manage.planInstances.resolutionNoTemplate", "Pick a template above to see its pace anchors.")}
         </div>
       ) : (
-        <div className="hra-anchor-table-wrap" style={{ marginBottom: 8 }}>
+        <div className="hra-anchor-table-wrap mb-2" >
           <table className="hra-anchor-table">
             <thead>
               <tr>
-                <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colAnchor", "Anchor")}</th>
+                <th rowSpan={2} className="align-bottom">{t("manage.planInstances.colAnchor", "Anchor")}</th>
                 <th className="hra-anchor-group hra-anchor-group-start">{t("manage.planInstances.colAbsolute", "Absolute")}</th>
                 <th className="hra-anchor-group" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
-                <th rowSpan={2} style={{ verticalAlign: "bottom" }}></th>
-                <th rowSpan={2} style={{ verticalAlign: "bottom" }}>{t("manage.planInstances.colStatus", "Status")}</th>
+                <th rowSpan={2} className="align-bottom"></th>
+                <th rowSpan={2} className="align-bottom">{t("manage.planInstances.colStatus", "Status")}</th>
               </tr>
               <tr className="hra-anchor-sub">
                 <th className="hra-anchor-group-start">{t("manage.planInstances.colPace", "Pace")}</th>
@@ -103,7 +103,7 @@ export function PlanInstanceAnchorTable({
                           <span className="hra-anchor-tag">{t("manage.planInstances.resolvedFromRelative", "(resolved)")}</span>
                         </>
                       ) : (
-                        <input type="text" className="hra-border-strong hra-bg-card hra-text-primary" value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} style={{ width: "100%", padding: "0 8px" }} />
+                        <input type="text" className="hra-border-strong hra-bg-card hra-text-primary w-full" value={row.absoluteValue} onChange={e => setAnchorAbsolute(anchor, e.target.value)} disabled={absoluteDisabled} placeholder={t("manage.planInstances.anchorAbsolutePlaceholder", "e.g. 5:10/km")} />
                       )}
                     </td>
                     <td className="hra-anchor-group-start">
@@ -122,12 +122,11 @@ export function PlanInstanceAnchorTable({
                       </div>
                     </td>
                     <td>
-                      <input className="hra-border-strong hra-bg-card hra-text-primary" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" style={{ width: "100%", padding: "0 8px" }} />
+                      <input className="hra-border-strong hra-bg-card hra-text-primary w-full" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" />
                     </td>
                     <td>
                       <button
-                        className="hra-border-strong hra-text-secondary"
-                        style={{ background: "none", borderRadius: 5, padding: "5px 10px", fontSize: 11, cursor: "pointer" }}
+                        className="hra-tight-action hra-border-strong hra-text-secondary bg-transparent text-meta cursor-pointer"
                         disabled={derived || fieldDisabled || anchorRowIsEmpty(row)}
                         onClick={() => clearAnchorRow(anchor)}
                       >
@@ -147,11 +146,11 @@ export function PlanInstanceAnchorTable({
           </table>
         </div>
       )}
-      <div className="hra-text-muted" style={{ fontSize: 11, marginBottom: 14 }}>
+      <div className="hra-text-muted text-meta mb-3.5" >
         {t("manage.planInstances.tableFillHint", "Fill exactly one of Absolute or Relative per row — the other disables once you start typing.")}
       </div>
 
-      <div style={{ fontSize: 11, color: unresolvedAnchors.length > 0 ? "var(--accent-red)" : "var(--text-muted)", marginBottom: 14 }}>
+      <div className="hra-resolution-hint text-meta mb-3.5" data-unresolved={unresolvedAnchors.length > 0}>
         {unresolvedAnchors.length > 0
           ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — fill in Absolute or Relative for it above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
           : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}

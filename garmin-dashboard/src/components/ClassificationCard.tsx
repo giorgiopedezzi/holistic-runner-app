@@ -6,7 +6,6 @@
  * CLAUDE.md's "AI workout classifier" notes / docs/classifier.md for the methods.
  */
 import { useState, useEffect, useRef } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { api } from "@/api/client";
@@ -122,12 +121,12 @@ function MethodResultCard({
   }
 
   return (
-    <div className="hra-border" style={{ flex: "1 1 240px", minWidth: 220, borderRadius: 8, padding: 10 }}>
-      <div className="hra-row" style={{ gap: 8 }}>
-        <span className="hra-text-secondary" style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+    <div className="hra-classification-method hra-border min-w-55 rounded-lg p-2.5">
+      <div className="hra-row gap-2" >
+        <span className="hra-classification-kicker hra-text-secondary text-meta font-semibold uppercase">
           {methodLabel(method, t)}
         </span>
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
         <button
           className="hra-btn"
           data-variant="cta"
@@ -142,53 +141,40 @@ function MethodResultCard({
         </button>
       </div>
       {!classifying && lastDurationSec != null && (
-        <div className="hra-text-muted" style={{ fontSize: 10, textAlign: "right", marginTop: 2 }}>
+        <div className="hra-text-muted text-meta text-right mt-0.5" >
           {t("activity.classify.took", `took ${lastDurationSec.toFixed(1)}s`, { sec: lastDurationSec.toFixed(1) })}
         </div>
       )}
 
-      <div style={{ marginTop: 8 }}>
+      <div className="mt-2">
         {classification ? (
-          <span className="hra-dyn-border hra-dyn-color" style={{
-            display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
-            "--dyn-border": isVerdictSource ? "var(--accent-green)" : "var(--border-strong)",
-            "--dyn-color": isVerdictSource ? "var(--accent-green)" : "var(--text-primary)",
-            letterSpacing: "0.04em", textTransform: "uppercase",
-          } as CSSProperties}>
+          <span className="hra-classification-pill hra-dyn-border hra-dyn-color inline-flex items-center text-meta font-semibold uppercase" data-verdict-source={isVerdictSource}>
             {t(WORKOUT_CLASSIFICATION_KEY[classification as WorkoutClassification] ?? "unknown", classification)}
             {isVerdictSource && <span title={t("activity.classify.verdictSourceTooltip", "This card's result is the activity's confirmed classification")}>✓</span>}
           </span>
         ) : (
-          <span className="hra-text-muted" style={{ fontSize: 12 }}>{t("activity.classify.notYetClassified", "Not yet classified")}</span>
+          <span className="hra-text-muted text-meta" >{t("activity.classify.notYetClassified", "Not yet classified")}</span>
         )}
       </div>
 
-      {explanation && <div className="hra-text-secondary" style={{ fontSize: 12, marginTop: 6 }}>{explanation}</div>}
+      {explanation && <div className="hra-text-secondary text-meta mt-1.5" >{explanation}</div>}
 
       {classification && !showCorrection && (
-        <div className="hra-row" style={{ gap: 8, marginTop: 8 }}>
+        <div className="hra-row gap-2 mt-2" >
           <button onClick={handleApprove} title={t("activity.classify.approveTooltip", "Confirm this card's classification as the activity's answer")}
-            className="hra-dyn-border hra-dyn-color"
-            style={{
-              fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
-              "--dyn-border": isVerdictSource && activity.user_feedback === "approved" ? "var(--accent-green)" : "var(--border-strong)",
-              "--dyn-color": isVerdictSource && activity.user_feedback === "approved" ? "var(--accent-green)" : "var(--text-secondary)",
-            } as CSSProperties}>
+            className="hra-feedback-button hra-dyn-border hra-dyn-color text-label leading-none rounded-md py-1 px-2.5 bg-transparent cursor-pointer"
+            data-tone="green" data-selected={isVerdictSource && activity.user_feedback === "approved"}>
             👍
           </button>
           <button onClick={() => setShowCorrection(true)} title={t("activity.classify.rejectTooltip", "This card's classification is wrong")}
-            className="hra-dyn-border hra-dyn-color"
-            style={{
-              fontSize: 14, lineHeight: 1, borderRadius: 6, padding: "4px 10px", background: "none", cursor: "pointer",
-              "--dyn-border": isVerdictSource && activity.user_feedback === "rejected" ? "var(--accent-red)" : "var(--border-strong)",
-              "--dyn-color": isVerdictSource && activity.user_feedback === "rejected" ? "var(--accent-red)" : "var(--text-secondary)",
-            } as CSSProperties}>
+            className="hra-feedback-button hra-dyn-border hra-dyn-color text-label leading-none rounded-md py-1 px-2.5 bg-transparent cursor-pointer"
+            data-tone="red" data-selected={isVerdictSource && activity.user_feedback === "rejected"}>
             👎
           </button>
         </div>
       )}
       {isVerdictSource && activity.user_feedback === "rejected" && activity.final_classification && (
-        <div className="hra-text-muted" style={{ fontSize: 11, marginTop: 6 }}>
+        <div className="hra-text-muted text-meta mt-1.5" >
           {(() => {
             const classificationLabel = t(WORKOUT_CLASSIFICATION_KEY[activity.final_classification as WorkoutClassification] ?? "unknown", activity.final_classification);
             const reasonSuffix = activity.user_correction_reason ? ` (${activity.user_correction_reason})` : "";
@@ -200,7 +186,7 @@ function MethodResultCard({
       )}
 
       {showCorrection && (
-        <div className="hra-border-top" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 8, paddingTop: 8 }}>
+        <div className="hra-border-top flex gap-2 items-center flex-wrap mt-2 pt-2" >
           {/* Deliberately still a native <select> (HRA-98 deviation) — a
               Radix Select can't be driven by the characterization test's
               fireEvent.change, and this Story's own AC requires the
@@ -211,30 +197,30 @@ function MethodResultCard({
               CORRECTION_REASONS is explicitly out of this Story's scope
               (backend-sourced free text per its own "Explicitly out of
               scope" section), so its options are untranslated either way. */}
-          <select value={reason} onChange={e => setReason(e.target.value as CorrectionReason)} style={{ fontSize: 12 }}>
+          <select value={reason} onChange={e => setReason(e.target.value as CorrectionReason)} className="text-meta">
             <option value="">{t("activity.classify.whyWrong", "Why was this wrong?")}</option>
             {CORRECTION_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
-          <select value={corrected} onChange={e => setCorrected(e.target.value as WorkoutClassification)} style={{ fontSize: 12 }}>
+          <select value={corrected} onChange={e => setCorrected(e.target.value as WorkoutClassification)} className="text-meta">
             <option value="">{t("activity.classify.whatWasIt", "What was it actually?")}</option>
             {WORKOUT_CLASSIFICATIONS.map(c => <option key={c} value={c}>{t(WORKOUT_CLASSIFICATION_KEY[c], c)}</option>)}
           </select>
           <button
             className="hra-btn" data-variant="cta"
-            style={{ "--btn-color": "var(--accent-red)" } as CSSProperties}
+            data-tone="red"
             onClick={handleReject} disabled={!reason || !corrected || submitting}
           >
             {submitting ? "…" : t("common.submit", "Submit")}
           </button>
           <button onClick={() => setShowCorrection(false)}
-            className="hra-border-strong hra-text-secondary"
-            style={{ fontSize: 12, borderRadius: 6, padding: "4px 12px", background: "none", cursor: "pointer" }}>
+            className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer"
+            >
             {t("common.cancel", "Cancel")}
           </button>
         </div>
       )}
 
-      {error && <div style={{ marginTop: 8 }}><ErrorBanner message={error} /></div>}
+      {error && <div className="mt-2"><ErrorBanner message={error} /></div>}
     </div>
   );
 }
@@ -259,44 +245,36 @@ export function ClassificationCard({ activity, onUpdate, splitMeters: splitMeter
   const splitMeters = splitMetersProp ?? splitMetersState;
   const setSplitMeters = onSplitMetersChange ?? setSplitMetersState;
   const status = classificationStatus(activity);
-  const color = statusColor(status);
 
   return (
     <Card className="mb-4">
-      <div className="hra-control-row" style={{ gap: 10, marginBottom: 10 }}>
+      <div className="hra-control-row gap-2.5 mb-2.5" >
         {status === "confirmed" && activity.final_classification ? (
-          <span className="hra-dyn-border hra-dyn-color" style={{
-            display: "inline-block", fontSize: 11, fontWeight: 600, padding: "2px 9px", borderRadius: 20,
-            "--dyn-border": color, "--dyn-color": color, letterSpacing: "0.04em", textTransform: "uppercase",
-          } as CSSProperties}>
+          <span className="hra-classification-pill hra-classification-status hra-dyn-border hra-dyn-color inline-block text-meta font-semibold uppercase" data-status={status}>
             {(() => {
               const label = t(WORKOUT_CLASSIFICATION_KEY[activity.final_classification as WorkoutClassification] ?? "unknown", activity.final_classification);
               return t("activity.classify.confirmedAs", `Confirmed: ${label}`, { classification: label });
             })()}
           </span>
         ) : (
-          <span className="hra-dyn-color" style={{ fontSize: 12, "--dyn-color": color, fontWeight: status === "pending" ? 600 : 400 } as CSSProperties}>
+          <span className="hra-classification-status hra-dyn-color text-meta" data-status={status}>
             {status === "pending" ? t("activity.classify.pendingReview", "Pending review") : t("activity.classify.notYetClassified", "Not yet classified")}
           </span>
         )}
-        <div style={{ flex: 1 }} />
-        <div className="hra-border-strong" style={{ display: "inline-flex", borderRadius: 999, overflow: "hidden" }}
+        <div className="flex-1" />
+        <div className="hra-segment inline-flex rounded-full overflow-hidden"
           title={t("activity.classify.splitTooltip", "Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out")}>
           {([1000, 500] as const).map(m => (
             <button key={m} onClick={() => setSplitMeters(m)}
-              className="hra-dyn-bg hra-dyn-color"
-              style={{
-                fontSize: 10, padding: "3px 8px", border: "none", cursor: "pointer",
-                "--dyn-bg": splitMeters === m ? "var(--bg-card)" : "transparent",
-                "--dyn-color": splitMeters === m ? "var(--text-primary)" : "var(--text-muted)",
-              } as CSSProperties}>
+              className="hra-segment-item hra-classification-segment-item text-meta border-0 cursor-pointer"
+              data-active={splitMeters === m}>
               {m === 1000 ? t("activity.classify.split1km", "1km") : t("activity.classify.split05km", "0.5km")}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="hra-chip-row" style={{ gap: 10 }}>
+      <div className="hra-chip-row gap-2.5" >
         <MethodResultCard activity={activity} method="ai" splitMeters={splitMeters} onUpdate={onUpdate} />
         <MethodResultCard activity={activity} method="statistical" splitMeters={splitMeters} onUpdate={onUpdate} />
       </div>

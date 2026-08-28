@@ -8,7 +8,6 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
@@ -86,7 +85,7 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const disabledTitle = translate("settings.theme.disabledForGraphite", "Graphite is a fixed dark look — Theme doesn't apply while it's selected");
 
   return (
-    <div className="hra-chip-row" style={{ gap: 10 }}>
+    <div className="hra-chip-row gap-2.5" >
       {THEME_NAMES.map(t => (
         <ThemeSwatch
           key={t}
@@ -147,7 +146,7 @@ export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
   // whichever swatch the resolved palette matches instead of none at all.
   const hasExplicitChoice = current === "metal" || current === "warm" || current === "graphite";
   return (
-    <div className="hra-chip-row" style={{ gap: 10 }}>
+    <div className="hra-chip-row gap-2.5" >
       {PALETTE_NAMES.map(p => (
         <PaletteSwatch
           key={p}
@@ -175,10 +174,10 @@ function ChromePreviewStrip() {
   return (
     <div className="hra-chrome-preview">
       <button className="hra-btn" data-variant="accent">{t("settings.appearance.previewButton", "Button")}</button>
-      <span className="hra-pill hra-pill-active" style={{ padding: "5px 14px", fontWeight: 600 }}>
+      <span className="hra-pill hra-pill-active hra-preview-pill font-semibold">
         {t("settings.appearance.previewActivePill", "Active pill")}
       </span>
-      <a href="#" onClick={e => e.preventDefault()} style={{ fontSize: 12 }}>{t("settings.appearance.previewLink", "Link")}</a>
+      <a href="#" onClick={e => e.preventDefault()} className="text-meta">{t("settings.appearance.previewLink", "Link")}</a>
       <div className="hra-chrome-preview-focus">{t("settings.appearance.previewFocusRing", "Focus ring")}</div>
     </div>
   );
@@ -211,7 +210,7 @@ export function UnitsPicker({ appearance }: { appearance: AppearanceApi }) {
         })}
       </div>
       {current === "auto" && appearance.resolvedUnitSystem && (
-        <span className="hra-text-muted" style={{ fontSize: 11 }}>
+        <span className="hra-text-muted text-meta" >
           {t("settings.units.currentlyNote", `currently: ${appearance.resolvedUnitSystem} (from your browser's locale — there's no direct way to read the OS's actual measurement-system setting)`, { system: appearance.resolvedUnitSystem })}
         </span>
       )}
@@ -238,7 +237,7 @@ export function DateFormatPicker({ appearance }: { appearance: AppearanceApi }) 
             data-active={selected}
             onClick={() => appearance.setDateFormat?.(opt.value)}
           >
-            {t(`settings.dateFormat.${opt.value}`, opt.label)} <span style={{ opacity: 0.7 }}>· {opt.example}</span>
+            {t(`settings.dateFormat.${opt.value}`, opt.label)} <span className="opacity-70">· {opt.example}</span>
           </button>
         );
       })}
@@ -252,18 +251,18 @@ function SettingField({ label, current, value, onChange, min, step }: {
 }) {
   const { t } = useTranslation();
   return (
-    <div style={{ marginBottom: 14 }}>
-      <label className="hra-text-secondary" style={{ display: "block", fontSize: 12, marginBottom: 6 }}>
+    <div className="mb-3.5">
+      <label className="hra-text-secondary block text-meta mb-1.5" >
         {label}
       </label>
-      <div className="hra-row" style={{ gap: 10 }}>
+      <div className="hra-row gap-2.5" >
         <input
           type="number" min={min} step={step}
           value={value}
           onChange={e => onChange(Number(e.target.value))}
           className="hra-input-narrow"
         />
-        <span className="hra-text-muted" style={{ fontSize: 11 }}>
+        <span className="hra-text-muted text-meta" >
           {t("settings.currentLabel", "current:")} <strong className="hra-text-secondary">{current}</strong>
         </span>
       </div>
@@ -362,17 +361,17 @@ export function SettingsTab({ appearance }: Props) {
   function SaveBar({ cardKey, dirty, onSave }: { cardKey: SaveKey; dirty: boolean; onSave: () => void }) {
     const saving = savingKey === cardKey;
     return (
-      <div className="hra-row" style={{ gap: 10, marginTop: 4 }}>
+      <div className="hra-row gap-2.5 mt-1" >
         <button
           className="hra-btn"
           data-variant="cta"
-          style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
+          data-tone="green"
           onClick={onSave}
           disabled={!dirty || saving}
         >
           {saving ? t("settings.savingEllipsis", "Saving…") : t("common.save", "Save")}
         </button>
-        {justSavedKey === cardKey && !dirty && <span className="hra-text-success" style={{ fontSize: 12 }}>{t("settings.saved", "Saved")}</span>}
+        {justSavedKey === cardKey && !dirty && <span className="hra-text-success text-meta" >{t("settings.saved", "Saved")}</span>}
       </div>
     );
   }
@@ -390,12 +389,12 @@ export function SettingsTab({ appearance }: Props) {
           full-width so the row itself reads as one group rather than two
           side-by-side halves. */}
       <AccordionCard title={t("settings.appearance.title", "Appearance")} expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
-        <div style={{ marginBottom: 20 }}>
-          <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>{t("settings.appearance.themeLabel", "Theme")}</div>
+        <div className="mb-5">
+          <div className="hra-text-secondary text-meta mb-2.5" >{t("settings.appearance.themeLabel", "Theme")}</div>
           <ThemePicker appearance={appearance} />
         </div>
         <div>
-          <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 10 }}>
+          <div className="hra-text-secondary text-meta mb-2.5" >
             {t("settings.appearance.paletteDescription", "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.")}
           </div>
           <PalettePicker appearance={appearance} />
@@ -404,21 +403,21 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title={t("settings.dateFormat.title", "Date format")} expanded={expanded === "dateFormat"} onToggle={() => toggle("dateFormat")}>
-        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+        <p className="hra-text-secondary text-label mt-0 mb-3" >
           {t("settings.dateFormat.description", "Applies to every date shown in the app. \"Numeric\" is dd/mm or mm/dd depending on region; \"Literal\" spells the month out. Overview & Trends' chart axes always stay numeric (no room for a spelled-out month on a compact axis tick) but still follow the region here.")}
         </p>
         <DateFormatPicker appearance={appearance} />
       </AccordionCard>
 
       <AccordionCard title={t("settings.units.title", "Units")} expanded={expanded === "units"} onToggle={() => toggle("units")}>
-        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+        <p className="hra-text-secondary text-label mt-0 mb-3" >
           {t("settings.units.description", "Applies to distance, pace, speed, elevation and weight everywhere in the app. \"Auto\" guesses from your browser's language/region (e.g. a US locale defaults to imperial) — there's no direct way for a web page to read the OS's actual measurement-system setting, so this is a best-effort default you can always override.")}
         </p>
         <UnitsPicker appearance={appearance} />
       </AccordionCard>
 
       <AccordionCard title={t("settings.activityDetails.title", "Activity details")} expanded={expanded === "activityDetails"} onToggle={() => toggle("activityDetails")}>
-        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 12 }}>
+        <p className="hra-text-secondary text-label mt-0 mb-3" >
           {t("settings.activityDetails.description", "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.")}
         </p>
         <div className="hra-segment">
@@ -439,7 +438,7 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title={t("settings.overviewTrends.title", "Overview & Trends")} expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
-        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+        <p className="hra-text-secondary text-label mt-0 mb-4" >
           {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"Single\" mode), or before \"Week\"/\"Month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
         </p>
         {draft && saved && (
@@ -457,12 +456,12 @@ export function SettingsTab({ appearance }: Props) {
       </AccordionCard>
 
       <AccordionCard title={t("settings.outliers.title", "Outlier detection")} expanded={expanded === "outliers"} onToggle={() => toggle("outliers")}>
-        <p className="hra-text-secondary" style={{ fontSize: 13, marginTop: 0, marginBottom: 16 }}>
+        <p className="hra-text-secondary text-label mt-0 mb-4" >
           {t("settings.outliers.description", "Used by the activity chart's \"Remove outliers\" checkbox. Two independent rules: an isolated-spike filter (a point is flagged only when it jumps away and back from its neighbors faster than the rate below, so a genuine sustained change like a real sprint isn't affected), and an absolute floor for Speed/Pace — any sample slower than the walking-pace threshold is dropped outright, for a \"running only\" view.")}
         </p>
 
         {loading && <LoadingSpinner label={t("settings.loading", "Loading settings…")} />}
-        {error && <div style={{ marginBottom: 12 }}><ErrorBanner message={error} /></div>}
+        {error && <div className="mb-3"><ErrorBanner message={error} /></div>}
 
         {draft && saved && (
           <>
@@ -473,7 +472,7 @@ export function SettingsTab({ appearance }: Props) {
               onChange={v => setDraft(d => d && { ...d, outlier_speed_delta_per_sec: v })}
               min={0.1} step={0.1}
             />
-            <div style={{ marginBottom: 4 }} />
+            <div className="mb-1" />
             <SettingField
               label={t("settings.outliers.cadenceFieldLabel", "Max cadence change (steps/min per second)")}
               current={saved.outlier_cadence_delta_per_sec}
@@ -481,19 +480,19 @@ export function SettingsTab({ appearance }: Props) {
               onChange={v => setDraft(d => d && { ...d, outlier_cadence_delta_per_sec: v })}
               min={1} step={1}
             />
-            <div style={{ marginBottom: 4 }} />
-            <div style={{ marginBottom: 14 }}>
-              <label className="hra-text-secondary" style={{ display: "block", fontSize: 12, marginBottom: 6 }}>
+            <div className="mb-1" />
+            <div className="mb-3.5">
+              <label className="hra-text-secondary block text-meta mb-1.5" >
                 {t("settings.outliers.minSpeedFieldLabel", "Min speed to count as running (km/h)")}
               </label>
-              <div className="hra-row" style={{ gap: 10 }}>
+              <div className="hra-row gap-2.5" >
                 <input
                   type="number" min={0} step={0.5}
                   value={draft.outlier_min_speed_kmh}
                   onChange={e => setDraft(d => d && { ...d, outlier_min_speed_kmh: Number(e.target.value) })}
                   className="hra-input-narrow"
                 />
-                <span className="hra-text-muted" style={{ fontSize: 11 }}>
+                <span className="hra-text-muted text-meta" >
                   {draft.outlier_min_speed_kmh > 0 ? `≈ ${fmtMinSecRaw(60 / draft.outlier_min_speed_kmh)} min/km` : t("settings.outliers.off", "off")} · {t("settings.currentLabel", "current:")} <strong className="hra-text-secondary">{saved.outlier_min_speed_kmh}</strong>
                 </span>
               </div>

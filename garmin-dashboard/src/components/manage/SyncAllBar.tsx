@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { api } from "@/api/client";
@@ -87,25 +86,25 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
 
   return (
     <Card className="mb-4">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="hra-block-title">{t("manage.syncAll.title", "Sync all")}</div>
-          <div className="hra-text-secondary" style={{ fontSize: 12 }}>
+          <div className="hra-text-secondary text-meta" >
             {t("manage.syncAll.description", "Runs every sync below in one go — skips whichever source isn't ready (device unplugged, not logged in).")}
           </div>
         </div>
         <button
-          className="hra-btn"
+          className="hra-btn whitespace-nowrap"
           data-variant="cta"
           onClick={syncAll}
           disabled={status === "running"}
-          style={{ "--btn-color": "var(--accent-green)", whiteSpace: "nowrap" } as CSSProperties}
+          data-tone="green"
         >
           {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.syncAll.button", "⚡ Sync all")}
         </button>
       </div>
       {log.length > 0 && (
-        <div className="hra-text-secondary" style={{ marginTop: 10, fontSize: 12, display: "flex", flexDirection: "column", gap: 2 }}>
+        <div className="hra-text-secondary mt-2.5 text-meta flex flex-col gap-0.5" >
           {log.map((l, i) => <div key={i}>{l}</div>)}
         </div>
       )}

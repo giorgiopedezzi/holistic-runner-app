@@ -42,7 +42,7 @@ export type { AnchorRowState };
 
 export function Field({ label, required, children }: { label: string; required?: boolean; children: ReactNode }) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div className="flex flex-col gap-1.5">
       <span className="hra-field-label">
         {label}{required && <span className="hra-text-danger"> *</span>}
       </span>
@@ -822,7 +822,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 outside the viewMode branch below, so it stays mounted
                 (same node, same content) across List/Agenda toggling rather
                 than remounting. */}
-            <div style={{ marginBottom: 12 }}>
+            <div className="mb-3">
               <CategoryLegend />
             </div>
             {viewMode === "list" ? (
@@ -857,16 +857,16 @@ export function PlanInstancesSection({ templates }: Props) {
 
   return (
     <Card className="hra-instantiate-form">
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.planInstances.title", "Training-plan instances")}</div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+      <div className="hra-block-title mb-1" >{t("manage.planInstances.title", "Training-plan instances")}</div>
+      <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.planInstances.description", "A concrete instantiation of a template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
       </div>
       {listError && <ErrorBanner message={listError} />}
 
       {instances === null ? (
-        <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.loading", "Loading…")}</div>
+        <div className="hra-text-muted text-meta" >{t("manage.planInstances.loading", "Loading…")}</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
+        <div className="flex flex-col gap-2 mb-3">
           {newDraftPending && (
             <PlanInstanceRow
               instance={null}
@@ -879,7 +879,7 @@ export function PlanInstancesSection({ templates }: Props) {
             </PlanInstanceRow>
           )}
           {instances.length === 0 && !newDraftPending ? (
-            <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("manage.planInstances.empty", "No instances created yet.")}</div>
+            <div className="hra-text-muted text-meta" >{t("manage.planInstances.empty", "No instances created yet.")}</div>
           ) : (
             instances.map(inst => (
               <PlanInstanceRow
@@ -901,7 +901,7 @@ export function PlanInstancesSection({ templates }: Props) {
         {t("manage.planInstances.newInstance", "New instance")}
       </button>
       {templates && templates.length === 0 && (
-        <div className="hra-text-muted" style={{ fontSize: 11, marginTop: 6 }}>{t("manage.planInstances.noTemplates", "Save a template first — an instance is always created from one.")}</div>
+        <div className="hra-text-muted text-meta mt-1.5" >{t("manage.planInstances.noTemplates", "Save a template first — an instance is always created from one.")}</div>
       )}
 
       <PlanInstanceConfirmations

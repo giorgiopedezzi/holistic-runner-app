@@ -20,8 +20,6 @@ import { fmtDate } from "@/utils/fmt";
 type Props = DateRangeState & { compare?: CompareRangeState; savedRanges?: SavedDateRange[]; racePicker?: ReactNode };
 
 const NO_NAMED_RANGE = "";
-const orStyle = { fontSize: 12 };
-
 function savedRangeLabel(r: SavedDateRange): string {
   return `${r.name} (${fmtDate(r.from_date)} → ${fmtDate(r.to_date)})`;
 }
@@ -79,8 +77,8 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           the plain row below with no heading above it. */}
       {compare && (
         <div className="hra-row-between">
-          <span className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600 }}>{t("dateRange.current", "Current")}</span>
-          <label className="hra-text-secondary" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, cursor: "pointer" }}>
+          <span className="hra-text-primary text-label font-semibold" >{t("dateRange.current", "Current")}</span>
+          <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
             {t("dateRange.enableComparison", "Enable comparison")}
             <Switch checked={compare.enabled} onCheckedChange={compare.setEnabled} />
           </label>
@@ -103,11 +101,11 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           triggerClassName="hra-select-window"
           options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
-        <span className="hra-text-muted" style={orStyle}>or</span>
+        <span className="hra-text-muted text-meta">or</span>
         <DatePicker value={from} max={to} onChange={setFrom} />
-        <span className="hra-text-muted" style={orStyle}>→</span>
+        <span className="hra-text-muted text-meta">→</span>
         <DatePicker value={to} min={from} onChange={setTo} />
-        <span className="hra-text-muted" style={orStyle}>or</span>
+        <span className="hra-text-muted text-meta">or</span>
         <Select
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
           onValueChange={pickCurrent}
@@ -129,8 +127,8 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           up/down under it — a "moving UI" — per explicit feedback; a fixed
           layout that merely dims is preferred. */}
       {compare && (
-        <div style={{ opacity: compare.enabled ? 1 : 0.4, pointerEvents: compare.enabled ? "auto" : "none" }}>
-          <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginTop: 8, marginBottom: 6 }}>{t("dateRange.comparedTo", "Compared to")}</div>
+        <div className="hra-compare-range" data-enabled={compare.enabled}>
+          <div className="hra-text-primary text-label font-semibold mt-2 mb-1.5" >{t("dateRange.comparedTo", "Compared to")}</div>
           <div className="hra-row-wrap">
             {/* Invisible placeholder matching Current's leading preset
                 dropdown + "or" (this row has no preset shortcuts of its
@@ -138,7 +136,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
                 wrapper) so the date pickers below start at the same x
                 position/width as Current's, instead of sliding left to fill
                 the gap. */}
-            <div aria-hidden="true" style={{ display: "contents" }}>
+            <div aria-hidden="true" className="contents">
               <Select
                 value={NO_NAMED_RANGE}
                 onValueChange={() => {}}
@@ -146,12 +144,12 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
                 triggerClassName="hra-select-window hra-select-placeholder-hidden"
                 options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
               />
-              <span className="hra-text-muted" style={{ ...orStyle, visibility: "hidden" }}>or</span>
+              <span className="hra-text-muted text-meta invisible">or</span>
             </div>
             <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
-            <span className="hra-text-muted" style={orStyle}>→</span>
+            <span className="hra-text-muted text-meta">→</span>
             <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
-            <span className="hra-text-muted" style={orStyle}>or</span>
+            <span className="hra-text-muted text-meta">or</span>
             <Select
               value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}
               onValueChange={pickCompare}

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, Select, DatePicker } from "@/components/ui";
@@ -14,17 +13,10 @@ function rangeLabel(r: SavedDateRange): string {
   return `${r.name} (${fmtDate(r.from_date)} → ${fmtDate(r.to_date)})`;
 }
 
-const rowStyle: CSSProperties = { display: "flex", gap: 8, alignItems: "center", width: "100%", marginBottom: 12 };
 // Shared by Name (Create) and the range picker (Update) so the two rows'
 // first column lines up at the same width — and by every action button so
 // "Create"/"Update"/"Delete" render at one identical width regardless of
 // label length, rather than each sizing to its own text.
-const firstColumnStyle: CSSProperties = { flex: "2 1 120px", minWidth: 0 };
-const nameInputStyle: CSSProperties = {
-  ...firstColumnStyle,
-  fontSize: 13, padding: "6px 8px", borderRadius: 6,
-};
-const actionButtonStyle: CSSProperties = { flex: "0 0 auto", width: 100 };
 
 interface LoadedRange { id: number; name: string; from: string; to: string; raceId: string }
 
@@ -169,24 +161,23 @@ export function DateRangesSection() {
 
   return (
     <Card className="mb-4">
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.dateRanges.title", "Named date ranges")}</div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+      <div className="hra-block-title mb-1" >{t("manage.dateRanges.title", "Named date ranges")}</div>
+      <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.dateRanges.description", "Save a training-block window to recall and compare later — e.g. week 2 vs week 3 of Boston Marathon prep, or one race's build-up vs another's. Optionally link the race it led up to; only races that took place after the range's end date are selectable.")}
       </div>
 
       {/* ── Create ── */}
-      <div style={rowStyle}>
+      <div className="hra-date-range-row">
         <input
           type="text"
           value={createName}
           onChange={e => setCreateName(e.target.value)}
           placeholder={t("manage.dateRanges.namePlaceholder", "New range name (e.g. Boston wk2)")}
           title={createName}
-          className="hra-border-strong hra-bg-card hra-text-primary"
-          style={nameInputStyle}
+          className="hra-date-range-name hra-border-strong hra-bg-card hra-text-primary"
         />
         <DatePicker value={createFrom} onChange={setCreateFrom} max={createTo} />
-        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
+        <span className="hra-text-muted text-meta" >→</span>
         <DatePicker value={createTo} onChange={setCreateTo} min={createFrom} />
         <Select
           value={createRaceId}
@@ -196,9 +187,9 @@ export function DateRangesSection() {
           options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
-          className="hra-btn"
+          className="hra-btn hra-date-range-action"
           data-variant="cta"
-          style={{ "--btn-color": "var(--accent-green)", ...actionButtonStyle } as CSSProperties}
+          data-tone="green"
           onClick={handleCreate}
           disabled={!canCreate}
         >
@@ -208,7 +199,7 @@ export function DateRangesSection() {
       {createError && <ErrorLine>{createError}</ErrorLine>}
 
       {/* ── Update ── */}
-      <div style={rowStyle}>
+      <div className="hra-date-range-row">
         <Select
           value={loaded != null ? String(loaded.id) : NO_SELECTION}
           onValueChange={handlePickExisting}
@@ -217,7 +208,7 @@ export function DateRangesSection() {
           options={[{ value: NO_SELECTION, label: t("manage.dateRanges.pickRangeOption", "— pick a range —") }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
         <DatePicker value={updateFrom} onChange={setUpdateFrom} max={updateTo} />
-        <span className="hra-text-muted" style={{ fontSize: 12 }}>→</span>
+        <span className="hra-text-muted text-meta" >→</span>
         <DatePicker value={updateTo} onChange={setUpdateTo} min={updateFrom} />
         <Select
           value={updateRaceId}
@@ -227,9 +218,9 @@ export function DateRangesSection() {
           options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
-          className="hra-btn"
+          className="hra-btn hra-date-range-action"
           data-variant="cta"
-          style={{ "--btn-color": "var(--accent-green)", ...actionButtonStyle } as CSSProperties}
+          data-tone="green"
           onClick={handleUpdate}
           disabled={!canUpdate}
           title={loaded == null ? t("manage.dateRanges.pickFirstTooltip", "Pick a saved range above first") : undefined}
@@ -240,7 +231,7 @@ export function DateRangesSection() {
       {updateError && <ErrorLine>{updateError}</ErrorLine>}
 
       {/* ── Delete ── */}
-      <div style={rowStyle}>
+      <div className="hra-date-range-row">
         <Select
           value={deleteId}
           onValueChange={v => { setDeleteId(v); setConfirmingDelete(false); }}
@@ -250,24 +241,22 @@ export function DateRangesSection() {
         />
         {confirmingDelete ? (
           <>
-            <span className="hra-text-danger" style={{ fontSize: 12 }}>{t("manage.dateRanges.confirmDeleteQuestion", "Delete this range?")}</span>
+            <span className="hra-text-danger text-meta" >{t("manage.dateRanges.confirmDeleteQuestion", "Delete this range?")}</span>
             <button
-              className="hra-btn" data-variant="cta"
-              style={{ "--btn-color": "var(--accent-red)", ...actionButtonStyle } as CSSProperties}
+              className="hra-btn hra-date-range-action" data-variant="cta" data-tone="red"
               onClick={handleDelete} disabled={deleting}
             >
               {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
             </button>
             <button onClick={() => setConfirmingDelete(false)}
-              className="hra-border-strong hra-text-secondary"
-              style={{ fontSize: 12, borderRadius: 6, padding: "6px 12px", background: "none", cursor: "pointer" }}>
+              className="hra-border-strong hra-text-secondary text-meta rounded-md py-1.5 px-3 bg-transparent cursor-pointer"
+              >
               {t("common.cancel", "Cancel")}
             </button>
           </>
         ) : (
           <button
-            className="hra-btn" data-variant="cta"
-            style={{ "--btn-color": "var(--accent-red)", ...actionButtonStyle } as CSSProperties}
+            className="hra-btn hra-date-range-action" data-variant="cta" data-tone="red"
             onClick={() => setConfirmingDelete(true)}
             disabled={deleteId === NO_SELECTION}
           >
@@ -277,15 +266,15 @@ export function DateRangesSection() {
       </div>
       {deleteError && <ErrorLine>{deleteError}</ErrorLine>}
 
-      {loading && <div className="hra-text-muted" style={{ fontSize: 12 }}>{t("common.loading", "Loading…")}</div>}
-      {error   && <div className="hra-text-danger" style={{ fontSize: 12 }}>{error}</div>}
+      {loading && <div className="hra-text-muted text-meta" >{t("common.loading", "Loading…")}</div>}
+      {error   && <div className="hra-text-danger text-meta" >{error}</div>}
     </Card>
   );
 }
 
 function ErrorLine({ children }: { children: string }) {
   return (
-    <div className="hra-status-msg" data-status="error" style={{ marginBottom: 12 }}>
+    <div className="hra-status-msg mb-3" data-status="error" >
       {children}
     </div>
   );

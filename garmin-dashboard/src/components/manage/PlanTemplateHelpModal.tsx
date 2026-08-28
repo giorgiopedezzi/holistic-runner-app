@@ -131,35 +131,31 @@ export function PlanTemplateHelpModal({ onClose }: Props) {
 
   return (
     <div
-      className="hra-modal-backdrop"
-      style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}
+      className="hra-modal-layer hra-modal-backdrop fixed inset-0 flex items-center justify-center p-6"
       onClick={onClose}
     >
       <div
-        className="hra-bg-surface hra-border"
-        style={{ borderRadius: 16, width: "100%", maxWidth: 640, maxHeight: "85vh", overflowY: "auto", padding: 24 }}
+        className="hra-help-modal hra-bg-surface hra-border rounded-2xl w-full max-w-160 overflow-y-auto p-6"
         onClick={e => e.stopPropagation()}
       >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+        <div className="flex items-center justify-between mb-4">
           <div className="hra-block-title">{t("manage.planTemplates.help.title", "How to write a template")}</div>
           <button
             onClick={onClose}
             aria-label={t("common.close", "Close")}
-            className="hra-border-strong hra-text-secondary"
-            style={{ background: "none", borderRadius: 6, padding: "5px 10px", fontSize: 12, cursor: "pointer" }}
+            className="hra-tight-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer"
           >
             {t("common.close", "Close")}
           </button>
         </div>
 
         {sections.map((section, i) => (
-          <div key={i} style={{ marginBottom: 18 }}>
-            <div className="hra-text-primary" style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>{section.heading}</div>
-            <div className="hra-text-secondary" style={{ fontSize: 12, lineHeight: 1.6 }}>{section.body}</div>
+          <div key={i} className="hra-help-section">
+            <div className="hra-text-primary text-label font-semibold mb-1.5" >{section.heading}</div>
+            <div className="hra-help-copy hra-text-secondary text-meta">{section.body}</div>
             {section.code && (
               <pre
-                className="hra-border-strong hra-bg-card"
-                style={{ marginTop: 8, padding: 10, borderRadius: 8, fontFamily: "monospace", fontSize: 11, overflowX: "auto", whiteSpace: "pre" }}
+                className="hra-border-strong hra-bg-card mt-2 p-2.5 rounded-lg font-mono text-meta overflow-x-auto whitespace-pre"
               >
                 {section.code}
               </pre>

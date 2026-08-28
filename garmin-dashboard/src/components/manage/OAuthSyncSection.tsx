@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { Card, StatusLine } from "@/components/ui";
 import { DateRangeBar } from "@/components/DateRangeBar";
@@ -116,8 +115,8 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
 
   return (
     <Card className="mb-4">
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.oauth.syncTitle", `Sync ${label} ${noun}`, { label, noun })}</div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+      <div className="hra-block-title mb-1" >{t("manage.oauth.syncTitle", `Sync ${label} ${noun}`, { label, noun })}</div>
+      <div className="hra-text-secondary text-meta mb-3" >
         {description}
       </div>
 
@@ -134,7 +133,7 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
         onRecheck={checkToken}
       />
 
-      <div style={{ marginBottom: 12 }}>
+      <div className="mb-3">
         <DateRangeBar {...range} savedRanges={savedRanges} />
       </div>
 
@@ -153,7 +152,7 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
         <button
           className="hra-btn"
           data-variant="cta"
-          style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
+          data-tone="green"
           onClick={triggerSync}
           disabled={!canSync}
           title={!canSync && status !== "running" ? t("manage.oauth.loginFirstTooltip", `Log in to ${label} first`, { label }) : undefined}
@@ -163,7 +162,7 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
       </div>
 
       {msg && (
-        <div className="hra-status-msg" data-status={status === "error" ? "error" : undefined} style={{ marginTop: 12 }}>
+        <div className="hra-status-msg mt-3" data-status={status === "error" ? "error" : undefined} >
           {msg}
         </div>
       )}

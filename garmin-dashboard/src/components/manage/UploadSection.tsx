@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ProgressBar, StatusLine } from "@/components/ui";
@@ -50,8 +49,8 @@ export function UploadSection() {
 
   return (
     <Card className="mb-4">
-      <div className="hra-block-title" style={{ marginBottom: 4 }}>{t("manage.upload.title", "Sync Garmin activities")}</div>
-      <div className="hra-text-secondary" style={{ fontSize: 12, marginBottom: 12 }}>
+      <div className="hra-block-title mb-1" >{t("manage.upload.title", "Sync Garmin activities")}</div>
+      <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.upload.description", "Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB. Connect the watch via USB first. Pulls every new file on the device — there's no date range to set here, since the device is diffed against what's already imported, not queried by date.")}
       </div>
 
@@ -66,7 +65,7 @@ export function UploadSection() {
       <button
         className="hra-btn"
         data-variant="cta"
-        style={{ "--btn-color": "var(--accent-green)" } as CSSProperties}
+        data-tone="green"
         onClick={triggerSync}
         disabled={!canSync}
         title={!canSync && status !== "running" ? t("manage.upload.connectWatchFirst", "Connect the watch first") : undefined}
@@ -75,7 +74,7 @@ export function UploadSection() {
       </button>
 
       {status === "running" && (
-        <div style={{ marginTop: 14 }}>
+        <div className="mt-3.5">
           <ProgressBar
             label={progress
               ? `${t(`manage.upload.phase.${progress.phase}`, PHASE_LABEL[progress.phase])}${progress.label ? ` — ${progress.label}` : ""}`
@@ -87,7 +86,7 @@ export function UploadSection() {
       )}
 
       {msg && (
-        <div className="hra-status-msg" data-status={status === "error" ? "error" : undefined} style={{ marginTop: 12 }}>
+        <div className="hra-status-msg mt-3" data-status={status === "error" ? "error" : undefined} >
           {msg}
         </div>
       )}
