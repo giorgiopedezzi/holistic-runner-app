@@ -101,11 +101,29 @@ export const HR_RECOVERY_COLOR_CAP = 60; // bpm — observed real deltas run ~8-
 // function (no React) so it can be called from an imperative mousemove
 // handler without touching component state.
 const HR_COLOR_STOPS: [number, [number, number, number]][] = [
-  [70,  [214, 137, 158]], // #D6899E — low, muted pink
-  [100, [204,  91, 119]], // #CC5B77 — rose
-  [130, [193,  58,  88]],  // #C13A58 — strong coral
-  [160, [170,  37,  65]],  // #AA2541 — deep red
-  [190, [139,  25,  49]],  // #8B1931 — high, deep red
+// 🟢 Flat Zone: Almost no visual change (70 to 130 BPM)
+  [70,  [220, 110, 140]], // #DC6E8C — Base deep rose pink
+  [80,  [221, 107, 137]], // #DD6B89 — (Micro shift)
+  [90,  [222, 104, 133]], // #DE6885 — (Micro shift)
+  [100, [223, 101, 130]], // #DF6582 — (Micro shift)
+  [110, [224,  98, 127]], // #E0627F — (Micro shift)
+  [120, [225,  95, 123]], // #E15F7B — (Micro shift)
+  [130, [226,  92, 120]], // #E25C78 — Still firmly pink
+
+  // 🔥 High-Sensitivity Zone: Rapid 5-BPM shift from Pink to Brilliant Red
+  [135, [220,  84, 112]], // #DC5470 — Turning toward coral
+  [140, [215,  77, 104]], // #D74D68 — Deepening strawberry
+  [145, [209,  70,  96]],  // #D14660 — Strong raspberry red
+  [150, [203,  62,  88]],  // #CB3E58 — Punchy crimson
+  [155, [198,  54,  80]],  // #C63650 — Vibrant scarlet
+  [160, [192,  47,  72]],  // #C02F48 — Deep bright red
+  [165, [186,  40,  63]],  // #BA283F — Burning ruby
+  [170, [181,  32,  55]],  // #B52037 — Rich cardinal
+  [175, [175,  24,  47]],  // #AF182F — Intense dark-vibrant red
+  [180, [169,  17,  39]],  // #A91127 — Peak burning red
+
+  // 🏁 Cap Zone
+  [190, [158,   2,  23]],  // #9E0217 — Vibrant pure dark red finish
 ];
 export function hrRunnerColor(bpm: number): string {
   return rampColor(HR_COLOR_STOPS, bpm);

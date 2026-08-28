@@ -2129,16 +2129,20 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 
 /* "stand" pose (a pause under a minute) hops in place instead — a short
    pause reads as still-moving-in-place, not an actual rest, so it gets
-   motion rather than the long-pause fade above. The base translate(-50%,
-   -50%) (RunnerIcon's own inline style, for centering on `cx`) is repeated
-   in each keyframe rather than relied on from the element's own style
-   attribute — a running CSS animation overrides an animated property
-   wherever it's declared, but only within the animation's own keyframes,
-   so the centering offset has to be part of them, not assumed carried over. */
+   motion rather than the long-pause fade above. RunnerIcon centers on `cx`
+   via the standalone `-translate-x-1/2 -translate-y-1/2` Tailwind utilities,
+   which resolve to the `translate` CSS property, NOT `transform` — a
+   separate property that keeps applying underneath any `transform`
+   animation running alongside it. So this keyframe only needs to animate
+   the bounce itself; re-declaring translate(-50%, -50%) in `transform` here
+   (an earlier version, back when centering was one literal inline
+   `transform` instead of the two properties) would double it up with the
+   utility's own `translate`, throwing the glyph off its centered position
+   for as long as this animation is running. */
 @keyframes hra-runner-hop {
-  0%, 100% { transform: translate(-50%, -50%) translateY(0); }
-  45%      { transform: translate(-50%, -50%) translateY(-5px); }
-  70%      { transform: translate(-50%, -50%) translateY(0); }
+  0%, 100% { transform: translateY(0); }
+  45%      { transform: translateY(-5px); }
+  70%      { transform: translateY(0); }
 }
 .hra-runner-hop { animation: hra-runner-hop 0.6s ease-in-out infinite; }
 
