@@ -23,16 +23,6 @@
      value so the two stay in sync if the header's own sizing ever changes. */
   --header-height:  48px;
 
-  /* Temporary compatibility aliases for the pre-Tailwind typography names.
-     The authoritative role values live once in @theme static below. HRA-181
-     removes these aliases after HRA-178/179/180 migrate every consumer. */
-  --fs-display: var(--text-display); --fw-display: var(--text-display--font-weight);
-  --fs-heading: var(--text-heading); --fw-heading: var(--text-heading--font-weight);
-  --fs-body:    var(--text-body);    --fw-body:    var(--text-body--font-weight);
-  --fs-data:    var(--text-data);    --fw-data:    var(--text-data--font-weight);
-  --fs-label:   var(--text-label);   --fw-label:   var(--text-label--font-weight);
-  --fs-meta:    var(--text-meta);    --fw-meta:    var(--text-meta--font-weight);
-
   /* Dark Metal — the primary/default theme (dashboard design-system
      rework). :root duplicates its values directly (not just a fallback) so
      the very first paint, before /api/settings resolves, still looks right —
@@ -477,8 +467,8 @@
 
 /* Custom toolbar (replaces react-big-calendar's own via `components.toolbar`) */
 .hra-agenda-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 2px 14px; }
-.hra-agenda-title { font-size: var(--fs-heading); font-weight: var(--fw-heading); margin: 0 0 3px; color: var(--text-primary); }
-.hra-agenda-summary { font-size: var(--fs-meta); color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 6px; }
+.hra-agenda-title { font-size: var(--text-heading); font-weight: var(--text-heading--font-weight); margin: 0 0 3px; color: var(--text-primary); }
+.hra-agenda-summary { font-size: var(--text-meta); color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 6px; }
 .hra-agenda-summary .val { font-family: var(--font-mono); color: var(--text-primary); font-weight: 500; }
 .hra-agenda-summary .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); flex: none; }
 .hra-agenda-controls { display: flex; align-items: center; gap: 10px; }
@@ -658,12 +648,12 @@
    category's own --cat-color so it reads as the same visual language as the
    agenda cards themselves rather than a plain text list. */
 .hra-agenda-category-reference { width: 280px; }
-.hra-agenda-category-reference-title { font-size: var(--fs-label); font-weight: 600; color: var(--text-primary); margin: 2px 4px 8px; }
+.hra-agenda-category-reference-title { font-size: var(--text-label); font-weight: 600; color: var(--text-primary); margin: 2px 4px 8px; }
 .hra-agenda-category-reference-table { width: 100%; border-collapse: collapse; }
 .hra-agenda-category-reference-table tr { border-radius: var(--radius-sm); }
 .hra-agenda-category-reference-icon { width: 22px; padding: 5px 4px; }
-.hra-agenda-category-reference-label { font-size: var(--fs-meta); font-weight: 500; color: var(--text-primary); white-space: nowrap; padding: 5px 6px 5px 0; }
-.hra-agenda-category-reference-criteria { font-size: var(--fs-meta); color: var(--text-secondary); padding: 5px 4px 5px 0; }
+.hra-agenda-category-reference-label { font-size: var(--text-meta); font-weight: 500; color: var(--text-primary); white-space: nowrap; padding: 5px 6px 5px 0; }
+.hra-agenda-category-reference-criteria { font-size: var(--text-meta); color: var(--text-secondary); padding: 5px 4px 5px 0; }
 
 /* Persistent workout-type legend (HRA-157) — shares the same tinted
    --cat-color language as the agenda cards and the criteria-reference
@@ -671,7 +661,7 @@
 .hra-workout-legend { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .hra-workout-legend-item {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: var(--fs-meta); color: var(--cat-color, var(--text-secondary));
+  font-size: var(--text-meta); color: var(--cat-color, var(--text-secondary));
   white-space: nowrap;
 }
 
@@ -679,7 +669,7 @@ html, body, #root { height: 100%; }
 
 body {
   font-family: var(--font-sans);
-  font-size: var(--fs-body);
+  font-size: var(--text-body);
   line-height: 1.5;
   background: var(--bg);
   color: var(--text-primary);
@@ -752,14 +742,14 @@ body {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 5px 12px;
-  font-size: var(--fs-label);
-  font-weight: var(--fw-body);
+  font-size: var(--text-label);
+  font-weight: var(--text-body--font-weight);
 }
 .hra-agenda-gauge-distance { --gauge-fill: var(--data-pace); }
 .hra-agenda-gauge-duration { --gauge-fill: var(--accent-green); }
 .hra-category-color { color: var(--cat-color, var(--text-muted)); }
 .hra-icon-button { width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-.hra-nav-pill.hra-pill-active { padding: 6px 16px; font-weight: var(--fw-data); }
+.hra-nav-pill.hra-pill-active { padding: 6px 16px; font-weight: var(--text-data--font-weight); }
 .hra-pill-active {
   /* Monochromatic two-stop ramp (corrected 2026-08-17) — the second stop
      used to be a 55% mix toward the fixed --accent-glow cyan, which pulled
@@ -839,7 +829,7 @@ body {
    delete, login/re-login, classify — is the ghost `cta` shape (see below),
    which is the actual majority of the app's action chrome. */
 .hra-btn {
-  font-family: inherit; font-size: var(--fs-label); font-weight: var(--fw-data);
+  font-family: inherit; font-size: var(--text-label); font-weight: var(--text-data--font-weight);
   padding: 6px 14px; border-radius: var(--radius-sm);
   border: 1px solid transparent; cursor: pointer;
   transition: box-shadow 0.18s ease-out, transform 0.18s ease-out,
@@ -946,8 +936,8 @@ body {
 }
 .hra-segment-item {
   font-family: inherit;
-  font-size: var(--fs-label);
-  font-weight: var(--fw-body);
+  font-size: var(--text-label);
+  font-weight: var(--text-body--font-weight);
   padding: 4px 12px;
   border: none;
   cursor: pointer;
@@ -962,7 +952,7 @@ body {
 .hra-segment-item[data-active="true"] {
   background: color-mix(in srgb, var(--segment-color, var(--accent)) 20%, transparent);
   color: var(--segment-color, var(--accent));
-  font-weight: var(--fw-data);
+  font-weight: var(--text-data--font-weight);
 }
 .hra-segment-item:disabled {
   color: var(--text-muted);
@@ -1020,13 +1010,13 @@ body {
   box-shadow: 0 0 10px color-mix(in srgb, var(--preview-accent) 55%, transparent);
 }
 .hra-theme-swatch-label {
-  font-size: var(--fs-meta); padding: 5px 0; background: var(--preview-card); color: var(--text-secondary);
+  font-size: var(--text-meta); padding: 5px 0; background: var(--preview-card); color: var(--text-secondary);
 }
 .hra-theme-swatch[data-selected="true"] .hra-theme-swatch-label { color: var(--preview-accent); }
 .hra-theme-swatch-badge {
   position: absolute; top: 4px; right: 4px; width: 17px; height: 17px; border-radius: 50%;
   background: var(--preview-accent); color: #000;
-  display: flex; align-items: center; justify-content: center; font-size: var(--fs-meta); font-weight: var(--fw-data); line-height: 1;
+  display: flex; align-items: center; justify-content: center; font-size: var(--text-meta); font-weight: var(--text-data--font-weight); line-height: 1;
 }
 
 /* Chart hover-highlight (dashboard design-system rework, "hover flash
@@ -1212,7 +1202,7 @@ input:focus, select:focus { border-color: var(--accent); }
    (2026-08-17) triggers also get a quiet accent glow on hover/open. ── */
 .hra-date-trigger {
   display: inline-flex; align-items: center; gap: 6px;
-  font-family: inherit; font-size: var(--fs-label);
+  font-family: inherit; font-size: var(--text-label);
   background: var(--bg-card); color: var(--text-primary);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   /* Reduced control height (header row 2, correction pass) — was 6px 10px;
@@ -1244,7 +1234,7 @@ input:focus, select:focus { border-color: var(--accent); }
 
 .hra-select-trigger {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
-  font-family: inherit; font-size: var(--fs-label);
+  font-family: inherit; font-size: var(--text-label);
   background: var(--bg-card); color: var(--text-primary);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   padding: 6px 10px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s;
@@ -1258,7 +1248,7 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-select-item {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  font-size: var(--fs-label); color: var(--text-primary);
+  font-size: var(--text-label); color: var(--text-primary);
   padding: 6px 10px; cursor: pointer; outline: none;
   max-width: min(60vw, 320px);
 }
@@ -1280,7 +1270,7 @@ input:focus, select:focus { border-color: var(--accent); }
   background: var(--bg-card); border: 1px solid var(--border-strong);
   border-left: 3px solid var(--text-muted); border-radius: var(--radius-sm);
   box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  padding: 10px 14px; font-size: var(--fs-label); color: var(--text-primary);
+  padding: 10px 14px; font-size: var(--text-label); color: var(--text-primary);
   cursor: pointer; animation: hra-fade-in 0.15s ease-out;
 }
 .hra-toast[data-variant="success"] { border-left-color: var(--accent-green); }
@@ -1293,14 +1283,14 @@ input:focus, select:focus { border-color: var(--accent); }
    instantiate form so mixed control types (input/select/segment) still
    line up row to row. */
 .hra-anchor-table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
-.hra-anchor-table { width: 100%; border-collapse: collapse; font-size: var(--fs-label); min-width: 640px; }
+.hra-anchor-table { width: 100%; border-collapse: collapse; font-size: var(--text-label); min-width: 640px; }
 .hra-anchor-table th, .hra-anchor-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: middle; }
 /* Capital Case, not uppercase — matches the app's only other table header
    (BodyTab.tsx's <th>Date</th>) and every other label in the app. An
    earlier pass used text-transform: uppercase here, which was inconsistent
    with that convention, not just internally with its own sub-header row. */
 .hra-anchor-table thead th {
-  background: var(--bg-inset); color: var(--text-muted); font-weight: 700; font-size: var(--fs-meta);
+  background: var(--bg-inset); color: var(--text-muted); font-weight: 700; font-size: var(--text-meta);
   border-bottom: 1px solid var(--border-strong);
 }
 .hra-anchor-table thead tr.hra-anchor-sub th { color: var(--text-secondary); font-weight: 600; }
@@ -1309,10 +1299,10 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-anchor-table th.hra-anchor-group { text-align: center; }
 .hra-anchor-table tbody tr:last-child td { border-bottom: none; }
 .hra-anchor-table td.hra-anchor-name { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 600; color: var(--text-primary); }
-.hra-anchor-derived { font-size: var(--fs-meta); color: var(--text-muted); font-style: italic; }
+.hra-anchor-derived { font-size: var(--text-meta); color: var(--text-muted); font-style: italic; }
 /* "(race pace)" / "(from goal time)" annotations — always italic 11px,
    always parenthesized in the copy itself, never restyled per call site. */
-.hra-anchor-tag { font-size: var(--fs-meta); color: var(--text-muted); font-style: italic; margin-left: 6px; }
+.hra-anchor-tag { font-size: var(--text-meta); color: var(--text-muted); font-style: italic; margin-left: 6px; }
 
 /* Scoped height unification for the New Instance form (manage/
    PlanInstancesSection.tsx) — every editable control type (text/number
@@ -1325,16 +1315,16 @@ input:focus, select:focus { border-color: var(--accent); }
    mismatch happened (HRA-121 follow-up). Scoped to .hra-instantiate-form
    rather than changing any of these classes' global defaults, which are
    shared by unrelated forms elsewhere in the app. */
-/* font-size explicit here (not just inherited from body's --fs-body) so a
+/* font-size explicit here (not just inherited from body's --text-body) so a
    raw <input> renders at the same size as .hra-select-trigger/.hra-date-
-   trigger (both already set font-size: var(--fs-label) themselves) — and so
+   trigger (both already set font-size: var(--text-label) themselves) — and so
    the ::placeholder rule below, which doesn't set its own font-size and
    just inherits from the input, actually matches the real value text
    instead of body's larger default. */
 .hra-instantiate-form input,
 .hra-instantiate-form .hra-date-trigger,
 .hra-instantiate-form .hra-select-trigger,
-.hra-instantiate-form .hra-segment { height: var(--hra-field-h); font-size: var(--fs-label); }
+.hra-instantiate-form .hra-segment { height: var(--hra-field-h); font-size: var(--text-label); }
 .hra-instantiate-form input { padding: 0 10px; }
 .hra-instantiate-form .hra-anchor-table input,
 .hra-instantiate-form .hra-anchor-table .hra-select-trigger,
@@ -1403,7 +1393,7 @@ input:focus, select:focus { border-color: var(--accent); }
    three-field layout, HRA-121 follow-up, now removed along with the fields
    it styled). */
 
-.hra-calendar { font-size: var(--fs-label); color: var(--text-primary); }
+.hra-calendar { font-size: var(--text-label); color: var(--text-primary); }
 .hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
 .hra-calendar .rdp-nav { display: flex; justify-content: space-between; }
 .hra-calendar .rdp-button_previous,
@@ -1416,7 +1406,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-calendar .rdp-button_next:hover { background: var(--bg-surface); color: var(--text-primary); }
 .hra-calendar .rdp-button_previous[disabled],
 .hra-calendar .rdp-button_next[disabled] { opacity: 0.3; cursor: not-allowed; }
-.hra-calendar .rdp-weekday { color: var(--text-muted); font-size: var(--fs-meta); font-weight: var(--fw-meta); padding: 4px 0; }
+.hra-calendar .rdp-weekday { color: var(--text-muted); font-size: var(--text-meta); font-weight: var(--text-meta--font-weight); padding: 4px 0; }
 .hra-calendar .rdp-day_button {
   width: 30px; height: 30px; border-radius: var(--radius-sm);
   color: var(--text-primary); background: none; border: none; cursor: pointer;
@@ -1571,12 +1561,12 @@ input:focus, select:focus { border-color: var(--accent); }
 /* The bolded heading text atop a Manage-tab card ("Delete data range",
    "Sync all", "Trash", ...) — marginBottom stays inline where a site needs
    the gap to its body text (not every site does). */
-.hra-block-title   { font-size: var(--fs-label); font-weight: var(--fw-label); }
-.hra-input-narrow  { width: 120px; font-size: var(--fs-label); padding: 5px 8px; }
+.hra-block-title   { font-size: var(--text-label); font-weight: var(--text-label--font-weight); }
+.hra-input-narrow  { width: 120px; font-size: var(--text-label); padding: 5px 8px; }
 /* Bottom half of a card split by an expanded row (ActivityRow, AccordionCard)
    — padding stays inline, it differs between the two callers. */
 .hra-card-joined-bottom { border-top: none; border-radius: 0 0 16px 16px; }
-.hra-stat-value    { font-size: var(--fs-data); font-weight: var(--fw-data); line-height: 1.2; }
+.hra-stat-value    { font-size: var(--text-data); font-weight: var(--text-data--font-weight); line-height: 1.2; }
 
 /* ════════════════════════════════════════════════════════════════════════
    Generic color/border utilities (2026-08-20 theme-leak sweep) — same
@@ -1641,7 +1631,7 @@ input:focus, select:focus { border-color: var(--accent); }
    onto a var() call — invalid CSS; color-mix() is the correct way to blend
    a token toward transparent). */
 .hra-status-msg {
-  font-size: var(--fs-label); padding: 8px 12px; border-radius: 6px;
+  font-size: var(--text-label); padding: 8px 12px; border-radius: 6px;
   background: var(--bg-card); color: var(--text-secondary);
   border: 1px solid color-mix(in srgb, var(--border) 27%, transparent);
 }
@@ -1662,7 +1652,7 @@ input:focus, select:focus { border-color: var(--accent); }
   border-radius: var(--radius-md);
   padding: 14px 16px;
   color: var(--accent-red);
-  font-size: var(--fs-label);
+  font-size: var(--text-label);
 }
 
 /* ════════════════════════════════════════════════════════════════════════
@@ -1722,7 +1712,7 @@ input:focus, select:focus { border-color: var(--accent); }
   justify-content: flex-end; gap: 8px; margin-top: 6px;
 }
 .hra-brand {
-  font-weight: var(--fw-data); font-size: var(--fs-label); letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
+  font-weight: var(--text-data--font-weight); font-size: var(--text-label); letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
 }
 .hra-status-dot {
   width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block;
@@ -1738,7 +1728,7 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-lang-list { display: flex; flex-direction: column; gap: 2px; min-width: 88px; }
 .hra-lang-item {
   display: flex; align-items: center; gap: 8px;
-  width: 100%; font: inherit; font-size: var(--fs-label); color: var(--text-primary);
+  width: 100%; font: inherit; font-size: var(--text-label); color: var(--text-primary);
   background: none; border: none; border-radius: var(--radius-sm);
   padding: 6px 10px; cursor: pointer; text-align: left;
 }
@@ -1788,14 +1778,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-feedback-button[data-selected="true"][data-tone="green"] { --dyn-border: var(--accent-green); --dyn-color: var(--accent-green); }
 .hra-feedback-button[data-selected="true"][data-tone="red"] { --dyn-border: var(--accent-red); --dyn-color: var(--accent-red); }
 .hra-classification-status[data-status="confirmed"] { --dyn-border: var(--accent-green); --dyn-color: var(--accent-green); }
-.hra-classification-status[data-status="pending"] { --dyn-color: var(--accent-orange); font-weight: var(--fw-data); }
-.hra-classification-status[data-status="unclassified"] { --dyn-color: var(--text-muted); font-weight: var(--fw-body); }
+.hra-classification-status[data-status="pending"] { --dyn-color: var(--accent-orange); font-weight: var(--text-data--font-weight); }
+.hra-classification-status[data-status="unclassified"] { --dyn-color: var(--text-muted); font-weight: var(--text-body--font-weight); }
 .hra-classification-segment-item { padding: 3px 8px; }
 .hra-classify-row { padding: 3px 4px; border-radius: 4px; transition: background-color 2.5s ease-out; }
 .hra-classify-row[data-just-confirmed="true"] { background: color-mix(in srgb, var(--accent-green) 18%, transparent); }
 .hra-classify-date { min-width: 86px; }
 .hra-date-range-row { display: flex; gap: 8px; align-items: center; width: 100%; margin-bottom: 12px; }
-.hra-date-range-name { flex: 2 1 120px; min-width: 0; font-size: var(--fs-label); padding: 6px 8px; border-radius: 6px; }
+.hra-date-range-name { flex: 2 1 120px; min-width: 0; font-size: var(--text-label); padding: 6px 8px; border-radius: 6px; }
 .hra-date-range-action { flex: 0 0 auto; width: 100px; }
 .hra-chip-action { padding: 3px 10px; }
 .hra-control-action { padding: 5px 14px; }
@@ -1863,13 +1853,13 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-trend-main { flex: 3 1 480px; min-width: 0; }
 .hra-trend-sidebar { flex: 1 1 110px; max-width: 130px; }
 .hra-kpi-value {
-  font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em; line-height: 1; white-space: nowrap;
+  font-size: var(--text-display); font-weight: var(--text-display--font-weight); letter-spacing: -0.02em; line-height: 1; white-space: nowrap;
   color: var(--kpi-color, var(--text-primary));
 }
-.hra-kpi-value--sm { font-size: var(--fs-heading); }
-.hra-kpi-unit { font-size: var(--fs-label); font-weight: var(--fw-label); color: var(--text-muted); }
-.hra-kpi-unit--sm { font-size: var(--fs-meta); }
-.hra-kpi-sub { font-size: var(--fs-meta); color: var(--text-secondary); margin-top: 4px; }
+.hra-kpi-value--sm { font-size: var(--text-heading); }
+.hra-kpi-unit { font-size: var(--text-label); font-weight: var(--text-label--font-weight); color: var(--text-muted); }
+.hra-kpi-unit--sm { font-size: var(--text-meta); }
+.hra-kpi-sub { font-size: var(--text-meta); color: var(--text-secondary); margin-top: 4px; }
 
 /* Stat's optional leading icon (label row) and always-visible comparison
    delta line (dashboard graph-first reorg) — deltaPositive undefined stays
@@ -1877,7 +1867,7 @@ input:focus, select:focus { border-color: var(--accent); }
    data" rule elsewhere on this tab: a caller simply omits deltaText rather
    than rendering a fake/neutral percentage. */
 .hra-stat-icon { display: inline-flex; color: var(--text-muted); }
-.hra-stat-delta { font-size: var(--fs-meta); color: var(--text-muted); margin-top: 4px; }
+.hra-stat-delta { font-size: var(--text-meta); color: var(--text-muted); margin-top: 4px; }
 .hra-stat-delta-up { color: var(--accent-green); }
 .hra-stat-delta-down { color: var(--accent-red); }
 
@@ -1894,11 +1884,11 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 .hra-graph-kpi-label {
   display: flex; align-items: center; gap: 6px;
-  font-size: var(--fs-meta); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
+  font-size: var(--text-meta); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;
 }
 .hra-graph-kpi-icon { color: var(--kpi-icon-color, var(--accent)); display: inline-flex; }
-.hra-graph-kpi-value { font-size: var(--fs-data); font-weight: var(--fw-data); line-height: 1.15; color: var(--graph-kpi-color, var(--text-primary)); white-space: nowrap; }
-.hra-graph-kpi-unit { font-size: var(--fs-meta); font-weight: var(--fw-label); color: var(--text-muted); }
+.hra-graph-kpi-value { font-size: var(--text-data); font-weight: var(--text-data--font-weight); line-height: 1.15; color: var(--graph-kpi-color, var(--text-primary)); white-space: nowrap; }
+.hra-graph-kpi-unit { font-size: var(--text-meta); font-weight: var(--text-label--font-weight); color: var(--text-muted); }
 
 /* ── Hero row (Overview) — ring card + distance/time/recent card share one
    accent-tinted gradient, a stronger version of .card's own diagonal recipe
@@ -1921,12 +1911,12 @@ input:focus, select:focus { border-color: var(--accent); }
    Both brighten on hover together with the ring's own .hra-tooltip
    wrapper, signalling there's a fuller comparison in the tooltip. */
 .hra-ring-value {
-  font-size: var(--fs-display); font-weight: var(--fw-display); letter-spacing: -0.02em;
+  font-size: var(--text-display); font-weight: var(--text-display--font-weight); letter-spacing: -0.02em;
   fill: var(--text-primary); font-variant-numeric: tabular-nums;
   transition: fill 0.15s ease;
 }
 .hra-ring-compare {
-  font-size: var(--fs-meta); fill: var(--text-muted); font-variant-numeric: tabular-nums;
+  font-size: var(--text-meta); fill: var(--text-muted); font-variant-numeric: tabular-nums;
   transition: fill 0.15s ease;
 }
 .hra-tooltip:hover .hra-ring-value   { fill: var(--accent-light); }
@@ -1948,7 +1938,7 @@ input:focus, select:focus { border-color: var(--accent); }
   background: color-mix(in srgb, var(--accent) 6%, var(--bg-card) 94%);
   border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-strong));
   color: var(--text-primary);
-  font-size: var(--fs-meta); font-weight: var(--fw-label); white-space: nowrap;
+  font-size: var(--text-meta); font-weight: var(--text-label--font-weight); white-space: nowrap;
   padding: 6px 11px; border-radius: 8px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.4);
   opacity: 0; pointer-events: none;
@@ -2010,7 +2000,7 @@ input:focus, select:focus { border-color: var(--accent); }
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border-strong));
   border-radius: 10px;
   padding: 8px 12px;
-  font-size: var(--fs-label);
+  font-size: var(--text-label);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   display: flex; gap: 6px; align-items: center; white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -2082,7 +2072,7 @@ input:focus, select:focus { border-color: var(--accent); }
   bottom: 36px; left: 50%; transform: translateX(-50%);
   pointer-events: none;
   display: flex; gap: 6px; align-items: center; white-space: nowrap;
-  font-size: var(--fs-meta); font-variant-numeric: tabular-nums;
+  font-size: var(--text-meta); font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 6px rgba(0, 0, 0, 0.5);
 }
 
@@ -2138,7 +2128,7 @@ input:focus, select:focus { border-color: var(--accent); }
    the one per-series hook (pace/HR/whatever a future chart passes); every
    actual visual (border/background/glow/dim-when-off) is CSS-owned. */
 .hra-legend-chip {
-  font-size: var(--fs-meta); padding: 3px 10px; border-radius: 999px; cursor: pointer;
+  font-size: var(--text-meta); padding: 3px 10px; border-radius: 999px; cursor: pointer;
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-secondary);
@@ -2163,7 +2153,7 @@ input:focus, select:focus { border-color: var(--accent); }
   background: color-mix(in srgb, var(--accent) 3%, var(--bg-surface));
 }
 .hra-chrome-preview-focus {
-  font-size: var(--fs-meta); padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
+  font-size: var(--text-meta); padding: 4px 10px; border-radius: 6px; color: var(--text-secondary);
   outline: 2px solid var(--accent); outline-offset: 2px;
 }
 

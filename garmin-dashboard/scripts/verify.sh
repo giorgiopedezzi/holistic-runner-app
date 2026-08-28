@@ -1,19 +1,20 @@
 #!/usr/bin/env bash
-set -uo pipefail
+set -euo pipefail
 
 echo "=== TYPECHECK ==="
-npm run typecheck 2>&1 | tail -1
-echo "TC:${PIPESTATUS[0]}"
+npm run typecheck
 
 echo "=== TESTS ==="
-npx vitest run 2>&1 | grep -E "Test Files|Tests "
+npm test
 
 echo "=== LINT ==="
-npm run lint 2>&1 | tail -3
-echo "LINT:${PIPESTATUS[0]}"
+npm run lint
+
+echo "=== STYLE INVARIANT ==="
+npm run style:check
 
 echo "=== BUILD ==="
-npm run build 2>&1 | grep -E 'index-.*\.js|built in'
+npm run build
 
 echo "=== ActivityModal LOC ==="
 wc -l < src/components/ActivityModal.tsx

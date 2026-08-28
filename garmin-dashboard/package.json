@@ -8,10 +8,11 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run && node --test scripts/verify-styles.node-tests.mjs",
     "test:watch": "vitest",
     "lint": "eslint src",
     "lint:all": "eslint .",
+    "style:check": "node scripts/verify-styles.mjs",
     "verify": "bash scripts/verify.sh"
   },
   "dependencies": {

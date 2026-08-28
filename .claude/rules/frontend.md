@@ -22,12 +22,15 @@ paths:
 
 - Theme colors, spacing, typography, gradients, borders, and shadows are governed by tokens; no ad-hoc hex values or arbitrary one-off Tailwind color/size values.
 - **Theme-related styling belongs in `index.css`, not component-local theme literals.**
-- In TSX, do not use inline `style={{ color/background/border/boxShadow/filter: ... }}` for theme values.
+- Static layout, spacing, typography, borders, radii, shadows, and finite visual states belong in Tailwind utilities or named semantic classes; do not add static JSX `style` objects.
+- Component typography uses the six semantic `text-display` / `text-heading` / `text-body` / `text-data` / `text-label` / `text-meta` roles. Do not write literal `fontSize`, `fontWeight`, `lineHeight`, `letterSpacing`, or `fontFamily` values in TSX.
+- Tailwind class names must be complete literals or complete finite alternatives. Do not construct utility names at runtime (for example `` `text-${size}` ``), and do not use arbitrary-value utilities to disguise a missing token or semantic class.
 - Allowed component-side styling:
   1. class names whose visuals are defined centrally;
   2. CSS custom-property hooks such as `style={{ "--x-color": value }}` for shared parameterized classes;
   3. `var(--token)` passed directly to SVG/component props such as `stroke` or `fill`.
-- Structural layout values (`display`, `gap`, dimensions, padding, fontSize, letterSpacing, etc.) are not theme values and may remain inline when appropriate.
+- Direct Recharts/SVG presentation props and runtime CSS-variable bridges are exceptions only when recorded in `garmin-dashboard/scripts/style-exceptions.json` with a stable file/symbol/category signature, exact count, and rationale. Never key an exception by line number.
+- Run `npm run style:check` from `garmin-dashboard/` after styling changes. It rejects static JSX styles, literal component typography, runtime-generated Tailwind utility names, arbitrary values, unlisted direct exceptions, count drift, and stale ledger entries.
 - **No moving UI:** when a conditionally displayed field joins a row, stable siblings must not visibly shift/resize. Give stable siblings fixed sizing; the conditional field should extend or wrap the row instead of redistributing existing siblings.
 
 ## React behavior — load-bearing

@@ -1,0 +1,665 @@
+{
+  "version": 1,
+  "exceptions": [
+    {
+      "file": "src/components/activity/ActivityChartSection.tsx",
+      "symbol": "ActivityChartSection",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--activity-chart-placeholder-height"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/activity/ActivityChartSection.tsx",
+      "symbol": "ActivityChartSection",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--chart-controls-left",
+        "--chart-controls-right"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/activity/ActivityChartSection.tsx",
+      "symbol": "ActivityChartSection",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--runner-row-height"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/activity/ActivityTypePicker.tsx",
+      "symbol": "ActivityTypePicker",
+      "category": "custom-property-style",
+      "element": "PopoverTrigger",
+      "attribute": "style",
+      "properties": [
+        "--activity-action-height",
+        "--activity-action-width"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/activity/MetricRow.tsx",
+      "symbol": "MetricRow",
+      "category": "custom-property-style",
+      "element": "button",
+      "attribute": "style",
+      "properties": [
+        "--metric-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/activity/OverlayCharts.tsx",
+      "symbol": "MainOverlayChart",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:axisStyle"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/activity/OverlayCharts.tsx",
+      "symbol": "MainOverlayChart",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "fill",
+        "fontSize"
+      ],
+      "count": 2,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/activity/OverlayCharts.tsx",
+      "symbol": "MetricStandaloneCard",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:axisStyle"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/activity/OverlayCharts.tsx",
+      "symbol": "MetricStandaloneCard",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:axisStyle"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/activity/RunnerIcon.tsx",
+      "symbol": "RunnerIcon",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--runner-color",
+        "--runner-elevation",
+        "--runner-x"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/activity/RunnerReadout.tsx",
+      "symbol": "RunnerReadout",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--dyn-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/activity/TrackTooltip.tsx",
+      "symbol": "TrackTooltip",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--dyn-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "BodyTab",
+      "category": "custom-property-style",
+      "element": "button",
+      "attribute": "style",
+      "properties": [
+        "--metric-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "BodyTab",
+      "category": "visualization-library",
+      "element": "Legend",
+      "attribute": "wrapperStyle",
+      "properties": [
+        "color",
+        "fontSize"
+      ],
+      "count": 1,
+      "rationale": "Recharts owns the generated wrapper and exposes this presentation boundary only through its direct style prop."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "BodyTab",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "BodyTab",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 2,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "checkbox",
+      "category": "custom-property-style",
+      "element": "label",
+      "attribute": "style",
+      "properties": [
+        "--dyn-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "MetricChartCard",
+      "category": "visualization-library",
+      "element": "Legend",
+      "attribute": "wrapperStyle",
+      "properties": [
+        "color",
+        "fontSize"
+      ],
+      "count": 1,
+      "rationale": "Recharts owns the generated wrapper and exposes this presentation boundary only through its direct style prop."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "MetricChartCard",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/BodyTab.tsx",
+      "symbol": "MetricChartCard",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/manage/PlanInstanceCalendar.tsx",
+      "symbol": "DayCellEvent",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--gauge-fill",
+        "--gauge-pct"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/manage/PlanInstanceCalendar.tsx",
+      "symbol": "DayCellEvent",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--gauge-pct"
+      ],
+      "count": 2,
+      "rationale": "A calculated percentage crosses into a named CSS custom-property hook; the class owns the rendered gauge or progress rule."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendChart",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--overview-header-left"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendChart",
+      "category": "visualization-library",
+      "element": "Bar",
+      "attribute": "activeBar",
+      "properties": [
+        "fill",
+        "fillOpacity"
+      ],
+      "count": 1,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendChart",
+      "category": "visualization-library",
+      "element": "Line",
+      "attribute": "activeDot",
+      "properties": [
+        "fill",
+        "r",
+        "stroke",
+        "strokeWidth"
+      ],
+      "count": 2,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendChart",
+      "category": "visualization-library",
+      "element": "Line",
+      "attribute": "dot",
+      "properties": [
+        "fill",
+        "r",
+        "strokeWidth"
+      ],
+      "count": 2,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendChart",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendChart",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "fill",
+        "fontSize"
+      ],
+      "count": 3,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--overview-header-left"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--legend-color"
+      ],
+      "count": 2,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "visualization-library",
+      "element": "Bar",
+      "attribute": "activeBar",
+      "properties": [
+        "fill",
+        "fillOpacity"
+      ],
+      "count": 1,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "visualization-library",
+      "element": "Line",
+      "attribute": "activeDot",
+      "properties": [
+        "fill",
+        "r",
+        "stroke",
+        "strokeWidth"
+      ],
+      "count": 2,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "visualization-library",
+      "element": "Line",
+      "attribute": "dot",
+      "properties": [
+        "fill",
+        "fillOpacity",
+        "r",
+        "strokeWidth"
+      ],
+      "count": 2,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "visualization-library",
+      "element": "Line",
+      "attribute": "dot",
+      "properties": [
+        "fill",
+        "r",
+        "strokeWidth"
+      ],
+      "count": 2,
+      "rationale": "Recharts requires per-series SVG marker geometry and semantic color through this direct visualization prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendOverlapChart",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "fill",
+        "fontSize"
+      ],
+      "count": 3,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "SportTrendPair",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--overview-header-right"
+      ],
+      "count": 2,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/OverviewTab.tsx",
+      "symbol": "TrendSeriesLegend",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--legend-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/PlannedPaceTargetChart.tsx",
+      "symbol": "PlannedPaceTargetChart",
+      "category": "visualization-library",
+      "element": "Tooltip",
+      "attribute": "contentStyle",
+      "properties": [
+        "identifier:chartTooltipStyle"
+      ],
+      "count": 1,
+      "rationale": "Recharts owns the generated wrapper and exposes this presentation boundary only through its direct style prop."
+    },
+    {
+      "file": "src/components/PlannedPaceTargetChart.tsx",
+      "symbol": "PlannedPaceTargetChart",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "label",
+      "properties": [
+        "fill",
+        "fontSize",
+        "offset",
+        "position",
+        "value"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/PlannedPaceTargetChart.tsx",
+      "symbol": "PlannedPaceTargetChart",
+      "category": "visualization-library",
+      "element": "XAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/PlannedPaceTargetChart.tsx",
+      "symbol": "PlannedPaceTargetChart",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "label",
+      "properties": [
+        "angle",
+        "fill",
+        "fontSize",
+        "position",
+        "value"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/PlannedPaceTargetChart.tsx",
+      "symbol": "PlannedPaceTargetChart",
+      "category": "visualization-library",
+      "element": "YAxis",
+      "attribute": "tick",
+      "properties": [
+        "identifier:chartTick"
+      ],
+      "count": 1,
+      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
+    },
+    {
+      "file": "src/components/ui/Badge.tsx",
+      "symbol": "Badge",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--badge-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/ChartCard.tsx",
+      "symbol": "ChartPillLegend",
+      "category": "custom-property-style",
+      "element": "button",
+      "attribute": "style",
+      "properties": [
+        "--legend-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/Checkbox.tsx",
+      "symbol": "Checkbox",
+      "category": "custom-property-style",
+      "element": "CheckboxPrimitive.Root",
+      "attribute": "style",
+      "properties": [
+        "--checkbox-color",
+        "--checkbox-size"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/ConfirmModal.tsx",
+      "symbol": "ConfirmModal",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--confirm-modal-max-width"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/ui/GraphKpiCard.tsx",
+      "symbol": "GraphKpiCard",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--graph-kpi-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/GraphKpiCard.tsx",
+      "symbol": "GraphKpiCard",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--kpi-icon-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/ProgressBar.tsx",
+      "symbol": "ProgressBar",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--progress-color",
+        "--progress-width"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/ProgressBar.tsx",
+      "symbol": "ProgressBar",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--progress-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/Select.tsx",
+      "symbol": "Select",
+      "category": "custom-property-style",
+      "element": "SelectPrimitive.Trigger",
+      "attribute": "style",
+      "properties": [
+        "--select-trigger-height",
+        "--select-trigger-width"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
+      "file": "src/components/ui/Stat.tsx",
+      "symbol": "Stat",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--kpi-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    }
+  ]
+}

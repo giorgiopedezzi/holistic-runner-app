@@ -3,6 +3,33 @@
 > Reference detail, loaded on demand. Rules that PREVENT a mistake live in `CLAUDE.md`;
 > this file DESCRIBES how the system works. Reachable from CLAUDE.md's routing table.
 
+## Tailwind-first styling architecture and exception policy
+
+Component styling is Tailwind-first. Static layout, spacing, finite states, and typography are
+expressed as complete Tailwind utilities or named semantic classes; ordinary JSX `style` objects are
+not a second styling system. `src/index.css` owns theme and data tokens, semantic component classes,
+and the six typography roles emitted by Tailwind: `text-display`, `text-heading`, `text-body`,
+`text-data`, `text-label`, and `text-meta`. The pre-migration `--fs-*` / `--fw-*` compatibility aliases
+were removed after their final consumers migrated; new code references the Tailwind roles or the
+authoritative `--text-*` theme variables directly.
+
+Two direct component boundaries remain legitimate:
+
+1. A runtime value may cross into CSS through a named custom-property hook (for example a chart
+   series color, measured inset, or calculated progress width) while the CSS class owns the actual
+   visual rule.
+2. Recharts-generated SVG/wrapper nodes may require direct library props such as `tick`, `dot`,
+   `label`, `contentStyle`, or `wrapperStyle` because those APIs do not consistently expose a useful
+   DOM class boundary.
+
+Every such boundary is recorded in `garmin-dashboard/scripts/style-exceptions.json`. Entries use a
+stable file, enclosing symbol, category, element/attribute, property signature, exact occurrence
+count, and rationale; line numbers are deliberately excluded. `npm run style:check` parses TSX with
+the TypeScript compiler API, prints the static/runtime/custom-property/visualization/arbitrary-value
+inventory, and fails for a static JSX style, literal component typography, a runtime-generated
+Tailwind utility, an arbitrary-value utility, an unlisted exception, count drift, or a stale ledger
+entry. `npm run verify` runs this check with typecheck, tests, lint, and the production build.
+
 ## Header (App.tsx)
 Single compact row inside one sticky `<header>` (`.hra-header` → `.hra-header-inner` →
 `.hra-header-row`): brand + status dot + nav pills. `.hra-header-inner` shares `<main>`'s own
