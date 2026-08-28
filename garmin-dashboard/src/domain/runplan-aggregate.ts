@@ -540,6 +540,32 @@ function structuralCategory(day: ResolvedDay): "intervals" | "progressive" | nul
   return null;
 }
 
+// HRA-183: a staged continuous workout — three or more plain continuous
+// segments whose resolved pace clearly accelerates stage over stage — reads
+// as a deliberate progression even though the DSL never used the explicit
+// PROG segment type. Checked after structuralCategory (an explicit PROG
+// segment or an interval day is already unambiguous) but before the
+// pace-tercile heuristic, since averaging three markedly different paces
+// into one bucket would otherwise misclassify the day (typically as
+// Threshold — the Story's motivating case). Design choice: pairwise strict
+// monotonic decrease across every consecutive stage, not just first-vs-last
+// — a slower/equal middle stage (e.g. 266 -> 270 -> 246) nets "faster
+// overall" but isn't a clean acceleration, and would sneak through a
+// first-vs-last check; the Story's "conservative" framing and its
+// "equal/slowing stages ... do not trigger" AC both rule that out. Any
+// segment that isn't continuous (including a rest_block) — or any stage
+// with no resolved pace — disqualifies the whole day, per the same AC.
+function isInferredProgression(day: ResolvedDay): boolean {
+  if (day.segments.length < 3) return false;
+  if (day.segments.some(seg => seg.type !== "continuous")) return false;
+  const paces = day.segments.map(seg => (seg as Extract<ResolvedSegment, { type: "continuous" }>).resolved_pace_sec_per_km);
+  if (paces.some(p => p == null)) return false;
+  for (let i = 1; i < paces.length; i++) {
+    if (paces[i]! >= paces[i - 1]!) return false;
+  }
+  return true;
+}
+
 // The volume the Long-run overlay compares within a week: total distance,
 // falling back to total duration only when distance doesn't resolve at all
 // (per the Story's "total_distance_m (or duration)").
@@ -599,6 +625,11 @@ export function classifyResolvedDay(day: ResolvedDay, context: DayClassification
 
   const structural = structuralCategory(day);
   if (structural) return structural;
+
+  // Evaluated before the pace-tercile/long-run heuristic below (HRA-183) —
+  // same early-return shape as structuralCategory above, so an inferred
+  // progression also isn't overridden by the week's long-run overlay.
+  if (isInferredProgression(day)) return "progressive";
 
   const pace = dayRepresentativePace(day);
   let tier: TrainingLoadCategory;

@@ -429,6 +429,70 @@ describe("classifyResolvedDay / buildDayClassificationContext (HRA-147)", () => 
   });
 });
 
+describe("classifyResolvedDay — inferred progression (HRA-183)", () => {
+  function resolvedDay(overrides: Partial<ResolvedDay>): ResolvedDay {
+    return { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", needs_review: false, segments: [], ...overrides };
+  }
+  function continuousSeg(paceSecPerKm: number | null, distanceM = 5000): ResolvedSegment {
+    return { type: "continuous", target: target("distance", distanceM), resolved_pace_sec_per_km: paceSecPerKm, raw: `${distanceM}m` };
+  }
+  const staged = (p1: number | null, p2: number | null, p3: number | null): ResolvedSegment[] =>
+    [continuousSeg(p1), continuousSeg(p2), continuousSeg(p3)];
+
+  it("a running day with three or more continuous stages that clearly accelerate is inferred Progressive", () => {
+    const ctx = buildDayClassificationContext([]);
+    // 1 and 3 September fixtures from the Story: 266 -> 256 -> 246 sec/km.
+    const sept1 = resolvedDay({ date: "2026-09-01", day: 1, segments: staged(266, 256, 246) });
+    const sept3 = resolvedDay({ date: "2026-09-03", day: 3, segments: staged(266, 256, 246) });
+    expect(classifyResolvedDay(sept1, ctx)).toBe("progressive");
+    expect(classifyResolvedDay(sept3, ctx)).toBe("progressive");
+  });
+
+  it("does not infer Progressive on a two-stage faster finish — three stages is the minimum", () => {
+    const ctx = buildDayClassificationContext([]);
+    const twoStage = resolvedDay({ segments: [continuousSeg(266), continuousSeg(246)] });
+    expect(classifyResolvedDay(twoStage, ctx)).not.toBe("progressive");
+  });
+
+  it("does not infer Progressive when a stage is equal to or slower than the one before it", () => {
+    const ctx = buildDayClassificationContext([]);
+    const equalMiddle = resolvedDay({ segments: staged(266, 266, 246) });
+    const slowerMiddle = resolvedDay({ segments: staged(266, 270, 246) }); // faster net (266->246) but not a clean acceleration
+    expect(classifyResolvedDay(equalMiddle, ctx)).not.toBe("progressive");
+    expect(classifyResolvedDay(slowerMiddle, ctx)).not.toBe("progressive");
+  });
+
+  it("does not infer Progressive when segment types are mixed, even if the continuous stages accelerate", () => {
+    const ctx = buildDayClassificationContext([]);
+    const restBlock: ResolvedSegment = { type: "rest_block", target: target("distance", 400), raw: "REST 400m" };
+    const mixed = resolvedDay({ segments: [continuousSeg(266), continuousSeg(256), restBlock, continuousSeg(246)] });
+    expect(classifyResolvedDay(mixed, ctx)).not.toBe("progressive");
+  });
+
+  it("does not infer Progressive when any stage's pace is unresolved", () => {
+    const ctx = buildDayClassificationContext([]);
+    const unresolved = resolvedDay({ segments: staged(266, null, 246) });
+    expect(classifyResolvedDay(unresolved, ctx)).not.toBe("progressive");
+  });
+
+  it("existing structural precedence is unchanged: interval, explicit progression, cross-training, and rest still win outright", () => {
+    const ctx = buildDayClassificationContext([]);
+    const interval: ResolvedSegment = { type: "interval", reps: 4, work_target: target("distance", 1000), work_resolved_pace_sec_per_km: 266, raw: "4x1000m" };
+    const explicitProg: ResolvedSegment = { type: "progression", target: target("distance", 5000), start_resolved_pace_sec_per_km: 266, end_resolved_pace_sec_per_km: 246, raw: "5km PROG" };
+    expect(classifyResolvedDay(resolvedDay({ segments: [interval, ...staged(266, 256, 246)] }), ctx)).toBe("intervals");
+    expect(classifyResolvedDay(resolvedDay({ segments: [explicitProg] }), ctx)).toBe("progressive");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "cross" }), ctx)).toBe("cross_training");
+    expect(classifyResolvedDay(resolvedDay({ workout_type: "rest" }), ctx)).toBe("rest");
+  });
+
+  it("an inferred progression is not overridden by the week's long-run overlay, same as a structural category", () => {
+    const progDay = resolvedDay({ day: 1, segments: staged(266, 256, 246).map(seg => ({ ...seg, target: target("distance", 8000) })) }); // week's longest by far
+    const shortRun = resolvedDay({ day: 3, segments: [continuousSeg(250, 3000)] });
+    const ctx = buildDayClassificationContext([progDay, shortRun]);
+    expect(classifyResolvedDay(progDay, ctx)).toBe("progressive");
+  });
+});
+
 describe("groupResolvedDaysIntoSectionViews (HRA-118)", () => {
   it("groups a flat day list by section_name then week_number, preserving first-seen order", () => {
     const days = [
