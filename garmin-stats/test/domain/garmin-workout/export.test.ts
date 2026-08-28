@@ -183,6 +183,20 @@ test("an explicit progression segment becomes exactly 5 stages with interpolated
   }
 });
 
+// HRA-185: the exporter must tag each progression stage with a deterministic
+// marker so the importer can safely collapse it back, without guessing at
+// unmarked monotonic steps from any other producer (ADR §4.5).
+test("a progression's 5 stages carry a deterministic HRA progression marker in wktStepName order", () => {
+  const day = resolve("D1: 10km PROG FL->RG");
+  const result = resolvedDayToGarminSteps(day, PACE_ALERT_BAND_POLICY);
+  assert.equal(result.ok, true);
+  if (!result.ok) throw new Error("unreachable");
+  assert.deepEqual(
+    result.steps.map(s => s.name),
+    ["HRA:PROG:0:0/5", "HRA:PROG:0:1/5", "HRA:PROG:0:2/5", "HRA:PROG:0:3/5", "HRA:PROG:0:4/5"],
+  );
+});
+
 test("progression stage distances stay within one FIT profile unit (0.01m) of an exact 5-way split", () => {
   const day = resolve("D1: 10001m PROG FL->RG");
   const result = resolvedDayToGarminSteps(day, PACE_ALERT_BAND_POLICY);

@@ -21,8 +21,18 @@
 import { Decoder, Encoder, Profile, Stream } from "@garmin/fitsdk";
 import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { resolvedDayToGarminSteps } from "../domain/garmin-workout/export.ts";
+import { garminStepsToImportPreview } from "../domain/garmin-workout/import.ts";
 import { PACE_ALERT_BAND_POLICY } from "../domain/garmin-workout/types.ts";
-import type { GarminExportError, GarminExportWarning, GarminWorkoutStep, PaceBandPolicy } from "../domain/garmin-workout/types.ts";
+import type {
+  GarminExportError,
+  GarminExportWarning,
+  GarminStepDurationType,
+  GarminStepIntensity,
+  GarminStepTargetType,
+  GarminWorkoutImportOutcome,
+  GarminWorkoutStep,
+  PaceBandPolicy,
+} from "../domain/garmin-workout/types.ts";
 
 const DISTANCE_WIRE_UNITS_PER_METER = 100;
 const DURATION_WIRE_UNITS_PER_SECOND = 1000;
@@ -39,6 +49,7 @@ function toWireStep(step: GarminWorkoutStep): Record<string, unknown> {
     targetType: step.targetType,
   };
   if (step.intensity != null) wire.intensity = step.intensity;
+  if (step.name != null) wire.wktStepName = step.name;
 
   if (step.durationType === "distance" && step.durationMeters != null) {
     wire.durationValue = Math.round(step.durationMeters * DISTANCE_WIRE_UNITS_PER_METER);
@@ -92,4 +103,79 @@ export function toGarminWorkoutFit(day: ResolvedDay, band: PaceBandPolicy = PACE
 export function decodeGarminWorkoutFit(bytes: Buffer): { messages: Record<string, unknown[]>; errors: unknown[] } {
   const { messages, errors } = new Decoder(Stream.fromBuffer(bytes)).read();
   return { messages: messages as Record<string, unknown[]>, errors };
+}
+
+// HRA-185: decoded workoutStepMesgs use @garmin/fitsdk's auto-expanded
+// subfield names (durationDistance/durationTime/durationStep/repeatSteps/
+// customTargetSpeedLow/High — already real units, see the header note) rather
+// than the raw wire ints toWireStep() writes, so this is the inverse of that
+// function at the field-name level, not a literal mirror of it.
+interface DecodedWorkoutStepMesg {
+  messageIndex?: number;
+  durationType?: string;
+  durationDistance?: number;
+  durationTime?: number;
+  durationStep?: number;
+  targetType?: string;
+  repeatSteps?: number;
+  customTargetSpeedLow?: number;
+  customTargetSpeedHigh?: number;
+  intensity?: string;
+  wktStepName?: string;
+}
+
+function toDomainStep(decoded: DecodedWorkoutStepMesg): GarminWorkoutStep | null {
+  if (decoded.messageIndex == null || decoded.durationType == null || decoded.targetType == null) return null;
+
+  return {
+    messageIndex: decoded.messageIndex,
+    intensity: decoded.intensity as GarminStepIntensity | undefined,
+    durationType: decoded.durationType as GarminStepDurationType,
+    durationMeters: decoded.durationType === "distance" ? decoded.durationDistance : undefined,
+    durationSeconds: decoded.durationType === "time" ? decoded.durationTime : undefined,
+    repeatFromMessageIndex: decoded.durationType === "repeatUntilStepsCmplt" ? decoded.durationStep : undefined,
+    repeatCount: decoded.durationType === "repeatUntilStepsCmplt" ? decoded.repeatSteps : undefined,
+    targetType: decoded.targetType as GarminStepTargetType,
+    targetLowSpeedMps: decoded.targetType === "speed" ? decoded.customTargetSpeedLow : undefined,
+    targetHighSpeedMps: decoded.targetType === "speed" ? decoded.customTargetSpeedHigh : undefined,
+    name: decoded.wktStepName,
+  };
+}
+
+export function fromGarminWorkoutFit(bytes: Buffer): GarminWorkoutImportOutcome {
+  let messages: Record<string, unknown[]>;
+  let errors: unknown[];
+  try {
+    ({ messages, errors } = new Decoder(Stream.fromBuffer(bytes)).read() as { messages: Record<string, unknown[]>; errors: unknown[] });
+  } catch (err) {
+    return { ok: false, error: { code: "DECODE_ERROR", message: `FIT decode threw: ${String(err)}` } };
+  }
+  if (errors.length > 0) {
+    return { ok: false, error: { code: "DECODE_ERROR", message: `FIT decode reported ${errors.length} error(s).` } };
+  }
+
+  const fileId = (messages.fileIdMesgs as Array<{ type?: string }> | undefined)?.[0];
+  if (fileId == null) return { ok: false, error: { code: "MISSING_FILE_ID", message: "FIT file has no File Id message." } };
+  if (fileId.type !== "workout") {
+    return { ok: false, error: { code: "NOT_A_WORKOUT_FILE", message: `File Id type is "${fileId.type}", not "workout".` } };
+  }
+
+  const workout = (messages.workoutMesgs as unknown[] | undefined)?.[0];
+  if (workout == null) return { ok: false, error: { code: "MISSING_WORKOUT_MESSAGE", message: "FIT file has no Workout message." } };
+
+  const stepMesgs = (messages.workoutStepMesgs as DecodedWorkoutStepMesg[] | undefined) ?? [];
+  if (stepMesgs.length === 0) {
+    return { ok: false, error: { code: "MISSING_WORKOUT_STEPS", message: "FIT file has no Workout Step messages." } };
+  }
+
+  const steps: GarminWorkoutStep[] = [];
+  for (const decoded of stepMesgs) {
+    const step = toDomainStep(decoded);
+    if (step == null) {
+      return { ok: false, error: { code: "MISSING_WORKOUT_STEPS", message: "A Workout Step message is missing required fields." } };
+    }
+    steps.push(step);
+  }
+
+  return { ok: true, preview: garminStepsToImportPreview(steps) };
 }

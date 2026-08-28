@@ -137,6 +137,20 @@ test("an explicit progression decodes to 5 stages with the correct numValidSteps
   assert.ok(Math.abs(totalMeters - 10000) < 0.02);
 });
 
+// HRA-185: wktStepName round-trips through the wire so the importer can
+// detect the exporter's deterministic progression marker.
+test("a progression's stage steps decode with the HRA progression marker in wktStepName", () => {
+  const day = resolve("D1: 10km PROG FL->RG");
+  const outcome = toGarminWorkoutFit(day);
+  assert.equal(outcome.ok, true);
+  if (!outcome.ok) throw new Error("unreachable");
+  const steps = decodeSteps(outcome.bytes) as Array<DecodedWorkoutStep & { wktStepName?: string }>;
+  assert.deepEqual(
+    steps.map(s => s.wktStepName),
+    ["HRA:PROG:0:0/5", "HRA:PROG:0:1/5", "HRA:PROG:0:2/5", "HRA:PROG:0:3/5", "HRA:PROG:0:4/5"],
+  );
+});
+
 test("already-staged continuous workouts decode as N plain steps with no warnings", () => {
   const day = resolve("D1: 2km @ RG-30 ; 2km @ RG-15 ; 2km @ RG");
   const outcome = toGarminWorkoutFit(day);

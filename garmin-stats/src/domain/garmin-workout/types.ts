@@ -8,6 +8,8 @@
 // integrations/garmin-workout.ts) is applied only in the integration layer
 // that actually touches the SDK.
 
+import type { ResolvedSegment } from "../runplan/instantiate.ts";
+
 export type GarminStepIntensity = "active" | "interval" | "rest" | "warmup" | "cooldown" | "recovery" | "other";
 export type GarminStepDurationType = "time" | "distance" | "open" | "repeatUntilStepsCmplt";
 export type GarminStepTargetType = "speed" | "open";
@@ -23,6 +25,38 @@ export interface GarminWorkoutStep {
   targetType: GarminStepTargetType;
   targetLowSpeedMps?: number; // only meaningful when targetType === "speed"
   targetHighSpeedMps?: number; // only meaningful when targetType === "speed"
+  // Written to the FIT step's free-text wktStepName field (ADR §4.5's "smuggle
+  // a hint" mechanism). HRA-185: progression stages carry a deterministic
+  // PROGRESSION_MARKER_PREFIX-tagged name so import can safely collapse them
+  // back into one ProgressionSegment without guessing at unmarked monotonic
+  // steps from any other producer.
+  name?: string;
+}
+
+// HRA-185: deterministic marker written by the exporter (HRA-184) onto each
+// of a progression's PROGRESSION_STAGE_COUNT stage steps, and read back by
+// the importer. groupId ties the stages of one progression together (the
+// messageIndex of its first stage, unique within a day); stageIndex/stageCount
+// let the importer verify it has the complete, correctly-ordered set before
+// collapsing — a partial or out-of-order set is left as plain continuous
+// segments rather than guessed at.
+export const PROGRESSION_MARKER_PREFIX = "HRA:PROG";
+
+export function progressionMarkerName(groupId: number, stageIndex: number, stageCount: number): string {
+  return `${PROGRESSION_MARKER_PREFIX}:${groupId}:${stageIndex}/${stageCount}`;
+}
+
+export interface ProgressionMarker {
+  groupId: number;
+  stageIndex: number;
+  stageCount: number;
+}
+
+export function parseProgressionMarkerName(name: string | undefined): ProgressionMarker | null {
+  if (name == null) return null;
+  const match = /^HRA:PROG:(\d+):(\d+)\/(\d+)$/.exec(name);
+  if (!match) return null;
+  return { groupId: Number(match[1]), stageIndex: Number(match[2]), stageCount: Number(match[3]) };
 }
 
 // HRA-173's pace-alert policy (garmin-dashboard/src/domain/planned-workout.ts
@@ -71,3 +105,50 @@ export interface GarminExportError {
 export type GarminWorkoutStepsOutcome =
   | { ok: true; steps: GarminWorkoutStep[]; warnings: GarminExportWarning[] }
   | { ok: false; errors: GarminExportError[] };
+
+// ── Import (HRA-185) ─────────────────────────────────────────────────────
+// A decode error (malformed bytes, or bytes that don't structurally look
+// like a Workout FIT file — see integrations/garmin-workout.ts) is distinct
+// from a structurally valid file whose content doesn't reduce to a supported
+// shape: the former never reaches the domain transform below at all.
+export type GarminImportErrorCode =
+  | "DECODE_ERROR"
+  | "MISSING_FILE_ID"
+  | "NOT_A_WORKOUT_FILE"
+  | "MISSING_WORKOUT_MESSAGE"
+  | "MISSING_WORKOUT_STEPS";
+
+export interface GarminImportError {
+  code: GarminImportErrorCode;
+  message: string;
+}
+
+export type GarminImportWarningCode =
+  | "DUPLICATE_STEP_INDEX"
+  | "MISSING_STEP_INDEX"
+  | "UNRESOLVABLE_CUSTOM_SPEED_BOUNDS"
+  | "INVALID_REPEAT_REFERENCE"
+  | "NESTED_REPEAT"
+  | "UNSUPPORTED_REPEAT_BODY_SIZE"
+  | "UNRECOGNIZED_STEP_SHAPE"
+  | "IMPORTED_PROGRESSION_FROM_STAIRCASE";
+
+export interface GarminImportWarning {
+  stepIndex: number | null;
+  code: GarminImportWarningCode;
+  message: string;
+}
+
+// canApply: false means segments is empty — a non-applicable preview is never
+// partially populated, so the caller can't accidentally act on a fragment of
+// an unsupported structure (Story scope: no persistence, no raw-segment
+// fallback — see domain/garmin-workout/import.ts's header note).
+export interface GarminWorkoutImportPreview {
+  canApply: boolean;
+  segments: ResolvedSegment[];
+  warnings: GarminImportWarning[];
+}
+
+export type GarminWorkoutImportOutcome =
+  | { ok: true; preview: GarminWorkoutImportPreview }
+  | { ok: false; error: GarminImportError };

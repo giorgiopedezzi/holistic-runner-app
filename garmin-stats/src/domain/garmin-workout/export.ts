@@ -13,6 +13,7 @@ import type {
   GarminWorkoutStepsOutcome,
   PaceBandPolicy,
 } from "./types.ts";
+import { progressionMarkerName } from "./types.ts";
 
 // Progression segments are quantized into exactly this many discrete stages
 // (HRA-184 AC) — a fixed, product-decided approximation of a continuous ramp,
@@ -161,9 +162,12 @@ function exportSegment(
       if (error) { errors.push(error); return; }
 
       const warningStepIndex = steps.length;
+      const groupId = warningStepIndex; // the first stage's messageIndex — unique within the day
       const stages = buildProgressionStages(segment.target, segment.start_resolved_pace_sec_per_km as number, segment.end_resolved_pace_sec_per_km as number);
-      for (const stage of stages) {
-        steps.push(makeStep(steps.length, "active", stage.target, stage.paceSecPerKm, band));
+      for (const [stageIndex, stage] of stages.entries()) {
+        const step = makeStep(steps.length, "active", stage.target, stage.paceSecPerKm, band);
+        step.name = progressionMarkerName(groupId, stageIndex, PROGRESSION_STAGE_COUNT);
+        steps.push(step);
       }
       warnings.push({
         stepIndex: warningStepIndex,
