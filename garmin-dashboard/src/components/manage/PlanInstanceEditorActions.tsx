@@ -45,7 +45,7 @@ export function PlanInstanceEditorActions({
   const { t } = useTranslation();
 
   return (
-    <div className="hra-row-wrap mb-3 items-center" >
+    <div className="hra-plan-instance-section-gap hra-row-wrap items-center" >
       {!fieldsLocked ? (
         <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
           {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
@@ -89,7 +89,7 @@ export function PlanInstanceEditorActions({
           a dedicated key, not a change to the shared common.restore
           key PlanTemplatesSection.tsx also uses, since this Story's ask
           is scoped to the instance card only. */}
-      <button className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer" onClick={() => onRestoreClick(isDirty)}>
+      <button className="hra-btn" onClick={() => onRestoreClick(isDirty)}>
         {t("manage.planInstances.resetButton", "Reset to previous values")}
       </button>
       {/* HRA-157: List/Agenda switch relocated here from its own row

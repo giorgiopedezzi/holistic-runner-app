@@ -65,7 +65,7 @@ export function ActivitiesTab({ from, to }: Props) {
     <div>
       {pagination}
 
-      <div className="grid gap-1.5 mt-3.5">
+      <div className="hra-activity-list grid gap-1.5">
         {pageItems.map(a => {
           const isExpanded = detailView === "accordion" && expandedId === a.id;
           return (

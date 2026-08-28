@@ -161,7 +161,7 @@ function AppShell() {
       </header>
 
       {/* ── main ─────────────────────────────────────────────────────── */}
-      <main className="hra-app-main flex-1 w-full my-0 mx-auto pt-6 px-6 pb-12">
+      <main className="hra-app-main flex-1">
 
         {online === false && (
           <div className="mb-5">

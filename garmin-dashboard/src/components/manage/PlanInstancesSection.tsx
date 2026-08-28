@@ -822,7 +822,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 outside the viewMode branch below, so it stays mounted
                 (same node, same content) across List/Agenda toggling rather
                 than remounting. */}
-            <div className="mb-3">
+            <div className="hra-plan-instance-section-gap">
               <CategoryLegend />
             </div>
             {viewMode === "list" ? (

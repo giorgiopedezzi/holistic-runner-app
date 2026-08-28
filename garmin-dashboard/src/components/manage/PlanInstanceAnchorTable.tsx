@@ -150,7 +150,7 @@ export function PlanInstanceAnchorTable({
         {t("manage.planInstances.tableFillHint", "Fill exactly one of Absolute or Relative per row — the other disables once you start typing.")}
       </div>
 
-      <div className="hra-resolution-hint text-meta mb-3.5" data-unresolved={unresolvedAnchors.length > 0}>
+      <div className="hra-resolution-hint hra-plan-instance-section-gap text-meta" data-unresolved={unresolvedAnchors.length > 0}>
         {unresolvedAnchors.length > 0
           ? t("manage.planInstances.resolutionBlockedHint", "{{anchors}} still unresolved — fill in Absolute or Relative for it above before you can create the instance.", { anchors: unresolvedAnchors.join(", ") })
           : t("manage.planInstances.resolutionReadyHint", "Every anchor resolves — Create instance is ready.")}

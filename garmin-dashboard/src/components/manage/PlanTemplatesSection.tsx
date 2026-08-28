@@ -572,7 +572,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             UI" rule). Distance/km-mi stay on screen at all times (not
             conditionally mounted) — only their enabled state depends on
             Event type — so nothing ever appears/disappears in this row. */}
-        <div className="flex items-start gap-2.5 flex-wrap mb-2.5">
+        <div className="hra-plan-instance-section-gap flex items-start gap-2.5 flex-wrap">
           <label className="hra-template-name-field hra-text-secondary text-meta">
             {t("manage.planTemplates.nameLabel", "Name")}
             <input
@@ -619,7 +619,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </label>
         </div>
 
-        <label className="hra-text-secondary text-meta block mb-1.5" >
+        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
           {t("manage.planTemplates.dslSourceLabel", "DSL text")}
           <textarea
             className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
@@ -629,7 +629,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           />
         </label>
 
-        <div className="hra-row-wrap mb-3" >
+        <div className="hra-plan-instance-section-gap hra-row-wrap" >
           <label className="hra-btn cursor-pointer" >
             {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
             <input

@@ -75,7 +75,7 @@ export function PlanInstanceFormFields({
           instance — startEdit() populates every field from the instance's
           own persisted values, fieldsLocked/fieldDisabled just gate
           interactivity, not visibility (AC1's "same screen shape"). */}
-      <div className="hra-instance-identity-grid grid gap-2.5 mb-1.5">
+      <div className="hra-instance-identity-grid hra-plan-instance-form-row grid gap-2.5">
         <Field label={t("manage.planInstances.templateLabel", "Template")} required>
           <Select
             value={templateId} onValueChange={onTemplateSelectChange}
@@ -98,13 +98,13 @@ export function PlanInstanceFormFields({
           <input type="text" className="hra-border-strong hra-bg-card hra-text-primary w-full" value={raceUrl} onChange={e => setRaceUrl(e.target.value)} disabled={fieldDisabled} placeholder={t("manage.planInstances.linkRacePlaceholder", "e.g. https://www.baa.org/races/boston-marathon")} />
         </Field>
       </div>
-      <div className="hra-text-muted text-meta mb-4" >
+      <div className="hra-text-muted hra-plan-instance-section-gap text-meta" >
         <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
         {!fieldsLocked && !formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
       </div>
 
       {/* Row 2 — timing. */}
-      <div className="hra-instance-timing-grid grid gap-2.5 mb-1.5">
+      <div className="hra-instance-timing-grid hra-plan-instance-form-row grid gap-2.5">
         <Field label={t("manage.planInstances.startDateLabel", "Start date")}>
           <DatePicker value={startDate} onChange={onStartDateChange} disabled={fieldDisabled} />
         </Field>
@@ -127,7 +127,7 @@ export function PlanInstanceFormFields({
       <div className="hra-text-muted text-meta mb-1" >
         {t("manage.planInstances.timingLinkHint", "🔗 Start date and Days before race are linked once Race date is set — editing either recomputes the other.")}
       </div>
-      <div className="hra-text-muted text-meta mb-4" >
+      <div className="hra-text-muted hra-plan-instance-section-gap text-meta" >
         {t("manage.planInstances.restDayLabelHint", "Any day 1-7 the template doesn't declare for a week is auto-filled as a REST day carrying this label as its note.")}
       </div>
       {showWeek1AnchorWarning && (
@@ -138,7 +138,7 @@ export function PlanInstanceFormFields({
 
       {/* Row 3 — pace: Race pace anchor + Pace input mode + Goal time all on
           one line (HRA-137 Ask #1). */}
-      <div className="flex flex-wrap items-start gap-6 mb-1.5">
+      <div className="flex flex-wrap items-start gap-6 hra-plan-instance-form-row">
         <Field label={t("manage.planInstances.racePaceAnchorLabel", "Race pace anchor")}>
           <div className="hra-segment">
             {[NONE_ANCHOR, ...templateAnchors].map(a => (
@@ -171,7 +171,7 @@ export function PlanInstanceFormFields({
           </div>
         </Field>
       </div>
-      <div className="hra-text-muted text-meta mb-3.5" >
+      <div className="hra-text-muted hra-plan-instance-section-gap text-meta" >
         {t("manage.planInstances.paceModeHint", "Goal time is only selectable while a race pace anchor is chosen — \"None\" forces Anchor override.")}
       </div>
 

@@ -146,6 +146,7 @@
   --progress-width: 0%;
   --select-trigger-width: auto;
   --select-trigger-height: auto;
+  --section-gap: 18px;
 
   color-scheme: dark;
 }
@@ -193,6 +194,11 @@
   --color-data-fat:    var(--data-fat);
   --color-data-muscle: var(--data-muscle);
 }
+
+/* Compact helper text still needs a small visual separation from the block
+   that follows. Limit this to block-level metadata so inline labels and
+   button text keep their existing alignment. */
+p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 
 /* ── Theme × Palette (dashboard design-system rework) ─────────────────────
    4 combinations: dark/light crossed with metal (cold/technical/minimal —
@@ -473,6 +479,18 @@
 .hra-agenda-summary .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); flex: none; }
 .hra-agenda-controls { display: flex; align-items: center; gap: 10px; }
 .hra-agenda-nav { display: flex; align-items: center; gap: 4px; }
+/* The calendar vendor stylesheet can win the color cascade for nested
+   toolbar buttons. Pin the navigation icon stroke to the app foreground. */
+.hra-agenda-nav .hra-icon-button { color: var(--text-primary) !important; }
+.hra-agenda-nav .hra-icon-button svg {
+  display: block !important;
+  width: 15px !important;
+  height: 15px !important;
+  min-width: 15px;
+  stroke: var(--text-primary) !important;
+  stroke-width: 2px !important;
+  opacity: 1 !important;
+}
 
 /* Custom date-header cell (replaces react-big-calendar's own via
    `components.dateHeader`) — a reserved time-indicator slot (Ask #5, empty
@@ -831,7 +849,7 @@ body {
 .hra-btn {
   font-family: inherit; font-size: var(--text-label); font-weight: var(--text-data--font-weight);
   padding: 6px 14px; border-radius: var(--radius-sm);
-  border: 1px solid transparent; cursor: pointer;
+  border: 1px solid var(--border-strong); cursor: pointer;
   transition: box-shadow 0.18s ease-out, transform 0.18s ease-out,
   background 0.15s, border-color 0.15s, color 0.15s;
 }
@@ -1176,9 +1194,12 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 button { cursor: pointer; font-family: inherit; }
 
-input, select {
+input, select, textarea {
   font-family: inherit;
-  font-size: inherit;
+  /* Form controls must remain comfortably legible even inside a compact
+     text-meta parent. Retain a larger inherited size, but never go below
+     the app-wide 13px input minimum. */
+  font-size: max(13px, 1em) !important;
   background: var(--bg-card);
   color: var(--text-primary);
   border: 1px solid var(--border-strong);
@@ -1187,7 +1208,8 @@ input, select {
   outline: none;
   transition: border-color 0.15s;
 }
-input:focus, select:focus { border-color: var(--accent); }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+input::placeholder, textarea::placeholder { font-size: 13px; }
 
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
@@ -1693,9 +1715,9 @@ input:focus, select:focus { border-color: var(--accent); }
   position: sticky;
   top: var(--header-height);
   z-index: 9;
-  background: var(--bg);
-  padding-top: 4px;
   padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--section-gap);
 }
 .hra-header-inner {
   max-width: 1240px;
@@ -1755,7 +1777,17 @@ input:focus, select:focus { border-color: var(--accent); }
 }
 
 /* HRA-179 workflow/control surface layout and finite-state classes. */
-.hra-app-main { max-width: 1240px; }
+.hra-app-main {
+  width: 100%;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 24px 24px 48px;
+}
+.hra-app-main > .hra-section-title:first-child { margin-top: 0; }
+.hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
+.hra-plan-instance-form-row { margin-bottom: 6px; }
+.hra-section-gap-top { margin-top: var(--section-gap); }
+.hra-activity-list { margin-top: var(--section-gap); }
 .hra-compare-range[data-enabled="false"] { opacity: 0.4; pointer-events: none; }
 .hra-preview-pill { padding: 5px 14px; }
 .hra-plan-day-grid { grid-template-columns: auto minmax(0, 1fr) auto; }
@@ -1823,6 +1855,7 @@ input:focus, select:focus { border-color: var(--accent); }
   --dyn-color: var(--text-secondary);
   cursor: pointer;
   opacity: 1;
+  padding: 2px 6px 2px 6px;
 }
 .hra-metric-toggle[data-active="true"] {
   --dyn-border: var(--metric-color);
@@ -1833,7 +1866,14 @@ input:focus, select:focus { border-color: var(--accent); }
 .hra-metric-card-toggle { cursor: pointer; opacity: 1; }
 .hra-metric-card-toggle[data-active="false"] { cursor: not-allowed; opacity: 0.4; }
 .hra-speed-segment { --segment-color: var(--data-pace); }
-.hra-activity-chart-selectors { grid-template-columns: 1fr auto 1fr; }
+.hra-activity-chart-section { margin-top: var(--section-gap); }
+.hra-activity-chart-selectors {
+  grid-template-columns: 1fr auto 1fr;
+  margin-bottom: var(--section-gap);
+  padding-block: 4px;
+}
+.hra-activity-metric-card { margin-top: var(--section-gap); }
+.hra-activity-metric-controls { padding-inline: 8px; }
 .hra-activity-chart-controls {
   padding-left: var(--chart-controls-left);
   padding-right: var(--chart-controls-right);
@@ -2050,12 +2090,12 @@ input:focus, select:focus { border-color: var(--accent); }
 
 @keyframes hra-merge-up-move {
   from { transform: translateY(0); }
-  to   { transform: translateY(calc(-100% - 12px)); } /* own height ~= current chart's height, so this lands on top of it */
+  to   { transform: translateY(calc(-100% - var(--section-gap))); } /* own height ~= current chart's height, so this lands on top of it */
 }
 .hra-merge-up { animation: hra-merge-up-move 1s ease-in-out forwards; }
 
 @keyframes hra-unmerge-down-move {
-  from { transform: translateY(calc(-100% - 12px)); } /* starts already overlapping current — o2d-fade's end state */
+  from { transform: translateY(calc(-100% - var(--section-gap))); } /* starts already overlapping current — o2d-fade's end state */
   to   { transform: translateY(0); }
 }
 .hra-unmerge-down { animation: hra-unmerge-down-move 1s ease-in-out forwards; }

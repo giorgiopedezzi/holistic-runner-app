@@ -787,7 +787,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <>
                 {withSidebar(currentChart)}
-                {compareCard && <div className="mt-3">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+                {compareCard && <div className="hra-section-gap-top">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
           case "d2o-move":
@@ -804,7 +804,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <>
                 {withSidebar(currentChart)}
-                {compareCard && <div className="hra-merge-up mt-3">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+                {compareCard && <div className="hra-merge-up hra-section-gap-top">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
           case "d2o-fade":
@@ -837,7 +837,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
             return (
               <>
                 {withSidebar(currentChart)}
-                {compareCard && <div className="hra-unmerge-down mt-3">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
+                {compareCard && <div className="hra-unmerge-down hra-section-gap-top">{withSidebar(compareCard, compareOtherKeyMetrics)}</div>}
               </>
             );
         }

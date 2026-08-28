@@ -496,7 +496,7 @@ export function ActivityChartSection({
   const runnerReady = plotWidth !== 0 && chartData.length > 0;
 
   return (
-    <div className="mt-6">
+    <div className="hra-activity-chart-section">
       {/* Three-column selector row (dashboard design-system rework,
           "reorganize activity layout"): left = Distance/Time + Speed/Pace
           switches; center = pause-threshold + outlier checkbox; right =
@@ -508,7 +508,7 @@ export function ActivityChartSection({
           centers the middle column independent of how wide the two side
           groups are, which justify-content: space-between can't guarantee
           for a 3-child row. */}
-      <div className="hra-activity-chart-selectors grid items-center gap-4 mb-3">
+      <div className="hra-activity-chart-selectors grid items-center gap-4">
         <div className="hra-row-wrap gap-4">
           <div className="hra-segment">
             {(["distance", "time"] as XMode[]).map(m => (
@@ -548,7 +548,7 @@ export function ActivityChartSection({
             {t("activity.chart.removeOutliers", "Remove outliers")}
           </label>
         </div>
-        <div className="hra-row-wrap gap-4 justify-end">
+        <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
           {OPTIONAL_METRIC_ORDER.map(key => (
             <MetricRow
               key={key}
@@ -664,7 +664,7 @@ export function ActivityChartSection({
         // across the pause, not the pause's duration).
         const cardData = key === "heart_rate" ? hrRecoveryChartData : chartData;
         return (
-          <div key={key} className="mt-4">
+          <div key={key} className="hra-activity-metric-card">
             <Label className="mb-1">
               {key === "speed"
                 ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
