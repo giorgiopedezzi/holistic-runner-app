@@ -21,6 +21,20 @@ Use the configured Atlassian MCP server to read the issue and its current fields
 
 ## 2. Gate before any implementation work
 
+Read and follow exactly:
+
+`.agents/workflows/story-jira-gate.md`
+
+Before checking Agent / Model / effort:
+
+- for a **new implementation**, Jira status must be exactly `Ready to Develop`;
+- `BACKLOG`/`Backlog` or `REFINEMENT`/`Refinement` → STOP;
+- `In Review` or `Done` → STOP;
+- `In Progress` is allowed only for an explicit continuation/resume of the same Story under the shared resume rule.
+
+Never transition a Story into `Ready to Develop`.
+
+
 For Stories subject to the current policy, require:
 
 - `Agent` (`customfield_10115`) = **`Codex`**

@@ -19,17 +19,18 @@ Local environment: Windows 11 · Git Bash · Node 24 LTS · WebStorm 2026.2.
 
 These constraints apply to every Story session and every subagent.
 
-1. **A Story must have `Agent` (`customfield_10115`), `Model` (`customfield_10116`), and `Planned thinking effort` (`customfield_10117`) filled before implementation starts.** If a required field is empty, STOP and ask the human to set it.
+1. **A new Story implementation may start only when Jira status is exactly `Ready to Develop`.** `BACKLOG`/`Backlog`, `REFINEMENT`/`Refinement`, `In Review`, `Done`, or any other non-entry status is a STOP. Never transition a Story into `Ready to Develop`; that is the human Gate 1. An `In Progress` Story may be resumed only under the explicit resume conditions in `.agents/workflows/story-jira-gate.md`.
+3. **A Story must have `Agent` (`customfield_10115`), `Model` (`customfield_10116`), and `Planned thinking effort` (`customfield_10117`) filled before implementation starts.** If a required field is empty, STOP and ask the human to set it.
 2. **The launched agent must match Jira `Agent`.** Supported values in this repo are `Claude Code` and `Codex`. A mismatch is a STOP.
-3. **The launched model must match Jira `Model`.** Model selection is a human launch precondition. A static project default is not evidence of the active runtime when CLI/UI overrides may apply. Never rewrite Jira to match the running session.
-4. **Never write human decision fields:** `Contributor Type` (`10114`), `Agent` (`10115`), `Model` (`10116`), `Planned thinking effort` (`10117`), `Review Outcome` (`10118`). Read and obey them; never modify them.
-5. **Exception:** write `Actual thinking effort` (`10152`) at In Review using the active `implement-story` workflow and objective evidence, never by impression.
-6. **Model and effort are launch-bound.** The human selects them before Story execution and verifies the launch configuration in the client/UI when available. STOP only on a **known** mismatch. If the agent cannot introspect the active CLI/UI override, absence of introspection is not a mismatch. `.codex/config.toml` is a default only and must never be treated as proof of the active Codex runtime. Never change model or effort mid-slice.
-7. **First output line for Story work:** state `Agent`, `Model`, and `Planned thinking effort`, plus what that effort commits you to.
-8. **Stop at In Review.** Transition the Story to In Review, post the review comment, then STOP. Never move it to Done.
-9. **Implement only the approved Story slice.** Do not re-scope, re-plan, or improve adjacent code. Record out-of-scope findings as candidates in the In Review comment.
-10. **API contract and client-type changes belong to Epic HRA-36**, not opportunistically to another Story.
-11. **One Story per invocation/session.** Never chain Stories in one run.
+4. **The launched model must match Jira `Model`.** Model selection is a human launch precondition. A static project default is not evidence of the active runtime when CLI/UI overrides may apply. Never rewrite Jira to match the running session.
+5. **Never write human decision fields:** `Contributor Type` (`10114`), `Agent` (`10115`), `Model` (`10116`), `Planned thinking effort` (`10117`), `Review Outcome` (`10118`). Read and obey them; never modify them.
+6. **Exception:** write `Actual thinking effort` (`10152`) at In Review using the active `implement-story` workflow and objective evidence, never by impression.
+7. **Model and effort are launch-bound.** The human selects them before Story execution and verifies the launch configuration in the client/UI when available. STOP only on a **known** mismatch. If the agent cannot introspect the active CLI/UI override, absence of introspection is not a mismatch. `.codex/config.toml` is a default only and must never be treated as proof of the active Codex runtime. Never change model or effort mid-slice.
+8. **First output line for Story work:** state `Agent`, `Model`, and `Planned thinking effort`, plus what that effort commits you to.
+9. **Stop at In Review.** Transition the Story to In Review, post the review comment, then STOP. Never move it to Done.
+10. **Implement only the approved Story slice.** Do not re-scope, re-plan, or improve adjacent code. Record out-of-scope findings as candidates in the In Review comment.
+11. **API contract and client-type changes belong to Epic HRA-36**, not opportunistically to another Story.
+12. **One Story per invocation/session.** Never chain Stories in one run.
 
 **Policy epochs**
 - `Model` and `Planned thinking effort`: mandatory for Stories entering Ready to Develop from **2026-08-12 ~17:30 CEST** onward. Never backfill older issues.
@@ -42,6 +43,8 @@ Use the active harness's `implement-story` workflow:
 - Codex: `$implement-story` (repo skill under `.agents/skills/implement-story/`)
 
 The workflow is the authority for Jira mechanics, effort classification, ADF checklist safety, transitions, and review comments.
+
+Before any Story implementation or resume, also read and follow `.agents/workflows/story-jira-gate.md`.
 
 ### Tracked AI refinement prompts
 
@@ -166,6 +169,7 @@ Descriptive or task-specific detail lives outside global instructions and must b
 | Story implementation / Jira workflow | active `implement-story` workflow |
 | AI prompt refinement / Epic + Story generation | `.agents/workflows/refine-prompt.md` via `/generate-user-stories` (Claude) or `$generate-user-stories` (Codex) |
 | Jira Acceptance Criteria creation/completion | `.agents/workflows/jira-acceptance-criteria.md` |
+| Story Jira implementation gate / status | `.agents/workflows/story-jira-gate.md` |
 | Story Git branch / commit lifecycle | `.agents/workflows/story-git-lifecycle.md` |
 | DB schema, columns, soft delete/trash/purge | `docs/schema.md` |
 | HTTP endpoints, bodies, status codes, CORS | `docs/api.md` |

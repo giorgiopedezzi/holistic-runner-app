@@ -12,7 +12,7 @@ Always use `git -C <repo-root> ...`. Never use `cd ... && git ...`.
 
 ## 1. Before editing: establish a clean Story branch
 
-After the Jira Agent / Model / Planned-effort gate passes, but **before any source edit**:
+After the Jira status Gate 1 and the Agent / Model / Planned-effort gates pass, but **before any source edit**:
 
 1. Inspect:
    - `git -C C:/Projects/PERSONAL/holistic-runner-app status --short`
@@ -46,7 +46,7 @@ Create it with:
 
 Do not fetch, pull, rebase, merge, or change the base branch automatically.
 
-If Jira is still `Ready to Develop`, transition it to `In Progress` after the Story branch exists.
+For a new Story, Jira must still be `Ready to Develop`; transition it to `In Progress` after the Story branch exists. For an explicit resume, Jira may already be `In Progress` only under `.agents/workflows/story-jira-gate.md`.
 
 ## 2. During implementation
 
