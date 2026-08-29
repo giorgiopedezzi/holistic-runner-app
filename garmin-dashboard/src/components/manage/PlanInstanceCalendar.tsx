@@ -67,11 +67,26 @@ const locales = { enUS };
 // AC list so far).
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
+// HRA-190 follow-up fix: shadcn-big-calendar re-exports withDragAndDrop from
+// react-big-calendar's own CJS addon module — under this project's Vite dev
+// server the CJS→ESM interop leaves the "function" as a wrapped
+// `{ default: fn, __esModule: true }` object rather than unwrapping it, so
+// calling it directly threw "withDragAndDrop is not a function" at runtime
+// (a `vite build`/vitest don't execute this line the same way a live browser
+// module graph does, which is why `npm run verify` didn't catch it). Unwrap
+// defensively: use the value as-is if it's already callable (the shape a
+// correctly-interop'd bundle would give), otherwise reach for its own
+// `.default`.
+const withDragAndDropFn: typeof withDragAndDrop =
+  typeof withDragAndDrop === "function"
+    ? withDragAndDrop
+    : (withDragAndDrop as unknown as { default: typeof withDragAndDrop }).default;
+
 // HRA-190: wraps the base calendar once at module scope (not per-render) with
 // react-big-calendar's own DnD addon — Week view only mounts through this;
 // Month keeps mounting the plain ShadcnBigCalendar below, untouched, per the
 // Story's explicit scope.
-const DnDCalendar = withDragAndDrop(ShadcnBigCalendar);
+const DnDCalendar = withDragAndDropFn(ShadcnBigCalendar);
 
 interface CalendarEvent {
   title: string;
