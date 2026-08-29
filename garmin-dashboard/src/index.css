@@ -1432,8 +1432,12 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 /* Follow-up: Status set apart as its own boxed header (border on every
    side, not just the shared left-edge separator every other group uses) —
    it's a per-row outcome, not a form-field group like Absolute/Relative, so
-   it reads as visually distinct rather than a fourth group in the same row. */
-.hra-anchor-table th.hra-anchor-status-header { border: 1px solid var(--border-strong); }
+   it reads as visually distinct rather than a fourth group in the same row.
+   Both the header and its body column center their content horizontally
+   (the "Status" label and each row's Resolved/Unresolved Badge) rather than
+   the table's usual left alignment. */
+.hra-anchor-table th.hra-anchor-status-header { border: 1px solid var(--border-strong); text-align: center; }
+.hra-anchor-table td.hra-anchor-status-cell { text-align: center; }
 .hra-anchor-table tbody tr:last-child td { border-bottom: none; }
 .hra-anchor-table td.hra-anchor-name { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 600; color: var(--text-primary); }
 .hra-anchor-derived { font-size: var(--text-meta); color: var(--text-muted); font-style: italic; }

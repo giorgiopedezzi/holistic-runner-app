@@ -62,7 +62,7 @@ export function PlanInstanceAnchorTable({
                 <th rowSpan={2} className="align-bottom">{t("manage.planInstances.colAnchor", "Anchor")}</th>
                 <th className="hra-anchor-group hra-anchor-group-start">{t("manage.planInstances.colAbsolute", "Absolute")}</th>
                 <th className="hra-anchor-group hra-anchor-group-start" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
-                <th rowSpan={2} className="align-bottom"></th>
+                <th rowSpan={2} className="align-bottom hra-anchor-group-start"></th>
                 <th rowSpan={2} className="align-bottom hra-anchor-status-header">{t("manage.planInstances.colStatus", "Status")}</th>
               </tr>
               <tr className="hra-anchor-sub">
@@ -124,7 +124,7 @@ export function PlanInstanceAnchorTable({
                     <td>
                       <input className="hra-border-strong hra-bg-card hra-text-primary w-full" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" />
                     </td>
-                    <td>
+                    <td className="hra-anchor-group-start">
                       <button
                         className="hra-tight-action hra-border-strong hra-text-secondary bg-transparent text-meta cursor-pointer"
                         disabled={derived || fieldDisabled || anchorRowIsEmpty(row)}
@@ -133,7 +133,7 @@ export function PlanInstanceAnchorTable({
                         {t("manage.planInstances.clearButton", "Clear")}
                       </button>
                     </td>
-                    <td>
+                    <td className="hra-anchor-status-cell">
                       <Badge
                         label={resolved != null ? t("manage.planInstances.resolutionResolved", "Resolved") : t("manage.planInstances.resolutionUnresolved", "Unresolved")}
                         color={resolved != null ? "var(--accent-green)" : "var(--accent-red)"}
