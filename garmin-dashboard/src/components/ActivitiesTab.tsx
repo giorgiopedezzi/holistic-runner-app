@@ -24,8 +24,17 @@ export function ActivitiesTab({ from, to }: Props) {
   const [expandedIdParam, setExpandedIdParam] = useUrlState("activityId", "");
   const expandedId = expandedIdParam === "" ? null : Number(expandedIdParam);
   const setExpandedId = (id: number | null) => setExpandedIdParam(id === null ? "" : String(id));
-  const [page, setPage] = useState(1);
-  const [perPage, setPerPage] = useState(25);
+  // Backed by the URL's `activitiesPage`/`activitiesPerPage` params (HRA-196)
+  // so a refresh reproduces the same page. Invalid/garbage URL values fall
+  // back to the same defaults a fresh visit gets.
+  const [pageParam, setPageParam] = useUrlState("activitiesPage", "1");
+  const parsedPage = Number(pageParam);
+  const page = Number.isInteger(parsedPage) && parsedPage >= 1 ? parsedPage : 1;
+  const setPage = (next: number) => setPageParam(String(next));
+  const [perPageParam, setPerPageParam] = useUrlState("activitiesPerPage", "25");
+  const parsedPerPage = Number(perPageParam);
+  const perPage = PER_PAGE_OPTIONS.includes(parsedPerPage as typeof PER_PAGE_OPTIONS[number]) ? parsedPerPage : 25;
+  const setPerPage = (next: number) => setPerPageParam(String(next));
 
   // Server-side paging (HRA-38): fetch only the current page's rows, and refetch
   // whenever the range, page, or page size changes.
@@ -34,8 +43,19 @@ export function ActivitiesTab({ from, to }: Props) {
     [from, to, page, perPage],
   );
 
-  // A new range (or a perPage change) invalidates the current page number.
-  useEffect(() => setPage(1), [from, to, perPage]);
+  // A new range (or a perPage change) invalidates the current page number,
+  // but must not fire on initial mount — an effect with [from, to, perPage]
+  // deps still runs once after mount, which would immediately overwrite a
+  // page number just hydrated from the URL (HRA-196, same fix as HRA-194's
+  // expandedId guard below).
+  const isFirstPageEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstPageEffect.current) {
+      isFirstPageEffect.current = false;
+      return;
+    }
+    setPageParam("1");
+  }, [from, to, perPage, setPageParam]);
   // Clears the expanded row on a genuine user-driven range change, but must
   // not fire on initial mount — an effect with [from, to] deps still runs
   // once after mount, which would immediately wipe a row just hydrated from
@@ -52,7 +72,14 @@ export function ActivitiesTab({ from, to }: Props) {
   const total = state.status === "success" ? state.data.page.total : 0;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
   // If the total shrank (e.g. after a delete) clamp the page back into range.
-  useEffect(() => { setPage(p => Math.min(p, totalPages)); }, [totalPages]);
+  // Gated on a resolved "success" state (HRA-196) — while idle/loading,
+  // `total` is a placeholder 0 (totalPages 1), and clamping against that
+  // would immediately overwrite a page number just hydrated from the URL,
+  // or a page still in flight during a normal navigation refetch.
+  useEffect(() => {
+    if (state.status !== "success") return;
+    if (page > totalPages) setPageParam(String(totalPages));
+  }, [state.status, totalPages, page, setPageParam]);
 
   if (state.status === "loading") return <LoadingSpinner label={t("activities.loading", "Loading activities…")} />;
   if (state.status === "error")   return <ErrorBanner message={state.error} />;

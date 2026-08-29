@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { shiftIsoDate, daysBetween } from "@/utils/date";
+import { useUrlState } from "@/hooks/useUrlState";
 
 export interface CompareRangeState {
   from:    string;
@@ -12,6 +13,14 @@ export interface CompareRangeState {
   // gate every comparison fetch/render on this, not just from/to presence.
   enabled:    boolean;
   setEnabled: (v: boolean) => void;
+}
+
+// Opt-in URL persistence (HRA-196), mirroring useDateRange's DateRangeUrlKeys
+// — pass a stable (module-scope) object, see App.tsx's COMPARE_URL_KEYS.
+export interface CompareRangeUrlKeys {
+  from:    string;
+  to:      string;
+  enabled: string;
 }
 
 // Default "compare to" window: same number of days as [from, to], ending
@@ -32,17 +41,47 @@ export function defaultCompareRange(from: string, to: string): { from: string; t
 // current one by default, and re-picking a preset should give a clean,
 // predictable comparison window again rather than silently carrying over a
 // stale manual pick of a different length from a previous current range.
-export function useCompareRange(from: string, to: string): CompareRangeState {
-  const [range, setRange] = useState(() => defaultCompareRange(from, to));
-  const [enabled, setEnabled] = useState(true);
-  useEffect(() => setRange(defaultCompareRange(from, to)), [from, to]);
+export function useCompareRange(from: string, to: string, urlKeys?: CompareRangeUrlKeys): CompareRangeState {
+  const [defaultRange] = useState(() => defaultCompareRange(from, to));
 
-  return {
-    from: range.from,
-    to:   range.to,
-    setFrom: (v: string) => setRange(r => ({ ...r, from: v })),
-    setTo:   (v: string) => setRange(r => ({ ...r, to: v })),
-    enabled,
-    setEnabled,
-  };
+  const [localRange, setLocalRange] = useState(defaultRange);
+  const [localEnabled, setLocalEnabled] = useState(true);
+  // Always called (rules-of-hooks) even when urlKeys is absent — see
+  // useDateRange's identical HRA-196 pattern.
+  const [urlFrom, setUrlFrom] = useUrlState(urlKeys?.from ?? "", defaultRange.from);
+  const [urlTo, setUrlTo] = useUrlState(urlKeys?.to ?? "", defaultRange.to);
+  const [urlEnabledParam, setUrlEnabledParam] = useUrlState(urlKeys?.enabled ?? "", "1");
+
+  const compFrom = urlKeys ? urlFrom : localRange.from;
+  const compTo   = urlKeys ? urlTo   : localRange.to;
+  const enabled  = urlKeys ? urlEnabledParam !== "0" : localEnabled;
+  const setFrom   = urlKeys ? setUrlFrom : (v: string) => setLocalRange(r => ({ ...r, from: v }));
+  const setTo     = urlKeys ? setUrlTo   : (v: string) => setLocalRange(r => ({ ...r, to: v }));
+  const setEnabled = urlKeys
+    ? (v: boolean) => setUrlEnabledParam(v ? "1" : "0")
+    : setLocalEnabled;
+
+  // Must not fire on initial mount — an effect with [from, to] deps still
+  // runs once after mount, which would immediately wipe a compare range just
+  // hydrated from the URL (same mount-vs-user-change guard as HRA-194's
+  // expandedId fix).
+  const isFirstRangeEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstRangeEffect.current) {
+      isFirstRangeEffect.current = false;
+      return;
+    }
+    const next = defaultCompareRange(from, to);
+    if (urlKeys) {
+      setUrlFrom(next.from);
+      setUrlTo(next.to);
+    } else {
+      setLocalRange(next);
+    }
+    // urlKeys is a caller-stable module-scope object (never changes identity
+    // per call site); including it would re-run this effect on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, setUrlFrom, setUrlTo]);
+
+  return { from: compFrom, to: compTo, setFrom, setTo, enabled, setEnabled };
 }

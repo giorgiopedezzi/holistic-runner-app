@@ -38,6 +38,12 @@ type TabId = typeof TABS[number]["id"];
 // Manage tab doesn't need the global date bar to be the primary control
 const TABS_WITH_DATERANGE: TabId[] = ["overview", "activities", "body"];
 
+// Stable (module-scope) URL-key objects for the two global ranges (HRA-196)
+// — a fresh object literal passed inline on every render would defeat the
+// hooks' internal referential-equality dependency arrays.
+const RANGE_URL_KEYS = { from: "from", to: "to" };
+const COMPARE_URL_KEYS = { from: "compareFrom", to: "compareTo", enabled: "compareEnabled" };
+
 // SettingsProvider wraps AppShell (not the other way in-line) so every hook
 // below it — including useAppearance(), called inside AppShell's own body —
 // is a descendant of the provider and shares its one settings fetch.
@@ -50,14 +56,18 @@ export default function App() {
 }
 
 function AppShell() {
-  const range = useDateRange(30);
+  // Backed by the URL's `from`/`to` params (HRA-196) so reloading a URL
+  // carrying a specific range reproduces it instead of resetting to the
+  // 30-day default.
+  const range = useDateRange(30, RANGE_URL_KEYS);
   // Only meaningful on the Overview & Trends tab (the only consumer of a
   // "compare to" range), but created here rather than inside OverviewTab so
   // DateRangeBar — rendered once, above the tab content, shared across tabs
   // — can host its pickers. Passed to DateRangeBar/OverviewTab only while
   // tab === "overview" below; the hook itself is cheap to keep alive
-  // regardless of which tab is active.
-  const compareRange = useCompareRange(range.from, range.to);
+  // regardless of which tab is active. Backed by the URL's `compareFrom`/
+  // `compareTo`/`compareEnabled` params (HRA-196), same reasoning as `range`.
+  const compareRange = useCompareRange(range.from, range.to, COMPARE_URL_KEYS);
   // Named-range dropdown (DateRangeBar) — fetched once here, at the shell
   // level, so it's available to Activities/Body's bar below without each
   // tab fetching its own copy. AppShell itself never unmounts, unlike a

@@ -10,6 +10,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useQuery } from "./useQuery";
 import { useDateRange } from "./useDateRange";
+import { useCompareRange } from "./useCompareRange";
 import { useAppearance } from "./useAppearance";
 import { installFetch, json } from "@/test/api-stub";
 import { settings } from "@/test/fixtures";
@@ -18,6 +19,10 @@ import { getUnitSystem, setUnitSystem } from "@/utils/units";
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnitSystem("metric");
+  // HRA-196: useDateRange/useCompareRange's opt-in URL persistence uses
+  // history.replaceState, which persists across tests sharing this jsdom
+  // window — reset it so a later test doesn't inherit an earlier one's params.
+  window.history.replaceState(null, "", "/");
 });
 
 describe("useQuery", () => {
@@ -67,6 +72,87 @@ describe("useDateRange", () => {
     act(() => result.current.setPreset(9999));
     expect(result.current.from).toBe("2000-01-01");
     expect(result.current.to).toBe(isoToday());
+  });
+
+  describe("URL persistence (HRA-196, opt-in via urlKeys)", () => {
+    const URL_KEYS = { from: "from", to: "to" };
+
+    it("hydrates from/to from existing URL params instead of the default window", () => {
+      window.history.replaceState(null, "", "/?from=2026-01-01&to=2026-01-15");
+      const { result } = renderHook(() => useDateRange(30, URL_KEYS));
+
+      expect(result.current.from).toBe("2026-01-01");
+      expect(result.current.to).toBe("2026-01-15");
+    });
+
+    it("falls back to the default 30-day window when no params are present", () => {
+      const { result } = renderHook(() => useDateRange(30, URL_KEYS));
+
+      expect(result.current.from).toBe(isoAgo(30));
+      expect(result.current.to).toBe(isoToday());
+    });
+
+    it("writes setPreset/setFrom/setTo into the URL", () => {
+      const { result } = renderHook(() => useDateRange(30, URL_KEYS));
+
+      act(() => result.current.setPreset(7));
+      const params = new URLSearchParams(window.location.search);
+      expect(params.get("from")).toBe(isoAgo(7));
+      expect(params.get("to")).toBe(isoToday());
+    });
+
+    it("does not touch the URL when urlKeys is omitted (ManageTab's local ranges)", () => {
+      const { result } = renderHook(() => useDateRange(30));
+
+      act(() => result.current.setPreset(7));
+      expect(window.location.search).toBe("");
+    });
+  });
+});
+
+describe("useCompareRange", () => {
+  it("defaults to the same-length window ending the day before `from`, enabled", () => {
+    const { result } = renderHook(() => useCompareRange("2026-08-01", "2026-08-10"));
+    expect(result.current.from).toBe("2026-07-23");
+    expect(result.current.to).toBe("2026-07-31");
+    expect(result.current.enabled).toBe(true);
+  });
+
+  describe("URL persistence (HRA-196, opt-in via urlKeys)", () => {
+    const URL_KEYS = { from: "compareFrom", to: "compareTo", enabled: "compareEnabled" };
+
+    it("hydrates from/to/enabled from existing URL params", () => {
+      window.history.replaceState(null, "", "/?compareFrom=2026-01-01&compareTo=2026-01-10&compareEnabled=0");
+      const { result } = renderHook(() => useCompareRange("2026-08-01", "2026-08-10", URL_KEYS));
+
+      expect(result.current.from).toBe("2026-01-01");
+      expect(result.current.to).toBe("2026-01-10");
+      expect(result.current.enabled).toBe(false);
+    });
+
+    it("does not wipe a URL-hydrated compare range on initial mount, but resets it on a later current-range change", () => {
+      window.history.replaceState(null, "", "/?compareFrom=2026-01-01&compareTo=2026-01-10");
+      const { result, rerender } = renderHook(
+        ({ from, to }) => useCompareRange(from, to, URL_KEYS),
+        { initialProps: { from: "2026-08-01", to: "2026-08-10" } },
+      );
+
+      // Survives the initial mount's own from/to effect run.
+      expect(result.current.from).toBe("2026-01-01");
+      expect(result.current.to).toBe("2026-01-10");
+
+      // A genuine user-driven change to the CURRENT range resets it to the default.
+      rerender({ from: "2026-09-01", to: "2026-09-10" });
+      expect(result.current.from).toBe("2026-08-23");
+      expect(result.current.to).toBe("2026-08-31");
+    });
+
+    it("writes setEnabled into the URL as 1/0", () => {
+      const { result } = renderHook(() => useCompareRange("2026-08-01", "2026-08-10", URL_KEYS));
+
+      act(() => result.current.setEnabled(false));
+      expect(new URLSearchParams(window.location.search).get("compareEnabled")).toBe("0");
+    });
   });
 });
 
