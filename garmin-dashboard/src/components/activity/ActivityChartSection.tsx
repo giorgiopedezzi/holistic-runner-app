@@ -5,6 +5,7 @@ import {
   axisDomainMinMax, distanceTicks, timeTicks,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
+import type { PaceTargetBandModel } from "@/domain/planned-workout";
 import type { TrackPoint } from "@/types/api";
 import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
@@ -106,6 +107,12 @@ interface ActivityChartSectionProps {
   showCard: Record<MetricKey, boolean>;
   toggleMetric: (key: OptionalMetricKey) => void;
   toggleCard: (key: MetricKey) => void;
+  // HRA-207: the selected scheduled workout's pace-target bands, only while
+  // ActivityDetailBody's Overlap/Distinct switch is set to "Overlap" —
+  // undefined/null (its default) reproduces this section's pre-HRA-207
+  // rendering exactly, satisfying the Story's "no scheduled workout selected
+  // -> no change" acceptance criterion.
+  plannedOverlay?: PaceTargetBandModel | null;
 }
 
 export function ActivityChartSection({
@@ -115,6 +122,7 @@ export function ActivityChartSection({
   speedMode, setSpeedMode, speedDomain,
   activeMetrics, effectiveActive, availableMetrics, showCard,
   toggleMetric, toggleCard,
+  plannedOverlay = null,
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
   // ── Mouse-follow runner (icon in its own row above the chart, readout
@@ -577,7 +585,29 @@ export function ActivityChartSection({
           not just ChartCard's own baseline padding (dashboard design-system
           rework: "the row INSIDE the graph card must be the same width as
           the terrain/graph lines"). */}
-      <ChartCard controlsRow={
+      <ChartCard
+        legend={plannedOverlay && (
+          // HRA-207 "Overlap" mode only — same shared swatch classes/
+          // `--legend-color` hook SportTrendOverlapChart's own current-vs-
+          // compare legend uses (docs/frontend.md), not a bespoke style:
+          // solid swatch = the real activity's line, opacity-50 dashed
+          // swatch = the planned band drawn on top of it.
+          <div className="hra-text-muted flex gap-3.5 items-center text-meta flex-wrap">
+            <span className="hra-row-inline gap-1.5">
+              <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
+                <span className="hra-series-swatch--line" />
+              </span>
+              {t("activity.plannedWorkout.legendActual", "Actual")}
+            </span>
+            <span className="hra-row-inline gap-1.5">
+              <span className="hra-row-inline opacity-50" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
+                <span className="hra-series-swatch--line" />
+              </span>
+              {t("activity.plannedWorkout.legendPlanned", "Planned")}
+            </span>
+          </div>
+        )}
+        controlsRow={
         <div className="hra-activity-chart-controls flex items-center justify-between gap-3" style={{
           "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
           "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
@@ -630,7 +660,8 @@ export function ActivityChartSection({
           <MainOverlayChart
             chartData={chartData} displayTrack={displayTrack} xTicks={xTicks} xMode={xMode}
             speedDomain={speedDomain} speedMode={speedMode} activeMetrics={activeMetrics} effectiveActive={effectiveActive}
-            rightMargin={mainChartRightMargin} onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
+            rightMargin={mainChartRightMargin} plannedOverlay={plannedOverlay}
+            onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
           />
           {/* Hover-highlight overlay — two plain CSS layers on top of the SVG,
               not part of it, so the chart's own data-driven colors are never

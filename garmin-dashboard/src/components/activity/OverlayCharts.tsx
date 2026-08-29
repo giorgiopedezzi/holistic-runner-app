@@ -1,9 +1,10 @@
 import { memo } from "react";
-import { ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
+import { Area, ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
 import {
   fmtMetricValue, axisDomainMinMax, xTickFormatter,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
+import { buildPlannedOverlayBands, type PaceTargetBandModel } from "@/domain/planned-workout";
 import type { TrackPoint } from "@/types/api";
 import { ChartCard } from "@/components/ui";
 import {
@@ -49,14 +50,27 @@ interface MainOverlayChartProps {
   activeMetrics: OptionalMetricKey[];
   effectiveActive: MetricKey[];
   rightMargin: number;
+  // HRA-207: the selected scheduled workout's pace-target bands, rendered as
+  // an additive translucent layer on Speed/Pace's own axis when the
+  // Overlap/Distinct switch is set to "Overlap" — null in Distinct mode (see
+  // PlannedPaceTargetChart.tsx for that unchanged stacked rendering) and
+  // whenever no scheduled workout is selected, so this main chart's own
+  // axis-width/margin invariants stay untouched by default.
+  plannedOverlay: PaceTargetBandModel | null;
   onMouseMove: (state: { activeCoordinate?: { x: number; y: number }; activeTooltipIndex?: number | string | null }) => void;
   onMouseLeave: () => void;
 }
 
 export const MainOverlayChart = memo(function MainOverlayChart({
   chartData, displayTrack, xTicks, xMode, speedDomain, speedMode, activeMetrics, effectiveActive, rightMargin,
-  onMouseMove, onMouseLeave,
+  plannedOverlay, onMouseMove, onMouseLeave,
 }: MainOverlayChartProps) {
+  // Distance-only: the overlay's x values are real planned distances in
+  // meters, meaningless against the shared XAxis's elapsed-time domain in
+  // Time mode — see ActivityChartSection.tsx's own gate for why this is
+  // never passed a non-null value there instead of checked here too; kept as
+  // a second guard since this component is the one that actually draws it.
+  const plannedBands = plannedOverlay && xMode === "distance" ? buildPlannedOverlayBands(plannedOverlay, speedMode) : [];
   return (
     <ResponsiveContainer width="100%" height={220}>
       {/* top:16 gives the pause-flag pill (a 14px-tall shape centered
@@ -107,6 +121,31 @@ export const MainOverlayChart = memo(function MainOverlayChart({
         {effectiveActive.map(key => (
           <Line key={key} yAxisId={key} dataKey={key} stroke={metricStroke(key, "overlay")}
             strokeWidth={1.5} dot={false} isAnimationActive={false} name={METRIC_DEFS[key].label} />
+        ))}
+        {/* HRA-207 "Overlap" mode: the planned pace-target band as an
+            additive translucent layer, sharing Speed/Pace's own yAxisId/
+            domain rather than a second axis — one <Area> per band (own
+            `data` prop), same per-band pattern PlannedPaceTargetChart.tsx
+            already uses, so a rest-leg gap between bands never draws a
+            connecting fill across it. Dashed + low opacity is what visually
+            distinguishes it from the real, solid speed/pace Line above. */}
+        {plannedBands.map((band, index) => (
+          <Area
+            key={`planned-${index}`}
+            yAxisId="speed"
+            data={band.points}
+            dataKey="range"
+            type="linear"
+            name={METRIC_DEFS.speed.label}
+            fill={METRIC_DEFS.speed.color}
+            fillOpacity={0.18}
+            stroke={METRIC_DEFS.speed.color}
+            strokeDasharray="5 4"
+            strokeWidth={1.5}
+            dot={false}
+            activeDot={false}
+            isAnimationActive={false}
+          />
         ))}
         {/* Pause flags get their own fixed, never-reversed, hidden [0,1]
             axis instead of piggybacking on Speed's (mean-centered,

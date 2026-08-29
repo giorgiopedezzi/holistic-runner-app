@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { ResolvedSegment, Target } from "@/types/runplan";
-import { buildPaceTargetBandModel, computePaceTargetStats, type PaceTargetBand } from "./planned-workout";
+import { setUnitSystem } from "@/utils/units";
+import { buildPaceTargetBandModel, buildPlannedOverlayBands, computePaceTargetStats, type PaceTargetBand } from "./planned-workout";
 
 const distance = (distanceM: number): Target => ({ kind: "distance", distance_m: distanceM, raw: `${distanceM}m` });
 const duration = (durationSec: number): Target => ({ kind: "duration", duration_sec: durationSec, raw: `${durationSec}s` });
@@ -129,5 +130,52 @@ describe("buildPaceTargetBandModel", () => {
       meanPaceSecPerKm: 255,
       slowestPaceSecPerKm: 300,
     });
+  });
+});
+
+describe("buildPlannedOverlayBands", () => {
+  afterEach(() => setUnitSystem("metric"));
+
+  it("converts a band's +/-2% bounds to ascending pace (min/km), one two-point array per band", () => {
+    const model = buildPaceTargetBandModel([
+      { type: "continuous", target: distance(5000), resolved_pace_sec_per_km: 300, raw: "5km @ 5:00/km" },
+    ]);
+
+    expect(buildPlannedOverlayBands(model, "pace")).toEqual([{
+      points: [
+        { x: 0, range: [294 / 60, 306 / 60] },
+        { x: 5000, range: [294 / 60, 306 / 60] },
+      ],
+    }]);
+  });
+
+  it("converts to ascending speed (km/h) instead, where the lower-pace bound is the HIGHER speed", () => {
+    const model = buildPaceTargetBandModel([
+      { type: "continuous", target: distance(5000), resolved_pace_sec_per_km: 300, raw: "5km @ 5:00/km" },
+    ]);
+
+    const [band] = buildPlannedOverlayBands(model, "speed");
+    expect(band.points[0].range[0]).toBeCloseTo(3600 / 306, 5); // slower pace bound -> lower speed
+    expect(band.points[0].range[1]).toBeCloseTo(3600 / 294, 5); // faster pace bound -> higher speed
+  });
+
+  it("respects the imperial unit system, matching the main chart's own conversion", () => {
+    setUnitSystem("imperial");
+    const model = buildPaceTargetBandModel([
+      { type: "continuous", target: distance(5000), resolved_pace_sec_per_km: 300, raw: "5km @ 5:00/km" },
+    ]);
+
+    const [band] = buildPlannedOverlayBands(model, "pace");
+    expect(band.points[0].range).toEqual([(294 / 60) * 1.609344, (306 / 60) * 1.609344]);
+  });
+
+  it("skips rest-leg gaps — one array per real pace band only", () => {
+    const model = buildPaceTargetBandModel([{
+      type: "interval", reps: 1, work_target: distance(1000), work_resolved_pace_sec_per_km: 240,
+      rest: { target: distance(500), resolved_pace_sec_per_km: 360, raw: "r:500m @ 6:00/km" },
+      raw: "1x1km @ 4:00/km r:500m @ 6:00/km",
+    }]);
+
+    expect(buildPlannedOverlayBands(model, "pace")).toHaveLength(2);
   });
 });

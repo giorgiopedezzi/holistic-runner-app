@@ -1,4 +1,6 @@
 import type { ResolvedSegment, RestType, Target } from "@/types/runplan";
+import { getUnitSystem, kmhToMph, paceKmToMi } from "@/utils/units";
+import type { SpeedMode } from "./activity-chart";
 
 export interface PaceTargetBand {
   kind: "band";
@@ -157,4 +159,38 @@ export function buildPaceTargetBandModel(segments: ResolvedSegment[]): PaceTarge
   }
 
   return { pieces, totalDistanceM: distanceM };
+}
+
+// HRA-207: converts each band's +/-2% pace bounds into the same display unit
+// the main activity chart's Speed/Pace axis already uses (`activity-chart.ts`'s
+// `metricValue` for key "speed"), so the overlay Area can share that axis
+// with the real speed/pace Line without a second, independent conversion
+// path. One two-point array per band (own `data` prop on each <Area>, same
+// pattern PlannedPaceTargetChart.tsx's bandPoints() already uses) rather than
+// one flat array, so a rest-leg gap between bands never draws a connecting
+// line across it.
+export interface PlannedOverlayBand {
+  points: { x: number; range: [number, number] }[];
+}
+
+function paceSecPerKmToDisplay(paceSecPerKm: number, speedMode: SpeedMode, imperial: boolean): number {
+  if (speedMode === "speed") {
+    const kmh = 3600 / paceSecPerKm;
+    return imperial ? kmhToMph(kmh) : kmh;
+  }
+  const paceMinKm = paceSecPerKm / 60;
+  return imperial ? paceKmToMi(paceMinKm) : paceMinKm;
+}
+
+export function buildPlannedOverlayBands(model: PaceTargetBandModel, speedMode: SpeedMode): PlannedOverlayBand[] {
+  const imperial = getUnitSystem() === "imperial";
+  const toDisplay = (paceSecPerKm: number) => paceSecPerKmToDisplay(paceSecPerKm, speedMode, imperial);
+  const range = (a: number, b: number): [number, number] => (a <= b ? [a, b] : [b, a]);
+  const bands = model.pieces.filter((piece): piece is PaceTargetBand => piece.kind === "band");
+  return bands.map(band => ({
+    points: [
+      { x: band.startDistanceM, range: range(toDisplay(band.startPaceLowerSecPerKm), toDisplay(band.startPaceUpperSecPerKm)) },
+      { x: band.endDistanceM, range: range(toDisplay(band.endPaceLowerSecPerKm), toDisplay(band.endPaceUpperSecPerKm)) },
+    ],
+  }));
 }
