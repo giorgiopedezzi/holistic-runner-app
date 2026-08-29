@@ -372,10 +372,17 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 /* Bare fallback (Dark Metal's own values, mirroring :root's own
    pre-attribute-resolution duplication above) — covers the brief window
    before App.tsx's useAppearance() sets data-theme/data-palette on <html>. */
+/* HRA-190 follow-up: --background used to be a separately hardcoded H/S/L
+   triplet with its own hue/saturation, distinct from --card's — visually
+   that reads as a whole other panel color, not "the calendar's own faint
+   backdrop behind its cards". Every block below now derives --background
+   from that SAME block's own --card (identical H/S, L multiplied by 0.9,
+   i.e. ~10% darker) so the calendar surface is barely distinguishable from
+   the card it sits inside, per explicit ask. */
 .hra-agenda-calendar {
   height: 560px;
   --radius: var(--radius-md);
-  --background: 220 49% 8%; --foreground: 208 35% 93%;
+  --background: 221 41% 11%; --foreground: 208 35% 93%;
   --card: 221 41% 12%; --card-foreground: 208 35% 93%;
   --primary: 217 91% 60%; --primary-foreground: 0 0% 0%;
   --secondary: 216 32% 15%; --secondary-foreground: 208 35% 93%;
@@ -384,9 +391,18 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --destructive: 0 84% 60%; --destructive-foreground: 0 0% 0%;
   --border: 211 29% 23%; --input: 211 29% 23%; --ring: 217 91% 60%;
 }
+/* The vendor's own .rbc-calendar rule sets `height: max-content` — same
+   specificity as (and, depending on stylesheet order, can beat) the h-full
+   Tailwind utility passed via the component's own className prop, so the
+   calendar was sizing to its full, unconstrained content height instead of
+   this element's fixed 560px, then visually overflowing past it (nothing
+   above .rbc-time-content ever got short enough to need its own scrollbar).
+   This selector's two classes outrank the vendor's bare one, so it reliably
+   wins regardless of import order. */
+.hra-agenda-calendar .rbc-calendar { height: 100%; }
 
 :root[data-theme="dark"][data-palette="metal"] .hra-agenda-calendar {
-  --background: 220 49% 8%; --foreground: 208 35% 93%;
+  --background: 221 41% 11%; --foreground: 208 35% 93%;
   --card: 221 41% 12%; --card-foreground: 208 35% 93%;
   --primary: 217 91% 60%; --primary-foreground: 0 0% 0%;
   --secondary: 216 32% 15%; --secondary-foreground: 208 35% 93%;
@@ -396,7 +412,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --border: 211 29% 23%; --input: 211 29% 23%; --ring: 217 91% 60%;
 }
 :root[data-theme="dark"][data-palette="warm"] .hra-agenda-calendar {
-  --background: 213 27% 8%; --foreground: 33 47% 93%;
+  --background: 215 19% 12%; --foreground: 33 47% 93%;
   --card: 215 19% 13%; --card-foreground: 33 47% 93%;
   --primary: 38 92% 50%; --primary-foreground: 0 0% 0%;
   --secondary: 215 15% 16%; --secondary-foreground: 33 47% 93%;
@@ -406,7 +422,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --border: 214 13% 21%; --input: 214 13% 21%; --ring: 38 92% 50%;
 }
 :root[data-theme="light"][data-palette="metal"] .hra-agenda-calendar {
-  --background: 210 33% 98%; --foreground: 221 39% 11%;
+  --background: 0 0% 90%; --foreground: 221 39% 11%;
   --card: 0 0% 100%; --card-foreground: 221 39% 11%;
   --primary: 221 83% 53%; --primary-foreground: 0 0% 100%;
   --secondary: 210 36% 96%; --secondary-foreground: 221 39% 11%;
@@ -416,7 +432,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --border: 212 23% 85%; --input: 212 23% 85%; --ring: 221 83% 53%;
 }
 :root[data-theme="light"][data-palette="warm"] .hra-agenda-calendar {
-  --background: 38 44% 96%; --foreground: 215 28% 17%;
+  --background: 0 0% 90%; --foreground: 215 28% 17%;
   --card: 0 0% 100%; --card-foreground: 215 28% 17%;
   --primary: 38 92% 50%; --primary-foreground: 0 0% 0%;
   --secondary: 40 53% 97%; --secondary-foreground: 215 28% 17%;
@@ -426,7 +442,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --border: 48 16% 88%; --input: 48 16% 88%; --ring: 38 92% 50%;
 }
 :root[data-palette="graphite"] .hra-agenda-calendar {
-  --background: 220 23% 3%; --foreground: 200 12% 95%;
+  --background: 220 23% 4%; --foreground: 200 12% 95%;
   --card: 220 23% 5%; --card-foreground: 200 12% 95%;
   --primary: 202 10% 84%; --primary-foreground: 200 14% 4%;
   --secondary: 218 18% 9%; --secondary-foreground: 200 12% 95%;
