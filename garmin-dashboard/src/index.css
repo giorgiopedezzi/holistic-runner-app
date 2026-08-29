@@ -662,6 +662,21 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
    isn't a real category — see TODO_LABEL_KEY in PlanInstanceCalendar.tsx). */
 .hra-agenda-rest-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); padding: 4px 2px; }
 
+/* HRA-190 follow-up: Month's day cells get their background from the
+   vendor's own `.rbc-day-bg { background-color: hsl(var(--background)) }` —
+   but that element only exists in Month view. Week's time-grid columns
+   (`.rbc-day-slot`) have no vendor background of their own at all, so once
+   `.rbc-calendar`'s own background was removed above, Week's columns fell
+   through to fully transparent while Month's stayed on `--background`,
+   reading as two different surfaces. Painting the same `--background` token
+   directly on `.rbc-day-slot` keeps both views visually identical.
+   `:not(.rbc-today)` preserves the existing "no highlighted whole cell for
+   today" rule below (today is marked on the date-header's own circle
+   instead) — without it, this same-specificity rule would win over that
+   transparent override for whichever column is today's, since it's declared
+   later in the file. */
+.hra-agenda-calendar .rbc-day-slot:not(.rbc-today) { background-color: hsl(var(--background)); }
+
 /* ── Week view time-grid card (HRA-189) ────────────────────────────────────
    `.rbc-day-slot` only exists in the Week/Day time-grid, never Month — this
    whole block is scoped there and doesn't touch Month's own `.rbc-row-segment`
