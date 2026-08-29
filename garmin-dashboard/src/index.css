@@ -382,7 +382,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 .hra-agenda-calendar {
   height: 560px;
   --radius: var(--radius-md);
-  --background: 221 41% 11%; --foreground: 208 35% 93%;
+  --background: 0 41%; --foreground: 208 35% 93%;
   --card: 221 41% 12%; --card-foreground: 208 35% 93%;
   --primary: 217 91% 60%; --primary-foreground: 0 0% 0%;
   --secondary: 216 32% 15%; --secondary-foreground: 208 35% 93%;
@@ -398,8 +398,13 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
    this element's fixed 560px, then visually overflowing past it (nothing
    above .rbc-time-content ever got short enough to need its own scrollbar).
    This selector's two classes outrank the vendor's bare one, so it reliably
-   wins regardless of import order. */
-.hra-agenda-calendar .rbc-calendar { height: 100%; }
+   wins regardless of import order. background-color is removed outright
+   (not just darkened) per explicit follow-up — .rbc-calendar sits directly
+   on the surrounding .card's own background now, nothing painted between
+   them. --background itself is left alone below (still used by .rbc-day-bg
+   for the individual day/time columns), only this one selector's own paint
+   is dropped. */
+.hra-agenda-calendar .rbc-calendar { height: 100%; background-color: transparent; }
 
 :root[data-theme="dark"][data-palette="metal"] .hra-agenda-calendar {
   --background: 221 41% 11%; --foreground: 208 35% 93%;
