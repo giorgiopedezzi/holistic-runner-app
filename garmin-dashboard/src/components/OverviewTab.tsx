@@ -8,6 +8,7 @@ import { MapPin, Timer, Flame, Gauge, Heart } from "lucide-react";
 import { RunnerGlyph } from "@/components/activity/RunnerGlyph";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
+import { useUrlState } from "@/hooks/useUrlState";
 import type { DateRangeState } from "@/hooks/useDateRange";
 import type { CompareRangeState } from "@/hooks/useCompareRange";
 import { api } from "@/api/client";
@@ -1159,7 +1160,11 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // Owned here (not inside TrendsBySport) so "Other key metrics" below can
   // gate its own difference display on the same overlap/distinct state the
   // main graph's KPI cards use — see showDiff below.
-  const [viewMode, setViewMode] = useState<TrendViewMode>("distinct");
+  // Backed by the URL's `trendsView` param (HRA-195, reusing HRA-193's
+  // useUrlState) so a refresh keeps the last-picked overlap/distinct mode.
+  const [rawTrendsView, setRawTrendsView] = useUrlState("trendsView", "distinct");
+  const viewMode: TrendViewMode = rawTrendsView === "overlap" ? "overlap" : "distinct";
+  const setViewMode = (mode: TrendViewMode) => setRawTrendsView(mode);
   const showDiff = compareRange.enabled && viewMode === "overlap";
 
   const { state } = useQuery(() => api.garmin.summary(from, to), [from, to]);

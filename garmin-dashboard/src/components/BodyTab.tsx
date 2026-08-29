@@ -6,6 +6,7 @@ import {
   ComposedChart, Line, Legend, ReferenceLine,
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
+import { useUrlState } from "@/hooks/useUrlState";
 import { api } from "@/api/client";
 import {
   ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef,
@@ -36,11 +37,18 @@ interface MetricChartCardProps {
   series:     Series[];
   deltaMode?: boolean; // shows a 0 reference line and +/- signed values
   emptyMessage?: string;
+  urlKey?: string; // when set, persists the chart/table toggle to this URL param (HRA-195)
 }
 
-function MetricChartCard({ title, chartData, tableData, series, deltaMode, emptyMessage }: MetricChartCardProps) {
+function MetricChartCard({ title, chartData, tableData, series, deltaMode, emptyMessage, urlKey }: MetricChartCardProps) {
   const { t } = useTranslation();
-  const [view, setView] = useState<"chart" | "table">("chart");
+  // Only the primary chart (urlKey set) persists to the URL (HRA-195) — the
+  // per-metric extra cards below it are dynamically added/removed by
+  // activeOthers, so there's no stable key to persist them under.
+  const [localView, setLocalView] = useState<"chart" | "table">("chart");
+  const [urlView, setUrlView] = useUrlState(urlKey ?? "bodyView", "chart");
+  const view = urlKey ? (urlView === "table" ? "table" : "chart") : localView;
+  const setView = urlKey ? setUrlView : setLocalView;
 
   return (
     <div className="mb-6">
@@ -207,6 +215,7 @@ export function BodyTab({ from, to }: Props) {
         series={primarySeries}
         deltaMode
         emptyMessage={t("body.chart.checkMetric", "Check at least one metric above to plot.")}
+        urlKey="bodyView"
       />
 
       <div className="flex gap-1.5 flex-wrap mb-4">
