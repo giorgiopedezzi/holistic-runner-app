@@ -657,6 +657,14 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 .hra-agenda-calendar .rbc-day-slot .rbc-event {
   overflow: visible; max-height: none; height: auto !important;
 }
+/* Follow-up fix: the vendor reserves a 10px right gutter on the whole day
+   column (`.rbc-day-slot .rbc-events-container`'s own `right: 10px`) to
+   leave room for side-by-side stacking when a day has overlapping events —
+   dead space here, since this calendar never has more than one event per
+   day. Left in, every event box (and so our card, `width: 100%` of it) sat
+   10px narrower than the day column it's in, reading as a badge that didn't
+   line up with the grid underneath it. */
+.hra-agenda-calendar .rbc-day-slot .rbc-events-container { right: 0; }
 .hra-agenda-calendar .rbc-day-slot .rbc-event-label { display: none; }
 .hra-agenda-calendar .rbc-day-slot .rbc-event-content { height: auto; }
 /* The card must be in-flow (not Month's `position: absolute`) here: an
