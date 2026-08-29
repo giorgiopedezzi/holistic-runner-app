@@ -60,6 +60,17 @@ import {
 const CALENDAR_VIEWS = ["month", "week"] as const;
 type CalendarView = (typeof CALENDAR_VIEWS)[number];
 
+// Week view's time grid — bounds the rendered slot range to 5:00–23:00 (no
+// runner schedules a workout outside it) instead of the vendor's full
+// 0:00–23:59, so the grid's own scrollable area (`.rbc-time-content`,
+// already `overflow-y: auto` in the vendor's own CSS) actually fits its
+// content within `.hra-agenda-calendar`'s fixed height and scrolls, rather
+// than the full 24h grid visually overflowing past it. `min`/`max` only read
+// the time-of-day component — the date itself is an arbitrary fixed
+// reference, same as every react-big-calendar Week/Day view usage.
+const WEEK_MIN_TIME = new Date(1972, 0, 1, 5, 0, 0);
+const WEEK_MAX_TIME = new Date(1972, 0, 1, 23, 0, 0);
+
 const locales = { enUS };
 // A plain date-fns localizer — month/weekday names stay English (see the
 // component doc comment: full app-locale wiring, like ui/Calendar.tsx's
@@ -767,6 +778,10 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     className: "h-full",
     components: { event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent },
     messages: { noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range.") },
+    // Month view ignores min/max (they only affect the Week/Day time grid) —
+    // harmless to pass unconditionally rather than branching the prop bag.
+    min: WEEK_MIN_TIME,
+    max: WEEK_MAX_TIME,
   };
 
   return (

@@ -654,6 +654,17 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
    range string) is hidden — the card's position already communicates time,
    and the card itself is the same one Month renders, with no separate time
    label of its own. */
+/* HRA-190 follow-up: the auto-height card above (`.rbc-event` growing past
+   its slot) can make a day column taller than the vendor's own computed
+   slot-height total, which otherwise overflows visually past
+   `.hra-agenda-calendar`'s fixed height instead of scrolling within it. The
+   vendor's own `.rbc-time-content` is already `overflow-y: auto` by default
+   (shadcn-big-calendar's bundled CSS) — reasserted explicitly here since it's
+   exactly the boundary this auto-height override can blow past, and paired
+   with limiting the rendered range to 5:00-23:00 (`WEEK_MIN_TIME`/
+   `WEEK_MAX_TIME` in PlanInstanceCalendar.tsx) so there's meaningfully less
+   content to scroll in the first place. */
+.hra-agenda-calendar .rbc-time-content { overflow-y: auto; }
 .hra-agenda-calendar .rbc-day-slot .rbc-event {
   overflow: visible; max-height: none; height: auto !important;
 }
