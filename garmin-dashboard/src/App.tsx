@@ -4,6 +4,7 @@ import "@/i18n";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
 import { useAppearance } from "@/hooks/useAppearance";
+import { useUrlState } from "@/hooks/useUrlState";
 import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
 import { SettingsProvider } from "@/hooks/useSettings";
@@ -72,7 +73,12 @@ function AppShell() {
   const races = racesQ.state.status === "success" ? racesQ.state.data : [];
   const appearance = useAppearance();
   const { t } = useTranslation();
-  const [tab, setTab] = useState<TabId>("overview");
+  // Backed by the URL's `tab` param (HRA-193) so a refresh or a direct link
+  // lands on the same tab instead of bouncing back to Overview. An unknown
+  // or missing value falls back to Overview here (not inside useUrlState,
+  // which stays a generic string primitive with no knowledge of TabId).
+  const [rawTab, setTab] = useUrlState("tab", "overview");
+  const tab: TabId = TABS.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "overview";
   const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {

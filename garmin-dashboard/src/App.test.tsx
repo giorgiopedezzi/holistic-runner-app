@@ -44,6 +44,10 @@ function appRoutes(settingsBody = settings()): Routes {
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnitSystem("metric");
+  // HRA-193: tab state now lives in the URL (history.replaceState), which
+  // persists across tests sharing this jsdom window — reset it so a later
+  // test doesn't inherit an earlier test's tab.
+  window.history.replaceState(null, "", "/");
 });
 
 describe("App tab switching", () => {
