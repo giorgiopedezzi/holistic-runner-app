@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@/hooks/useQuery";
 import { useSettings } from "@/hooks/useSettings";
+import { useUrlState } from "@/hooks/useUrlState";
 import { api } from "@/api/client";
 import { ErrorBanner, LoadingSpinner, Pagination, RangeEmpty } from "@/components/ui";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
@@ -18,7 +19,11 @@ export function ActivitiesTab({ from, to }: Props) {
   const { settings } = useSettings();
   const detailView = settings?.activity_detail_view ?? DEFAULT_DETAIL_VIEW;
   const [modalId, setModalId] = useState<number | null>(null);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  // Backed by the URL's `activityId` param (HRA-194) so a refresh leaves the
+  // same row expanded instead of collapsing it.
+  const [expandedIdParam, setExpandedIdParam] = useUrlState("activityId", "");
+  const expandedId = expandedIdParam === "" ? null : Number(expandedIdParam);
+  const setExpandedId = (id: number | null) => setExpandedIdParam(id === null ? "" : String(id));
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(25);
 
@@ -31,7 +36,18 @@ export function ActivitiesTab({ from, to }: Props) {
 
   // A new range (or a perPage change) invalidates the current page number.
   useEffect(() => setPage(1), [from, to, perPage]);
-  useEffect(() => setExpandedId(null), [from, to]);
+  // Clears the expanded row on a genuine user-driven range change, but must
+  // not fire on initial mount — an effect with [from, to] deps still runs
+  // once after mount, which would immediately wipe a row just hydrated from
+  // the URL (HRA-194).
+  const isFirstRangeEffect = useRef(true);
+  useEffect(() => {
+    if (isFirstRangeEffect.current) {
+      isFirstRangeEffect.current = false;
+      return;
+    }
+    setExpandedIdParam("");
+  }, [from, to, setExpandedIdParam]);
 
   const total = state.status === "success" ? state.data.page.total : 0;
   const totalPages = Math.max(1, Math.ceil(total / perPage));
@@ -75,7 +91,7 @@ export function ActivitiesTab({ from, to }: Props) {
               expanded={isExpanded}
               expandIndicator={detailView}
               onClick={() => detailView === "accordion"
-                ? setExpandedId(id => id === a.id ? null : a.id)
+                ? setExpandedId(expandedId === a.id ? null : a.id)
                 : setModalId(a.id)}
               onDelete={() => { setExpandedId(null); refetch(); }}
               expandedContent={

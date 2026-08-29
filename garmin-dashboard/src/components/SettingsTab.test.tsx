@@ -28,7 +28,10 @@ function fakeAppearance() {
   } as unknown as ReturnType<typeof useAppearance>;
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  window.history.replaceState(null, "", "/");
+});
 
 describe("SettingsTab save flows", () => {
   it("saves the trend threshold to its own /settings/thresholds sub-resource", async () => {
@@ -109,5 +112,30 @@ describe("SettingsTab save flows", () => {
     fireEvent.click(await screen.findByRole("button", { name: /^Units/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Imperial (mi, lb)" }));
     expect(appearance.setUnits).toHaveBeenCalledWith("imperial");
+  });
+
+  describe("expanded section URL persistence (HRA-194)", () => {
+    it("writes the expanded section into the URL on click, and clears it on collapse", async () => {
+      installFetch({ "GET /api/v1/settings": settings() });
+      render(<SettingsTab appearance={fakeAppearance()} />);
+
+      const toggle = await screen.findByRole("button", { name: /Outlier detection/ });
+      fireEvent.click(toggle);
+      expect(new URLSearchParams(window.location.search).get("settingsSection")).toBe("outliers");
+
+      fireEvent.click(toggle);
+      // useUrlState.set("") writes the param as an empty string rather than
+      // removing it, matching the hook's documented merge-not-overwrite behavior.
+      expect(new URLSearchParams(window.location.search).get("settingsSection")).toBe("");
+    });
+
+    it("hydrates the expanded section from an existing settingsSection URL param on mount", async () => {
+      window.history.replaceState(null, "", "/?settingsSection=units");
+      installFetch({ "GET /api/v1/settings": settings() });
+      render(<SettingsTab appearance={fakeAppearance()} />);
+
+      // Its fields are only in the DOM once the accordion is actually expanded.
+      expect(await screen.findByRole("button", { name: "Imperial (mi, lb)" })).toBeInTheDocument();
+    });
   });
 });

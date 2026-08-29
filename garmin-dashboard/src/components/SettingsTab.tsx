@@ -15,6 +15,7 @@ import type { Settings, Theme, StoredUnitSystem, Palette } from "@/types/api";
 import { THEME_NAMES, DATE_FORMAT_OPTIONS, PALETTE_NAMES } from "@/types/api";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
+import { useUrlState } from "@/hooks/useUrlState";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
 // self-converting fmtPace — because outlier_min_speed_kmh is a technical tuning
 // parameter always stored/labeled in km/h regardless of the app's unit system,
@@ -293,8 +294,11 @@ export function SettingsTab({ appearance }: Props) {
   // Single-expand accordion, same pattern as ActivitiesTab.tsx's row
   // accordion (one section open at a time; all collapsed by default).
   type SectionKey = "appearance" | "dateFormat" | "units" | "activityDetails" | "overviewTrends" | "outliers";
-  const [expanded, setExpanded] = useState<SectionKey | null>(null);
-  const toggle = (key: SectionKey) => setExpanded(e => e === key ? null : key);
+  // Backed by the URL's `settingsSection` param (HRA-194) so a refresh leaves
+  // the same section expanded.
+  const [expandedParam, setExpandedParam] = useUrlState("settingsSection", "");
+  const expanded: SectionKey | null = expandedParam === "" ? null : (expandedParam as SectionKey);
+  const toggle = (key: SectionKey) => setExpandedParam(expanded === key ? "" : key);
   // Which card is mid-save / just-saved — one card = one sub-resource, so the two
   // explicit-save cards (Outlier detection, Overview & Trends) each save
   // independently, hitting their own PUT endpoint (HRA-40). Keyed rather than two
