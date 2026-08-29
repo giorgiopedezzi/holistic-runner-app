@@ -218,7 +218,11 @@ would currently produce. The system doesn't reconcile or warn about that diverge
 - `plan_instances.name`/`.event` columns (§6) — discussed and resolved in conversation, but not
   captured in HRA-113's Story description/AC, so not shipped. Candidate for a small follow-up Story.
 - §5's AI-transcription prompt/endpoint and its DSL-text-vs-JSON question — explicitly out of scope
-  for HRA-113.
+  for HRA-113. **Partially shipped in HRA-200**: the template editor now assembles the tested base
+  prompt (an "Original text" + optional "Language" paste box, a "Generate full prompt" button, and
+  Copy) so a user can run it externally against an LLM and paste the resulting DSL back in — this
+  app still never calls an LLM API itself, so §5's actual transcription/endpoint question remains
+  open.
 - The instance-edit body's exact long-term shape: HRA-113 shipped `PUT /api/v1/plan-instances/:id`
   with a structured `{days: [...]}` JSON body (a considered-and-chosen alternative to this file's
   earlier tentative "reuse day-line DSL text" idea — see `docs/api.md`), since no accordion UI

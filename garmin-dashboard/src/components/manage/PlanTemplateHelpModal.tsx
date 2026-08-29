@@ -70,6 +70,13 @@ export function PlanTemplateHelpModal({ onClose }: Props) {
       ),
     },
     {
+      heading: t("manage.planTemplates.help.aiPrompt.heading", "Transcribing a messy plan with AI"),
+      body: t(
+        "manage.planTemplates.help.aiPrompt.body",
+        "Have a plan as a PDF, prose, or another language? Paste it into \"Original text\" and click \"Generate full prompt\" to get a ready-to-copy LLM prompt (optionally telling it which language to use for notes). Copy that prompt and run it externally against an LLM — this app doesn't call one itself — then paste the DSL it returns into the DSL text field below to continue as usual.",
+      ),
+    },
+    {
       heading: t("manage.planTemplates.help.headerLines.heading", "The DSL text — header lines are optional"),
       body: t(
         "manage.planTemplates.help.headerLines.body",

@@ -37,10 +37,23 @@ import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
 import type { EventType, ParseWarning } from "@/types/runplan";
+// HRA-200: frontend-owned copy of docs/utils/template-generator-AI-prompt.txt
+// (the already-tested base prompt) — kept in sync manually, see that file's
+// own header for the sync-risk note.
+import aiPromptTemplate from "@/assets/template-generator-ai-prompt.txt?raw";
 
 interface EditorState { dslSource: string; sections: SectionView[] }
 
 const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [] };
+
+// HRA-200: split+join, not String.replace(pattern, value) — replace() treats
+// "$" sequences in the replacement string specially (e.g. "$&", "$1"), which
+// pasted training-plan text could easily contain unintentionally.
+function fillAiPromptTemplate(originalText: string, language: string): string {
+  return aiPromptTemplate
+    .split("{{TRAINING_PLAN}}").join(originalText)
+    .split("{{LANGUAGE_OPTIONAL}}").join(language);
+}
 
 // HRA-120: event is now an explicit, required template field (replacing the
 // old DSL-text EVENT line); distance_m is required only for "custom".
@@ -60,7 +73,13 @@ const M_PER_MILE = 1609.34;
 // (`editor.sections` itself isn't stashed; it's cheap to rebuild via
 // runGenerate against the stashed dslSource, and stashing a resolved
 // SectionView[] tree would be redundant state that could drift from it).
-interface Draft { name: string; event: EventType | ""; distanceValue: string; distanceUnit: DistanceUnit; dslSource: string }
+// HRA-200: originalText/language/generatedPrompt join the stash the same way
+// every other unsaved field does — never persisted with the template (see
+// onSave below, which never reads them).
+interface Draft {
+  name: string; event: EventType | ""; distanceValue: string; distanceUnit: DistanceUnit; dslSource: string;
+  originalText: string; language: string; generatedPrompt: string | null;
+}
 // A row's identity: an existing template's real id, or "new" for the
 // not-yet-saved draft row. String-keyed in `drafts` (object keys are always
 // strings) but kept as this union everywhere else for type safety.
@@ -160,6 +179,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
   const [planWarnings, setPlanWarnings] = useState<ParseWarning[]>([]);
 
+  // HRA-200: source text for the AI-transcription prompt — never persisted
+  // with the template (out of scope, see the Story), only ever stashed like
+  // any other unsaved field (Draft above).
+  const [originalText, setOriginalText] = useState("");
+  const [language, setLanguage] = useState("");
+  const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
+
   // HRA-140: the active row's own "last saved/loaded" snapshot — what
   // isEditorDirty() below diffs the live fields against. `savedDslSource`
   // above already served this exact role for dslSource (canApprove already
@@ -200,6 +226,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setEditor(EMPTY_EDITOR);
     setBaselineName(""); setBaselineEvent(""); setBaselineDistanceValue("");
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
+    setOriginalText(""); setLanguage(""); setGeneratedPrompt(null);
     lastGeneratedRef.current = null;
   }
 
@@ -211,7 +238,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     return editor.dslSource !== (savedDslSource ?? "")
       || name !== baselineName
       || event !== baselineEvent
-      || distanceValue !== baselineDistanceValue;
+      || distanceValue !== baselineDistanceValue
+      // HRA-200: never persisted, so their "baseline" is always empty/unset.
+      || originalText.trim() !== "" || language.trim() !== "" || generatedPrompt != null;
   }
 
   // Switches which unit the (already-typed) distance value displays as,
@@ -305,6 +334,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setGenError(null); setPatchError(null); setSaveError(null);
     setName(draft.name); setEvent(draft.event);
     setDistanceValue(draft.distanceValue); setDistanceUnit(draft.distanceUnit);
+    setOriginalText(draft.originalText); setLanguage(draft.language); setGeneratedPrompt(draft.generatedPrompt);
     if (template) {
       setSavedDslSource(template.dsl_source);
       setBaselineName(template.name);
@@ -327,7 +357,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (activeKey == null) return;
     const key = String(activeKey);
     if (isEditorDirty()) {
-      setDrafts(prev => ({ ...prev, [key]: { name, event, distanceValue, distanceUnit, dslSource: editor.dslSource } }));
+      setDrafts(prev => ({ ...prev, [key]: { name, event, distanceValue, distanceUnit, dslSource: editor.dslSource, originalText, language, generatedPrompt } }));
     } else {
       setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
     }
@@ -362,6 +392,23 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     const text = await file.text();
     setEditor({ dslSource: text, sections: [] });
     setPlanWarnings([]);
+  }
+
+  // HRA-200: fills the base AI-transcription prompt from the pasted plan
+  // text + optional language, for the user to copy and run externally
+  // against an LLM — this app never calls an LLM API itself.
+  function onGeneratePrompt() {
+    setGeneratedPrompt(fillAiPromptTemplate(originalText, language));
+  }
+
+  async function onCopyPrompt() {
+    if (generatedPrompt == null) return;
+    try {
+      await navigator.clipboard.writeText(generatedPrompt);
+      notify(t("manage.planTemplates.aiPrompt.copySucceeded", "Prompt copied to clipboard."));
+    } catch {
+      notify(t("manage.planTemplates.aiPrompt.copyFailed", "Failed to copy prompt to clipboard."), "error");
+    }
   }
 
   // Auto-regenerate the preview a beat after any edit — editing a Section/
@@ -618,6 +665,55 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             </div>
           </label>
         </div>
+
+        {/* HRA-200: paste a messy real-world plan, generate a ready-to-copy
+            LLM prompt (built from the tested base prompt), run it externally,
+            then paste the returned DSL below into the DSL text field — this
+            app never calls an LLM API itself. */}
+        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
+          {t("manage.planTemplates.aiPrompt.originalTextLabel", "Original text")}
+          <textarea
+            className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 text-meta p-2"
+            value={originalText}
+            onChange={e => setOriginalText(e.target.value)}
+            placeholder={t("manage.planTemplates.aiPrompt.originalTextPlaceholder", "Paste the raw training plan text here (PDF/prose, any language)…")}
+            rows={4}
+          />
+        </label>
+
+        <div className="hra-plan-instance-section-gap flex items-start gap-2.5 flex-wrap">
+          <label className="hra-template-name-field hra-text-secondary text-meta">
+            {t("manage.planTemplates.aiPrompt.languageLabel", "Language (optional)")}
+            <input
+              className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
+              value={language}
+              onChange={e => setLanguage(e.target.value)}
+              placeholder={t("manage.planTemplates.aiPrompt.languagePlaceholder", "e.g. Italian")}
+            />
+          </label>
+          <button
+            className="hra-btn self-end"
+            onClick={onGeneratePrompt}
+            disabled={originalText.trim() === ""}
+          >
+            {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
+          </button>
+        </div>
+
+        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
+          {t("manage.planTemplates.aiPrompt.generatedLabel", "Generated prompt")}
+          <div className="flex items-start gap-2.5 mt-1">
+            <textarea
+              className="hra-border-strong hra-bg-card hra-text-primary w-full font-mono text-meta p-2"
+              value={generatedPrompt ?? ""}
+              readOnly
+              rows={4}
+            />
+            <button className="hra-btn shrink-0" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
+              {t("manage.planTemplates.aiPrompt.copyButton", "Copy")}
+            </button>
+          </div>
+        </label>
 
         <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
           {t("manage.planTemplates.dslSourceLabel", "DSL text")}
