@@ -61,9 +61,9 @@ export function PlanInstanceAnchorTable({
               <tr>
                 <th rowSpan={2} className="align-bottom">{t("manage.planInstances.colAnchor", "Anchor")}</th>
                 <th className="hra-anchor-group hra-anchor-group-start">{t("manage.planInstances.colAbsolute", "Absolute")}</th>
-                <th className="hra-anchor-group" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
+                <th className="hra-anchor-group hra-anchor-group-start" colSpan={3}>{t("manage.planInstances.colRelative", "Relative")}</th>
                 <th rowSpan={2} className="align-bottom"></th>
-                <th rowSpan={2} className="align-bottom">{t("manage.planInstances.colStatus", "Status")}</th>
+                <th rowSpan={2} className="align-bottom hra-anchor-status-header">{t("manage.planInstances.colStatus", "Status")}</th>
               </tr>
               <tr className="hra-anchor-sub">
                 <th className="hra-anchor-group-start">{t("manage.planInstances.colPace", "Pace")}</th>
