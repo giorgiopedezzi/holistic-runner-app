@@ -641,6 +641,45 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
    isn't a real category — see TODO_LABEL_KEY in PlanInstanceCalendar.tsx). */
 .hra-agenda-rest-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); padding: 4px 2px; }
 
+/* ── Week view time-grid card (HRA-189) ────────────────────────────────────
+   `.rbc-day-slot` only exists in the Week/Day time-grid, never Month — this
+   whole block is scoped there and doesn't touch Month's own `.rbc-row-segment`
+   card treatment above. react-big-calendar positions `.rbc-event` absolutely
+   with an inline `top`/`height` derived from the event's start/end (top =
+   scheduled_time, which is what we want per AC3) — height is forced to auto
+   here instead ("content-driven, not duration-scaled", the Story's own
+   explicit ask), which can visually overlap the next hour's grid line when a
+   card is tall; a documented, accepted tradeoff (see the Story's own Risks
+   section), not a bug. The vendor's own `.rbc-event-label` (a start–end time
+   range string) is hidden — the card's position already communicates time,
+   and the card itself is the same one Month renders, with no separate time
+   label of its own. */
+.hra-agenda-calendar .rbc-day-slot .rbc-event {
+  overflow: visible; max-height: none; height: auto !important;
+}
+.hra-agenda-calendar .rbc-day-slot .rbc-event-label { display: none; }
+.hra-agenda-calendar .rbc-day-slot .rbc-event-content { height: auto; }
+/* The card must be in-flow (not Month's `position: absolute`) here: an
+   absolutely positioned child never contributes to an auto-height parent,
+   which is exactly what .rbc-event above now relies on to size itself to the
+   card's real content. Month's hover-to-expand zoom (position/width/shadow)
+   is neutralized the same way — Week already gives every card its full,
+   un-clamped content by default (AC2: "no truncated/summarized alternate"),
+   so there's nothing left for a hover state to reveal. */
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card,
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card:hover {
+  position: static; left: auto; right: auto; bottom: auto; transform: none;
+  width: 100%; max-width: none; z-index: auto; box-shadow: none;
+}
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card .hra-agenda-event-title,
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card:hover .hra-agenda-event-title {
+  -webkit-line-clamp: unset; overflow: visible; text-align: left;
+}
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card:hover .hra-agenda-event-main-row,
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card:hover .hra-agenda-gauges {
+  justify-content: flex-start;
+}
+
 /* Route/Clock3/Gauge ring trio (Ask #3) — a small donut per metric via
    conic-gradient (same technique HRA-145's corner clock used), --gauge-pct/
    --gauge-fill set inline per instance since both vary by day/metric. */

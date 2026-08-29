@@ -42,10 +42,11 @@ import {
   CATEGORY_CARD_CLASS, CATEGORY_CRITERIA_KEYS, CATEGORY_ICONS, CATEGORY_LABEL_KEYS, CATEGORY_ORDER,
 } from "@/components/manage/categoryVisuals";
 
-// Month view only, per HRA-143's own scope ("verify month navigation" — no
-// week/day/agenda-view-type switching asked for). HRA-146's Month/Week
-// toggle is visually present but Week stays inert this slice (AC4).
-const CALENDAR_VIEWS = ["month"] as const;
+// HRA-189: Week added alongside Month — the toolbar's Month/Week toggle
+// (HRA-146's own reserved-but-inert control) now actually switches view
+// state. No Day/Agenda view — not asked for by any Story so far.
+const CALENDAR_VIEWS = ["month", "week"] as const;
+type CalendarView = (typeof CALENDAR_VIEWS)[number];
 
 const locales = { enUS };
 // A plain date-fns localizer — month/weekday names stay English (see the
@@ -58,7 +59,11 @@ interface CalendarEvent {
   title: string;
   start: Date;
   end: Date;
-  allDay: true;
+  // HRA-189: REST/TODO/OTHER stay allDay (Week view's own all-day row —
+  // Month view's existing compact-row treatment, same either way, see
+  // isTimedWorkoutType below); every other day is timed so Week view can
+  // place its card in the hourly grid at the day's scheduled_time.
+  allDay: boolean;
   workoutType: WorkoutType;
   trainingLoadCategory: TrainingLoadCategory;
   needsReview: boolean;
@@ -91,13 +96,34 @@ function toDateKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
-// HRA-151 Ask #1: "only on days with a workout" — the same REST/TODO/empty-
-// cell exclusion DayCellEvent's own gauges already apply (no event at all,
-// or a REST/TODO/OTHER day, all render as the compact no-card row with
-// nothing to schedule around). OTHER never carries segments either (HRA-156)
-// — same "nothing to schedule" reasoning as TODO.
+// HRA-151 Ask #1 / HRA-189: "only on days with a workout" — the same
+// REST/TODO/empty-cell exclusion DayCellEvent's own gauges already apply (no
+// event at all, or a REST/TODO/OTHER day, all render as the compact no-card
+// row with nothing to schedule around). OTHER never carries segments either
+// (HRA-156) — same "nothing to schedule" reasoning as TODO. Shared by the
+// Month date-header chip (HRA-151) and Week view's timed-vs-allDay split
+// (HRA-189, below) so both stay in lockstep.
+function isTimedWorkoutType(workoutType: WorkoutType): boolean {
+  return workoutType !== "rest" && workoutType !== "todo" && workoutType !== "other";
+}
 function dayHasScheduledWorkout(event: CalendarEvent | undefined): boolean {
-  return event != null && event.workoutType !== "rest" && event.workoutType !== "todo" && event.workoutType !== "other";
+  return event != null && isTimedWorkoutType(event.workoutType);
+}
+
+// HRA-189: a workout day's Week-view slot is positioned at its scheduled_time
+// (08:00 fallback, same default the Month chip and List view use); duration
+// is a nominal placeholder only (Week view's own CSS forces content-driven
+// height, not this span — see index.css) and clamped to stay within the same
+// calendar day so a late-evening default never bleeds into tomorrow's column.
+function computeEventTimes(date: Date, scheduledTime: string | null | undefined, timed: boolean): { start: Date; end: Date } {
+  if (!timed) return { start: date, end: date };
+  const [hours, minutes] = (scheduledTime ?? "08:00").split(":").map(Number);
+  const start = new Date(date);
+  start.setHours(hours, minutes, 0, 0);
+  const end = new Date(start);
+  end.setMinutes(end.getMinutes() + 30);
+  if (end.getDate() !== start.getDate()) end.setHours(23, 59, 59, 999);
+  return { start, end };
 }
 
 // Follow-up fix: a complex day's DSL text (multiple segments, e.g.
@@ -141,8 +167,10 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
         if (day.date == null || day.metrics == null || day.trainingLoadCategory == null) continue;
         const date = parseLocalDate(day.date);
         const title = day.dsl.replace(DAY_PREFIX_RE, "").trim() || day.dsl;
+        const timed = isTimedWorkoutType(day.workout_type);
+        const { start, end } = computeEventTimes(date, day.scheduled_time, timed);
         events.push({
-          title, start: date, end: date, allDay: true, workoutType: day.workout_type,
+          title, start, end, allDay: !timed, workoutType: day.workout_type,
           trainingLoadCategory: day.trainingLoadCategory, needsReview: day.needs_review, metrics: day.metrics,
           dayId: day.id, scheduledTime: day.scheduled_time,
         });
@@ -486,10 +514,14 @@ export function CategoryLegend() {
   );
 }
 
-// HRA-146 Ask #4: replaces react-big-calendar's own toolbar — title +
-// accordion-equivalent summary line, chevron nav, Month/Week toggle (Week
-// inert this slice, per the AC's own "may be visually present but inert").
-function AgendaToolbar({ label, onNavigate, summary }: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void; summary: AgendaSummary }) {
+// HRA-146 Ask #4 / HRA-189: replaces react-big-calendar's own toolbar —
+// title + accordion-equivalent summary line, chevron nav, Month/Week toggle
+// now actually switches `view` (was visually present but inert until this
+// Story).
+function AgendaToolbar({ label, onNavigate, summary, view, onView }: {
+  label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void; summary: AgendaSummary;
+  view: CalendarView; onView: (view: CalendarView) => void;
+}) {
   const { t } = useTranslation();
   return (
     <div className="hra-agenda-toolbar">
@@ -507,22 +539,21 @@ function AgendaToolbar({ label, onNavigate, summary }: { label: ReactNode; onNav
       </div>
       <div className="hra-agenda-controls">
         <div className="hra-segment" role="group" aria-label={t("manage.planInstances.calendarViewGroup", "Calendar view")}>
-          <button type="button" className="hra-segment-item" data-active={true}>{t("manage.planInstances.calendarMonth", "Month")}</button>
-          <button
-            type="button" className="hra-segment-item" data-active={false} disabled
-            title={t("manage.planInstances.calendarWeekComingSoon", "Week view coming soon")}
-          >
+          <button type="button" className="hra-segment-item" data-active={view === "month"} onClick={() => onView("month")}>
+            {t("manage.planInstances.calendarMonth", "Month")}
+          </button>
+          <button type="button" className="hra-segment-item" data-active={view === "week"} onClick={() => onView("week")}>
             {t("manage.planInstances.calendarWeek", "Week")}
           </button>
         </div>
         <div className="hra-agenda-nav">
-          <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("PREV")} aria-label={t("manage.planInstances.calendarPrevious", "Previous month")}>
+          <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("PREV")} aria-label={t("manage.planInstances.calendarPrevious", "Previous")}>
             <ChevronLeft size={15} />
           </button>
           <button type="button" className="hra-btn" data-variant="outline" onClick={() => onNavigate("TODAY")}>
             {t("manage.planInstances.calendarToday", "Today")}
           </button>
-          <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("NEXT")} aria-label={t("manage.planInstances.calendarNext", "Next month")}>
+          <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("NEXT")} aria-label={t("manage.planInstances.calendarNext", "Next")}>
             <ChevronRight size={15} />
           </button>
         </div>
@@ -558,6 +589,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     return map;
   }, [events]);
   const [date, setDate] = useState<Date>(() => events[0]?.start ?? new Date());
+  const [view, setView] = useState<CalendarView>("month");
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
   // computed once per instance load (i.e. whenever `sections`/`events`
@@ -611,8 +643,10 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     [scaling, readOnlyDays, onDaySwap],
   );
   const ToolbarComponent = useMemo(
-    () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => <AgendaToolbar {...props} summary={summary} />,
-    [summary],
+    () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => (
+      <AgendaToolbar {...props} summary={summary} view={view} onView={setView} />
+    ),
+    [summary, view],
   );
   // Fix (follow-up to HRA-165): DateHeaderComponent used to be re-memoized
   // whenever eventsByDateKey/onScheduledTimeEdit changed — which is EVERY
@@ -656,7 +690,8 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
         startAccessor="start"
         endAccessor="end"
         views={[...CALENDAR_VIEWS]}
-        defaultView="month"
+        view={view}
+        onView={setView}
         date={date}
         onNavigate={setDate}
         className="h-full"
