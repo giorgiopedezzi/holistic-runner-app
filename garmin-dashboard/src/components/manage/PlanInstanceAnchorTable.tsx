@@ -124,7 +124,7 @@ export function PlanInstanceAnchorTable({
                     <td>
                       <input className="hra-border-strong hra-bg-card hra-text-primary w-full" value={row.seconds} onChange={e => setAnchorSeconds(anchor, e.target.value)} disabled={relativeDisabled} type="number" placeholder="—" />
                     </td>
-                    <td className="hra-anchor-group-start">
+                    <td className="hra-anchor-group-start hra-anchor-clear-cell">
                       <button
                         className="hra-tight-action hra-border-strong hra-text-secondary bg-transparent text-meta cursor-pointer"
                         disabled={derived || fieldDisabled || anchorRowIsEmpty(row)}
