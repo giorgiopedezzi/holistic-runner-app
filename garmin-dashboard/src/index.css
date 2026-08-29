@@ -688,6 +688,22 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   justify-content: flex-start;
 }
 
+/* ── Week view drag-and-drop (HRA-190) ──────────────────────────────────────
+   Hand-copied from the vendor's own dragAndDrop addon stylesheet rather than
+   imported directly — see PlanInstanceCalendar.tsx's own import comment for
+   why that deep CSS import can't be used with this project's bundler. Only
+   the rules this app actually needs: a highlighted drop-target cell, the
+   dragged event's own original hidden while its drag-preview clone follows
+   the pointer, and every other event dimmed while a drag is in progress —
+   the resize-handle rules from the vendor file are omitted since resize is
+   disabled entirely (`resizable={false}`, out of this Story's scope). */
+.hra-agenda-calendar .rbc-addons-dnd-over { background-color: rgba(0, 0, 0, 0.3); }
+.hra-agenda-calendar .rbc-addons-dnd .rbc-event { transition: opacity 150ms; }
+.hra-agenda-calendar .rbc-addons-dnd .rbc-addons-dnd-dragged-event { opacity: 0; }
+.hra-agenda-calendar .rbc-addons-dnd.rbc-addons-dnd-is-dragging .rbc-event:not(.rbc-addons-dnd-dragged-event):not(.rbc-addons-dnd-drag-preview) {
+  opacity: 0.5;
+}
+
 /* Route/Clock3/Gauge ring trio (Ask #3) — a small donut per metric via
    conic-gradient (same technique HRA-145's corner clock used), --gauge-pct/
    --gauge-fill set inline per instance since both vary by day/metric. */

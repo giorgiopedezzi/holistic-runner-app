@@ -1,12 +1,14 @@
 /**
  * PlanInstanceCalendar.tsx (HRA-143, day-cell content HRA-144, gauges HRA-145,
  * visual redesign HRA-146)
- * Agenda-mode view for PlanInstancesSection's expanded row — a read-only
+ * Agenda-mode view for PlanInstancesSection's expanded row — a
  * shadcn-big-calendar (react-big-calendar under the hood) rendering one
- * event per resolved day (`date != null`). Enabler slice for Epic HRA-142:
- * no drag-drop or click-to-edit — this component never wires onSelectEvent
- * or the DnD addon, so the calendar is passive by construction, not just by
- * omitted handlers.
+ * event per resolved day (`date != null`). Started as a read-only enabler
+ * slice for Epic HRA-142 (no drag-drop or click-to-edit); HRA-152 added
+ * click-to-swap (both views, via useDragSwap) and HRA-190 wires the vendor's
+ * own withDragAndDrop addon onto Week view specifically (see DnDCalendar,
+ * DayCellEvent's dragViaAddon prop, and handleEventDrop below) — Month still
+ * never mounts the addon, so its own useDragSwap-only path is untouched.
  *
  * HRA-146 replaced HRA-145's stacked bars + corner duration clock with a
  * Route/Clock3/Gauge ring trio (distance/duration/intensity, per that
@@ -24,8 +26,18 @@
  */
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
+import { ShadcnBigCalendar, dateFnsLocalizer, withDragAndDrop } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
+// HRA-190: the addon's own "react-big-calendar/lib/addons/dragAndDrop/styles.css"
+// is NOT imported here — that subpath sits inside a directory that also has
+// its own index.js (dragAndDrop/index.js), and this project's Vite/Rolldown
+// version mis-resolves the deep .css import through that index.js first
+// ("Could not load .../dragAndDrop/index.js/styles.css", confirmed against a
+// plain `vite build`, not a code bug on this side). The handful of rules that
+// stylesheet provides (drop-target highlight, hiding the dragged original,
+// dimming siblings mid-drag) are hand-copied into index.css's own
+// .hra-agenda-calendar block instead, the same "vendor visuals, scoped
+// locally" pattern every other rbc-* override in that file already follows.
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
@@ -54,6 +66,12 @@ const locales = { enUS };
 // utils/locale.ts, is a reasonable follow-up but not named by any Story's
 // AC list so far).
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
+
+// HRA-190: wraps the base calendar once at module scope (not per-render) with
+// react-big-calendar's own DnD addon — Week view only mounts through this;
+// Month keeps mounting the plain ShadcnBigCalendar below, untouched, per the
+// Story's explicit scope.
+const DnDCalendar = withDragAndDrop(ShadcnBigCalendar);
 
 interface CalendarEvent {
   title: string;
@@ -124,6 +142,14 @@ function computeEventTimes(date: Date, scheduledTime: string | null | undefined,
   end.setMinutes(end.getMinutes() + 30);
   if (end.getDate() !== start.getDate()) end.setHours(23, 59, 59, 999);
   return { start, end };
+}
+
+// HRA-190: inverse of computeEventTimes' hour/minute split — what a vertical
+// drag's dropped Date becomes when persisted as day.scheduled_time.
+function formatHHMM(date: Date): string {
+  const h = String(date.getHours()).padStart(2, "0");
+  const m = String(date.getMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
 }
 
 // Follow-up fix: a complex day's DSL text (multiple segments, e.g.
@@ -238,11 +264,17 @@ interface AgendaSummary { workouts: number; runs: number; rest: number; distance
 // already established). Gated on `!readOnlyDays` (Ask #3); every day type
 // (including REST/TODO) is draggable, matching the List view's own
 // unconditional per-row wiring — day swap was never workout-only there.
-function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap }: {
+function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }: {
   event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean; onDaySwap?: (a: number, b: number) => void;
+  // HRA-190: true in Week view, where DnDCalendar's own EventWrapper owns
+  // pointer-drag detection for this event's DOM node. Native draggable=true
+  // (this hook's own mechanism, Month's unchanged path) would fight it — a
+  // browser-native drag suspends the mousemove events the addon tracks — so
+  // this card must render with no native drag handlers at all while it's on.
+  dragViaAddon?: boolean;
 }) {
   const { t } = useTranslation();
-  const drag = useDragSwap(event.dayId, readOnlyDays ? undefined : onDaySwap);
+  const drag = useDragSwap(event.dayId, readOnlyDays || dragViaAddon ? undefined : onDaySwap);
   const dragProps = { ...drag.handlers, style: drag.swappable ? { cursor: "grab" as const } : undefined };
 
   if (event.workoutType === "todo") {
@@ -639,8 +671,10 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   // remount (not just re-render) every visible day cell / the toolbar each
   // time this component re-renders.
   const EventComponent = useMemo(
-    () => (props: { event: CalendarEvent }) => <DayCellEvent {...props} scaling={scaling} readOnlyDays={readOnlyDays} onDaySwap={onDaySwap} />,
-    [scaling, readOnlyDays, onDaySwap],
+    () => (props: { event: CalendarEvent }) => (
+      <DayCellEvent {...props} scaling={scaling} readOnlyDays={readOnlyDays} onDaySwap={onDaySwap} dragViaAddon={view === "week"} />
+    ),
+    [scaling, readOnlyDays, onDaySwap, view],
   );
   const ToolbarComponent = useMemo(
     () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => (
@@ -682,24 +716,56 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
 
   const { t } = useTranslation();
 
+  // HRA-190: Week view's own drag-and-drop — vertical (same day, new time
+  // slot) persists immediately via the same onScheduledTimeEdit path the
+  // popover editor uses (AC1); horizontal (dropped on a different day's
+  // column) opens the existing day-swap confirmation modal via onDaySwap,
+  // exactly like Month/List view's own drag-swap (AC2) — never applied as a
+  // raw move, since the backend has no "move to another date" operation.
+  // REST/TODO/OTHER days are allDay (see computeEventTimes above), so a same-
+  // day drop can only ever be a no-op in the all-day row — nothing to persist
+  // there (AC4).
+  function handleEventDrop({ event, start }: { event: CalendarEvent; start: Date; end: Date; isAllDay?: boolean }) {
+    if (readOnlyDays || event.dayId == null) return;
+    const targetKey = toDateKey(start);
+    if (targetKey === toDateKey(event.start)) {
+      if (!isTimedWorkoutType(event.workoutType)) return;
+      onScheduledTimeEdit(event.dayId, formatHHMM(start));
+      return;
+    }
+    const targetEvent = eventsByDateKey.get(targetKey);
+    if (targetEvent?.dayId == null) return;
+    onDaySwap(event.dayId, targetEvent.dayId);
+  }
+  const draggableAccessor = () => !readOnlyDays;
+
+  const calendarProps = {
+    localizer,
+    events,
+    startAccessor: "start" as const,
+    endAccessor: "end" as const,
+    views: [...CALENDAR_VIEWS],
+    view,
+    onView: setView,
+    date,
+    onNavigate: setDate,
+    className: "h-full",
+    components: { event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent },
+    messages: { noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range.") },
+  };
+
   return (
     <div className="hra-agenda-calendar">
-      <ShadcnBigCalendar
-        localizer={localizer}
-        events={events}
-        startAccessor="start"
-        endAccessor="end"
-        views={[...CALENDAR_VIEWS]}
-        view={view}
-        onView={setView}
-        date={date}
-        onNavigate={setDate}
-        className="h-full"
-        components={{ event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent }}
-        messages={{
-          noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range."),
-        }}
-      />
+      {view === "week" ? (
+        <DnDCalendar
+          {...calendarProps}
+          onEventDrop={handleEventDrop}
+          draggableAccessor={draggableAccessor}
+          resizable={false}
+        />
+      ) : (
+        <ShadcnBigCalendar {...calendarProps} />
+      )}
     </div>
   );
 }
