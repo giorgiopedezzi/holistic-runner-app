@@ -1,6 +1,8 @@
 @import "tailwindcss";
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+}
 
 /* ── Themes ──────────────────────────────────────────────────────────────
    :root holds the "dark" theme's values directly (not just a fallback) so
