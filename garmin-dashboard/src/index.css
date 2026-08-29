@@ -1436,7 +1436,6 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    content horizontally (the "Status" label and each row's
    Resolved/Unresolved Badge) rather than the table's usual left alignment. */
 .hra-anchor-table th.hra-anchor-status-header {
-  border-top: 1px solid var(--border-strong); border-right: 1px solid var(--border-strong);
   border-bottom: 1px solid var(--border-strong); text-align: center;
 }
 .hra-anchor-table td.hra-anchor-status-cell { text-align: center; }
