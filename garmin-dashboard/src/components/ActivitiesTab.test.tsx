@@ -3,6 +3,7 @@
  * Behaviour-level: paged list, range-empty, and error states.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { StrictMode } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ActivitiesTab } from "./ActivitiesTab";
 import { installFetch, problem, paginated } from "@/test/api-stub";
@@ -166,6 +167,45 @@ describe("ActivitiesTab", () => {
         "GET /api/v1/settings": settings(),
       });
       render(<ActivitiesTab from="2026-07-15" to="2026-08-14" />);
+      await screen.findByText(fmtDate("2026-08-01"));
+
+      expect(new URLSearchParams(window.location.search).get("activitiesPage")).toBe("2");
+    });
+  });
+
+  describe("survives React StrictMode's dev-only double-invoke of the mount effect (HRA-196 fix)", () => {
+    // main.tsx wraps the real app in <StrictMode>, which in dev mode
+    // double-invokes every effect on mount (mount -> cleanup -> mount again)
+    // to surface non-idempotent effects. The rest of this file's tests never
+    // exercise that (render() here isn't wrapped in StrictMode), which is
+    // exactly how the original "isFirst" boolean-ref guard's flaw passed
+    // every test while still wiping hydrated state on every real dev-mode
+    // page load — its mutation from the first synthetic invocation survived
+    // into the second, which then read as "not the first run" and fired for
+    // real. These tests wrap in StrictMode to actually catch that class of
+    // regression.
+    it("does not wipe a URL-hydrated expanded row", async () => {
+      window.history.replaceState(null, "", `/?activityId=${ID}`);
+      installFetch({
+        "GET /api/v1/activities": paginated([activity()], 1),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/settings": settings(),
+      });
+      render(<StrictMode><ActivitiesTab from="2026-07-15" to="2026-08-14" /></StrictMode>);
+      await screen.findByText(fmtDate("2026-08-01"));
+
+      expect(document.querySelector('[data-expanded="true"]')).toBeInTheDocument();
+      expect(new URLSearchParams(window.location.search).get("activityId")).toBe(String(ID));
+    });
+
+    it("does not wipe a URL-hydrated page", async () => {
+      window.history.replaceState(null, "", "/?activitiesPage=2");
+      installFetch({
+        "GET /api/v1/activities": paginated([activity()], 30),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/settings": settings(),
+      });
+      render(<StrictMode><ActivitiesTab from="2026-07-15" to="2026-08-14" /></StrictMode>);
       await screen.findByText(fmtDate("2026-08-01"));
 
       expect(new URLSearchParams(window.location.search).get("activitiesPage")).toBe("2");

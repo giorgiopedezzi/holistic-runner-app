@@ -61,16 +61,20 @@ export function useCompareRange(from: string, to: string, urlKeys?: CompareRange
     ? (v: boolean) => setUrlEnabledParam(v ? "1" : "0")
     : setLocalEnabled;
 
-  // Must not fire on initial mount — an effect with [from, to] deps still
-  // runs once after mount, which would immediately wipe a compare range just
-  // hydrated from the URL (same mount-vs-user-change guard as HRA-194's
-  // expandedId fix).
-  const isFirstRangeEffect = useRef(true);
+  // Must not fire on initial mount — a boolean "isFirst" ref guard here would
+  // be defeated by React 19 StrictMode's dev-only double-invoke of effects
+  // (mount -> cleanup -> mount again, see ActivityDetailBody.tsx's identical
+  // note and ActivitiesTab.tsx's matching fix): the ref's mutation from the
+  // first synthetic invocation would survive into the second, which then
+  // incorrectly reads as "not the first run" and fires for real — wiping a
+  // compare range just hydrated from the URL on every dev-mode page load.
+  // Comparing against the PREVIOUS actual from/to instead survives the
+  // replay, since both synthetic invocations see identical values.
+  const prevRangeRef = useRef<{ from: string; to: string } | null>(null);
   useEffect(() => {
-    if (isFirstRangeEffect.current) {
-      isFirstRangeEffect.current = false;
-      return;
-    }
+    const prevRange = prevRangeRef.current;
+    prevRangeRef.current = { from, to };
+    if (!prevRange || (prevRange.from === from && prevRange.to === to)) return;
     const next = defaultCompareRange(from, to);
     if (urlKeys) {
       setUrlFrom(next.from);

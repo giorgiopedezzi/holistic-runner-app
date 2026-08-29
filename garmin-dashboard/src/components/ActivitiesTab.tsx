@@ -44,29 +44,34 @@ export function ActivitiesTab({ from, to }: Props) {
   );
 
   // A new range (or a perPage change) invalidates the current page number,
-  // but must not fire on initial mount — an effect with [from, to, perPage]
-  // deps still runs once after mount, which would immediately overwrite a
-  // page number just hydrated from the URL (HRA-196, same fix as HRA-194's
-  // expandedId guard below).
-  const isFirstPageEffect = useRef(true);
+  // but must not fire on initial mount. A boolean "isFirst" ref guard (the
+  // original HRA-196 fix here) is defeated by React 19 StrictMode's dev-only
+  // double-invoke of effects (mount -> cleanup -> mount again, see
+  // ActivityDetailBody.tsx's identical note): the ref's mutation from the
+  // first synthetic invocation survives into the second, which then
+  // incorrectly reads as "not the first run" and fires for real — wiping a
+  // page number just hydrated from the URL on every dev-mode page load.
+  // Comparing against the PREVIOUS actual from/to/perPage instead survives
+  // the replay, since both synthetic invocations see identical values.
+  const prevPageDepsRef = useRef<{ from: string; to: string; perPage: number } | null>(null);
   useEffect(() => {
-    if (isFirstPageEffect.current) {
-      isFirstPageEffect.current = false;
-      return;
+    const prevDeps = prevPageDepsRef.current;
+    prevPageDepsRef.current = { from, to, perPage };
+    if (prevDeps && (prevDeps.from !== from || prevDeps.to !== to || prevDeps.perPage !== perPage)) {
+      setPageParam("1");
     }
-    setPageParam("1");
   }, [from, to, perPage, setPageParam]);
   // Clears the expanded row on a genuine user-driven range change, but must
-  // not fire on initial mount — an effect with [from, to] deps still runs
-  // once after mount, which would immediately wipe a row just hydrated from
-  // the URL (HRA-194).
-  const isFirstRangeEffect = useRef(true);
+  // not fire on initial mount — same StrictMode double-invoke hazard as the
+  // page-reset effect above (HRA-194's original guard here had the same
+  // flaw), fixed the same way.
+  const prevExpandedRangeRef = useRef<{ from: string; to: string } | null>(null);
   useEffect(() => {
-    if (isFirstRangeEffect.current) {
-      isFirstRangeEffect.current = false;
-      return;
+    const prevRange = prevExpandedRangeRef.current;
+    prevExpandedRangeRef.current = { from, to };
+    if (prevRange && (prevRange.from !== from || prevRange.to !== to)) {
+      setExpandedIdParam("");
     }
-    setExpandedIdParam("");
   }, [from, to, setExpandedIdParam]);
 
   const total = state.status === "success" ? state.data.page.total : 0;

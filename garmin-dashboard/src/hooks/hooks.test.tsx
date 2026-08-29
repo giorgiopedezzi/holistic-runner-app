@@ -7,6 +7,7 @@
  *    / module state (the source of the load-bearing unit propagation).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { StrictMode } from "react";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useQuery } from "./useQuery";
 import { useDateRange } from "./useDateRange";
@@ -152,6 +153,22 @@ describe("useCompareRange", () => {
 
       act(() => result.current.setEnabled(false));
       expect(new URLSearchParams(window.location.search).get("compareEnabled")).toBe("0");
+    });
+
+    // main.tsx wraps the real app in <StrictMode>, which in dev mode
+    // double-invokes every effect on mount (mount -> cleanup -> mount again)
+    // to surface non-idempotent effects. No other test in this describe
+    // block exercises that, which is exactly how the original "isFirst"
+    // boolean-ref guard's flaw passed every test while still wiping a
+    // URL-hydrated compare range on every real dev-mode page load.
+    it("does not wipe a URL-hydrated compare range under StrictMode's double-invoke", async () => {
+      window.history.replaceState(null, "", "/?compareFrom=2026-01-01&compareTo=2026-01-10");
+      const { result } = renderHook(() => useCompareRange("2026-08-01", "2026-08-10", URL_KEYS), {
+        wrapper: StrictMode,
+      });
+
+      expect(result.current.from).toBe("2026-01-01");
+      expect(result.current.to).toBe("2026-01-10");
     });
   });
 });
