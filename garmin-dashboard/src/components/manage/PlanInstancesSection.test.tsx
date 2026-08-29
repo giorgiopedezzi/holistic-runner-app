@@ -106,7 +106,7 @@ describe("PlanInstancesSection — row expand/collapse", () => {
     }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
 
-    const toggle = (await screen.findByText("My Plan")).closest("button")!;
+    const toggle = (await screen.findByText("My Plan")).closest('[role="button"]')!;
     fireEvent.click(toggle);
     expect(await screen.findByRole("button", { name: "Save" })).toBeInTheDocument();
     expect(getByIdCalls).toBe(1);
@@ -127,7 +127,7 @@ describe("PlanInstancesSection — row expand/collapse", () => {
     await pickTemplate("5K Base");
     fireEvent.change(fieldControl("Name"), { target: { value: "Draft name" } });
 
-    const newRowToggle = screen.getByText("Draft name").closest("button")!;
+    const newRowToggle = screen.getByText("Draft name").closest('[role="button"]')!;
     fireEvent.click(newRowToggle); // collapse — a "new" row is never dirty (fieldsLocked is false pre-creation)
 
     fireEvent.click(await screen.findByRole("button", { name: "New instance" })); // reopen
@@ -146,7 +146,7 @@ describe("PlanInstancesSection — draft stash-on-collapse / restore-on-reopen",
     }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
 
-    const toggleA = (await screen.findByText("My Plan")).closest("button")!;
+    const toggleA = (await screen.findByText("My Plan")).closest('[role="button"]')!;
     fireEvent.click(toggleA);
     await screen.findByRole("button", { name: "Save" });
     expect(getByIdCalls).toBe(1);
@@ -158,7 +158,7 @@ describe("PlanInstancesSection — draft stash-on-collapse / restore-on-reopen",
     expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
     expect(screen.getByTitle("Unsaved changes")).toBeInTheDocument();
 
-    const toggleB = screen.getByText("Other Plan").closest("button")!;
+    const toggleB = screen.getByText("Other Plan").closest('[role="button"]')!;
     fireEvent.click(toggleB); // open a different row
     await waitFor(() => expect(fieldControl("Name")).toHaveValue("Other Plan"));
 
@@ -178,7 +178,7 @@ describe("PlanInstancesSection — dirty-bucket-driven button enablement", () =>
       "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days: [day1(), day2()] }),
     }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
   }
 
@@ -211,7 +211,7 @@ describe("PlanInstancesSection — dirty-bucket-driven button enablement", () =>
       "POST /api/v1/plan-instances/10/regenerate": () => json({ ...planInstance(), days }),
     }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
     fireEvent.click(screen.getByRole("button", { name: "RG" })); // dirties the regenerate-bucket, no manual day edits -> no discard-count confirm
@@ -229,7 +229,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
       "PATCH /api/v1/plan-instances/10": () => json({ ...planInstance({ name: "Renamed" }), days }),
     }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
     fireEvent.change(fieldControl("Name"), { target: { value: "Renamed" } });
@@ -278,7 +278,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
       "POST /api/v1/plan-instances/10/regenerate": () => { regenerateCalls++; return json({ ...planInstance(), days }); },
     }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
     fireEvent.click(screen.getByRole("button", { name: "RG" })); // dirty the regenerate-bucket
@@ -303,7 +303,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
     fireEvent.change(fieldControl("Race name"), { target: { value: "Boston" } });
@@ -326,7 +326,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
 
@@ -353,7 +353,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
 
@@ -390,7 +390,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     const days = [day1(), day2(), week2Day1(), week2Day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
     const week1Btn = await screen.findByRole("button", { name: /Week 1/ });
@@ -490,7 +490,7 @@ describe("PlanInstancesSection — List/Agenda view toggle", () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
     const { container } = render(<PlanInstancesSection templates={[TEMPLATE]} />);
-    fireEvent.click((await screen.findByText("My Plan")).closest("button")!);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
     expect(await screen.findByRole("button", { name: /Week 1/ })).toBeInTheDocument(); // List view, default

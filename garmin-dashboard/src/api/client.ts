@@ -321,5 +321,29 @@ export const api = {
       const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "workout.fit";
       return { blob: await res.blob(), filename };
     },
+    // GET /api/v1/plan-instances/:id/fit?section_name=&week_number= (HRA-203)
+    // — same binary-download bypass of request() as downloadDayFit above.
+    // week_number omitted exports the whole section; supplied, one week
+    // within it. The skip count can't ride in the (opaque binary) body, so
+    // it comes back as X-Export-* response headers instead — the caller
+    // uses them to toast how many days were skipped (Story AC3).
+    downloadScopeFit: async (instanceId: number, sectionName: string, weekNumber?: number): Promise<{
+      blob: Blob; filename: string; total: number; included: number; skipped: number;
+    }> => {
+      const path = `/api/v1/plan-instances/${instanceId}/fit`;
+      const url = new URL(`${BASE}${path}`, window.location.origin);
+      url.searchParams.set("section_name", sectionName);
+      if (weekNumber != null) url.searchParams.set("week_number", String(weekNumber));
+      const res = await fetch(url);
+      if (!res.ok) throw await buildApiError(res, path);
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "workouts.zip";
+      return {
+        blob: await res.blob(), filename,
+        total: Number(res.headers.get("X-Export-Total") ?? "0"),
+        included: Number(res.headers.get("X-Export-Included") ?? "0"),
+        skipped: Number(res.headers.get("X-Export-Skipped") ?? "0"),
+      };
+    },
   },
 };

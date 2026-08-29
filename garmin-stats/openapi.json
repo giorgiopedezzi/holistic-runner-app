@@ -676,6 +676,23 @@
         "responses": { "200": { "description": "Binary FIT file. Content-Disposition: attachment; filename=\"<instance name>_<YYYYMMDD>.fit\".", "content": { "application/octet-stream": {} } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
+    "/api/v1/plan-instances/{id}/fit": {
+      "get": {
+        "tags": ["plan-templates"], "summary": "Export every exportable day in a section (or one week within it) as a Garmin Workout .fit zip (HRA-203)",
+        "description": "Bundles one .fit per exportable plan_instance_days row in scope (filtered by section_name, and optionally week_number) into a single uncompressed (STORE) zip, reusing the same toGarminWorkoutFit path as the day-level export above. A day toGarminWorkoutFit itself rejects (needs_review, or a workout_type other than run/rest) is skipped rather than failing the request — X-Export-Total/X-Export-Included/X-Export-Skipped response headers report the counts, since the body itself is opaque binary. 422 with no zip written when zero days in scope are exportable.",
+        "parameters": [
+          { "$ref": "#/components/parameters/id" },
+          { "name": "section_name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "The plan_instance_days.section_name to scope the export to." },
+          { "name": "week_number", "in": "query", "required": false, "schema": { "type": "integer" }, "description": "When given, narrows the export to this week within section_name; omitted exports the whole section." }
+        ],
+        "responses": {
+          "200": { "description": "Binary zip file. Content-Disposition: attachment; filename=\"<instance name>_<first date:yyyymmdd>-<last date:yyyymmdd>.zip\". Also carries X-Export-Total/X-Export-Included/X-Export-Skipped headers.", "content": { "application/zip": {} } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/Unprocessable" }
+        }
+      }
+    },
     "/api/v1/plan-instances/{id}/approve": {
       "post": {
         "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113)",

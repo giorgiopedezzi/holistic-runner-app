@@ -33,6 +33,16 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   );
   const findDaysByInstance = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
   const findDayByIdStmt = db.prepare(`SELECT ${DAY_FIELDS} WHERE id = ?`);
+  // HRA-203: the section/week .fit-zip export's own scoping queries — same
+  // DAY_FIELDS projection and date/day ordering as findDaysByInstance above,
+  // just narrowed by section_name (and, for the week variant, week_number
+  // too). Two prepared statements rather than one with a nullable bound
+  // param, matching this repo's existing "one statement per query shape"
+  // style (see findDaysByDateAndWorkoutTypeStmt's own comment above).
+  const findDaysBySectionStmt = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? ORDER BY date ASC, day ASC`);
+  const findDaysBySectionAndWeekStmt = db.prepare(
+    `SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? AND week_number = ? ORDER BY date ASC, day ASC`,
+  );
   // HRA-206: every run-type plan_instance_day matching a calendar date,
   // across every instance (any approved_at state, per the Story's own scope)
   // — joined with the owning instance's name so ActivityDetailBody's picker
@@ -107,6 +117,10 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       (templateId != null ? countByTemplateStmt.get(templateId) : countAllStmt.get()) as unknown as { count: number },
     daysByInstance: (instanceId: number): PlanInstanceDayRow[] => findDaysByInstance.all(instanceId) as unknown as PlanInstanceDayRow[],
     dayById: (id: number): PlanInstanceDayRow | undefined => findDayByIdStmt.get(id) as unknown as PlanInstanceDayRow | undefined,
+    daysBySection: (instanceId: number, sectionName: string): PlanInstanceDayRow[] =>
+      findDaysBySectionStmt.all(instanceId, sectionName) as unknown as PlanInstanceDayRow[],
+    daysBySectionAndWeek: (instanceId: number, sectionName: string, weekNumber: number): PlanInstanceDayRow[] =>
+      findDaysBySectionAndWeekStmt.all(instanceId, sectionName, weekNumber) as unknown as PlanInstanceDayRow[],
     daysByDateAndWorkoutType: (date: string, workoutType: string): PlanInstanceDayWithInstance[] =>
       findDaysByDateAndWorkoutTypeStmt.all(date, workoutType) as unknown as PlanInstanceDayWithInstance[],
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {

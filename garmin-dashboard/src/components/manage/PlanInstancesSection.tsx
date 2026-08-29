@@ -14,7 +14,7 @@ import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorT
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
 import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
 import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
-import { collectPlanAnchors, resolveIntensityPaceSecPerKm, type DayView } from "@/domain/runplan-aggregate";
+import { collectPlanAnchors, resolveIntensityPaceSecPerKm, type DayView, type SectionView, type WeekView } from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
@@ -518,6 +518,45 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
+  // HRA-203: Section/Week title row's own "Generate fit" button — same
+  // fetch -> Blob -> <a download> mechanism as onExportDayFit above, bundled
+  // into a zip server-side instead of a single .fit. Non-exportable days
+  // within the scope are skipped server-side rather than failing the whole
+  // request (Story AC3); when any were, a toast names how many, using the
+  // response's own X-Export-* counts rather than recomputing them
+  // client-side. A scope with zero exportable days throws (422) before any
+  // blob exists, so the catch below both covers "real" failures and this
+  // "nothing to export" case with the same error-toast pattern every other
+  // CTA here uses.
+  async function downloadScopeFitZip(sectionName: string, weekNumber?: number) {
+    if (editingId == null) return;
+    try {
+      const { blob, filename, total, included, skipped } = await api.planInstances.downloadScopeFit(editingId, sectionName, weekNumber);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      if (skipped > 0) {
+        notify(
+          t("manage.planInstances.exportScopeFitPartial", `${included} of ${total} days exported — ${skipped} skipped: needs review`, { included, total, skipped }),
+          "success",
+        );
+      }
+    } catch (e) {
+      notify(e instanceof Error ? e.message : t("manage.planInstances.exportScopeFitFailed", "Could not export these workouts."), "error");
+    }
+  }
+  function onExportSectionFit(section: SectionView) {
+    void downloadScopeFitZip(section.name);
+  }
+  function onExportWeekFit(section: SectionView, week: WeekView) {
+    void downloadScopeFitZip(section.name, week.number);
+  }
+
   const onDayEdit = dayEditor.onDayEdit;
   const onScheduledTimeEdit = dayEditor.onScheduledTimeEdit;
   const onScheduledTimeEditByDayId = dayEditor.onScheduledTimeEditByDayId;
@@ -872,6 +911,8 @@ export function PlanInstancesSection({ templates }: Props) {
                 onWorkoutTypeEdit={onWorkoutTypeEdit}
                 isDayDirty={day => day.date != null && persistedDsl[day.date] !== undefined && persistedDsl[day.date] !== day.dsl}
                 onExportDayFit={onExportDayFit}
+                onExportSectionFit={onExportSectionFit}
+                onExportWeekFit={onExportWeekFit}
               />
             ) : (
               <PlanInstanceCalendar

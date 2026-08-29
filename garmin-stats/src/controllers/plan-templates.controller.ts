@@ -19,6 +19,7 @@ import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
 import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
+import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
 import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
 import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
@@ -650,15 +651,11 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return name.replace(/["\\\r\n]/g, "");
   }
 
-  const dayFit: Handler = (_req, res, url) => {
-    const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
-    if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
-    const instance = instancesRepo.instanceById(instanceId);
-    if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
-    const day = instancesRepo.dayById(dayId);
-    if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
-
-    const resolvedDay: ResolvedDay = {
+  // Shared by dayFit and scopeFit below — both turn a PlanInstanceDayRow into
+  // the ResolvedDay shape toGarminWorkoutFit expects (JSON columns parsed,
+  // nulls normalized to undefined).
+  function toResolvedDay(day: PlanInstanceDayRow): ResolvedDay {
+    return {
       section_name: day.section_name, week_number: day.week_number, date: day.date, day: day.day,
       suffix: day.suffix ?? undefined, category: day.category ?? undefined,
       workout_type: day.workout_type as ResolvedDay["workout_type"],
@@ -668,8 +665,17 @@ export function createPlanTemplatesController(ctx: AppContext) {
       notes: day.notes ?? undefined,
       needs_review: day.needs_review === 1,
     };
+  }
 
-    const outcome = toGarminWorkoutFit(resolvedDay);
+  const dayFit: Handler = (_req, res, url) => {
+    const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
+    if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
+    const instance = instancesRepo.instanceById(instanceId);
+    if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
+    const day = instancesRepo.dayById(dayId);
+    if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
+
+    const outcome = toGarminWorkoutFit(toResolvedDay(day));
     if (!outcome.ok) {
       throw unprocessable("This day cannot be exported to a Garmin Workout FIT file.", {
         errors: outcome.errors.map(e => ({ field: e.code, message: e.message })),
@@ -684,6 +690,75 @@ export function createPlanTemplatesController(ctx: AppContext) {
       "Access-Control-Allow-Origin": "*",
     });
     res.end(outcome.bytes);
+  };
+
+  // GET /api/v1/plan-instances/:id/fit?section_name=&week_number= (HRA-203) —
+  // bundles every exportable day in a section (or, when week_number is also
+  // given, one week within that section) into a single uncompressed ZIP,
+  // reusing dayFit's own toGarminWorkoutFit path per day. section_name/
+  // week_number are query params, not path segments (rest-api-standards §3:
+  // path = identity, query = filtering) — section_name is a free-text
+  // denormalized column, not a real addressable sub-resource, so this stays
+  // one route filtered two ways rather than two resource shapes.
+  // Skip-and-continue (Story scope): a day toGarminWorkoutFit itself rejects
+  // (needs_review, or a workout_type other than run/rest) is omitted from
+  // the zip rather than failing the whole request — counts go back as
+  // X-Export-* response headers (the body is opaque binary, so they can't
+  // ride in it) for the frontend's own toast text. Zero exportable days in
+  // scope (no matching rows at all, or every match rejected) is a 422 with
+  // no zip written, mirroring dayFit's own rejection shape.
+  const scopeFit: Handler = (_req, res, url) => {
+    const id = parseIdForAction(url.pathname);
+    if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
+    const instance = instancesRepo.instanceById(id);
+    if (!instance) throw notFound(`No plan instance with id ${id}.`);
+
+    const sectionName = url.searchParams.get("section_name");
+    if (!sectionName) throw badRequest("section_name is required.");
+    const weekParam = url.searchParams.get("week_number");
+    let weekNumber: number | undefined;
+    if (weekParam != null) {
+      weekNumber = Number(weekParam);
+      if (!Number.isInteger(weekNumber)) throw badRequest("week_number must be an integer.");
+    }
+
+    const days = weekNumber != null
+      ? instancesRepo.daysBySectionAndWeek(id, sectionName, weekNumber)
+      : instancesRepo.daysBySection(id, sectionName);
+
+    const included: { day: PlanInstanceDayRow; bytes: Buffer }[] = [];
+    let skipped = 0;
+    for (const day of days) {
+      const outcome = toGarminWorkoutFit(toResolvedDay(day));
+      if (!outcome.ok) { skipped++; continue; }
+      included.push({ day, bytes: outcome.bytes });
+    }
+    if (included.length === 0) {
+      throw unprocessable("No exportable days in this scope.");
+    }
+
+    const instanceName = instance.name ?? `Plan Instance ${instance.id}`;
+    const entries = dedupeZipEntryNames(included.map(({ day, bytes }) => ({
+      name: sanitizeFitFilename(`${instanceName}_${day.date.replace(/-/g, "")}.fit`),
+      data: bytes,
+      date: new Date(`${day.date}T00:00:00Z`),
+    })));
+    const zipBytes = writeZip(entries);
+
+    const dates = included.map(({ day }) => day.date).sort();
+    const zipFilename = sanitizeFitFilename(
+      `${instanceName}_${dates[0].replace(/-/g, "")}-${dates[dates.length - 1].replace(/-/g, "")}.zip`,
+    );
+
+    res.writeHead(200, {
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${zipFilename}"`,
+      "X-Export-Total": String(days.length),
+      "X-Export-Included": String(included.length),
+      "X-Export-Skipped": String(skipped),
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(zipBytes);
   };
 
   // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
@@ -761,7 +836,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit,
+    instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate,
   };
 }

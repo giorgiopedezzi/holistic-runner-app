@@ -18,7 +18,7 @@
  */
 import { useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Bed, CircleHelp, Play } from "lucide-react";
+import { AlertTriangle, Bed, CircleHelp, Download, Play } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -95,6 +95,21 @@ interface TrainingPlanAccordionProps {
   // have nothing resolved to export, so PlanTemplatesSection never passes
   // this — TemplateDayRow never renders the button at all (Story scope).
   onExportDayFit?: (day: DayView) => void;
+  // HRA-203: instance-only — "Generate fit" buttons in the Section/Week
+  // title rows, downloading a zip of every exportable day in that scope.
+  // Unlike onExportDayFit above, SectionView/WeekView aren't self-sufficient
+  // the same way: a WeekView alone has no section_name (only its own
+  // number), so onExportWeekFit is handed both the owning SectionView and
+  // the WeekView, and SectionEditor (the one place that has both in scope,
+  // via its own weeks.map) binds them into a plain zero-arg callback before
+  // handing it down to WeekEditor — WeekEditor's own onExportFit prop is
+  // that already-bound callback, not this two-arg one. onExportSectionFit
+  // needs no such binding (SectionView already carries its own name).
+  // Optional: templates have nothing resolved to export, so
+  // PlanTemplatesSection never passes either — the button is simply absent
+  // there, same convention as onExportDayFit.
+  onExportSectionFit?: (section: SectionView) => void;
+  onExportWeekFit?: (section: SectionView, week: WeekView) => void;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -262,13 +277,40 @@ function NoteIcon({ note }: { note?: string }) {
 // left, a compact summary + optional warning/note icons on the right —
 // both inside AccordionCard's own title slot, so it's visible whether the
 // level is expanded or not.
-function TitleRow({ label, summary, hasWarning, note, t }: {
-  label: string; summary?: string; hasWarning?: boolean; note?: string; t: Translate;
+// HRA-203: onExportFit is a plain zero-arg callback (the caller has already
+// bound whichever section/week it refers to) — TitleRow itself stays generic
+// across Day/Week/Section title rows, only Section/WeekEditor below ever
+// supply it. Rendered as a real nested <button> (not a <span onClick>,
+// matching onExportDayFit's own "keyboard-operable by construction"
+// precedent) — safe to nest here because AccordionCard's own trigger is a
+// role="button" div, not a real <button>, specifically to allow this.
+function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabel, t }: {
+  label: string; summary?: string; hasWarning?: boolean; note?: string;
+  onExportFit?: () => void; exportFitLabel?: string; t: Translate;
 }) {
   return (
     <div className="flex items-center justify-between flex-1 gap-2.5 min-w-0">
       <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
       <span className="hra-text-secondary flex items-center gap-2 text-meta font-normal shrink-0" >
+        {onExportFit && (
+          <button
+            type="button"
+            className="inline-flex items-center bg-transparent border-0 p-0 cursor-pointer"
+            onClick={e => { e.stopPropagation(); onExportFit(); }}
+            // AccordionCard's trigger toggles on Enter/Space via its own
+            // onKeyDown (it's a role="button" div, not a real <button> — see
+            // that file's own comment on why). keydown bubbles independently
+            // of click, so without this a keyboard Enter/Space on THIS
+            // button would both fire the export (native click, caught by
+            // onClick's stopPropagation above) AND toggle the accordion (via
+            // the still-unstopped keydown reaching the div underneath).
+            onKeyDown={e => e.stopPropagation()}
+            title={exportFitLabel}
+            aria-label={exportFitLabel}
+          >
+            <Download size={12} />
+          </button>
+        )}
         {summary}
         {hasWarning && <WarningBadge t={t} />}
         <NoteIcon note={note} />
@@ -556,7 +598,7 @@ function DayEditor(props: {
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportFit,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -571,6 +613,9 @@ function WeekEditor({
   onWorkoutTypeEdit?: (dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  // HRA-203: already bound to (section, week) by SectionEditor below — see
+  // that prop's own doc comment on TrainingPlanAccordionProps.
+  onExportFit?: () => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -591,7 +636,13 @@ function WeekEditor({
   return (
     <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} data-swappable={drag.swappable || undefined}>
       <AccordionCard
-        title={<TitleRow label={label} summary={summary} hasWarning={weekHasWarnings(week)} note={week.notes} t={t} />}
+        title={
+          <TitleRow
+            label={label} summary={summary} hasWarning={weekHasWarnings(week)} note={week.notes} t={t}
+            onExportFit={onExportFit}
+            exportFitLabel={t("runplan.accordion.exportWeekFitLabel", "Generate fit for this week")}
+          />
+        }
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
         <div className="flex flex-col gap-3">
@@ -623,7 +674,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -639,6 +690,8 @@ function SectionEditor({
   onWorkoutTypeEdit?: (weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  onExportSectionFit?: (section: SectionView) => void;
+  onExportWeekFit?: (section: SectionView, week: WeekView) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -654,7 +707,13 @@ function SectionEditor({
 
   return (
     <AccordionCard
-      title={<TitleRow label={displayName} summary={compactTotals(section.totals, t)} hasWarning={sectionHasWarnings(section)} note={isDefaultSection ? undefined : section.notes} t={t} />}
+      title={
+        <TitleRow
+          label={displayName} summary={compactTotals(section.totals, t)} hasWarning={sectionHasWarnings(section)} note={isDefaultSection ? undefined : section.notes} t={t}
+          onExportFit={onExportSectionFit ? () => onExportSectionFit(section) : undefined}
+          exportFitLabel={t("runplan.accordion.exportSectionFitLabel", "Generate fit for this section")}
+        />
+      }
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
     >
       <div className="flex flex-col gap-3">
@@ -699,6 +758,7 @@ function SectionEditor({
             onWorkoutTypeEdit={onWorkoutTypeEdit ? (dayIndex, workoutType) => onWorkoutTypeEdit(weekIndex, dayIndex, workoutType) : undefined}
             isDayDirty={isDayDirty}
             onExportDayFit={onExportDayFit}
+            onExportFit={onExportWeekFit ? () => onExportWeekFit(section, week) : undefined}
           />
         ))}
       </div>
@@ -707,7 +767,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -728,6 +788,8 @@ export function TrainingPlanAccordion({
           onWorkoutTypeEdit={onWorkoutTypeEdit ? (weekIndex, dayIndex, workoutType) => onWorkoutTypeEdit(sectionIndex, weekIndex, dayIndex, workoutType) : undefined}
           isDayDirty={isDayDirty}
           onExportDayFit={onExportDayFit}
+          onExportSectionFit={onExportSectionFit}
+          onExportWeekFit={onExportWeekFit}
         />
       ))}
     </div>
