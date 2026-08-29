@@ -1429,16 +1429,22 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-anchor-table th.hra-anchor-group-start,
 .hra-anchor-table td.hra-anchor-group-start { border-left: 1px solid var(--border-strong); }
 .hra-anchor-table th.hra-anchor-group { text-align: center; }
-/* Follow-up: Status set apart as its own boxed header — top/right/bottom
-   border only, no left edge (the preceding Clear column's own group-start
-   border already closes that side, so a left border here would just double
-   it up right next to it). Both the header and its body column center their
+/* Follow-up: Status set apart as its own boxed header (border on every
+   side). The Clear column has no group-start divider of its own any more —
+   it visually merged into the Relative group (see the table's own colSpan=4
+   comment) — so Status's own left border is now the ONLY thing separating
+   that merged group from Status; dropping it (as an earlier pass did, back
+   when Clear's own left border still closed that gap) would leave no
+   boundary there at all. Both the header and its body column center their
    content horizontally (the "Status" label and each row's
    Resolved/Unresolved Badge) rather than the table's usual left alignment. */
 .hra-anchor-table th.hra-anchor-status-header {
-  border-bottom: 1px solid var(--border-strong); text-align: center;
+  border: 1px solid var(--border-strong); text-align: center;
 }
-.hra-anchor-table td.hra-anchor-status-cell { text-align: center; }
+/* border-left (not just the header's box) so the Relative+Clear/Status
+   separation continues down through every body row to the last one, not
+   just the header row. */
+.hra-anchor-table td.hra-anchor-status-cell { text-align: center; border-left: 1px solid var(--border-strong); }
 /* Clear button centered in its own column, same as Status. */
 .hra-anchor-table td.hra-anchor-clear-cell { text-align: center; }
 .hra-anchor-table tbody tr:last-child td { border-bottom: none; }
