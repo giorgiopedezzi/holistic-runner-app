@@ -159,6 +159,14 @@ export interface PlanInstanceWithDays extends PlanInstance {
   days: PlanInstanceDay[];
 }
 
+// GET /api/v1/plan-instance-days's response shape (HRA-206) — a
+// PlanInstanceDay denormalized with its owning instance's own name, so a
+// same-day picker across multiple instances can label each option without a
+// second lookup per row.
+export interface PlanInstanceDayWithInstance extends PlanInstanceDay {
+  instance_name: string | null;
+}
+
 export interface SportSummary {
   sport:              string;
   total_activities:   number;

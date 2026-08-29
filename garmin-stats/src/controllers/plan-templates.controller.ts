@@ -358,6 +358,21 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, paginated(instancesRepo.listPage(limit, offset, templateId), total, limit, offset));
   };
 
+  // GET /api/v1/plan-instance-days?date=YYYY-MM-DD (HRA-206) — every run-type
+  // plan_instance_day matching a calendar date, across every plan instance
+  // (any approved_at state — the Story's own scope), for
+  // ActivityDetailBody's "planned vs actual" picker: 0 matches → no UI
+  // change, 1 → the chart renders automatically, >=2 → a picker. Only
+  // workout_type === 'run' ever matches (REST/CROSS/STRENGTH/OTHER are
+  // excluded per docs/runplan-dsl.md's existing "excluded from
+  // planned-vs-actual" note) — hardcoded here, not a query param, since this
+  // endpoint has exactly one caller and one use case.
+  const daysByDate: Handler = (_req, res, url) => {
+    const date = url.searchParams.get("date");
+    if (!date || !ISO_DATE.test(date)) throw badRequest("date is required in YYYY-MM-DD format.");
+    return send(res, instancesRepo.daysByDateAndWorkoutType(date, "run"));
+  };
+
   const instanceById: Handler = (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
@@ -696,6 +711,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
   return {
     list, getById, generate, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay,
-    regenerateInstance, approveInstance, removeInstance, listInstances,
+    regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate,
   };
 }

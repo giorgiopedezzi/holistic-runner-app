@@ -12,6 +12,10 @@ const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffi
 
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
+// HRA-206: a plan_instance_days row denormalized with its owning instance's
+// own name — GET /api/v1/plan-instance-days needs this to label a same-day
+// picker across multiple instances without a second round trip per row.
+export type PlanInstanceDayWithInstance = PlanInstanceDayRow & { instance_name: string | null };
 
 export function createPlanInstancesRepo(db: DatabaseSync) {
   const findInstanceById = db.prepare(`SELECT ${INSTANCE_FIELDS} WHERE id = ?`);
@@ -29,6 +33,20 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   );
   const findDaysByInstance = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
   const findDayByIdStmt = db.prepare(`SELECT ${DAY_FIELDS} WHERE id = ?`);
+  // HRA-206: every run-type plan_instance_day matching a calendar date,
+  // across every instance (any approved_at state, per the Story's own scope)
+  // — joined with the owning instance's name so ActivityDetailBody's picker
+  // can label each option without a second lookup per match. Newest-instance
+  // first, matching this repo's other list queries' own default ordering.
+  const findDaysByDateAndWorkoutTypeStmt = db.prepare(`
+    SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
+           pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
+           pid.scheduled_time, pi.name AS instance_name
+    FROM plan_instance_days pid
+    JOIN plan_instances pi ON pi.id = pid.instance_id
+    WHERE pid.date = ? AND pid.workout_type = ?
+    ORDER BY pi.created_at DESC
+  `);
   const insertDay = db.prepare(`
     INSERT INTO plan_instance_days
       (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review)
@@ -89,6 +107,8 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       (templateId != null ? countByTemplateStmt.get(templateId) : countAllStmt.get()) as unknown as { count: number },
     daysByInstance: (instanceId: number): PlanInstanceDayRow[] => findDaysByInstance.all(instanceId) as unknown as PlanInstanceDayRow[],
     dayById: (id: number): PlanInstanceDayRow | undefined => findDayByIdStmt.get(id) as unknown as PlanInstanceDayRow | undefined,
+    daysByDateAndWorkoutType: (date: string, workoutType: string): PlanInstanceDayWithInstance[] =>
+      findDaysByDateAndWorkoutTypeStmt.all(date, workoutType) as unknown as PlanInstanceDayWithInstance[],
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
       const info = insertInstance.run({
         $template_id: i.template_id, $start_date: i.start_date,

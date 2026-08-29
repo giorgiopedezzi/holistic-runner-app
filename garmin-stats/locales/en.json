@@ -293,6 +293,8 @@
   "activity.detail.deleteTooltip": "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.",
   "activity.detail.deleteButton": "Remove activity",
   "activity.detail.moveToTrash": "Move to trash?",
+  "activity.plannedWorkout.pickerLabel": "Compare to plan",
+  "activity.plannedWorkout.unnamedInstance": "Unnamed plan",
   "activity.stat.distance": "Distance",
   "activity.stat.movingTime": "Moving time",
   "activity.stat.duration": "Duration",

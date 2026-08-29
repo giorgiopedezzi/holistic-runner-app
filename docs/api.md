@@ -43,6 +43,7 @@ rule); this table exists for quick lookup, not as a second contract.
 | `/api/v1/plan-templates/:id` | Single plan template (includes `approved_at`, HRA-113) |
 | `/api/v1/plan-instances?template_id=` | Resolved plan instances (paginated envelope), newest first (HRA-118) — added since the instance card needs a way to list more than one at a time; no prior endpoint returned a collection. `template_id` is optional (a "list all" vs. a per-template list); 404 if a given `template_id` doesn't reference a real template, 400 if it isn't an integer |
 | `/api/v1/plan-instances/:id` | A resolved instance of a template — the instantiate response's own `Location` target — plus its `days` (all `plan_instance_days` rows, each with `segments` as JSON), `approved_at` (HRA-113), `name`/`event` (HRA-114), and `race_name`/`race_date`/`race_url` (HRA-121, all nullable) |
+| `/api/v1/plan-instance-days?date=YYYY-MM-DD` | Every `workout_type === 'run'` `plan_instance_day` matching `date`, across every plan instance (any `approved_at` state), each denormalized with its owning instance's `instance_name` — no envelope, just an array (possibly empty). `problem+json` 400 for a missing/malformed date. Feeds `ActivityDetailBody`'s same-day planned-vs-actual picker (HRA-206) |
 
 ### DELETE
 Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they don't `DELETE` rows.

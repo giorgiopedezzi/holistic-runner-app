@@ -293,6 +293,8 @@
   "activity.detail.deleteTooltip": "Sposta questa attività nel cestino del database locale (scheda Dati e sincronizzazione) — non viene toccata sul dispositivo Garmin, Strava o sull'account Withings, e può essere ripristinata in seguito. Una nuova sincronizzazione non la riporterà indietro da sola.",
   "activity.detail.deleteButton": "Rimuovi attività",
   "activity.detail.moveToTrash": "Spostare nel cestino?",
+  "activity.plannedWorkout.pickerLabel": "Confronta con il piano",
+  "activity.plannedWorkout.unnamedInstance": "Piano senza nome",
   "activity.stat.distance": "Distanza",
   "activity.stat.movingTime": "Tempo in movimento",
   "activity.stat.duration": "Durata",

@@ -304,6 +304,22 @@
           "dsl": { "type": "string", "description": "Raw D-line text, same grammar as a template, e.g. \"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10\"." }
         }
       },
+      "PlanInstanceDayWithInstance": {
+        "type": "object",
+        "description": "A PlanInstanceDay denormalized with its owning instance's own name (HRA-206) — GET /api/v1/plan-instance-days's response shape, so a same-day picker across multiple instances can label each option without a second lookup per row.",
+        "properties": {
+          "id": { "type": "integer" }, "instance_id": { "type": "integer" },
+          "section_name": { "type": "string" }, "week_number": { "type": "integer" },
+          "date": { "type": "string", "format": "date" }, "day": { "type": "integer" },
+          "suffix": { "type": ["string", "null"] }, "category": { "type": ["string", "null"] },
+          "workout_type": { "type": "string", "enum": ["run", "rest", "todo", "cross", "strength", "other"] },
+          "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ResolvedSegment" } },
+          "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] },
+          "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] },
+          "scheduled_time": { "type": ["string", "null"] },
+          "instance_name": { "type": ["string", "null"], "description": "The owning plan_instances.name — nullable only for the same legacy-migration reason PlanInstance.name is (HRA-114)." }
+        }
+      },
       "PlanInstance": {
         "type": "object",
         "description": "One resolved instantiation of a plan template for a specific race.",
@@ -613,6 +629,14 @@
         "description": "template_id is optional — omit for all instances, or scope to one template's own instances. 404 if template_id doesn't reference a real template.",
         "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" }, { "name": "template_id", "in": "query", "required": false, "schema": { "type": "integer" } } ],
         "responses": { "200": { "description": "Plan instances.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstance" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/plan-instance-days": {
+      "get": {
+        "tags": ["plan-templates"], "summary": "Every run-type plan_instance_day matching a calendar date, across every instance (HRA-206)",
+        "description": "Feeds ActivityDetailBody's same-day planned-vs-actual picker: 0 matches -> no UI change, 1 -> the chart renders automatically, >=2 -> a picker labeled by instance name. Only workout_type === 'run' ever matches (REST/CROSS/STRENGTH/OTHER are excluded, docs/runplan-dsl.md). Matches across every instance regardless of approved_at state. No pagination envelope — a plain (possibly empty) array.",
+        "parameters": [ { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } } ],
+        "responses": { "200": { "description": "Matching days.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDayWithInstance" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
     "/api/v1/plan-instances/{id}": {

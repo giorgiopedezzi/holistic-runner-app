@@ -10,7 +10,7 @@ import type {
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
-  PlanInstance, PlanInstanceWithDays, PlanInstanceDay, Palette,
+  PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
@@ -299,5 +299,10 @@ export const api = {
         workout_type?: WorkoutType; segments?: ResolvedSegment[];
         activity_target?: Target | null; activity_description?: string | null;
       }>(`/api/v1/plan-instances/${instanceId}/days/${dayId}/validate`, "POST", undefined, { dsl }),
+    // GET /api/v1/plan-instance-days?date= (HRA-206) — every run-type day
+    // matching a calendar date, across every instance. What
+    // ActivityDetailBody calls for a running activity to find same-day
+    // scheduled workouts; a plain array (possibly empty), no envelope.
+    byDate: (date: string) => request<PlanInstanceDayWithInstance[]>("/api/v1/plan-instance-days", "GET", { date }),
   },
 };

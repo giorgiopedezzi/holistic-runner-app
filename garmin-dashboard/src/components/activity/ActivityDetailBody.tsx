@@ -3,10 +3,13 @@ import { useTranslation } from "react-i18next";
 import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
-import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty } from "@/components/ui";
+import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty, Select } from "@/components/ui";
 import { ClassificationCard } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
-import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type TrackPoint, type WorkoutClassification } from "@/types/api";
+import { PlannedPaceTargetChart } from "../PlannedPaceTargetChart";
+import { buildPaceTargetBandModel } from "@/domain/planned-workout";
+import type { ResolvedSegment } from "@/types/runplan";
+import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtDuration, fmtElevation, fmtDate } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
@@ -41,6 +44,14 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
   const [error,    setError]    = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Same-day scheduled workout(s), HRA-206: looked up once the activity
+  // itself has loaded and is a running activity. 0 matches -> no UI change,
+  // 1 -> the chart renders automatically, >=2 -> a picker (see the render
+  // below). selectedPlannedDayId defaults to the first match returned by the
+  // backend (newest instance first, see plan-instances.repo.ts) — the Story
+  // leaves the default order unspecified beyond "deterministic".
+  const [plannedDays, setPlannedDays] = useState<PlanInstanceDayWithInstance[]>([]);
+  const [selectedPlannedDayId, setSelectedPlannedDayId] = useState<number | null>(null);
   // Classification accordion (dashboard design-system rework, "reorganize
   // activity layout") — collapsed by default; splitMeters is lifted out of
   // ClassificationCard (which still falls back to its own local state when
@@ -88,6 +99,30 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
       .finally(() => { if (!ignore) setLoading(false); });
     return () => { ignore = true; };
   }, [activityId]);
+
+  // HRA-206: non-running activities never show this UI, even if a same-day
+  // running plan day exists — gated on activity.sport, not just presence of
+  // an activity row. Runs once the activity itself is loaded (sport/date_only
+  // are on `activity`, not known from activityId alone).
+  useEffect(() => {
+    if (!activity || activity.sport !== "running") {
+      setPlannedDays([]);
+      setSelectedPlannedDayId(null);
+      return;
+    }
+    let ignore = false;
+    api.planInstances.byDate(activity.date_only).then(days => {
+      if (ignore) return;
+      setPlannedDays(days);
+      setSelectedPlannedDayId(days[0]?.id ?? null);
+    }).catch(() => { if (!ignore) { setPlannedDays([]); setSelectedPlannedDayId(null); } });
+    return () => { ignore = true; };
+    // Deliberately keyed on sport/date_only, not the whole `activity` object
+    // reference — a re-fetch of the same activity (e.g. after ActivityTypePicker's
+    // onUpdate) must not re-trigger this lookup unless one of those two fields
+    // actually changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activity?.sport, activity?.date_only]);
 
   async function handleDelete() {
     setDeleting(true);
@@ -162,6 +197,20 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
     })),
     [chartData, hrRecoveryByAfterIndex],
   );
+
+  // HRA-206: the selected same-day scheduled day's segments, parsed into the
+  // shared PaceTargetBandModel that PlannedPaceTargetChart already renders
+  // unmodified for the plan-instance editor's own preview — same JSON.parse
+  // pattern planInstanceEditor.mappers.ts uses for this same column.
+  const selectedPlannedDay = plannedDays.find(d => d.id === selectedPlannedDayId) ?? null;
+  const plannedPaceModel = useMemo(() => {
+    if (!selectedPlannedDay) return null;
+    try {
+      return buildPaceTargetBandModel(JSON.parse(selectedPlannedDay.segments) as ResolvedSegment[]);
+    } catch {
+      return null;
+    }
+  }, [selectedPlannedDay]);
 
   function toggleMetric(key: OptionalMetricKey) {
     setActiveMetrics(a => {
@@ -334,6 +383,26 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                 toggleCard={toggleCard}
               />
             )}
+
+            {/* HRA-206: same-day scheduled workout(s) — 0 matches means no UI
+                change (plannedDays stays empty), 1 renders the chart
+                automatically, >=2 shows a picker (labeled by instance name)
+                above it. Placed below the main graph, matching the Story's
+                own insertion point. */}
+            {plannedDays.length >= 2 && (
+              <div className="hra-row gap-2 mt-2.5">
+                <span className="hra-text-secondary text-label">{t("activity.plannedWorkout.pickerLabel", "Compare to plan")}</span>
+                <Select
+                  value={String(selectedPlannedDayId)}
+                  onValueChange={v => setSelectedPlannedDayId(Number(v))}
+                  options={plannedDays.map(d => ({
+                    value: String(d.id),
+                    label: d.instance_name ?? t("activity.plannedWorkout.unnamedInstance", "Unnamed plan"),
+                  }))}
+                />
+              </div>
+            )}
+            {plannedPaceModel && <PlannedPaceTargetChart model={plannedPaceModel} />}
           </>
         )}
     </>
