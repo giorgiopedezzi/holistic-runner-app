@@ -14,7 +14,7 @@ import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorT
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
 import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
 import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
-import { collectPlanAnchors, resolveIntensityPaceSecPerKm } from "@/domain/runplan-aggregate";
+import { collectPlanAnchors, resolveIntensityPaceSecPerKm, type DayView } from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
@@ -491,6 +491,33 @@ export function PlanInstancesSection({ templates }: Props) {
     setConfirmation({ type: "week-swap", a, b });
   }
 
+  // HRA-202: the date-pill button's export action — fetch -> Blob -> <a
+  // download>, the plain-browser-download mechanism this Story establishes
+  // for the whole Epic (no File System Access API). day.id is only ever set
+  // for an already-persisted plan_instance_days row (see DayView's own doc
+  // comment, HRA-149) — undefined here would mean the button rendered for a
+  // draft that was never instantiated, which InstanceDayRow's caller (this
+  // component) never does. The backend rejects (422) exactly the day states
+  // toGarminWorkoutFit itself rejects (needs_review, or a workout_type other
+  // than run/rest) — its problem+json `detail` surfaces as the toast text via
+  // ApiError, the same error-toast pattern every other CTA in this file uses.
+  async function onExportDayFit(day: DayView) {
+    if (editingId == null || day.id == null) return;
+    try {
+      const { blob, filename } = await api.planInstances.downloadDayFit(editingId, day.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : t("manage.planInstances.exportFitFailed", "Could not export this workout."), "error");
+    }
+  }
+
   const onDayEdit = dayEditor.onDayEdit;
   const onScheduledTimeEdit = dayEditor.onScheduledTimeEdit;
   const onScheduledTimeEditByDayId = dayEditor.onScheduledTimeEditByDayId;
@@ -844,6 +871,7 @@ export function PlanInstancesSection({ templates }: Props) {
                 onScheduledTimeEdit={onScheduledTimeEdit}
                 onWorkoutTypeEdit={onWorkoutTypeEdit}
                 isDayDirty={day => day.date != null && persistedDsl[day.date] !== undefined && persistedDsl[day.date] !== day.dsl}
+                onExportDayFit={onExportDayFit}
               />
             ) : (
               <PlanInstanceCalendar

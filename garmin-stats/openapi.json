@@ -668,6 +668,14 @@
         "responses": { "200": { "description": "The fresh parse of this DSL text — when the parse itself succeeds, also the resolved day (workout_type/segments/activity_target/activity_description), so the caller can compute this day's own distance client-side without persisting; omitted when the parse fails and needs_review is true.", "content": { "application/json": { "schema": { "type": "object", "properties": { "needs_review": { "type": "boolean" }, "warnings": { "type": "array", "items": { "$ref": "#/components/schemas/ParseWarning" } }, "workout_type": { "type": "string" }, "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ResolvedSegment" } }, "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] } } } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
+    "/api/v1/plan-instances/{id}/days/{dayId}/fit": {
+      "get": {
+        "tags": ["plan-templates"], "summary": "Export one resolved day as a Garmin Workout .fit file (HRA-202)",
+        "description": "Wraps toGarminWorkoutFit (integrations/garmin-workout.ts) for one plan_instance_days row. Read-only: nothing is parsed or persisted, so an approved instance is not guarded against. Rejected (422) exactly when toGarminWorkoutFit itself rejects the day — needs_review, or a workout_type other than run/rest.",
+        "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
+        "responses": { "200": { "description": "Binary FIT file. Content-Disposition: attachment; filename=\"<instance name>_<YYYYMMDD>.fit\".", "content": { "application/octet-stream": {} } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/plan-instances/{id}/approve": {
       "post": {
         "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113)",

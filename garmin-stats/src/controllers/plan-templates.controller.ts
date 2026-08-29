@@ -15,8 +15,10 @@ import type { AppContext, Handler } from "../http/context.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow, PlanTemplateRow } from "../db.ts";
 import { parseRunPlanDSL, parsePaceValue, parseDayEntry } from "../domain/runplan/parser.ts";
 import { instantiatePlan, resolveDay } from "../domain/runplan/instantiate.ts";
+import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
 import { eventTypeSchema } from "../domain/runplan/schema.ts";
+import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
 import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
 import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
@@ -635,6 +637,55 @@ export function createPlanTemplatesController(ctx: AppContext) {
     });
   };
 
+  // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202) — exports one
+  // already-resolved plan_instance_days row as a Garmin Workout .fit file,
+  // wrapping toGarminWorkoutFit (integrations/garmin-workout.ts) — the same
+  // domain transform the DSL editor's characterization tests exercise. Read-
+  // only: nothing is parsed or persisted here, so an approved instance is not
+  // guarded against (unlike patchInstanceDay above). Rejects (422) exactly
+  // the day states toGarminWorkoutFit itself rejects — needs_review, or a
+  // workout_type other than run/rest — surfacing each GarminExportError as a
+  // field-level error the frontend's toast can read the reason from.
+  function sanitizeFitFilename(name: string): string {
+    return name.replace(/["\\\r\n]/g, "");
+  }
+
+  const dayFit: Handler = (_req, res, url) => {
+    const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
+    if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
+    const instance = instancesRepo.instanceById(instanceId);
+    if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
+    const day = instancesRepo.dayById(dayId);
+    if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
+
+    const resolvedDay: ResolvedDay = {
+      section_name: day.section_name, week_number: day.week_number, date: day.date, day: day.day,
+      suffix: day.suffix ?? undefined, category: day.category ?? undefined,
+      workout_type: day.workout_type as ResolvedDay["workout_type"],
+      segments: JSON.parse(day.segments),
+      activity_target: day.activity_target ? JSON.parse(day.activity_target) : undefined,
+      activity_description: day.activity_description ?? undefined,
+      notes: day.notes ?? undefined,
+      needs_review: day.needs_review === 1,
+    };
+
+    const outcome = toGarminWorkoutFit(resolvedDay);
+    if (!outcome.ok) {
+      throw unprocessable("This day cannot be exported to a Garmin Workout FIT file.", {
+        errors: outcome.errors.map(e => ({ field: e.code, message: e.message })),
+      });
+    }
+
+    const instanceName = instance.name ?? `Plan Instance ${instance.id}`;
+    const filename = sanitizeFitFilename(`${instanceName}_${day.date.replace(/-/g, "")}.fit`);
+    res.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(outcome.bytes);
+  };
+
   // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
   // instance's days from a cutover date onward, given a possibly-changed
   // start_date and/or pace policy overrides. Days before the cutover are
@@ -710,7 +761,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
   return {
     list, getById, generate, create, update, approveTemplate, remove,
-    instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay,
+    instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate,
   };
 }

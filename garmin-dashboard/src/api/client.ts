@@ -304,5 +304,22 @@ export const api = {
     // ActivityDetailBody calls for a running activity to find same-day
     // scheduled workouts; a plain array (possibly empty), no envelope.
     byDate: (date: string) => request<PlanInstanceDayWithInstance[]>("/api/v1/plan-instance-days", "GET", { date }),
+    // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202) — a binary
+    // FIT file, not JSON, so this bypasses the shared request() helper (its
+    // unconditional res.json() would choke on the body). Mirrors
+    // buildApiError's own problem+json handling for a non-OK response (422
+    // when the day is needs_review or its workout_type isn't run/rest) so
+    // the caller gets the same human-readable ApiError message every other
+    // endpoint throws. Filename comes from the response's own
+    // Content-Disposition header, not recomputed client-side, so the two
+    // never drift.
+    downloadDayFit: async (instanceId: number, dayId: number): Promise<{ blob: Blob; filename: string }> => {
+      const path = `/api/v1/plan-instances/${instanceId}/days/${dayId}/fit`;
+      const res = await fetch(new URL(`${BASE}${path}`, window.location.origin));
+      if (!res.ok) throw await buildApiError(res, path);
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "workout.fit";
+      return { blob: await res.blob(), filename };
+    },
   },
 };

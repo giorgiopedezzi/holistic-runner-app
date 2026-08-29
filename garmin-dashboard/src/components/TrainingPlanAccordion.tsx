@@ -86,6 +86,15 @@ interface TrainingPlanAccordionProps {
   // persisted baseline (persistedDsl, HRA-134) to answer this. Optional:
   // templates have no persisted-baseline concept to compare against.
   isDayDirty?: (day: DayView) => boolean;
+  // HRA-202: instance-only — exports one day as a Garmin Workout .fit file
+  // via the date-pill button. Same "no API wiring in this pure component"
+  // split as every other instance-only callback here: the actual
+  // fetch/Blob/download and error toast live in the caller
+  // (PlanInstancesSection.tsx), keyed by the day itself like isDayDirty
+  // above (no section/week/day index currying needed). Optional: templates
+  // have nothing resolved to export, so PlanTemplatesSection never passes
+  // this — TemplateDayRow never renders the button at all (Story scope).
+  onExportDayFit?: (day: DayView) => void;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -277,7 +286,7 @@ function TitleRow({ label, summary, hasWarning, note, t }: {
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
 }: {
   day: DayView;
   date: string;
@@ -288,6 +297,7 @@ function InstanceDayRow({
   onScheduledTimeEdit?: (scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
+  onExportDayFit?: (day: DayView) => void;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
@@ -363,10 +373,20 @@ function InstanceDayRow({
             class's own tinted background, so only the border changes here,
             not the pill's solid fill. Icon (same CATEGORY_ICONS map)
             renders after the date text. */}
-        <span className={[`hra-day-date-badge ${categoryCatClass}`, "row-start-1 col-start-1"].filter(Boolean).join(" ")} >
+        {/* HRA-202: a real <button>, not a <span onClick> — keyboard-operable
+            by construction. Tooltip/aria-label is the export action's own
+            name, not the date it happens to be pinned to; the visible pill
+            text/icon are unchanged. */}
+        <button
+          type="button"
+          className={[`hra-day-date-badge ${categoryCatClass}`, "row-start-1 col-start-1"].filter(Boolean).join(" ")}
+          onClick={() => onExportDayFit?.(day)}
+          title={t("runplan.accordion.exportFitLabel", "Generate single workout fit")}
+          aria-label={t("runplan.accordion.exportFitLabel", "Generate single workout fit")}
+        >
           {dateBadge}
           <CategoryIcon size={12} />
-        </span>
+        </button>
         {/* HRA-126: once approved, the dsl/note inputs simply don't render —
             plain text takes their place so the row still reads correctly. */}
         {readOnlyDays ? (
@@ -528,6 +548,7 @@ function DayEditor(props: {
   onScheduledTimeEdit?: (scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
+  onExportDayFit?: (day: DayView) => void;
 }) {
   return props.day.date != null
     ? <InstanceDayRow {...props} date={props.day.date} />
@@ -535,7 +556,7 @@ function DayEditor(props: {
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -549,6 +570,7 @@ function WeekEditor({
   onScheduledTimeEdit?: (dayIndex: number, scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
+  onExportDayFit?: (day: DayView) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -591,6 +613,7 @@ function WeekEditor({
               onScheduledTimeEdit={onScheduledTimeEdit ? time => onScheduledTimeEdit(dayIndex, time) : undefined}
               onWorkoutTypeEdit={onWorkoutTypeEdit ? workoutType => onWorkoutTypeEdit(dayIndex, workoutType) : undefined}
               isDayDirty={isDayDirty}
+              onExportDayFit={onExportDayFit}
             />
           ))}
         </div>
@@ -600,7 +623,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -615,6 +638,7 @@ function SectionEditor({
   onScheduledTimeEdit?: (weekIndex: number, dayIndex: number, scheduledTime: string | null) => void;
   onWorkoutTypeEdit?: (weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
+  onExportDayFit?: (day: DayView) => void;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -674,6 +698,7 @@ function SectionEditor({
             onScheduledTimeEdit={onScheduledTimeEdit ? (dayIndex, time) => onScheduledTimeEdit(weekIndex, dayIndex, time) : undefined}
             onWorkoutTypeEdit={onWorkoutTypeEdit ? (dayIndex, workoutType) => onWorkoutTypeEdit(weekIndex, dayIndex, workoutType) : undefined}
             isDayDirty={isDayDirty}
+            onExportDayFit={onExportDayFit}
           />
         ))}
       </div>
@@ -682,7 +707,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -702,6 +727,7 @@ export function TrainingPlanAccordion({
           onScheduledTimeEdit={onScheduledTimeEdit ? (weekIndex, dayIndex, time) => onScheduledTimeEdit(sectionIndex, weekIndex, dayIndex, time) : undefined}
           onWorkoutTypeEdit={onWorkoutTypeEdit ? (weekIndex, dayIndex, workoutType) => onWorkoutTypeEdit(sectionIndex, weekIndex, dayIndex, workoutType) : undefined}
           isDayDirty={isDayDirty}
+          onExportDayFit={onExportDayFit}
         />
       ))}
     </div>
