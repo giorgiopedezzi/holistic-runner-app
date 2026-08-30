@@ -122,13 +122,17 @@ export const MainOverlayChart = memo(function MainOverlayChart({
           <Line key={key} yAxisId={key} dataKey={key} stroke={metricStroke(key, "overlay")}
             strokeWidth={1.5} dot={false} isAnimationActive={false} name={METRIC_DEFS[key].label} />
         ))}
-        {/* HRA-207 "Overlap" mode: the planned pace-target band as an
-            additive translucent layer, sharing Speed/Pace's own yAxisId/
-            domain rather than a second axis — one <Area> per band (own
-            `data` prop), same per-band pattern PlannedPaceTargetChart.tsx
-            already uses, so a rest-leg gap between bands never draws a
-            connecting fill across it. Dashed + low opacity is what visually
-            distinguishes it from the real, solid speed/pace Line above. */}
+        {/* HRA-208: the planned pace-target band as an additive translucent
+            layer, sharing Speed/Pace's own yAxisId/domain rather than a
+            second axis — one <Area> per band (own `data` prop), same
+            per-band pattern PlannedPaceTargetChart.tsx already uses, so a
+            rest-leg gap between bands never draws a connecting fill across
+            it. Background-only fill, no border (explicit feedback: "full
+            with a background consistent with workout color and a
+            transparency of about 15%... only background, no border line") —
+            stroke="none" is what distinguishes it from the real, solid
+            speed/pace Line above; the legend's own translucent swatch
+            mirrors this exact fill (see ActivityChartSection.tsx). */}
         {plannedBands.map((band, index) => (
           <Area
             key={`planned-${index}`}
@@ -138,10 +142,8 @@ export const MainOverlayChart = memo(function MainOverlayChart({
             type="linear"
             name={METRIC_DEFS.speed.label}
             fill={METRIC_DEFS.speed.color}
-            fillOpacity={0.18}
-            stroke={METRIC_DEFS.speed.color}
-            strokeDasharray="5 4"
-            strokeWidth={1.5}
+            fillOpacity={0.15}
+            stroke="none"
             dot={false}
             activeDot={false}
             isAnimationActive={false}

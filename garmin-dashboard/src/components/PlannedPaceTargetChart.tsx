@@ -42,7 +42,7 @@ function bandPoints(band: PaceTargetBand): BandPoint[] {
   ];
 }
 
-export function PlannedPaceTargetChart({ model }: { model: PaceTargetBandModel }) {
+export function PlannedPaceTargetChart({ model, className = "mt-2.5" }: { model: PaceTargetBandModel; className?: string }) {
   const { t } = useTranslation();
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const bands = model.pieces.filter((piece): piece is PaceTargetBand => piece.kind === "band");
@@ -90,7 +90,7 @@ export function PlannedPaceTargetChart({ model }: { model: PaceTargetBandModel }
   }));
 
   return (
-    <div data-testid="planned-pace-target-chart" role="img" aria-label={title} className="mt-2.5">
+    <div data-testid="planned-pace-target-chart" role="img" aria-label={title} className={className}>
       <ChartCard title={title}>
         <div className="h-52.5">
           <ResponsiveContainer width="100%" height="100%">

@@ -3,10 +3,9 @@ import { useTranslation } from "react-i18next";
 import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
-import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty, Select } from "@/components/ui";
+import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty } from "@/components/ui";
 import { ClassificationCard } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
-import { PlannedPaceTargetChart } from "../PlannedPaceTargetChart";
 import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
 import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
@@ -52,13 +51,15 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
   // leaves the default order unspecified beyond "deterministic".
   const [plannedDays, setPlannedDays] = useState<PlanInstanceDayWithInstance[]>([]);
   const [selectedPlannedDayId, setSelectedPlannedDayId] = useState<number | null>(null);
-  // HRA-207: Overlap/Distinct switch for the selected day's planned-vs-actual
-  // comparison — defaults to "Overlap" per the Story's AC. "Distinct" is
-  // HRA-206's own unchanged stacked PlannedPaceTargetChart below the main
-  // graph; "Overlap" instead feeds the same model into ActivityChartSection
-  // as an additive layer on the main chart itself (see plannedPaceModel
-  // below). Pure client-side toggle — never triggers a refetch.
-  const [comparisonViewMode, setComparisonViewMode] = useState<"overlap" | "distinct">("overlap");
+  // HRA-208: pill+card toggle pair for the selected day's planned-vs-actual
+  // comparison, replacing HRA-207's Overlap/Distinct switch — plannedShown
+  // (default true, matching the old "Overlap" default) feeds the model into
+  // ActivityChartSection as an additive layer on the main chart;
+  // plannedCardShown (default false) shows it as its own standalone card,
+  // first under the main chart. Pure client-side toggles — never trigger a
+  // refetch.
+  const [plannedShown, setPlannedShown] = useState(true);
+  const [plannedCardShown, setPlannedCardShown] = useState(false);
   // Classification accordion (dashboard design-system rework, "reorganize
   // activity layout") — collapsed by default; splitMeters is lifted out of
   // ClassificationCard (which still falls back to its own local state when
@@ -388,45 +389,13 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                 showCard={showCard}
                 toggleMetric={toggleMetric}
                 toggleCard={toggleCard}
-                plannedOverlay={comparisonViewMode === "overlap" ? plannedPaceModel : null}
+                plannedModel={plannedPaceModel}
+                plannedShown={plannedShown} setPlannedShown={setPlannedShown}
+                plannedCardShown={plannedCardShown} setPlannedCardShown={setPlannedCardShown}
+                plannedDays={plannedDays}
+                selectedPlannedDayId={selectedPlannedDayId} setSelectedPlannedDayId={setSelectedPlannedDayId}
               />
             )}
-
-            {/* HRA-206: same-day scheduled workout(s) — 0 matches means no UI
-                change (plannedDays stays empty), 1 renders the chart
-                automatically, >=2 shows a picker (labeled by instance name)
-                above it. Placed below the main graph, matching the Story's
-                own insertion point. HRA-207 adds the Overlap/Distinct switch
-                next to that picker, shown only once a scheduled workout is
-                actually selected (plannedPaceModel resolves). */}
-            {(plannedDays.length >= 2 || plannedPaceModel) && (
-              <div className="hra-row-wrap gap-2 mt-2.5">
-                {plannedDays.length >= 2 && (
-                  <>
-                    <span className="hra-text-secondary text-label">{t("activity.plannedWorkout.pickerLabel", "Compare to plan")}</span>
-                    <Select
-                      value={String(selectedPlannedDayId)}
-                      onValueChange={v => setSelectedPlannedDayId(Number(v))}
-                      options={plannedDays.map(d => ({
-                        value: String(d.id),
-                        label: d.instance_name ?? t("activity.plannedWorkout.unnamedInstance", "Unnamed plan"),
-                      }))}
-                    />
-                  </>
-                )}
-                {plannedPaceModel && (
-                  <div className="hra-segment">
-                    {(["overlap", "distinct"] as const).map(m => (
-                      <button key={m} onClick={() => setComparisonViewMode(m)}
-                        className="hra-segment-item" data-active={comparisonViewMode === m}>
-                        {m === "overlap" ? t("activity.plannedWorkout.viewOverlap", "Overlap") : t("activity.plannedWorkout.viewDistinct", "Distinct")}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            {comparisonViewMode === "distinct" && plannedPaceModel && <PlannedPaceTargetChart model={plannedPaceModel} />}
           </>
         )}
     </>

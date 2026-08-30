@@ -295,8 +295,6 @@
   "activity.detail.moveToTrash": "Move to trash?",
   "activity.plannedWorkout.pickerLabel": "Compare to plan",
   "activity.plannedWorkout.unnamedInstance": "Unnamed plan",
-  "activity.plannedWorkout.viewOverlap": "Overlap",
-  "activity.plannedWorkout.viewDistinct": "Distinct",
   "activity.plannedWorkout.legendActual": "Actual",
   "activity.plannedWorkout.legendPlanned": "Planned",
   "activity.stat.distance": "Distance",

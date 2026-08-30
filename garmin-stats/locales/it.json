@@ -295,8 +295,6 @@
   "activity.detail.moveToTrash": "Spostare nel cestino?",
   "activity.plannedWorkout.pickerLabel": "Confronta con il piano",
   "activity.plannedWorkout.unnamedInstance": "Piano senza nome",
-  "activity.plannedWorkout.viewOverlap": "Sovrapposto",
-  "activity.plannedWorkout.viewDistinct": "Distinto",
   "activity.plannedWorkout.legendActual": "Effettivo",
   "activity.plannedWorkout.legendPlanned": "Pianificato",
   "activity.stat.distance": "Distanza",

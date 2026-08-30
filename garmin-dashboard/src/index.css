@@ -1761,6 +1761,10 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    a fixed token, since each swatch here tints to whichever series it labels. */
 .hra-series-swatch--line { border-top: 2px solid var(--legend-color); }
 .hra-series-swatch--bar  { background: var(--legend-color); border-radius: 2px; }
+/* Translucent fill swatch — mirrors an Area's own background-only fill
+   (no border), same 15% the planned-pace overlay uses on the activity
+   chart (ActivityChartSection.tsx / OverlayCharts.tsx). */
+.hra-series-swatch--fill { background: color-mix(in srgb, var(--legend-color) 15%, transparent); border-radius: 2px; }
 /* ProgressBar's empty track — distinct from its accent-colored fill
    (which is a real per-instance value, handled via --dyn-bg). */
 .hra-bg-border { background: var(--border); }
@@ -2007,6 +2011,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-activity-metric-card { margin-top: var(--section-gap); }
 .hra-activity-metric-controls { padding-inline: 8px; }
 .hra-activity-chart-controls {
+  grid-template-columns: auto 1fr auto;
   padding-left: var(--chart-controls-left);
   padding-right: var(--chart-controls-right);
 }
@@ -2019,8 +2024,15 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-overview-header-inset { padding-left: var(--overview-header-left); }
 .hra-overview-controls-row { padding-right: var(--overview-header-right); }
 .hra-series-swatch--line,
-.hra-series-swatch--bar { display: inline-block; width: 14px; }
-.hra-series-swatch--bar { height: 8px; }
+.hra-series-swatch--bar,
+.hra-series-swatch--fill { display: inline-block; width: 14px; }
+.hra-series-swatch--bar,
+.hra-series-swatch--fill { height: 8px; }
+/* Activity detail's own Actual/Planned legend (ActivityChartSection.tsx) —
+   longer swatches than the generic 14px default so the solid line and the
+   translucent fill both read clearly at a glance next to the Planned pill. */
+.hra-activity-plan-legend .hra-series-swatch--line,
+.hra-activity-plan-legend .hra-series-swatch--fill { width: 22px; }
 .hra-trend-layout { display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; }
 .hra-trend-main { flex: 3 1 480px; min-width: 0; }
 .hra-trend-sidebar { flex: 1 1 110px; max-width: 130px; }

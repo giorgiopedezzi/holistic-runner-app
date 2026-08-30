@@ -1,8 +1,6 @@
 import type { CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import type { MetricKey } from "@/domain/activity-chart";
 import { Checkbox } from "@/components/ui";
-import { METRIC_DEFS } from "./shared";
 
 export interface MetricRowState {
   active:    boolean;
@@ -23,12 +21,11 @@ export type MetricRowField = "active" | "card";
 // 2 parallel callbacks (HRA-75, architecture-avoid-boolean-props) — the
 // caller still owns activeMetrics/showCard independently, this just
 // collapses how they're threaded through one component's props.
-export function MetricRow({ mKey, label, state, onToggle }: {
-  mKey: MetricKey; label: string; state: MetricRowState; onToggle: (field: MetricRowField) => void;
+export function MetricRow({ label, color, state, onToggle }: {
+  label: string; color: string; state: MetricRowState; onToggle: (field: MetricRowField) => void;
 }) {
   const { t } = useTranslation();
   const { active, available, cardOn } = state;
-  const color = METRIC_DEFS[mKey].color;
   return (
     <div className="flex items-center gap-2 py-0.75 flex-wrap">
       <button

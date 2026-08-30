@@ -6,11 +6,12 @@ import {
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
 import type { PaceTargetBandModel } from "@/domain/planned-workout";
-import type { TrackPoint } from "@/types/api";
+import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
+import type { PlanInstanceDayWithInstance, TrackPoint } from "@/types/api";
 import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
 import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH } from "./shared";
-import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, splitUnit } from "@/components/ui";
+import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, Select, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { MainOverlayChart, MetricStandaloneCard } from "./OverlayCharts";
 import { RunnerTerrain } from "./RunnerTerrain";
@@ -107,12 +108,20 @@ interface ActivityChartSectionProps {
   showCard: Record<MetricKey, boolean>;
   toggleMetric: (key: OptionalMetricKey) => void;
   toggleCard: (key: MetricKey) => void;
-  // HRA-207: the selected scheduled workout's pace-target bands, only while
-  // ActivityDetailBody's Overlap/Distinct switch is set to "Overlap" —
-  // undefined/null (its default) reproduces this section's pre-HRA-207
-  // rendering exactly, satisfying the Story's "no scheduled workout selected
-  // -> no change" acceptance criterion.
-  plannedOverlay?: PaceTargetBandModel | null;
+  // HRA-208: the selected scheduled workout's pace-target bands (null when no
+  // scheduled workout is selected -> no change to this section's rendering),
+  // plus the pill+card toggle pair that decides whether it's drawn as an
+  // additive layer on the main chart (plannedShown) and/or as its own
+  // standalone card, first under the main chart (plannedCardShown) — same
+  // active/card toggle shape MetricRow already gives cadence/power.
+  plannedModel: PaceTargetBandModel | null;
+  plannedShown: boolean; setPlannedShown: (b: boolean) => void;
+  plannedCardShown: boolean; setPlannedCardShown: (b: boolean) => void;
+  // Same-day scheduled workout candidates (HRA-206) — the picker itself now
+  // lives in this section's own middle control column rather than below the
+  // whole chart section, so it needs the raw list + selection here too.
+  plannedDays: PlanInstanceDayWithInstance[];
+  selectedPlannedDayId: number | null; setSelectedPlannedDayId: (id: number) => void;
 }
 
 export function ActivityChartSection({
@@ -122,7 +131,8 @@ export function ActivityChartSection({
   speedMode, setSpeedMode, speedDomain,
   activeMetrics, effectiveActive, availableMetrics, showCard,
   toggleMetric, toggleCard,
-  plannedOverlay = null,
+  plannedModel, plannedShown, setPlannedShown, plannedCardShown, setPlannedCardShown,
+  plannedDays, selectedPlannedDayId, setSelectedPlannedDayId,
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
   // ── Mouse-follow runner (icon in its own row above the chart, readout
@@ -503,6 +513,12 @@ export function ActivityChartSection({
   // chartData itself exists.
   const runnerReady = plotWidth !== 0 && chartData.length > 0;
 
+  // The planned overlay only ever feeds the main chart while the pill is on
+  // — same "active" semantics MetricRow gives cadence/power (mirrored below
+  // for the planned pill itself), just resolved here since MainOverlayChart
+  // takes the model directly rather than the toggle state.
+  const plannedOverlay = plannedShown ? plannedModel : null;
+
   return (
     <div className="hra-activity-chart-section">
       {/* Three-column selector row (dashboard design-system rework,
@@ -560,7 +576,7 @@ export function ActivityChartSection({
           {OPTIONAL_METRIC_ORDER.map(key => (
             <MetricRow
               key={key}
-              mKey={key}
+              color={METRIC_DEFS[key].color}
               label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
               state={{
                 active:    activeMetrics.includes(key),
@@ -586,35 +602,75 @@ export function ActivityChartSection({
           rework: "the row INSIDE the graph card must be the same width as
           the terrain/graph lines"). */}
       <ChartCard
-        legend={plannedOverlay && (
-          // HRA-207 "Overlap" mode only — same shared swatch classes/
-          // `--legend-color` hook SportTrendOverlapChart's own current-vs-
-          // compare legend uses (docs/frontend.md), not a bespoke style:
-          // solid swatch = the real activity's line, opacity-50 dashed
-          // swatch = the planned band drawn on top of it.
-          <div className="hra-text-muted flex gap-3.5 items-center text-meta flex-wrap">
-            <span className="hra-row-inline gap-1.5">
-              <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
-                <span className="hra-series-swatch--line" />
-              </span>
-              {t("activity.plannedWorkout.legendActual", "Actual")}
-            </span>
-            <span className="hra-row-inline gap-1.5">
-              <span className="hra-row-inline opacity-50" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
-                <span className="hra-series-swatch--line" />
-              </span>
-              {t("activity.plannedWorkout.legendPlanned", "Planned")}
-            </span>
-          </div>
-        )}
         controlsRow={
-        <div className="hra-activity-chart-controls flex items-center justify-between gap-3" style={{
+        <div className="hra-activity-chart-controls grid items-center gap-3" style={{
           "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
           "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
         } as CSSProperties}>
+          {/* Left column: Play/Stop only. */}
           <div className="flex items-center gap-1.5">
             <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
             <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+          </div>
+          {/* Middle column: the planned-workout pill + card toggle, the
+              Actual/Planned legend while the overlay is actually shown, then
+              the same-day scheduled-workout picker when there's more than
+              one candidate (explicit feedback: "move Planned pill and legend
+              in the middle column"). Pill only rendered once a scheduled
+              workout is actually selected (plannedModel resolves) — the
+              Overlap/Distinct switch this replaces is gone; the pill IS the
+              on/off control now. */}
+          <div className="hra-row-wrap gap-3 justify-center items-center">
+            {plannedModel && (
+              <MetricRow
+                color="var(--data-pace)"
+                label={t("activity.plannedWorkout.legendPlanned", "Planned")}
+                state={{ active: plannedShown, available: true, cardOn: plannedCardShown }}
+                onToggle={field => (field === "active" ? setPlannedShown(!plannedShown) : setPlannedCardShown(!plannedCardShown))}
+              />
+            )}
+            {plannedOverlay && (
+              // Same shared swatch classes/`--legend-color` hook
+              // SportTrendOverlapChart's own current-vs-compare legend
+              // uses (docs/frontend.md) — scoped longer here
+              // (.hra-activity-plan-legend, index.css) so they read clearly
+              // next to the pill. Solid line swatch = the real activity's
+              // line (speed/pace's own data-pace token, its own scale);
+              // translucent fill swatch = the planned band's area-only fill
+              // on the chart (no border line there any more either).
+              // `text-meta` sits on the inner spans, not this row div —
+              // index.css's `div.text-meta { margin-bottom: 4px }` (a
+              // typography rule for text-meta used as a caption) would
+              // otherwise nudge this row down off-center from the pill
+              // beside it, which has no such margin. */}
+              <div className="hra-activity-plan-legend hra-text-muted flex gap-3.5 items-center flex-wrap">
+                <span className="hra-row-inline gap-1.5 text-meta">
+                  <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
+                    <span className="hra-series-swatch--line" />
+                  </span>
+                  {t("activity.plannedWorkout.legendActual", "Actual")}
+                </span>
+                <span className="hra-row-inline gap-1.5 text-meta">
+                  <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
+                    <span className="hra-series-swatch--fill" />
+                  </span>
+                  {t("activity.plannedWorkout.legendPlanned", "Planned")}
+                </span>
+              </div>
+            )}
+            {plannedDays.length >= 2 && (
+              <div className="hra-row-inline gap-2 items-center">
+                <span className="hra-text-secondary text-label">{t("activity.plannedWorkout.pickerLabel", "Compare to plan")}</span>
+                <Select
+                  value={String(selectedPlannedDayId)}
+                  onValueChange={v => setSelectedPlannedDayId(Number(v))}
+                  options={plannedDays.map(d => ({
+                    value: String(d.id),
+                    label: d.instance_name ?? t("activity.plannedWorkout.unnamedInstance", "Unnamed plan"),
+                  }))}
+                />
+              </div>
+            )}
           </div>
           <div className="hra-row-wrap gap-2 justify-end">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
@@ -685,6 +741,12 @@ export function ActivityChartSection({
         </div>
       )}
       </ChartCard>
+
+      {/* HRA-208: the planned-workout card — first under the main chart,
+          ahead of every metric card, while the "Card" toggle above is on. */}
+      {plannedModel && plannedCardShown && (
+        <PlannedPaceTargetChart model={plannedModel} className="hra-activity-metric-card" />
+      )}
 
       {effectiveActive.filter(key => showCard[key]).map(key => {
         const domain = cardDomains[key]!;

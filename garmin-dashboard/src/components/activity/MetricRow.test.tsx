@@ -15,7 +15,7 @@ import { MetricRow } from "./MetricRow";
 
 describe("MetricRow", () => {
   it("shows the card checkbox disabled and unchecked while the metric is inactive", () => {
-    render(<MetricRow mKey="heart_rate" label="Heart rate"
+    render(<MetricRow color="var(--data-hr)" label="Heart rate"
       state={{ active: false, available: true, cardOn: true }} onToggle={vi.fn()} />);
 
     const checkbox = screen.getByLabelText("Card");
@@ -25,7 +25,7 @@ describe("MetricRow", () => {
 
   it("clicking the pill fires onToggle('active') only", () => {
     const onToggle = vi.fn();
-    render(<MetricRow mKey="heart_rate" label="Heart rate"
+    render(<MetricRow color="var(--data-hr)" label="Heart rate"
       state={{ active: false, available: true, cardOn: false }} onToggle={onToggle} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Heart rate" }));
@@ -36,7 +36,7 @@ describe("MetricRow", () => {
 
   it("toggling the Card checkbox fires onToggle('card') only", () => {
     const onToggle = vi.fn();
-    render(<MetricRow mKey="heart_rate" label="Heart rate"
+    render(<MetricRow color="var(--data-hr)" label="Heart rate"
       state={{ active: true, available: true, cardOn: false }} onToggle={onToggle} />);
 
     fireEvent.click(screen.getByLabelText("Card"));
@@ -46,7 +46,7 @@ describe("MetricRow", () => {
   });
 
   it("disables the pill and explains why when the metric has no data", () => {
-    render(<MetricRow mKey="power" label="Power"
+    render(<MetricRow color="#a855f7" label="Power"
       state={{ active: false, available: false, cardOn: false }} onToggle={vi.fn()} />);
 
     const btn = screen.getByRole("button", { name: "Power" });
