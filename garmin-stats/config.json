@@ -1,26 +1,5 @@
 {
-  "garmin": {
-    "device_name": "Forerunner 965"
-  },
-  "withings": {
-    "client_id":     "6b9bf99fb4b0d6c87a5220615e9605c12724cc16f6624877a3a55fd331117a9c",
-    "client_secret": "dc1697f18bc9f1cd961ae2c1fa528ddd34c2ba0cce655de9c5d16334227c2611",
-    "redirect_uri":  "http://localhost:3002/callback"
-  },
-  "strava": {
-    "client_id":     "YOUR_STRAVA_CLIENT_ID",
-    "client_secret": "YOUR_STRAVA_CLIENT_SECRET",
-    "redirect_uri":  "http://localhost:3001/api/strava/callback"
-  },
   "database": {
-    "path": "./garmin.db"
-  },
-  "sync": {
-    "auto_on_start": true,
-    "skip_duplicates": true
-  },
-  "ollama": {
-    "host": "http://localhost:11434",
-    "model": "phi3:mini"
+    "path": "/data/db/garmin.db"
   }
 }
