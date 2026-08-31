@@ -22,7 +22,7 @@ echo ""
 # ── check if a port is listening ─────────────────────────────────────────
 port_open() {
   powershell.exe -NoProfile -Command \
-    "(New-Object Net.Sockets.TcpClient).Connect('127.0.0.1', $1)" 2>/dev/null \
+    "(New-Object Net.Sockets.TcpClient).Connect('0.0.0.0', $1)" 2>/dev/null \
   && return 0 || return 1
 }
 
@@ -31,7 +31,7 @@ UI_UP=false
 
 # Use curl if available (Git Bash has it), otherwise fall back to powershell
 check_port() {
-  curl -s --connect-timeout 1 "http://127.0.0.1:$1" > /dev/null 2>&1
+  curl -s --connect-timeout 1 "http://0.0.0.0:$1" > /dev/null 2>&1
 }
 
 echo "Checking services…"

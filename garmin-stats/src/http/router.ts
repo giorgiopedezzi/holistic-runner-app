@@ -46,7 +46,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       res.end(); return;
     }
 
-    const url   = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
+    const url   = new URL(req.url ?? "/", `http://0.0.0.0:${port}`);
     const route = url.pathname;
 
     try {

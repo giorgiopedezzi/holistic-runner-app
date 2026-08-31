@@ -3,10 +3,10 @@
   "info": {
     "title": "Garmin Stats — Local Health Dashboard API",
     "version": "2.0.0",
-    "description": "Local-only REST API (binds 127.0.0.1) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nContract-hardening epic HRA-36 in progress: RFC 7807 `application/problem+json` error bodies with correct status codes (HRA-37 ✓), plural resource nouns incl. `/api/body-measurements` (HRA-39 ✓), the `{ data, page }` list envelope with limit/offset paging (HRA-38 ✓), PATCH (application/merge-patch+json) for partial settings updates (HRA-40 ✓), and the version prefix — every path is now under `/api/v1/...` (HRA-41 ✓) — have landed. The HRA-36 contract-hardening epic is complete. Drift between this file and the running API is treated as a bug."
+    "description": "Local-only REST API (binds 0.0.0.0) for the Holistic Runner App. Aggregates Garmin, Strava, and Withings data in a local SQLite DB.\n\nContract-hardening epic HRA-36 in progress: RFC 7807 `application/problem+json` error bodies with correct status codes (HRA-37 ✓), plural resource nouns incl. `/api/body-measurements` (HRA-39 ✓), the `{ data, page }` list envelope with limit/offset paging (HRA-38 ✓), PATCH (application/merge-patch+json) for partial settings updates (HRA-40 ✓), and the version prefix — every path is now under `/api/v1/...` (HRA-41 ✓) — have landed. The HRA-36 contract-hardening epic is complete. Drift between this file and the running API is treated as a bug."
   },
   "servers": [
-    { "url": "http://127.0.0.1:3001", "description": "Local API server" }
+    { "url": "http://0.0.0.0:3001", "description": "Local API server" }
   ],
   "tags": [
     { "name": "activities", "description": "Activities, track points, and the workout classifier workflow" },
