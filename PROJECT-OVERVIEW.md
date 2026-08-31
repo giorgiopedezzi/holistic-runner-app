@@ -1,5 +1,4 @@
-# Holistic Runner App (HRA)
-
+# Holistic Runner App (HRA) - Vercel
 A privacy-first, **local-only** endurance + body-composition dashboard. It pulls raw training
 data straight off a Garmin watch and a Withings scale, keeps everything in a single local
 database, and turns it into one dashboard that shows training load and body composition
