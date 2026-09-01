@@ -53,6 +53,14 @@ node --env-file=.env src/server.ts
 hosts like Railway/Vercel that inject env vars directly) — pass `--env-file=.env` yourself for local
 runs, or export the vars in your shell.
 
+**Per-host setup**: every host (local, Railway, Vercel, etc.) configures the same var list — see
+`.env.example` for the full set. `DB_PATH` is required everywhere; `GARMIN_DEVICE_NAME` only where
+`sync:garmin` runs (typically local, since it needs the MTP bridge); `WITHINGS_*`/`STRAVA_*` only
+where that integration's login/sync runs; `OLLAMA_*` only where AI workout classification runs.
+There is no `config.json` to hand-edit or commit per deploy target — set the vars in the host's own
+env var UI/config instead. `config-locale.json` may still exist in a local checkout but is dead:
+`loadConfig()` reads only `process.env`, nothing reads that file.
+
 Find your Garmin device ID at:
 ```
 C:\ProgramData\Garmin\CoreService\Devices\
