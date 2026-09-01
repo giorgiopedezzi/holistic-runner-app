@@ -34,6 +34,12 @@ function rowColor(row: ChartRow): string {
 // components/activity/shared.ts).
 export function SplashScreen() {
   const { t } = useTranslation();
+  // sessionStorage, not the backend `settings` table every other persisted
+  // preference in this app uses (.claude/rules/frontend.md): this flag is
+  // ephemeral, tab-scoped "have I shown this once" state with no reason to
+  // survive a closed tab or sync across devices — the Story's own AC (HRA-223)
+  // requires exactly that per-tab-session behavior, which the backend table
+  // doesn't give for free.
   const [dismissed, setDismissed] = useState(() => {
     try {
       return sessionStorage.getItem(SPLASH_SESSION_KEY) === "1";
