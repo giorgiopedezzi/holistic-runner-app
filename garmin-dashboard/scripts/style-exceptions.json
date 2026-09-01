@@ -539,22 +539,6 @@
       "symbol": "PlannedPaceTargetChart",
       "category": "visualization-library",
       "element": "YAxis",
-      "attribute": "label",
-      "properties": [
-        "angle",
-        "fill",
-        "fontSize",
-        "position",
-        "value"
-      ],
-      "count": 1,
-      "rationale": "Recharts generates the SVG axis node; its compact geometry and semantic token color must be supplied through the library prop."
-    },
-    {
-      "file": "src/components/PlannedPaceTargetChart.tsx",
-      "symbol": "PlannedPaceTargetChart",
-      "category": "visualization-library",
-      "element": "YAxis",
       "attribute": "tick",
       "properties": [
         "identifier:chartTick"

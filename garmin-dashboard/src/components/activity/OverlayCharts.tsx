@@ -87,7 +87,20 @@ export const MainOverlayChart = memo(function MainOverlayChart({
             both modes here. */}
         <MetricGradientDefs id="overlay" rows={chartData} speedFastAtTop fasterIsHigherValue={speedMode === "speed"} />
         <CartesianGrid {...gridStyle} />
-        <XAxis dataKey="x" type="number" domain={["dataMin", "dataMax"]} ticks={xTicks}
+        {/* Explicit numeric domain, not ["dataMin","dataMax"] — Recharts
+            computes those off the union of every series' data, and the
+            planned-overlay <Area>s below carry their OWN `data` (band.points)
+            which can run past the actual track's last point when the planned
+            workout is longer. Pinning it to the actual track's own range
+            keeps the real activity always filling the full plot width; a
+            longer planned overlay simply runs off the visible edge.
+            allowDataOverflow is required for that clipping to actually take
+            effect — Recharts otherwise silently widens a custom domain to
+            fit every series' data regardless (its default is to never let
+            data overflow the axis), which re-introduces the exact stretch
+            this domain exists to prevent. */}
+        <XAxis dataKey="x" type="number" domain={[chartData[0]?.x ?? 0, chartData[chartData.length - 1]?.x ?? 0]}
+          allowDataOverflow ticks={xTicks}
           tickFormatter={xTickFormatter(chartData, xMode)} tick={axisStyle} tickLine={false} axisLine={false} />
         {/* Speed/Pace's axis is never conditionally hidden/zero-width — it's
             the one mandatory metric, so it must never depend on any toggle

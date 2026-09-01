@@ -1737,6 +1737,9 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-text-danger    { color: var(--accent-red); }
 .hra-text-success   { color: var(--accent-green); }
 .hra-text-warning   { color: var(--accent-orange); }
+/* Play/Stop's "animation is shorter than the planned workout" note
+   (ActivityChartSection.tsx) — icon + italic warning text on one line. */
+.hra-activity-plan-note { display: inline-flex; align-items: center; gap: 5px; }
 .hra-border         { border: 1px solid var(--border); }
 .hra-border-strong  { border: 1px solid var(--border-strong); }
 .hra-border-top     { border-top: 1px solid var(--border); }

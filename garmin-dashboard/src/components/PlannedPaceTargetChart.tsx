@@ -2,7 +2,7 @@ import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { Area, ComposedChart, CartesianGrid, ReferenceArea, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis } from "recharts";
 import { ChartCard, chartGrid, chartTick, chartTooltipStyle } from "@/components/ui";
-import { speedRampColor } from "@/components/activity/shared";
+import { speedRampColor, MARGIN_LEFT, MARGIN_RIGHT, AXIS_WIDTH, RIGHT_AXES_WIDTH } from "@/components/activity/shared";
 import { PauseFlagShape } from "@/components/activity/PauseFlagShape";
 import { computePaceTargetStats, type PaceTargetBand, type PaceTargetGap, type PaceTargetBandModel } from "@/domain/planned-workout";
 import { fmtPace } from "@/utils/fmt";
@@ -91,13 +91,18 @@ export function PlannedPaceTargetChart({ model, className = "mt-2.5" }: { model:
 
   return (
     <div data-testid="planned-pace-target-chart" role="img" aria-label={title} className={className}>
-      <ChartCard title={title}>
+      <ChartCard title={title} subHeader={<span className="hra-text-secondary text-meta">{paceAxis}</span>}>
         <div className="h-52.5">
           <ResponsiveContainer width="100%" height="100%">
             {/* top:16 (not the chart's own default) gives the reused
                 pause-flag pill room — see OverlayCharts.tsx's identical
-                margin comment for why a smaller top margin clips it. */}
-            <ComposedChart data={domainPoints} margin={{ top: 16, right: 12, bottom: 28, left: 12 }}>
+                margin comment for why a smaller top margin clips it.
+                left/right: the same fixed reservations the main activity
+                chart's own left (speed) and right (HR) axes always keep
+                (MetricStandaloneCard mirrors the right one too) — so this
+                card's plot area lines up with the main chart's, and matching
+                km ticks fall at the same x position on both sides. */}
+            <ComposedChart data={domainPoints} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 28, left: MARGIN_LEFT }}>
               <defs>
                 {bands.map((band, index) => {
                   const start = speedRampColor(paceRampPosition(band.startTargetPaceSecPerKm, slowest, mean, fastest));
@@ -121,6 +126,10 @@ export function PlannedPaceTargetChart({ model, className = "mt-2.5" }: { model:
                 tickFormatter={value => displayDistance(Number(value)).toFixed(1)}
                 label={{ value: distanceAxis, position: "insideBottom", offset: -12, fill: "var(--text-secondary)", fontSize: 11 }}
               />
+              {/* No inline rotated axis label — "Pace (min/km)" now sits as
+                  a horizontal ChartCard subHeader instead, and width matches
+                  AXIS_WIDTH (the main chart's own left/speed axis width) so
+                  this card's plot area lines up with it. */}
               <YAxis
                 type="number"
                 reversed
@@ -128,9 +137,8 @@ export function PlannedPaceTargetChart({ model, className = "mt-2.5" }: { model:
                 tick={chartTick}
                 tickLine={false}
                 axisLine={false}
-                width={52}
+                width={AXIS_WIDTH}
                 tickFormatter={value => fmtPace(Number(value) / 60)}
-                label={{ value: paceAxis, angle: -90, position: "insideLeft", fill: "var(--text-secondary)", fontSize: 11 }}
               />
               <Tooltip
                 contentStyle={chartTooltipStyle}
