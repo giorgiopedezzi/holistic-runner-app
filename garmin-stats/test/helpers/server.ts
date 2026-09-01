@@ -81,7 +81,7 @@ export async function startTestServer(opts: { seed?: boolean } = {}): Promise<Te
   await new Promise<void>((resolve) => server.listen(0, "0.0.0.0", resolve));
   const addr = server.address();
   if (addr == null || typeof addr === "string") throw new Error("failed to bind test server");
-  const baseUrl = `http://0.0.0.0:${addr.port}`;
+  const baseUrl = `http://127.0.0.1:${addr.port}`;
 
   const api: TestServer["api"] = async (p, init) => {
     const res = await fetch(baseUrl + p, init);

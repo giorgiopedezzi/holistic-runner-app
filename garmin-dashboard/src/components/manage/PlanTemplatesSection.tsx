@@ -49,10 +49,15 @@ const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [] };
 // HRA-200: split+join, not String.replace(pattern, value) — replace() treats
 // "$" sequences in the replacement string specially (e.g. "$&", "$1"), which
 // pasted training-plan text could easily contain unintentionally.
-function fillAiPromptTemplate(originalText: string, language: string): string {
+function fillAiPromptTemplate(
+  originalText: string, language: string, eventType: string, eventName: string, unit: string,
+): string {
   return aiPromptTemplate
     .split("{{TRAINING_PLAN}}").join(originalText)
-    .split("{{LANGUAGE_OPTIONAL}}").join(language);
+    .split("{{LANGUAGE_OPTIONAL}}").join(language)
+    .split("{{EVENT_TYPE_OPTIONAL}}").join(eventType)
+    .split("{{EVENT_NAME_OPTIONAL}}").join(eventName)
+    .split("{{UNIT_OPTIONAL}}").join(unit);
 }
 
 // HRA-120: event is now an explicit, required template field (replacing the
@@ -398,7 +403,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // text + optional language, for the user to copy and run externally
   // against an LLM — this app never calls an LLM API itself.
   function onGeneratePrompt() {
-    setGeneratedPrompt(fillAiPromptTemplate(originalText, language));
+    setGeneratedPrompt(fillAiPromptTemplate(originalText, language, event, name, distanceUnit));
   }
 
   async function onCopyPrompt() {
@@ -409,6 +414,24 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     } catch {
       notify(t("manage.planTemplates.aiPrompt.copyFailed", "Failed to copy prompt to clipboard."), "error");
     }
+  }
+
+  // Save-as alternative to Copy — some LLM front ends reject a pasted prompt
+  // past a certain length but accept the same text as an uploaded file. Same
+  // Blob -> <a download> mechanism as onExportDayFit/downloadScopeFitZip in
+  // PlanInstancesSection.tsx (HRA-202/203) — plain browser download, no File
+  // System Access API.
+  function onSaveAsPrompt() {
+    if (generatedPrompt == null) return;
+    const blob = new Blob([generatedPrompt], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "plan-template-prompt.txt";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   }
 
   // Auto-regenerate the preview a beat after any edit — editing a Section/
@@ -709,9 +732,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               readOnly
               rows={4}
             />
-            <button className="hra-btn shrink-0" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
-              {t("manage.planTemplates.aiPrompt.copyButton", "Copy")}
-            </button>
+            <div className="flex flex-col gap-2.5 shrink-0">
+              <button className="hra-btn" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
+                {t("manage.planTemplates.aiPrompt.copyButton", "Copy")}
+              </button>
+              <button className="hra-btn" onClick={onSaveAsPrompt} disabled={generatedPrompt == null}>
+                {t("manage.planTemplates.aiPrompt.saveAsButton", "Save as…")}
+              </button>
+            </div>
           </div>
         </label>
 
@@ -742,7 +770,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           <button className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading}>
             {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
           </button>
-          <button className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer" onClick={onRestoreClick}>
+          <button className="hra-btn" onClick={onRestoreClick}>
             {t("common.restore", "Restore")}
           </button>
         </div>

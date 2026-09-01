@@ -431,6 +431,7 @@
   "manage.planTemplates.aiPrompt.generateButton": "Generate full prompt",
   "manage.planTemplates.aiPrompt.generatedLabel": "Generated prompt",
   "manage.planTemplates.aiPrompt.copyButton": "Copy",
+  "manage.planTemplates.aiPrompt.saveAsButton": "Save as…",
   "manage.planTemplates.aiPrompt.copySucceeded": "Prompt copied to clipboard.",
   "manage.planTemplates.aiPrompt.copyFailed": "Failed to copy prompt to clipboard.",
   "manage.planTemplates.dslSourceLabel": "DSL text",

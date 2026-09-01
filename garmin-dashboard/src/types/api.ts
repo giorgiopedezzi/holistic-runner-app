@@ -323,7 +323,7 @@ export type StoredLanguage = Language | "auto";
 // existing data-theme attribute for metal/warm. Replaces the earlier
 // 4-way StylePack (HRA-119: boomer/genz/millennial/minimal) entirely.
 export type Palette = "metal" | "warm" | "graphite";
-export const PALETTE_NAMES: Palette[] = ["metal", "warm", "graphite"];
+export const PALETTE_NAMES: Palette[] = ["graphite", "metal", "warm"];
 // Same 'auto' pattern as StoredTheme — a settings row that's never had a
 // palette explicitly chosen resolves via useAppearance.ts's resolvePalette()
 // to 'graphite' when the (already-resolved) theme is dark, 'warm' when
