@@ -7,7 +7,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { Config } from "../config.ts";
+import { requireWithingsConfig, type Config } from "../config.ts";
 import type { WithingsTokenRow } from "../db.ts";
 
 const AUTH_URL  = "https://account.withings.com/oauth2_user/authorize2";
@@ -15,10 +15,11 @@ const TOKEN_URL = "https://wbsapi.withings.net/v2/oauth2";
 export const WITHINGS_SCOPE = "user.metrics,user.activity,user.sleepevents";
 
 export function getAuthUrl(config: Config, state: string): string {
+  const { client_id, redirect_uri } = requireWithingsConfig(config);
   const url = new URL(AUTH_URL);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id",     config.withings.client_id);
-  url.searchParams.set("redirect_uri",  config.withings.redirect_uri);
+  url.searchParams.set("client_id",     client_id);
+  url.searchParams.set("redirect_uri",  redirect_uri);
   url.searchParams.set("scope",         WITHINGS_SCOPE);
   url.searchParams.set("state",         state);
   return url.toString();
@@ -44,18 +45,20 @@ function saveToken(db: DatabaseSync, body: TokenBody): void {
 }
 
 export async function exchangeCode(config: Config, db: DatabaseSync, code: string): Promise<void> {
+  const { client_id, client_secret, redirect_uri } = requireWithingsConfig(config);
   const body = await requestToken(new URLSearchParams({
     action: "requesttoken", grant_type: "authorization_code",
-    client_id: config.withings.client_id, client_secret: config.withings.client_secret,
-    code, redirect_uri: config.withings.redirect_uri,
+    client_id, client_secret,
+    code, redirect_uri,
   }));
   saveToken(db, body);
 }
 
 async function refreshToken(config: Config, db: DatabaseSync, token: WithingsTokenRow): Promise<string> {
+  const { client_id, client_secret } = requireWithingsConfig(config);
   const body = await requestToken(new URLSearchParams({
     action: "requesttoken", grant_type: "refresh_token",
-    client_id: config.withings.client_id, client_secret: config.withings.client_secret,
+    client_id, client_secret,
     refresh_token: token.refresh_token,
   }));
   saveToken(db, body);

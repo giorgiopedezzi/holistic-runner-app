@@ -9,7 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import readline from "readline";
-import { loadConfig, getArg, hasFlag } from "../config.ts";
+import { loadConfig, requireGarminConfig, getArg, hasFlag } from "../config.ts";
 import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
 import { parseFit } from "../domain/fit-parser.ts";
 import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
@@ -107,6 +107,7 @@ async function runMtpExtractionPipeline(archiveFolder: string): Promise<void> {
   console.log(`📊 Found ${existingFilenames.size} records. Compiling exchange file...`);
   fs.writeFileSync(tempJsonPath, JSON.stringify([...existingFilenames]), "utf-8");
 
+  const { device_name } = requireGarminConfig(config);
   try {
     console.log("🔄 Launching PowerShell core file sync worker...");
     await runPowershellStreaming([
@@ -115,7 +116,7 @@ async function runMtpExtractionPipeline(archiveFolder: string): Promise<void> {
       "-File", scriptPath,
       "-Target", archiveFolder,
       "-ExistingJsonFiles", tempJsonPath,
-      "-DeviceName", config.garmin.device_name
+      "-DeviceName", device_name
     ], line => {
       if (line.trim()) console.log(line);
     });

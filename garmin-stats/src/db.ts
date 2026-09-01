@@ -1,17 +1,14 @@
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 import path from "path";
-import { fileURLToPath } from "url";
-import { loadConfig, getArg, CONFIG_DIR } from "./config.ts";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname  = path.dirname(__filename);
+import { loadConfig, getArg } from "./config.ts";
 
 const config  = loadConfig();
-// Resolved against CONFIG_DIR (not process.cwd()) so the same config.json
-// always points at the same database file, regardless of where a script
-// or IDE run configuration happens to launch node from.
+// DB_PATH is now an explicit path (absolute, or resolved relative to
+// process.cwd()) — no longer anchored to config.json's directory, since
+// config is now sourced from env vars, not that file. Observable behavior
+// change from the old CONFIG_DIR-relative resolution (HRA-217).
 const DB_PATH_ARG = getArg("--db");
-const DB_PATH = DB_PATH_ARG ? path.resolve(DB_PATH_ARG) : path.resolve(CONFIG_DIR, config.database.path);
+const DB_PATH = path.resolve(DB_PATH_ARG ?? config.database.path);
 
 export type Db = DatabaseSync;
 

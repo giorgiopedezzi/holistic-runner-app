@@ -18,7 +18,7 @@ export function createDeviceService(scriptsDir: string) {
     return new Promise(resolve => {
       // No -DeviceName: auto-detect by protocol (MTP vs filesystem) instead of
       // requiring an exact name match, which is what actually connects/plugs in —
-      // Windows' reported device name isn't always what's in config.json.
+      // Windows' reported device name isn't always what's set as GARMIN_DEVICE_NAME.
       const child = spawn("powershell.exe", [
         "-NoProfile", "-ExecutionPolicy", "Bypass",
         "-File", scriptPath,

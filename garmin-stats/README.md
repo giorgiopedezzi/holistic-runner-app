@@ -7,7 +7,7 @@ All data stays on your machine. No cloud. No accounts beyond the initial OAuth.
 
 ```
 garmin-stats/
-├── config.json              ← paths, credentials
+├── .env.example             ← template for local env vars (copy to .env)
 ├── tsconfig.json
 ├── package.json
 ├── garmin.db                ← created automatically on first sync
@@ -35,25 +35,38 @@ Download from https://nodejs.org (LTS version).
 npm install
 ```
 
-### 3. Configure Garmin path
-Open `config.json` and find your device ID at:
+### 3. Configure environment variables
+Copy `.env.example` to `.env` and fill in real values:
+```bash
+cp .env.example .env
+```
+Only `DB_PATH` is required to boot the server — every other section (garmin/withings/strava/ollama)
+is validated lazily, only when that integration is actually used, so you can leave sections blank
+until you need them. See `.env.example` for the full list of supported vars.
+
+Config is loaded from `process.env` (`src/config.ts`) — there is no config file to edit. Locally,
+load `.env` using Node 24's native env-file support instead of exporting vars by hand:
+```bash
+node --env-file=.env src/server.ts
+```
+`npm run server` runs `node src/server.ts` without `--env-file` (so it also works unmodified on
+hosts like Railway/Vercel that inject env vars directly) — pass `--env-file=.env` yourself for local
+runs, or export the vars in your shell.
+
+Find your Garmin device ID at:
 ```
 C:\ProgramData\Garmin\CoreService\Devices\
 ```
-You'll see a folder with a long number (e.g. `3876543210`). Update the config:
-```json
-"activities_path": "C:\\ProgramData\\Garmin\\CoreService\\Devices\\3876543210\\Activities"
-```
-> Use `\\` (double backslash) as path separator in JSON on Windows.
+You'll see a folder with a long number (e.g. `3876543210`) — Windows' `check-garmin-device.ps1`
+auto-detects the device by protocol, but `sync:garmin` still needs `GARMIN_DEVICE_NAME` set to the
+device's display name (e.g. `Forerunner 965`) to pass to the MTP bridge.
 
 ### 4. Configure Withings credentials
-In `config.json`, fill in your credentials from developer.withings.com:
-```json
-"withings": {
-  "client_id":     "your_client_id_here",
-  "client_secret": "your_client_secret_here",
-  "redirect_uri":  "http://localhost:3002/callback"
-}
+Fill in your credentials from developer.withings.com in `.env`:
+```
+WITHINGS_CLIENT_ID=your_client_id_here
+WITHINGS_CLIENT_SECRET=your_client_secret_here
+WITHINGS_REDIRECT_URI=http://localhost:3002/callback
 ```
 
 ### 5. Import Garmin activities
@@ -147,8 +160,9 @@ npm run server     # start the API if not already running
 
 ## Troubleshooting
 
-**"Folder not found"**
-→ Check `activities_path` in `config.json`. Use `\\` as separator.
+**"Missing required environment variable(s): ..."**
+→ Set the named var(s) in `.env` (see `.env.example`) — thrown at boot for `DB_PATH`, or lazily
+the first time a Garmin/Withings/Strava/Ollama code path actually runs without its vars set.
 
 **"No Withings token found"**
 → Run `npm run withings:login` first.

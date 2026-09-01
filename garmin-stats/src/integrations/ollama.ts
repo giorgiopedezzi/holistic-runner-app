@@ -1,5 +1,5 @@
 // ── Ollama workout classifier ─────────────────────────────────────────────
-// Calls a local Ollama instance (see config.json's "ollama" block) to
+// Calls a local Ollama instance (OLLAMA_HOST/OLLAMA_MODEL env vars) to
 // classify a run against six hardcoded rules. Plain `fetch`, no new runtime
 // dependency — Ollama's HTTP API is unauthenticated on localhost, same
 // external-API-via-fetch pattern as sync-strava.ts/sync-withings.ts.
@@ -8,7 +8,7 @@
 // strictly on-demand (server.ts's /classify routes), so Ollama being slow or
 // down can never block or slow down a sync.
 
-import { loadConfig } from "../config.ts";
+import { loadConfig, requireOllamaConfig } from "../config.ts";
 import type { WorkoutSummary } from "../domain/workout-metrics.ts";
 
 // The six canonical labels — also duplicated in garmin-dashboard's
@@ -78,21 +78,21 @@ interface OllamaGenerateResponse {
 }
 
 export async function classifyWorkout(summary: WorkoutSummary): Promise<ClassificationResult> {
-  const config = loadConfig();
+  const { host, model } = requireOllamaConfig(loadConfig());
   const prompt = buildPrompt(summary);
 
   let res: Response;
   try {
-    res = await fetch(`${config.ollama.host}/api/generate`, {
+    res = await fetch(`${host}/api/generate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       // format: "json" is a real Ollama /api/generate parameter that
       // constrains the model's output to valid JSON — avoids fragile
       // free-text parsing regardless of which model is configured.
-      body: JSON.stringify({ model: config.ollama.model, prompt, format: "json", stream: false }),
+      body: JSON.stringify({ model, prompt, format: "json", stream: false }),
     });
   } catch (e) {
-    throw new Error(`Ollama not reachable at ${config.ollama.host} — is it running? (${e instanceof Error ? e.message : String(e)})`);
+    throw new Error(`Ollama not reachable at ${host} — is it running? (${e instanceof Error ? e.message : String(e)})`);
   }
 
   if (!res.ok) {
