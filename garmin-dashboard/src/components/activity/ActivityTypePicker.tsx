@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Select, Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 import type { Activity, ActivityType } from "@/types/api";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // Sits beside the sport badge/Delete button in ActivityRow's/ActivityDetailBody's
 // header row: a dropdown of training-session types (Training, Race 5km, ...) plus
@@ -24,6 +25,7 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
   selectWidth?: number; actionWidth?: number; height?: number;
 }) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [types, setTypes] = useState<ActivityType[]>([]);
   const [selectedTypeId, setSelectedTypeId] = useState(activity.activity_type_id);
   const [open, setOpen] = useState(false);
@@ -80,9 +82,12 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
         if (o) setName(activity.activity_name ?? "");
       }}>
         <PopoverTrigger
-          title={hasName
-            ? t("activity.typePicker.renameTooltip", "Change this activity's saved name")
-            : t("activity.typePicker.saveTooltip", "Save the selected type and optionally name this activity")}
+          title={demoMode
+            ? t("common.demoModeHint", "Not available for demo")
+            : hasName
+              ? t("activity.typePicker.renameTooltip", "Change this activity's saved name")
+              : t("activity.typePicker.saveTooltip", "Save the selected type and optionally name this activity")}
+          disabled={demoMode}
           className="hra-activity-type-action hra-btn flex items-center justify-center gap-1.5 text-meta py-1 px-2.5 shrink-0"
           data-variant="cta"
           style={{

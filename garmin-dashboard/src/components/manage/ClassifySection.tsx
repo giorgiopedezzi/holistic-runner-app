@@ -6,6 +6,7 @@ import type { Activity, ClassificationMethod, WorkoutClassification } from "@/ty
 import { classificationStatus, WORKOUT_CLASSIFICATION_KEY } from "@/types/api";
 import { fmtKm, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── AI workout classification (bulk) ────────────────────────────────────
 // Same date-range → checkbox-list → bulk-action shape as DeleteSection/
@@ -17,6 +18,7 @@ import { isoToday, isoAgo } from "@/utils/date";
 // fast/DB-only, so it does use the real bulk endpoint.
 export function ClassifySection() {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [from, setFrom] = useState(isoAgo(30));
   const [to,   setTo]   = useState(isoToday());
   const [activities, setActivities] = useState<Activity[] | null>(null);
@@ -209,14 +211,17 @@ export function ClassifySection() {
                 </button>
               ))}
             </div>
-            <button className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy}>
+            <button
+              className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy || demoMode}
+              title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+            >
               {t("manage.classify.classifySelected", "Classify / Reclassify selected")}
             </button>
             <button
               className="hra-btn" data-variant="cta"
               data-tone="green"
-              onClick={confirmSelected} disabled={!canConfirm || busy}
-              title={(() => {
+              onClick={confirmSelected} disabled={!canConfirm || busy || demoMode}
+              title={demoMode ? t("common.demoModeHint", "Not available for demo") : (() => {
                 const methodLabel = method === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical");
                 return t("manage.classify.confirmTooltip", `Bulk-approves the ${methodLabel} classification for already-classified selected activities, no reason needed — same as thumbs-up per activity`, { method: methodLabel });
               })()}

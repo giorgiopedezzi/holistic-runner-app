@@ -12,6 +12,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { AccordionCard, Badge } from "@/components/ui";
 import type { PlanInstance } from "@/types/api";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 interface Props {
   instance: PlanInstance | null; // null = the "new" draft row
@@ -25,6 +26,7 @@ interface Props {
 
 export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft, onToggle, onDeleteClick, children }: Props) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
 
   function rowStatusHint() {
     if (hasDraft) {
@@ -84,7 +86,8 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
       <button
         className="hra-card-delete-action hra-btn absolute py-1 px-2 inline-flex items-center" data-variant="danger"
         onClick={() => onDeleteClick?.(instance.id)}
-        title={t("common.delete", "Delete")}
+        disabled={demoMode}
+        title={demoMode ? t("common.demoModeHint", "Not available for demo") : t("common.delete", "Delete")}
         aria-label={t("common.delete", "Delete")}
       >
         <Trash2 size={13} />

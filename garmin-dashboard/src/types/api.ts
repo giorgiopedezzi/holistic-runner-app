@@ -348,6 +348,10 @@ export interface Settings {
   date_format: DateFormat;
   language: StoredLanguage;
   palette: StoredPalette;
+  // Computed from the backend's DEMO_MODE env var (HRA-220), not a stored
+  // preference — read-only, never PUT anywhere. The one signal the frontend
+  // uses to disable the write controls the backend also rejects.
+  demo_mode: boolean;
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

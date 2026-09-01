@@ -34,6 +34,8 @@ function make(status: number, title: string, detail?: string, extra?: Partial<Pr
 
 // 400 — the request itself is malformed (unparseable body, bad path param).
 export const badRequest      = (detail?: string, extra?: Partial<Problem>) => make(400, "Bad Request", detail, extra);
+// 403 — the request is understood but rejected on policy grounds (DEMO_MODE).
+export const forbidden       = (detail?: string, extra?: Partial<Problem>) => make(403, "Forbidden", detail, extra);
 // 404 — the resource doesn't exist (or the caller may not know it exists).
 export const notFound        = (detail?: string, extra?: Partial<Problem>) => make(404, "Not Found", detail, extra);
 // 409 — a conflict (duplicate, version clash).

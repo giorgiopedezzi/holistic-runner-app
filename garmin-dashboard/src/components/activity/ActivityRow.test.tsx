@@ -12,8 +12,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ActivityRow } from "./ActivityRow";
-import { installFetch } from "@/test/api-stub";
-import { activity, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
+import { installFetch, paginated } from "@/test/api-stub";
+import { activity, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -58,5 +58,19 @@ describe("ActivityRow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Remove activity" }));
 
     expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("disables Remove activity and Save & name when DEMO_MODE is on (HRA-220)", async () => {
+    installFetch({
+      "GET /api/v1/settings": settings({ demo_mode: true }),
+      "GET /api/v1/activity-types": paginated([]),
+    });
+    render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove activity" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "Save & name" })).toBeDisabled();
   });
 });

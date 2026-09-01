@@ -72,6 +72,7 @@
   "common.create": "作成",
   "common.update": "更新",
   "common.delete": "削除",
+  "common.demoModeHint": "デモでは利用できません",
   "common.confirm": "確認",
   "common.entity.bodyMeasurements": "ボディ計測",
   "manage.syncSectionTitle": "同期",

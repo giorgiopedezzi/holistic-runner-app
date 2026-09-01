@@ -76,6 +76,7 @@
   "common.create": "Crea",
   "common.update": "Aggiorna",
   "common.delete": "Elimina",
+  "common.demoModeHint": "Non disponibile nella demo",
   "common.confirm": "Conferma",
   "common.entity.bodyMeasurements": "misurazioni corporee",
   "manage.syncSectionTitle": "Sincronizzazione",

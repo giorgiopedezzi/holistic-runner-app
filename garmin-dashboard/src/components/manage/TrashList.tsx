@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ErrorBanner, Checkbox } from "@/components/ui";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── Trash ────────────────────────────────────────────────────────────────
 // Both entity types (activities, body measurements) share one card/UI shape
@@ -19,6 +20,7 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
   onPurge: (ids: number[]) => Promise<void>;
 }) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [confirmPurge, setConfirmPurge] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -65,7 +67,10 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
           </div>
 
           <div className="hra-row-wrap">
-            <button className="hra-btn" data-variant="cta" onClick={doRestore} disabled={selected.size === 0 || busy}>
+            <button
+              className="hra-btn" data-variant="cta" onClick={doRestore} disabled={selected.size === 0 || busy || demoMode}
+              title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+            >
               {t("manage.trash.restoreSelected", "Restore selected")}
             </button>
 
@@ -73,8 +78,10 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
               <button
                 className="hra-btn" data-variant="cta"
                 data-tone="red"
-                onClick={() => setConfirmPurge(true)} disabled={selected.size === 0 || busy}
-                title={t("manage.trash.purgeTooltip", "Permanently deletes the selected item(s) — this can't be undone. The filename/date is still kept internally so a resync won't bring it back.")}
+                onClick={() => setConfirmPurge(true)} disabled={selected.size === 0 || busy || demoMode}
+                title={demoMode
+                  ? t("common.demoModeHint", "Not available for demo")
+                  : t("manage.trash.purgeTooltip", "Permanently deletes the selected item(s) — this can't be undone. The filename/date is still kept internally so a resync won't bring it back.")}
               >
                 {t("manage.trash.deletePermanently", "Delete permanently…")}
               </button>

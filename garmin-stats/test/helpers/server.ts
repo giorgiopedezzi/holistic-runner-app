@@ -43,7 +43,7 @@ export interface TestServer {
   close: () => Promise<void>;
 }
 
-export async function startTestServer(opts: { seed?: boolean } = {}): Promise<TestServer> {
+export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean } = {}): Promise<TestServer> {
   const { db, cleanup } = createTestDb();
   if (opts.seed) seedSampleData(db);
 
@@ -61,7 +61,9 @@ export async function startTestServer(opts: { seed?: boolean } = {}): Promise<Te
     port: 0,
     scriptsDir: SRC_DIR,
     backgroundsDir,
-    config: loadConfig(),
+    // demoMode override (HRA-220) — opts.demoMode lets a test flip DEMO_MODE
+    // without an env var, since loadConfig() reads process.env at call time.
+    config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode },
     db,
     repos: {
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,

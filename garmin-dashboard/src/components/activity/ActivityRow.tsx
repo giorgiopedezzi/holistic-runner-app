@@ -7,6 +7,7 @@ import { SPORT_COLOR, type Activity } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtPace, fmtDuration, fmtKm, fmtDate } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { ActivityTypePicker } from "./ActivityTypePicker";
 
 // Fixed sizing for the type picker + Save/Rename + Delete cluster (dashboard
@@ -65,6 +66,7 @@ interface ActivityRowProps {
 // untouched, still last.
 export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, onDelete, expandedContent }: ActivityRowProps) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -141,7 +143,10 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
               data-variant="cta"
               data-tone="red"
               onClick={() => setConfirmDelete(true)}
-              title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
+              disabled={demoMode}
+              title={demoMode
+                ? t("common.demoModeHint", "Not available for demo")
+                : t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
             >
               <Trash2 size={13} />
               {t("activity.detail.deleteButton", "Remove activity")}

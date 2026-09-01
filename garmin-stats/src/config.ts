@@ -19,6 +19,10 @@ export interface Config {
     auto_on_start: boolean;
     skip_duplicates: boolean;
   };
+  // Demo-mode gate (HRA-220): when true, the router rejects the write
+  // endpoints listed in http/demo-guard.ts with 403 so a public demo can't
+  // destroy the database. Default false — unset behaves exactly as before.
+  demoMode: boolean;
   // Local Ollama instance for the workout classifier (ollama-service.ts).
   // No API key — Ollama's HTTP API is unauthenticated by default on
   // localhost. model is a real Ollama model tag (`ollama pull <model>`
@@ -69,6 +73,7 @@ export function loadConfig(): Config {
       auto_on_start: parseBoolEnv(process.env.SYNC_AUTO_ON_START, true),
       skip_duplicates: parseBoolEnv(process.env.SYNC_SKIP_DUPLICATES, true),
     },
+    demoMode: parseBoolEnv(process.env.DEMO_MODE, false),
     ollama: {
       host: process.env.OLLAMA_HOST,
       model: process.env.OLLAMA_MODEL,

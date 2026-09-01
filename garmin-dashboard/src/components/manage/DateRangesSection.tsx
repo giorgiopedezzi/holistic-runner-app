@@ -5,6 +5,7 @@ import { Card, Select, DatePicker } from "@/components/ui";
 import type { RaceActivity, SavedDateRange } from "@/types/api";
 import { fmtDate, fmtRaceLabel } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 const NO_RACE = "none";
 const NO_SELECTION = "";
@@ -31,6 +32,7 @@ interface LoadedRange { id: number; name: string; from: string; to: string; race
 // place a saved range is looked up by name.
 export function DateRangesSection() {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [ranges, setRanges] = useState<SavedDateRange[] | null>(null);
   const [races,  setRaces]  = useState<RaceActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -258,7 +260,8 @@ export function DateRangesSection() {
           <button
             className="hra-btn hra-date-range-action" data-variant="cta" data-tone="red"
             onClick={() => setConfirmingDelete(true)}
-            disabled={deleteId === NO_SELECTION}
+            disabled={deleteId === NO_SELECTION || demoMode}
+            title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
           >
             {t("common.delete", "Delete")}
           </button>
