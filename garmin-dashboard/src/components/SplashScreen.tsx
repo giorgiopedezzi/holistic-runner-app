@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
+import { MapPin, Gauge, Heart } from "lucide-react";
 import { api } from "@/api/client";
-import type { TrackPoint } from "@/types/api";
-import { detectPauses } from "@/domain/pauses";
+import type { Activity, TrackPoint } from "@/types/api";
+import { detectPauses, nearestHr } from "@/domain/pauses";
 import { buildChartData, distanceTicks, axisDomainCentered, type ChartRow, type MetricKey } from "@/domain/activity-chart";
 import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 import { hrRunnerColor, PAUSE_DWELL_MS, xToPixel, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH } from "@/components/activity/shared";
 import { RunnerTerrain } from "@/components/activity/RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "@/components/activity/RunnerIcon";
+import { RunnerReadout, type RunnerReadoutHandle } from "@/components/activity/RunnerReadout";
 import { MainOverlayChart } from "@/components/activity/OverlayCharts";
-import { LoadingSpinner, ChartCard } from "@/components/ui";
+import { fmtKm, fmtSpeed } from "@/utils/fmt";
+import { speedUnitLabel } from "@/utils/units";
+import { LoadingSpinner, ChartCard, GraphKpiCard, splitUnit } from "@/components/ui";
 
 // HRA-223: the reference training session the splash replays — 2026-08-24,
 // 12.3km, ~82.8min. Hardcoded per the Story's scope (not user-configurable).
@@ -58,6 +62,7 @@ export function SplashScreen() {
     }
   });
   const [track, setTrack] = useState<TrackPoint[] | null>(null);
+  const [activity, setActivity] = useState<Activity | null>(null);
 
   useEffect(() => {
     if (dismissed) return;
@@ -65,6 +70,9 @@ export function SplashScreen() {
     api.garmin.track(SPLASH_ACTIVITY_ID)
       .then(trk => { if (!ignore) setTrack(trk); })
       .catch(() => { if (!ignore) setTrack([]); });
+    api.garmin.activity(SPLASH_ACTIVITY_ID)
+      .then(act => { if (!ignore) setActivity(act); })
+      .catch(() => {}); // badges just stay hidden — the runner/chart don't depend on this
     return () => { ignore = true; };
   }, [dismissed]);
 
@@ -119,6 +127,30 @@ export function SplashScreen() {
 
   const runnerReady = plotWidth !== 0 && chartData.length > 0;
   const runnerIconRef = useRef<RunnerIconHandle>(null);
+  // The "constantly updated data" readout ActivityChartSection pins below
+  // its own chart — distance/pace/HR per row, plus HR-before→after-with-
+  // delta on a pause row (the "HR recovery" the badges above don't show,
+  // since Avg HR is a single summary number, not a per-pause one). Reused
+  // as-is; only its data source (the autoplay loop's own showRow, below)
+  // differs from ActivityChartSection's mouse+autoplay dual drive.
+  const runnerReadoutRef = useRef<RunnerReadoutHandle>(null);
+  function pauseHrAt(row: ChartRow): { before: number | null; after: number | null } {
+    if (row.pauseAfterIndex == null || !track) return { before: null, after: null };
+    return {
+      before: nearestHr(track, row.pauseAfterIndex, -1),
+      after: nearestHr(track, row.pauseAfterIndex + 1, 1),
+    };
+  }
+
+  // Distance / Speed-Pace / Avg HR — the same three summary badges
+  // ActivityChartSection pins beside its Play/Stop control, kept here as
+  // plain informational badges (no click handler) since they're data, not a
+  // CTA — the earlier "omit all the CTA" call only meant interactive
+  // controls (toggles, Play/Stop, legend).
+  const distanceKm = activity ? splitUnit(fmtKm(activity.distance_m)) : null;
+  const speedPaceKpi = activity
+    ? { value: fmtSpeed(activity.avg_speed_ms), unit: speedUnitLabel(), label: t("activity.metric.speedLabel", "Speed") }
+    : null;
 
   // Same "light effect" ActivityChartSection's own autoplay drives (see that
   // file's setHoverHighlight/showRow) — two CSS-only overlay layers over the
@@ -175,6 +207,7 @@ export function SplashScreen() {
       const cx = pixelX(row.x);
       const dynamics = playCtxRef.current.rowDynamics[idx] ?? NEUTRAL_DYNAMICS;
       runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, dwelling, dynamics);
+      runnerReadoutRef.current?.show(row);
       setHoverHighlight(cx);
     }
     function advanceRow(sec: number): { row: ChartRow; idx: number } {
@@ -239,7 +272,20 @@ export function SplashScreen() {
         {t("splash.copy", "Your running app. What you need — just what you need, no noise. The data that matters, lit by your effort. Your heart. You.")}
       </p>
       <div className="w-full max-w-2xl">
-        <ChartCard>
+        <ChartCard
+          subHeader={distanceKm && speedPaceKpi && (
+            <div className="hra-row-wrap gap-2 justify-end">
+              <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
+                value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
+              <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
+                value={speedPaceKpi.value} unit={speedPaceKpi.unit} label={speedPaceKpi.label} />
+              {activity?.avg_hr != null && (
+                <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(activity.avg_hr)} />} iconColor={hrRunnerColor(activity.avg_hr)}
+                  valueColor={hrRunnerColor(activity.avg_hr)} value={`${activity.avg_hr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
+              )}
+            </div>
+          )}
+        >
           <div className="hra-runner-row relative mb-1" style={{ "--runner-row-height": `${RUNNER_ROW_HEIGHT}px` } as CSSProperties}>
             {runnerReady ? (
               <>
@@ -258,6 +304,7 @@ export function SplashScreen() {
               the same "light effect" ActivityChartSection's real autoplay
               drives — not by mouse events here. */}
           <div ref={plotRef} className="relative pointer-events-none">
+            <RunnerReadout ref={runnerReadoutRef} xMode="distance" metrics={SPLASH_METRICS} speedMode="speed" pauseHr={pauseHrAt} />
             {runnerReady && (
               <MainOverlayChart
                 chartData={chartData} displayTrack={track ?? []} xTicks={xTicks} xMode="distance"
