@@ -39,6 +39,18 @@
       "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
     },
     {
+      "file": "src/components/SplashScreen.tsx",
+      "symbol": "SplashScreen",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--runner-row-height"
+      ],
+      "count": 1,
+      "rationale": "Runtime-measured or caller-supplied geometry crosses into a named CSS custom-property hook; the class owns the layout rule."
+    },
+    {
       "file": "src/components/activity/ActivityChartSection.tsx",
       "symbol": "ActivityChartSection",
       "category": "custom-property-style",

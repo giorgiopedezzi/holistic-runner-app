@@ -1747,6 +1747,10 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    theme token, since it's deliberately theme-independent (dims whatever's
    behind it the same way in light or dark). */
 .hra-modal-backdrop { background: rgba(0, 0, 0, 0.6); }
+/* SplashScreen (HRA-223) — fully opaque, themed backdrop (not a translucent
+   scrim like the modal one above, since it gates the whole app rather than
+   floating over visible content). */
+.hra-splash-backdrop { background: var(--bg); }
 /* Delete-section Card — a subtle red border tinting the whole card as
    "this section is destructive," was a raw #e24b4a33 hex-alpha literal. */
 .hra-card-danger-border { border-color: color-mix(in srgb, var(--accent-red) 20%, transparent); }
@@ -1968,6 +1972,9 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-resolution-hint[data-unresolved="true"] { color: var(--accent-red); }
 .hra-card-delete-action { top: 15px; right: 46px; z-index: 1; }
 .hra-modal-layer { z-index: 100; }
+/* Above the modal layer — the splash gates first paint, before anything
+   else (including a modal) could plausibly be open. */
+.hra-splash-layer { z-index: 300; }
 .hra-help-modal { max-height: 85vh; }
 .hra-help-section { margin-bottom: 18px; }
 .hra-help-copy { line-height: 1.6; }

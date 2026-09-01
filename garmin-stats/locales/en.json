@@ -238,6 +238,8 @@
   "settings.outliers.cadenceFieldLabel": "Max cadence change (steps/min per second)",
   "settings.outliers.minSpeedFieldLabel": "Min speed to count as running (km/h)",
   "settings.outliers.off": "off",
+  "splash.copy": "Your running app. What you need — just what you need, no noise. The data that matters, lit by your effort. Your heart. You.",
+  "splash.skip": "Skip",
   "app.serverConnected": "Server connected",
   "app.serverOffline": "Server offline",
   "app.serverUnreachable": "API server unreachable — run: cd garmin-stats && node src/server.ts",

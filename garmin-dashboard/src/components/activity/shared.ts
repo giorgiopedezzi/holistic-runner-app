@@ -23,6 +23,21 @@ export const MARGIN_RIGHT = 5;
 // ActivityChartSection.tsx's mainChartRightMargin for how it's topped up.
 export const RIGHT_AXES_WIDTH = AXIS_WIDTH;
 
+// ── Autoplay pixel math (shared between ActivityChartSection's Play/Stop
+// loop and SplashScreen's standalone reuse, HRA-223) ────────────────────
+export const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
+export const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
+
+// A chart-domain x to a pixel offset inside a plot area — the chart's own
+// axis layout math, replicated (Recharts exposes no scale to read). Shared
+// by ActivityChartSection's autoplay loop/terrain and SplashScreen's own
+// standalone autoplay (which passes leftInset/rightInset of 0 — it has no
+// axes to reserve space for).
+export function xToPixel(x: number, domainMin: number, domainMax: number, width: number, leftInset: number, rightInset: number): number {
+  const inner = Math.max(0, width - leftInset - rightInset);
+  return leftInset + ((x - domainMin) / (domainMax - domainMin || 1)) * inner;
+}
+
 // ── Metric definitions ───────────────────────────────────────────────────
 // Colors are the same validated-for-this-dark-surface set used in BodyTab.tsx
 // (heart_rate/altitude reuse the exact accents established there; speed/
