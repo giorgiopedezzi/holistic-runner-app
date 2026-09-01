@@ -47,7 +47,7 @@ npm install
 npm run dev      # starts at http://localhost:5173
 ```
 
-The Vite dev server proxies `/api/*` to `http://0.0.0.0:3001`,
+The Vite dev server proxies `/api/*` to `http://127.0.0.1:3001`,
 so the backend just needs to be running — no env vars or CORS config needed.
 
 ## Adding a new tab

@@ -47,7 +47,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://0.0.0.0:3001",
+        target: "http://127.0.0.1:3001",
         changeOrigin: true,
         // The AI workout classifier holds the connection open ~15-25s (local Ollama,
         // stream:false, no bytes until the end). On the dev proxy's pooled/keep-alive

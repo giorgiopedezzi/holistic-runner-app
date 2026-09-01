@@ -5,12 +5,12 @@
 }
 
 /* ── Themes ──────────────────────────────────────────────────────────────
-   :root holds the "dark" theme's values directly (not just a fallback) so
+   :root holds Graphite's values directly (not just a fallback) so
    the page still looks right before JS has fetched the saved theme from the
    backend (this app has no localStorage, so the very first paint always
-   starts here) — [data-theme="dark"] then just restates the same values for
-   clarity/symmetry with the other three. App.tsx sets data-theme on <html>
-   once /api/settings resolves.
+   starts here) — [data-palette="graphite"] then just restates the same
+   values for clarity/symmetry. App.tsx sets data-theme/data-palette on
+   <html> once /api/settings resolves.
 
    Only the general UI chrome (backgrounds/borders/text/these four accents)
    is themed. Chart-specific colors defined in TS (ActivityModal's
@@ -25,34 +25,35 @@
      value so the two stay in sync if the header's own sizing ever changes. */
   --header-height:  48px;
 
-  /* Dark Metal — the primary/default theme (dashboard design-system
+  /* Graphite — the primary/default palette (dashboard design-system
      rework). :root duplicates its values directly (not just a fallback) so
      the very first paint, before /api/settings resolves, still looks right —
-     see the [data-theme][data-palette] blocks below for the other 3. */
-  --bg:             #0B1220;
-  --bg-surface:     #1A2433;
-  --bg-card:        #121A2B;
-  --bg-danger:      #EF444418;
-  --border:         #2A3B4D;
-  --border-strong:  #3A4F66;
+     see the [data-palette="graphite"] block below (and the
+     [data-theme][data-palette] blocks for the other two palettes). */
+  --bg:             #050608;
+  --bg-surface:     #12151A;
+  --bg-card:        #0A0C10;
+  --bg-danger:      #C94F5A22;
+  --border:         #272B31;
+  --border-strong:  #3A3F47;
 
-  --text-primary:   #E6EDF3;
-  --text-secondary: #C3CCD8;
-  --text-muted:     #9AA4B2;
+  --text-primary:   #F1F3F4;
+  --text-secondary: #A5ABB0;
+  --text-muted:     #6D747A;
 
-  --accent-green:   #22C55E;
-  --accent-blue:    #3a8ef5;
-  --accent-red:     #EF4444;
-  --accent-orange:  #f59e0b;
+  --accent-green:   #8FAF9A;
+  --accent-blue:    #D2D7DA;
+  --accent-red:     #C94F5A;
+  --accent-orange:  #C47A55;
 
   /* --accent/--on-accent (dashboard design-system rework) — fixed per
      [data-theme][data-palette] block below (no longer a user-selectable
      picker, no longer set from JS at all). This bare pair is only the
      pre-attribute-resolution fallback for the very first paint, before
-     App.tsx's useAppearance() sets data-theme/data-palette — mirrors Dark
-     Metal, the default theme. */
-  --accent:    #3B82F6;
-  --on-accent: #000000;
+     App.tsx's useAppearance() sets data-theme/data-palette — mirrors
+     Graphite, the default palette. */
+  --accent:    #D2D7DA;
+  --on-accent: #090B0C;
 
   /* Fixed semantic data colors (HRA-94) — same metric = same color
      everywhere, independent of --accent/theme. Values mirror the
