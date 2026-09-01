@@ -1,5 +1,6 @@
 # ── credentials & secrets ────────────────────────────────────────────────
 config-locale.json
+garmin-stats/config.json
 
 # ── database ──────────────────────────────────────────────────────────────
 *.db
