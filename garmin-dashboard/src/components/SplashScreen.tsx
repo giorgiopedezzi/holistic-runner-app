@@ -17,7 +17,7 @@ import { LoadingSpinner, ChartCard, GraphKpiCard, splitUnit } from "@/components
 
 // HRA-223: the reference training session the splash replays — 2026-08-24,
 // 12.3km, ~82.8min. Hardcoded per the Story's scope (not user-configurable).
-const SPLASH_ACTIVITY_ID = 218;
+const SPLASH_ACTIVITY_ID = 201;
 const SPLASH_SESSION_KEY = "hra-splash-shown";
 // Same default pause threshold ActivityDetailBody starts with.
 const PAUSE_THRESHOLD_SEC = 30;
@@ -29,6 +29,12 @@ const RUNNER_ROW_HEIGHT = 36 + 2 * RUNNER_ELEVATION_MAX_PX;
 // keeps compressing the full activity into ~30s; the splash's autoplay is a
 // separate, faster preview of the same track).
 const SPLASH_PLAYBACK_DURATION_MS = 10000;
+// Hold the final frame before switching to the home page, once the runner
+// animation finishes on its own (not on Skip, which dismisses immediately).
+const SPLASH_END_HOLD_MS = 5000;
+// Hold on the runner's starting pose before playback begins, so it doesn't
+// appear already mid-stride the instant the splash mounts.
+const SPLASH_START_HOLD_MS = 1000;
 // The one optional metric the splash shows alongside the mandatory Speed/
 // Pace line — same default ActivityDetailBody starts a fresh activity view
 // with (activeMetrics=["heart_rate"]).
@@ -237,7 +243,7 @@ export function SplashScreen() {
 
       if (clockRef.current >= totalSec) {
         rafRef.current = null;
-        handleDismiss();
+        setTimeout(handleDismiss, SPLASH_END_HOLD_MS);
         return;
       }
 
@@ -259,7 +265,10 @@ export function SplashScreen() {
     // only Skip able to close it.
     if ((dyn[data.length - 1]?.movingSec ?? 0) <= 0) { handleDismiss(); return; }
     showRow(data[0], 0, false);
-    rafRef.current = requestAnimationFrame(step);
+    const startTimer = setTimeout(() => {
+      rafRef.current = requestAnimationFrame(step);
+    }, SPLASH_START_HOLD_MS);
+    return () => clearTimeout(startTimer);
   }, [runnerReady]);
 
   useEffect(() => () => { if (rafRef.current != null) cancelAnimationFrame(rafRef.current); }, []);
@@ -268,9 +277,13 @@ export function SplashScreen() {
 
   return (
     <div className="hra-splash-layer hra-splash-backdrop fixed inset-0 flex flex-col items-center justify-center gap-10 p-6">
-      <p className="hra-splash-copy text-display hra-text-primary text-center max-w-2xl">
-        {t("splash.copy", "Your running app. What you need — just what you need, no noise. The data that matters, lit by your effort. Your heart. You.")}
-      </p>
+      <div className="hra-splash-copy text-display hra-text-primary text-center max-w-2xl">
+        <p>{t("splash.copy1", "Your running app.")}</p>
+        <p>{t("splash.copy2", "What you need. Just what you need, no noise.")}</p>
+        <p>{t("splash.copy3", "The data that matters, lit by your effort.")}</p>
+        <p className="hra-splash-copy-heart">{t("splash.copy4", "Your heart.")}</p>
+        <p className="hra-splash-copy-you">{t("splash.copy5", "You.")}</p>
+      </div>
       <div className="w-full max-w-2xl">
         <ChartCard
           subHeader={distanceKm && speedPaceKpi && (
