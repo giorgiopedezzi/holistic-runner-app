@@ -8,7 +8,7 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
-import type { Config } from "../config.ts";
+import { requireStravaConfig, type Config } from "../config.ts";
 import type { StravaTokenRow } from "../db.ts";
 
 const AUTH_URL  = "https://www.strava.com/oauth/authorize";
@@ -16,10 +16,11 @@ const TOKEN_URL = "https://www.strava.com/oauth/token";
 export const STRAVA_SCOPE = "activity:read_all";
 
 export function getAuthUrl(config: Config, state: string): string {
+  const { client_id, redirect_uri } = requireStravaConfig(config);
   const url = new URL(AUTH_URL);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("client_id",     config.strava.client_id);
-  url.searchParams.set("redirect_uri",  config.strava.redirect_uri);
+  url.searchParams.set("client_id",     client_id);
+  url.searchParams.set("redirect_uri",  redirect_uri);
   url.searchParams.set("scope",         STRAVA_SCOPE);
   url.searchParams.set("state",         state);
   url.searchParams.set("approval_prompt", "auto");
@@ -44,8 +45,9 @@ function saveToken(db: DatabaseSync, body: TokenBody): void {
 }
 
 export async function exchangeCode(config: Config, db: DatabaseSync, code: string): Promise<void> {
+  const { client_id, client_secret } = requireStravaConfig(config);
   const body = await requestToken(new URLSearchParams({
-    client_id: config.strava.client_id, client_secret: config.strava.client_secret,
+    client_id, client_secret,
     code, grant_type: "authorization_code",
   }));
   saveToken(db, body);
@@ -55,8 +57,9 @@ export async function exchangeCode(config: Config, db: DatabaseSync, code: strin
 // reuses the same one for a while) — the new one from the response must
 // always be persisted, or the next refresh will fail with an invalid token.
 async function refreshToken(config: Config, db: DatabaseSync, token: StravaTokenRow): Promise<string> {
+  const { client_id, client_secret } = requireStravaConfig(config);
   const body = await requestToken(new URLSearchParams({
-    client_id: config.strava.client_id, client_secret: config.strava.client_secret,
+    client_id, client_secret,
     refresh_token: token.refresh_token, grant_type: "refresh_token",
   }));
   saveToken(db, body);

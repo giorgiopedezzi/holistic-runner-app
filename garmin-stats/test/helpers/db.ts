@@ -5,7 +5,7 @@
  *
  * Reused by T2/T3: every test gets its own isolated DB via createTestDb(), so no
  * test can see another's writes and none of them ever touch the real database
- * file resolved from config.json.
+ * file resolved from DB_PATH.
  *
  * We build the DatabaseSync here (not via src/db.ts's openDb(), which opens the
  * real configured DB path) and only borrow initSchema + the typed param builders.
