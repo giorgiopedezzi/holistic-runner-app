@@ -5,10 +5,12 @@ import { Card, ProgressBar, StatusLine } from "@/components/ui";
 import type { DeviceStatus } from "@/types/api";
 import { PHASE_LABEL, deviceStatusMessage, runGarminSync } from "./shared";
 import type { SyncProgress } from "./shared";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── Upload section (Garmin) ─────────────────────────────────────────────
 export function UploadSection() {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [status,   setStatus]   = useState<"idle"|"running"|"done"|"error">("idle");
   const [msg,      setMsg]      = useState("");
   const [progress, setProgress] = useState<SyncProgress | null>(null);
@@ -28,7 +30,7 @@ export function UploadSection() {
 
   useEffect(() => { checkDevice(); }, []);
 
-  const canSync = status !== "running" && device?.connected === true;
+  const canSync = status !== "running" && device?.connected === true && !demoMode;
 
   async function triggerSync() {
     setStatus("running");
@@ -68,7 +70,9 @@ export function UploadSection() {
         data-tone="green"
         onClick={triggerSync}
         disabled={!canSync}
-        title={!canSync && status !== "running" ? t("manage.upload.connectWatchFirst", "Connect the watch first") : undefined}
+        title={demoMode
+          ? t("common.demoModeHint", "Not available for demo")
+          : !canSync && status !== "running" ? t("manage.upload.connectWatchFirst", "Connect the watch first") : undefined}
       >
         {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.upload.syncButton", "↓ Sync from device")}
       </button>

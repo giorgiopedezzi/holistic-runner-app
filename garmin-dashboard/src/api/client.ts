@@ -11,6 +11,7 @@ import type {
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
+  FeedbackSubmission, FeedbackEntry,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
@@ -152,6 +153,11 @@ export const api = {
   // a second parallel fetch mechanism (HRA-104).
   locales: {
     get: (lang: string) => request<Record<string, string>>(`/api/v1/locales/${lang}`),
+  },
+  feedback: {
+    // POST /api/v1/feedback (HRA-226) — deliberately never gated by DEMO_MODE
+    // server-side, since demo visitors are a primary source of submissions.
+    submit: (body: FeedbackSubmission) => request<FeedbackEntry>("/api/v1/feedback", "POST", undefined, body),
   },
   dateRanges: {
     list:   async () => (await request<Paginated<SavedDateRange>>("/api/v1/date-ranges", "GET", { limit: ALL })).data,

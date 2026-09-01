@@ -17,7 +17,9 @@ import { BodyTab }      from "@/components/BodyTab";
 import { PlansTab }     from "@/components/PlansTab";
 import { ManageTab }    from "@/components/ManageTab";
 import { SettingsTab }  from "@/components/SettingsTab";
+import { FeedbackTab }  from "@/components/FeedbackTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
+import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
 
 // labelKey/fallback: the header nav bar's own strings are the one concrete
@@ -31,6 +33,7 @@ const TABS = [
   { id: "body",        labelKey: "nav.body",       fallback: "Body"              },
   { id: "manage",      labelKey: "nav.manage",     fallback: "Data & Sync"       },
   { id: "settings",    labelKey: "nav.settings",   fallback: "Settings"          },
+  { id: "feedback",    labelKey: "nav.feedback",   fallback: "Feedback"          },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -126,7 +129,12 @@ function AppShell() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <>
+      {/* HRA-223: mounted once at the top of AppShell, gating the rest of
+          the UI until dismissed (skip or autoplay finish) — self-contained,
+          reads/writes its own sessionStorage flag. */}
+      <SplashScreen />
+      <div className="min-h-screen flex flex-col">
       {/* Ambient glow is a pure body::before (index.css) now — no JS-rendered
           layer here (correction pass). */}
 
@@ -204,11 +212,13 @@ function AppShell() {
         {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
         {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
         {tab === "settings"   && <SettingsTab appearance={appearance} />}
+        {tab === "feedback"   && <FeedbackTab />}
       </main>
 
       {/* Global success/error notifications (utils/toast.ts) — mounted once
           here so any component can call notify() without a Provider. */}
       <ToastContainer />
-    </div>
+      </div>
+    </>
   );
 }

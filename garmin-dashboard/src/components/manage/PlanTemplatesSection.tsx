@@ -37,6 +37,7 @@ import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
 import type { EventType, ParseWarning } from "@/types/runplan";
+import { useDemoMode } from "@/hooks/useDemoMode";
 // HRA-200: frontend-owned copy of docs/utils/template-generator-AI-prompt.txt
 // (the already-tested base prompt) — kept in sync manually, see that file's
 // own header for the sync-risk note.
@@ -167,6 +168,7 @@ interface Props {
 
 export function PlanTemplatesSection({ templates, templatesError, refreshTemplates }: Props) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
 
   // HRA-140: which row is expanded — an existing template's id, "new" for
   // the unsaved-draft row, or null (every row collapsed). Replaces the old
@@ -767,7 +769,10 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           <button className="hra-btn" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}>
             {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           </button>
-          <button className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading}>
+          <button
+            className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading || demoMode}
+            title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+          >
             {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
           </button>
           <button className="hra-btn" onClick={onRestoreClick}>
@@ -872,7 +877,8 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 <button
                   className="hra-card-delete-action hra-btn absolute py-1 px-2 inline-flex items-center" data-variant="danger"
                   onClick={() => setDeleteConfirmId(tpl.id)}
-                  title={t("common.delete", "Delete")}
+                  disabled={demoMode}
+                  title={demoMode ? t("common.demoModeHint", "Not available for demo") : t("common.delete", "Delete")}
                   aria-label={t("common.delete", "Delete")}
                 >
                   <Trash2 size={13} />

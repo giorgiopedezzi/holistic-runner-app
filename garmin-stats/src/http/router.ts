@@ -7,9 +7,10 @@
  */
 import http from "http";
 import { URL } from "url";
-import type { AppContext } from "./context.ts";
+import type { AppContext, Handler } from "./context.ts";
 import { send, sendProblem } from "./respond.ts";
 import { ApiProblem, notFound, internal } from "./problem.ts";
+import { demoGuarded } from "./demo-guard.ts";
 import { createActivitiesController } from "../controllers/activities.controller.ts";
 import { createTrendsController } from "../controllers/trends.controller.ts";
 import { createBodyController } from "../controllers/body.controller.ts";
@@ -21,6 +22,7 @@ import { createLocalesController } from "../controllers/locales.controller.ts";
 import { createDateRangesController } from "../controllers/date-ranges.controller.ts";
 import { createActivityTypesController } from "../controllers/activity-types.controller.ts";
 import { createPlanTemplatesController } from "../controllers/plan-templates.controller.ts";
+import { createFeedbackController } from "../controllers/feedback.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -34,7 +36,11 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activityTypes = createActivityTypesController(ctx);
   const planTemplates = createPlanTemplatesController(ctx);
   const locales      = createLocalesController(ctx);
+  const feedback     = createFeedbackController(ctx);
   const { port } = ctx;
+  // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
+  // below; see http/demo-guard.ts for the actual 403 behavior.
+  const demo = <T extends Handler>(h: T) => demoGuarded(ctx, h);
 
   return async (req, res) => {
     if (req.method === "OPTIONS") {
@@ -90,12 +96,12 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       }
 
       if (req.method === "DELETE") {
-        if (route === "/api/v1/activities")               return await activities.deleteRange(req, res, url);
-        if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.deleteById(req, res, url);
-        if (route === "/api/v1/body-measurements")        return await body.deleteRange(req, res, url);
-        if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.remove(req, res, url);
-        if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.remove(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.removeInstance(req, res, url);
+        if (route === "/api/v1/activities")               return await demo(activities.deleteRange)(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await demo(activities.deleteById)(req, res, url);
+        if (route === "/api/v1/body-measurements")        return await demo(body.deleteRange)(req, res, url);
+        if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await demo(dateRanges.remove)(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await demo(planTemplates.remove)(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await demo(planTemplates.removeInstance)(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL
@@ -116,34 +122,39 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/date-format")     return await settings.updateDateFormat(req, res, url);
         if (route === "/api/v1/settings/language")        return await settings.updateLanguage(req, res, url);
         if (route === "/api/v1/settings/palette")         return await settings.updatePalette(req, res, url);
-        if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await activities.setType(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await demo(activities.setType)(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);
       }
 
       if (req.method === "PATCH") {
-        if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+$/.test(route)) return await planTemplates.patchInstanceDay(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await planTemplates.patchInstance(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+$/.test(route)) return await demo(planTemplates.patchInstanceDay)(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await demo(planTemplates.patchInstance)(req, res, url);
       }
 
       if (req.method === "POST") {
-        if (route === "/api/v1/sync/garmin")              return await sync.garmin(req, res, url);
-        if (route === "/api/v1/sync/withings")            return await sync.withings(req, res, url);
-        if (route === "/api/v1/sync/strava")              return await sync.strava(req, res, url);
-        if (/^\/api\/v1\/activities\/\d+\/classify$/.test(route)) return await activities.classify(req, res, url);
-        if (/^\/api\/v1\/activities\/\d+\/feedback$/.test(route)) return await activities.feedback(req, res, url);
-        if (route === "/api/v1/activities/confirm")       return await activities.confirm(req, res, url);
-        if (route === "/api/v1/activities/restore" || route === "/api/v1/activities/purge") return await activities.restorePurge(req, res, url);
-        if (route === "/api/v1/body-measurements/restore" || route === "/api/v1/body-measurements/purge") return await body.restorePurge(req, res, url);
+        if (route === "/api/v1/sync/garmin")              return await demo(sync.garmin)(req, res, url);
+        if (route === "/api/v1/sync/withings")            return await demo(sync.withings)(req, res, url);
+        if (route === "/api/v1/sync/strava")              return await demo(sync.strava)(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/classify$/.test(route)) return await demo(activities.classify)(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/feedback$/.test(route)) return await demo(activities.feedback)(req, res, url);
+        if (route === "/api/v1/activities/confirm")       return await demo(activities.confirm)(req, res, url);
+        if (route === "/api/v1/activities/restore" || route === "/api/v1/activities/purge") return await demo(activities.restorePurge)(req, res, url);
+        if (route === "/api/v1/body-measurements/restore" || route === "/api/v1/body-measurements/purge") return await demo(body.restorePurge)(req, res, url);
         if (route === "/api/v1/settings/background/upload") return await settings.uploadBackground(req, res, url);
         if (route === "/api/v1/date-ranges")               return await dateRanges.create(req, res, url);
         if (route === "/api/v1/plan-templates/generate")    return await planTemplates.generate(req, res, url);
         if (route === "/api/v1/plan-templates")             return await planTemplates.create(req, res, url);
-        if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await planTemplates.instantiate(req, res, url);
-        if (/^\/api\/v1\/plan-templates\/\d+\/approve$/.test(route))     return await planTemplates.approveTemplate(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await planTemplates.regenerateInstance(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await planTemplates.approveInstance(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await demo(planTemplates.instantiate)(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveTemplate)(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await demo(planTemplates.regenerateInstance)(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route)) return await planTemplates.validateInstanceDay(req, res, url);
+        // HRA-226: deliberately NOT wrapped in demo() — this is the one write
+        // route DEMO_MODE must not block, since demo visitors are a primary
+        // source of feedback submissions. Do not reflexively wrap this in
+        // demo() later.
+        if (route === "/api/v1/feedback")                  return await feedback.create(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);

@@ -32,6 +32,7 @@
     },
     "responses": {
       "BadRequest": { "description": "Malformed request (e.g. body is not valid JSON).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Forbidden": { "description": "Rejected because DEMO_MODE is enabled (HRA-220) — this write is disabled for the demo.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "NotFound": { "description": "Resource not found.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "Conflict": { "description": "A conflicting resource already exists (e.g. duplicate name).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "Unprocessable": { "description": "Request parsed but failed a validation rule.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
@@ -211,7 +212,8 @@
           "accent_color": { "type": "string", "enum": ["sky", "amber", "graphite"], "description": "Paired 1:1 with palette (sky=metal, amber=warm, graphite=graphite) — no longer independently settable, see the /palette endpoint." },
           "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
           "language": { "type": "string", "enum": ["auto", "en", "it"] },
-          "palette": { "type": "string", "enum": ["metal", "warm", "graphite", "auto"], "description": "Dashboard palette flavor. 'metal'/'warm' cross with theme (dark/light) for 4 total looks; 'graphite' is a third, standalone, dark-only palette (no light counterpart). 'auto' is the DEFAULT sentinel for 'never explicitly chosen' (same relationship 'auto' has with theme) — the client resolves it to 'graphite' when the resolved theme is dark, 'warm' when light; never accepted by PUT /palette. Replaces the earlier style_pack (HRA-119)." }
+          "palette": { "type": "string", "enum": ["metal", "warm", "graphite", "auto"], "description": "Dashboard palette flavor. 'metal'/'warm' cross with theme (dark/light) for 4 total looks; 'graphite' is a third, standalone, dark-only palette (no light counterpart). 'auto' is the DEFAULT sentinel for 'never explicitly chosen' (same relationship 'auto' has with theme) — the client resolves it to 'graphite' when the resolved theme is dark, 'warm' when light; never accepted by PUT /palette. Replaces the earlier style_pack (HRA-119)." },
+          "demo_mode": { "type": "boolean", "description": "Computed from the DEMO_MODE env var (HRA-220), not a stored column — read-only, never accepted by any settings write. true means the write endpoints listed in that Story's Forbidden response are rejected server-side; the frontend uses this to disable the matching controls." }
         }
       },
       "SyncResult": {
@@ -245,6 +247,19 @@
           "race_activity_name": { "type": ["string", "null"] },
           "race_distance_m": { "type": ["number", "null"] },
           "race_activity_type_id": { "type": ["integer", "null"] }
+        }
+      },
+      "FeedbackEntry": {
+        "type": "object",
+        "description": "An anonymous visitor feedback submission (HRA-226) — every field is independently optional; the request is rejected 422 if every field is empty/absent.",
+        "properties": {
+          "id": { "type": "integer" },
+          "free_text": { "type": ["string", "null"] },
+          "pricing_choice": { "type": ["string", "null"], "enum": ["free_only", "3_5", "8_12", "15_plus", null] },
+          "pricing_why_not_free_text": { "type": ["string", "null"], "description": "Only meaningful (not required) when pricing_choice is free_only." },
+          "feature_interest": { "type": ["string", "null"], "description": "JSON-serialized array of multi_user_coach|shared_groups." },
+          "feature_interest_other_free_text": { "type": ["string", "null"] },
+          "created_at": { "type": "string" }
         }
       },
       "ActivityType": {
@@ -368,7 +383,7 @@
       "delete": {
         "tags": ["activities"], "summary": "Soft-delete activities in a date range (moves to trash)",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
-        "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } }
+        "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/activities/count": {
@@ -393,7 +408,7 @@
       "delete": {
         "tags": ["activities"], "summary": "Soft-delete one activity",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "responses": { "200": { "description": "Deleted id.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
+        "responses": { "200": { "description": "Deleted id.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/activities/{id}/track": {
@@ -404,7 +419,7 @@
         "tags": ["activities"], "summary": "Set an activity's type + optional name (replace sub-resource)",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_type_id"], "properties": { "activity_type_id": { "type": "integer" }, "name": { "type": "string" } } } } } },
-        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/activities/{id}/classify": {
@@ -412,7 +427,7 @@
         "tags": ["activities"], "summary": "Classify a running activity (AI or statistical)",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "splitMeters": { "type": "number", "default": 1000 }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } },
-        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "500": { "$ref": "#/components/responses/ServerError" } }
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "500": { "$ref": "#/components/responses/ServerError" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/activities/{id}/feedback": {
@@ -420,17 +435,17 @@
         "tags": ["activities"], "summary": "Approve/reject a classification",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["feedback", "source"], "properties": { "feedback": { "type": "string", "enum": ["approved", "rejected"] }, "source": { "type": "string", "enum": ["ai", "statistical"] }, "correctionReason": { "type": "string", "description": "Required when feedback=rejected." }, "finalClassification": { "type": "string", "description": "Required when feedback=rejected." } } } } } },
-        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/activities/confirm": {
-      "post": { "tags": ["activities"], "summary": "Bulk-confirm classifications", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } }, "responses": { "200": { "description": "Confirmed count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "confirmed": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "post": { "tags": ["activities"], "summary": "Bulk-confirm classifications", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } }, "responses": { "200": { "description": "Confirmed count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "confirmed": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/activities/restore": {
-      "post": { "tags": ["activities"], "summary": "Restore activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "post": { "tags": ["activities"], "summary": "Restore activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/activities/purge": {
-      "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/summary": {
       "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
@@ -446,7 +461,7 @@
     },
     "/api/v1/body-measurements": {
       "get": { "tags": ["body"], "summary": "Body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Measurements.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyMeasurement" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
-      "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } } } }
+      "delete": { "tags": ["body"], "summary": "Soft-delete body measurements in a date range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count soft-deleted.", "content": { "application/json": { "schema": { "type": "object", "properties": { "deleted": { "type": "integer" }, "from": { "type": "string" }, "to": { "type": "string" } } } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/body-measurements/count": {
       "get": { "tags": ["body"], "summary": "Count body measurements in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
@@ -467,10 +482,10 @@
       "get": { "tags": ["body"], "summary": "List soft-deleted (not purged) body measurements", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/BodyTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/v1/body-measurements/restore": {
-      "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "post": { "tags": ["body"], "summary": "Restore body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Restored count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "restored": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/body-measurements/purge": {
-      "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+      "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/settings": {
       "get": { "tags": ["settings"], "summary": "Get settings (read-all). Writes go to the sub-resources below — there is no write through the parent.", "responses": { "200": { "description": "Settings row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } } }
@@ -532,13 +547,13 @@
       }
     },
     "/api/v1/sync/garmin": {
-      "post": { "tags": ["sync"], "summary": "Sync from the plugged-in Garmin device (streaming)", "description": "Streams NDJSON progress events: {type:'progress',phase,current,total,label}, ending with {type:'done',imported,skipped,errors} or {type:'error',message}.", "responses": { "200": { "description": "NDJSON progress stream.", "content": { "application/x-ndjson": {} } } } }
+      "post": { "tags": ["sync"], "summary": "Sync from the plugged-in Garmin device (streaming)", "description": "Streams NDJSON progress events: {type:'progress',phase,current,total,label}, ending with {type:'done',imported,skipped,errors} or {type:'error',message}.", "responses": { "200": { "description": "NDJSON progress stream.", "content": { "application/x-ndjson": {} } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/sync/withings": {
-      "post": { "tags": ["sync"], "summary": "Sync from Withings (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } } } }
+      "post": { "tags": ["sync"], "summary": "Sync from Withings (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/sync/strava": {
-      "post": { "tags": ["sync"], "summary": "Sync from Strava (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary (skipped folds in cross-source duplicates).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } } } }
+      "post": { "tags": ["sync"], "summary": "Sync from Strava (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary (skipped folds in cross-source duplicates).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/garmin/status": {
       "get": { "tags": ["integrations"], "summary": "Is the Garmin device plugged in?", "description": "Runs a ~15s PowerShell device probe.", "responses": { "200": { "description": "Device status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceStatus" } } } } } }
@@ -573,7 +588,15 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "from", "to"], "properties": { "name": { "type": "string" }, "from": { "type": "string", "format": "date" }, "to": { "type": "string", "format": "date" }, "activity_id": { "type": ["integer", "null"] } } } } } },
         "responses": { "200": { "description": "The updated date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeEntry" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       },
-      "delete": { "tags": ["date-ranges"], "summary": "Permanently delete a saved date range (no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "delete": { "tags": ["date-ranges"], "summary": "Permanently delete a saved date range (no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+    },
+    "/api/v1/feedback": {
+      "post": {
+        "tags": ["feedback"], "summary": "Submit anonymous visitor feedback (HRA-226)",
+        "description": "free_text, pricing_choice, pricing_why_not_free_text, feature_interest, and feature_interest_other_free_text are all independently optional, but the request is rejected 422 if every field is empty/absent. pricing_choice, when present, must be one of the four defined tiers. feature_interest, when present, is an array whose entries are each multi_user_coach or shared_groups. Deliberately NOT gated by DEMO_MODE — the one write route the demo guard must not block, since demo visitors are a primary source of submissions.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "free_text": { "type": "string" }, "pricing_choice": { "type": "string", "enum": ["free_only", "3_5", "8_12", "15_plus"] }, "pricing_why_not_free_text": { "type": "string" }, "feature_interest": { "type": "array", "items": { "type": "string", "enum": ["multi_user_coach", "shared_groups"] } }, "feature_interest_other_free_text": { "type": "string" } } } } } },
+        "responses": { "201": { "description": "The created feedback row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FeedbackEntry" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
     },
     "/api/v1/activity-types": {
       "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
@@ -604,14 +627,14 @@
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "event", "dsl_source"], "properties": { "name": { "type": "string" }, "event": { "type": "string", "enum": ["5k", "10k", "half", "marathon", "custom"] }, "distance_m": { "type": "number", "description": "Required iff event is custom; rejected for any other event." }, "dsl_source": { "type": "string" } } } } } },
         "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       },
-      "delete": { "tags": ["plan-templates"], "summary": "Delete a plan template (ON DELETE CASCADE removes every derived instance, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "delete": { "tags": ["plan-templates"], "summary": "Delete a plan template (ON DELETE CASCADE removes every derived instance, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/plan-templates/{id}/approve": {
       "post": {
         "tags": ["plan-templates"], "summary": "Approve a template (gate 2, HRA-113)",
         "description": "Sets approved_at. Only meaningful on an already-saved (zero-warning) template — approval is a deliberate human sign-off on the exact currently-saved state, revoked by any subsequent PUT.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/plan-templates/{id}/instantiate": {
@@ -620,7 +643,7 @@
         "description": "name (HRA-114) is required — the instance's own name; the created instance's event is never a request parameter, always auto-populated from the template. target_activity_id (if given) is validated like date_ranges.activity_id, but against the resolved plan's last day — checked fully before any write, so a rejected request leaves no orphaned rows. goal_time (HRA-113) is an alternate way to supply a pace anchor's value — race_pace_anchor names which one, and is required whenever goal_time is supplied (HRA-121, no default; earlier versions hardcoded RG) — converted via distance (distance_m if given, else the template's own distance_m, else the event's standard distance; a custom event's distance_m is mandatory at template save time, HRA-120, so this call's own distance_m only overrides it, never supplies a missing one). Supplying both goal_time and an explicit pace_overrides value for the same race_pace_anchor is rejected as ambiguous. race_name/race_date (HRA-121, both optional) describe the race this instance targets, independent of target_activity_id.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "start_date"], "properties": { "name": { "type": "string" }, "start_date": { "type": "string", "format": "date" }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "anchor -> pace value string, same grammar as a PACE line's right-hand side, e.g. {\"RG\": \"6:40/mi\"}." }, "goal_time": { "type": "string", "description": "HH:MM:SS — alternate input for the race_pace_anchor's value, converted via distance." }, "race_pace_anchor": { "type": "string", "description": "Which anchor goal_time resolves to. Required whenever goal_time is supplied — no default (HRA-121)." }, "distance_m": { "type": "number", "description": "Optional override of the distance used to convert goal_time — the template's own distance_m (mandatory for a custom-event template) is used when this is omitted." }, "target_activity_id": { "type": ["integer", "null"] }, "race_name": { "type": "string", "description": "Free-text race description (HRA-121), independent of target_activity_id." }, "race_date": { "type": "string", "format": "date", "description": "Free-text race date (HRA-121), independent of target_activity_id." }, "race_url": { "type": "string", "description": "Free-text race link, e.g. a registration page (HRA-121), independent of target_activity_id. Not validated as a well-formed URL." }, "rest_day_label": { "type": "string", "description": "Free-text label (HRA-124) attached as `notes` on every day auto-filled to plug a gap in a template week (a D-number 1-7 the template never declared for that week)." } } } } } },
-        "responses": { "201": { "description": "The created instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": { "201": { "description": "The created instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/plan-instances": {
@@ -646,9 +669,9 @@
         "description": "All body fields are optional, but at least one is required (422 otherwise). Each provided field replaces its current value; every omitted field is left untouched. race_name/race_date/race_url are nullable — send null to explicitly clear one. `days`, when provided, still fully replaces the day set (unchanged semantics from the old PUT, HRA-113/HRA-114/HRA-115) — each day is raw DSL text plus its section/week/date scope; the backend looks up that day's section/week in the source template's own parsed plan for its effective PacePolicy, merges in the instance's own pace_overrides, re-parses dsl against that policy, and resolves it the same way instantiation resolves a segment. Rejects (422) if any day's fresh parse still needs review, listing every flagged day. event is never accepted here, read-only/derived from the template. Never touches or re-instantiates the source template; an instance may diverge from what the template would currently produce. Clears approved_at back to NULL whenever any field in the body is applied, same gate-2 rule as the template PUT.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "name": { "type": "string" }, "race_name": { "type": ["string", "null"] }, "race_date": { "type": ["string", "null"], "format": "date" }, "race_url": { "type": ["string", "null"] }, "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDayEdit" } } } } } } },
-        "responses": { "200": { "description": "The updated instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": { "200": { "description": "The updated instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       },
-      "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}": {
       "patch": {
@@ -656,7 +679,7 @@
         "description": "A smaller, more honest write than PATCH .../plan-instances/{id}'s bulk days replace: one field's worth of edit on one already-existing day. Body is {dsl?, notes?, scheduled_time?}, all optional but at least one required (422 otherwise), each validated independently. dsl, when supplied, is re-parsed against this day's own existing section/week/date scope and the template's effective PacePolicy (merged with the instance's pace_overrides) and resolved the same way the bulk days-replace path does; rejected (422) if the fresh parse still needs review. notes overrides whatever the dsl parse itself produced for that field, when both are supplied together. scheduled_time must be HH:MM 24-hour, or null to clear back to the 08:00 display default. Rejected with 409 if the instance is already approved (mirrors HRA-126's intended lock rule for editing an approved instance). Never touches or re-instantiates the source template.",
         "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "dsl": { "type": "string", "description": "Raw D-line text, same grammar as a template, e.g. \"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10\"." }, "notes": { "type": ["string", "null"] }, "scheduled_time": { "type": ["string", "null"], "description": "HH:MM, 24-hour. null clears back to the 08:00 display default." } } } } } },
-        "responses": { "200": { "description": "The updated day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstanceDay" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": { "200": { "description": "The updated day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstanceDay" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}/validate": {
@@ -698,7 +721,7 @@
         "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113)",
         "description": "Same gate-2 semantics as the template approve endpoint.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "responses": { "200": { "description": "The updated instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+        "responses": { "200": { "description": "The updated instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/plan-instances/{id}/regenerate": {
@@ -707,7 +730,7 @@
         "description": "effective_from is required and server-floored to today — never trusted from the client. Days with date < effective_from are never modified or deleted. Days with date >= effective_from are fully regenerated from the template's own DSL (via instantiatePlan, not from the instance's already-resolved days — those already discarded each day's original symbolic pace anchor) using start_date/pace_overrides, falling back to the instance's own current value for whichever is omitted. pace_overrides, when supplied, is the instance's new COMPLETE override map (same semantics as /instantiate's own field), not a partial merge on top of what was stored before. Existing manual edits on days >= effective_from are discarded (documented behavior, not a bug). Clears approved_at, same gate-2 rule as the instance PUT.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["effective_from"], "properties": { "start_date": { "type": "string", "format": "date", "description": "Optional — defaults to the instance's own current start_date." }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional — the instance's new COMPLETE override map, anchor -> pace value string. Defaults to the instance's own currently-stored overrides when omitted." }, "effective_from": { "type": "string", "format": "date", "description": "The cutover date. Must not be before today (422 otherwise, enforced server-side)." } } } } } },
-        "responses": { "200": { "description": "The updated instance, with its regenerated days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": { "200": { "description": "The updated instance, with its regenerated days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/locales/{lang}": {

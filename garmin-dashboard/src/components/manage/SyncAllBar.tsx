@@ -4,6 +4,7 @@ import type { TFunction } from "i18next";
 import { api } from "@/api/client";
 import { Card } from "@/components/ui";
 import { runGarminSync } from "./shared";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── Sync all ──────────────────────────────────────────────────────────────
 interface SyncAllBarProps {
@@ -34,6 +35,7 @@ function pushFailed(t: TFunction, push: (s: string) => void, source: string, e: 
 
 export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: SyncAllBarProps) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [status, setStatus] = useState<"idle" | "running" | "done">("idle");
   const [log, setLog] = useState<string[]>([]);
 
@@ -97,7 +99,8 @@ export function SyncAllBar({ withingsFrom, withingsTo, stravaFrom, stravaTo }: S
           className="hra-btn whitespace-nowrap"
           data-variant="cta"
           onClick={syncAll}
-          disabled={status === "running"}
+          disabled={status === "running" || demoMode}
+          title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
           data-tone="green"
         >
           {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.syncAll.button", "⚡ Sync all")}

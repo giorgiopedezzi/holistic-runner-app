@@ -6,6 +6,7 @@ import type { DateRangeState } from "@/hooks/useDateRange";
 import type { SyncResult } from "@/api/client";
 import type { SavedDateRange } from "@/types/api";
 import { fmtExpiry } from "./shared";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── OAuth sync section ───────────────────────────────────────────────────
 // Unifies WithingsSyncSection/StravaSyncSection (HRA-73) via an explicit
@@ -36,6 +37,7 @@ interface OAuthSyncSectionProps {
 export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSectionProps) {
   const { from, to } = range;
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const { id, label, noun: nounRaw, description: descriptionRaw, api } = provider;
   const noun = t(`manage.oauth.${id}.noun`, nounRaw);
   const description = t(`manage.oauth.${id}.description`, descriptionRaw);
@@ -111,7 +113,7 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
   }
 
   const connected = token?.present === true && token?.valid === true;
-  const canSync   = status !== "running" && connected;
+  const canSync   = status !== "running" && connected && !demoMode;
 
   return (
     <Card className="mb-4">
@@ -155,7 +157,9 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
           data-tone="green"
           onClick={triggerSync}
           disabled={!canSync}
-          title={!canSync && status !== "running" ? t("manage.oauth.loginFirstTooltip", `Log in to ${label} first`, { label }) : undefined}
+          title={demoMode
+            ? t("common.demoModeHint", "Not available for demo")
+            : !canSync && status !== "running" ? t("manage.oauth.loginFirstTooltip", `Log in to ${label} first`, { label }) : undefined}
         >
           {status === "running" ? t("manage.sync.syncingEllipsis", "Syncing…") : t("manage.oauth.syncFromButton", `↓ Sync from ${label}`, { label })}
         </button>

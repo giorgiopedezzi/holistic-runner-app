@@ -49,7 +49,15 @@ export function createSettingsController(ctx: AppContext) {
   const repo = ctx.repos.settings;
   const { backgroundsDir } = ctx;
 
-  const get: Handler = (_req, res) => send(res, repo.get());
+  // demo_mode is computed from config, not a stored column (HRA-220) — the
+  // frontend's one signal for whether to disable the gated controls, kept in
+  // step with the router's own demoGuarded() enforcement via the same
+  // ctx.config.demoMode source, never a separately hardcoded frontend flag.
+  // Every settings response (not just GET) goes through this so a PUT's
+  // response never drops the field the GET response carries.
+  const sendSettings = (res: Parameters<typeof send>[0]) => send(res, { ...repo.get(), demo_mode: ctx.config.demoMode });
+
+  const get: Handler = (_req, res) => sendSettings(res);
 
   // PUT /api/v1/settings/outliers — the Outlier-detection card's three values,
   // submitted together by its Save button → full replacement of that sub-resource
@@ -64,7 +72,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable("outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec and outlier_min_speed_kmh must be positive numbers (outlier_min_speed_kmh may be 0).");
     }
     repo.updateOutliers({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   // PUT /api/v1/settings/thresholds — the Overview & Trends card's single value
@@ -76,7 +84,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable("min_trend_group_size must be an integer of at least 2.");
     }
     repo.updateThresholds({ $min_trend_group_size: minTrendGroupSize });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updateTheme: Handler = async (req, res) => {
@@ -85,7 +93,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`theme must be one of: ${THEME_NAMES.join(", ")}`);
     }
     repo.updateTheme({ $theme: body.theme });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   // PUT /api/v1/settings/background — the complete representation of the background
@@ -104,7 +112,7 @@ export function createSettingsController(ctx: AppContext) {
       $background_kind: body.background_kind,
       $background_value: body.background_kind === "bundled" ? (body.background_value ?? null) : null,
     });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updateUnits: Handler = async (req, res) => {
@@ -113,7 +121,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`unit_system must be one of: ${UNIT_SYSTEMS.join(", ")}`);
     }
     repo.updateUnits({ $unit_system: body.unit_system });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updateDetailView: Handler = async (req, res) => {
@@ -122,7 +130,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`activity_detail_view must be one of: ${DETAIL_VIEWS.join(", ")}`);
     }
     repo.updateDetailView({ $activity_detail_view: body.activity_detail_view });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updateAccent: Handler = async (req, res) => {
@@ -131,7 +139,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`accent_color must be one of: ${ACCENT_COLORS.join(", ")}`);
     }
     repo.updateAccent({ $accent_color: body.accent_color });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updateDateFormat: Handler = async (req, res) => {
@@ -140,7 +148,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`date_format must be one of: ${DATE_FORMATS.join(", ")}`);
     }
     repo.updateDateFormat({ $date_format: body.date_format });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updateLanguage: Handler = async (req, res) => {
@@ -149,7 +157,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`language must be one of: ${LANGUAGES.join(", ")}`);
     }
     repo.updateLanguage({ $language: body.language });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const updatePalette: Handler = async (req, res) => {
@@ -158,7 +166,7 @@ export function createSettingsController(ctx: AppContext) {
       throw unprocessable(`palette must be one of: ${PALETTES.join(", ")}`);
     }
     repo.updatePalette({ $palette: body.palette, $accent_color: PALETTE_ACCENT[body.palette] });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   const backgroundImage: Handler = (_req, res) => {
@@ -192,7 +200,7 @@ export function createSettingsController(ctx: AppContext) {
       try { fs.unlinkSync(path.join(backgroundsDir, prev.background_value)); } catch { /* already gone, fine */ }
     }
     repo.updateBackground({ $background_kind: "custom", $background_value: filename });
-    return send(res, repo.get());
+    return sendSettings(res);
   };
 
   return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };

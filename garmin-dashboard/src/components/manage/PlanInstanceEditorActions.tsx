@@ -7,6 +7,7 @@
  */
 import { useTranslation } from "react-i18next";
 import { DatePicker } from "@/components/ui";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 interface Props {
   fieldsLocked: boolean;
@@ -43,19 +44,21 @@ export function PlanInstanceEditorActions({
   isDirty, onRestoreClick, viewMode, setViewMode,
 }: Props) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
+  const demoTitle = demoMode ? t("common.demoModeHint", "Not available for demo") : undefined;
 
   return (
     <div className="hra-plan-instance-section-gap hra-row-wrap items-center" >
       {!fieldsLocked ? (
-        <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading}>
+        <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading || demoMode} title={demoTitle}>
           {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
         </button>
       ) : (
         <>
-          <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || !hasSections || isApproved || !saveEnabled}>
+          <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || !hasSections || isApproved || !saveEnabled || demoMode} title={demoTitle}>
             {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           </button>
-          <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved}>
+          <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved || demoMode} title={demoTitle}>
             {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
           </button>
           {/* AC3/AC6: label + date picker + button as ONE real control — a
@@ -71,16 +74,18 @@ export function PlanInstanceEditorActions({
               so opening the calendar doesn't also fire Regenerate. */}
           <div
             className="hra-btn hra-regenerate-unit inline-flex items-center gap-1.5" data-variant="green"
-            role="button" tabIndex={regenerateDisabled ? -1 : 0}
-            onClick={() => { if (!regenerateDisabled) onRegenerateClick(); }}
-            onKeyDown={e => { if (!regenerateDisabled && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
-            data-disabled={regenerateDisabled || undefined}
-            aria-disabled={regenerateDisabled}
-            title={!isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
+            role="button" tabIndex={regenerateDisabled || demoMode ? -1 : 0}
+            onClick={() => { if (!regenerateDisabled && !demoMode) onRegenerateClick(); }}
+            onKeyDown={e => { if (!regenerateDisabled && !demoMode && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
+            data-disabled={regenerateDisabled || demoMode || undefined}
+            aria-disabled={regenerateDisabled || demoMode}
+            title={demoMode
+              ? demoTitle
+              : !isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
           >
             <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
             <span onClick={e => e.stopPropagation()} className="inline-flex">
-              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled} />
+              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled || demoMode} />
             </span>
           </div>
         </>

@@ -5,10 +5,12 @@ import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, BodyMeasurement } from "@/types/api";
 import { fmtKm, fmtWeight, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── Delete section ─────────────────────────────────────────────────────────
 export function DeleteSection() {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [from, setFrom] = useState(isoAgo(30));
   const [to,   setTo]   = useState(isoToday());
   const [delActivities, setDelActivities] = useState(false);
@@ -153,7 +155,8 @@ export function DeleteSection() {
         <button
           className="hra-btn" data-variant="cta"
           data-tone="red"
-          onClick={() => setConfirm(true)} disabled={!canDelete}
+          onClick={() => setConfirm(true)} disabled={!canDelete || demoMode}
+          title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
         >
           {t("manage.delete.moveToTrashButton", "Move to trash…")}
         </button>

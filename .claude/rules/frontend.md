@@ -38,7 +38,7 @@ paths:
 - `App.tsx` intentionally conditionally renders tabs (`{tab === "x" && <XTab/>}`), causing real unmount/remount.
 - **Do not keep tabs mounted, hide them with CSS, or memoize them across tab switches.** `utils/units.ts` uses module-scope resolved unit state and relies on remounting to propagate unit-system changes. This optimization would silently break behavior.
 - `useQuery` fires on every dependency change via ordinary `useEffect`; do not invent an auto/manual-load mode that is not present.
-- **Do not use `localStorage` or other browser storage APIs.**
+- **Do not use `localStorage` or other browser storage APIs, unless it's the most reasonable choice for the specific need** (e.g. an ephemeral, tab-scoped UI flag that has no reason to persist to the backend or survive a closed tab) — note the justification inline as a comment where it's used.
 - **Sibling components that both consume data one of them mutates must share that data at their nearest common parent.** Do not let siblings keep independent stale fetch/state copies of the same mutable list.
 
 ## User feedback

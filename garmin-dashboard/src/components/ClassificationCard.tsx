@@ -14,6 +14,7 @@ import {
   type Activity, type ClassificationMethod, type CorrectionReason, type WorkoutClassification,
   CORRECTION_REASONS, WORKOUT_CLASSIFICATIONS, WORKOUT_CLASSIFICATION_KEY, classificationStatus,
 } from "@/types/api";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 // ── AI workout classifier card ────────────────────────────────────────────
 // Scoped to sport === 'running' by the caller — the six categories (Fartlek,
@@ -48,6 +49,7 @@ function MethodResultCard({
   activity, method, splitMeters, onUpdate,
 }: { activity: Activity; method: ClassificationMethod; splitMeters: number; onUpdate: (a: Activity) => void }) {
   const { t } = useTranslation();
+  const demoMode = useDemoMode();
   const [classifying, setClassifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCorrection, setShowCorrection] = useState(false);
@@ -131,10 +133,12 @@ function MethodResultCard({
           className="hra-btn"
           data-variant="cta"
           onClick={handleClassify}
-          disabled={classifying}
-          title={method === "ai"
-            ? t("activity.classify.aiTooltip", "Runs a local Ollama model against this activity's pace/HR pattern (takes ~15-25s on CPU). Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending.")
-            : t("activity.classify.statisticalTooltip", "Applies deterministic rules to this activity's pace variance, splits, and pauses — instant, no Ollama needed. Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending.")}
+          disabled={classifying || demoMode}
+          title={demoMode
+            ? t("common.demoModeHint", "Not available for demo")
+            : method === "ai"
+              ? t("activity.classify.aiTooltip", "Runs a local Ollama model against this activity's pace/HR pattern (takes ~15-25s on CPU). Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending.")
+              : t("activity.classify.statisticalTooltip", "Applies deterministic rules to this activity's pace variance, splits, and pauses — instant, no Ollama needed. Always available, even if already classified — reclassifying resets the activity's shared review verdict back to pending.")}
         >
           {classifying ? t("activity.classify.classifyingProgress", `Classifying… ${elapsedSec.toFixed(1)}s`, { sec: elapsedSec.toFixed(1) })
             : classification ? t("activity.classify.reclassify", "Reclassify") : t("activity.classify.classify", "Classify")}
@@ -161,12 +165,14 @@ function MethodResultCard({
 
       {classification && !showCorrection && (
         <div className="hra-row gap-2 mt-2" >
-          <button onClick={handleApprove} title={t("activity.classify.approveTooltip", "Confirm this card's classification as the activity's answer")}
+          <button onClick={handleApprove} disabled={demoMode}
+            title={demoMode ? t("common.demoModeHint", "Not available for demo") : t("activity.classify.approveTooltip", "Confirm this card's classification as the activity's answer")}
             className="hra-feedback-button hra-dyn-border hra-dyn-color text-label leading-none rounded-md py-1 px-2.5 bg-transparent cursor-pointer"
             data-tone="green" data-selected={isVerdictSource && activity.user_feedback === "approved"}>
             👍
           </button>
-          <button onClick={() => setShowCorrection(true)} title={t("activity.classify.rejectTooltip", "This card's classification is wrong")}
+          <button onClick={() => setShowCorrection(true)} disabled={demoMode}
+            title={demoMode ? t("common.demoModeHint", "Not available for demo") : t("activity.classify.rejectTooltip", "This card's classification is wrong")}
             className="hra-feedback-button hra-dyn-border hra-dyn-color text-label leading-none rounded-md py-1 px-2.5 bg-transparent cursor-pointer"
             data-tone="red" data-selected={isVerdictSource && activity.user_feedback === "rejected"}>
             👎
@@ -208,7 +214,7 @@ function MethodResultCard({
           <button
             className="hra-btn" data-variant="cta"
             data-tone="red"
-            onClick={handleReject} disabled={!reason || !corrected || submitting}
+            onClick={handleReject} disabled={!reason || !corrected || submitting || demoMode}
           >
             {submitting ? "…" : t("common.submit", "Submit")}
           </button>

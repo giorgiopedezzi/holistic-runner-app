@@ -214,6 +214,16 @@ a single synthetic `rest_block` segment carrying `rest_type` from the template's
 metadata (`jog` if unset) — reuses the existing `ResolvedSegment` shape rather than adding a new
 column. Implemented in `domain/runplan/instantiate.ts`'s `instantiatePlan()`.
 
+### `feedback`
+Anonymous visitor feedback (HRA-226) — one row per `POST /api/v1/feedback` submission, no
+visitor/session identity captured (no dedup, no rate limiting). Columns: `id`, `free_text`,
+`pricing_choice` (one of `free_only | 3_5 | 8_12 | 15_plus`), `pricing_why_not_free_text` (only
+meaningful when `pricing_choice === 'free_only'`), `feature_interest` (TEXT, JSON-serialized
+`string[]` of `multi_user_coach | shared_groups`), `feature_interest_other_free_text`,
+`created_at`. Every column is nullable — the "at least one field non-empty" rule is enforced
+app-side (`feedback.controller.ts`), not as a DB constraint. No GET/list route exists (out of
+scope for HRA-226); no soft delete either — this table has no trash lifecycle.
+
 ## Soft delete & trash
 `activities` and `body_measurements` both have `deleted_at` (TEXT, nullable) and `purged` (INTEGER, default 0). Three states per row:
 - **Active** — `deleted_at IS NULL`. Shows up everywhere normally; every read query in `server.ts` (`activities`, `activityById`, `summary`, `weekly`, `monthly`, `range`, `countInRange`, and the `body_*`/`correlation` equivalents) filters `deleted_at IS NULL`.

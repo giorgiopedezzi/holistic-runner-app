@@ -10,7 +10,7 @@ import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
 import type { PlanInstanceDayWithInstance, TrackPoint } from "@/types/api";
 import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
-import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH } from "./shared";
+import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH, PLAYBACK_DURATION_MS, PAUSE_DWELL_MS, xToPixel } from "./shared";
 import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, Select, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { MainOverlayChart, MetricStandaloneCard } from "./OverlayCharts";
@@ -21,8 +21,6 @@ import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPla
 import { nearestHr } from "@/domain/pauses";
 import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 
-const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
-const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
 // How far the actual plotted line sits from this section's own outer edge,
 // on each side: ChartCard's own padding ("16px 8px 8px", see ui/ChartCard.tsx)
 // plus this chart's own margin+axis-width inset (AXIS_WIDTH etc., see
@@ -62,15 +60,6 @@ const RUNNER_IDLE_COLOR = hrRunnerColor(80);
 // against the row's edge.
 const RUNNER_BAND_HEIGHT = 36;
 const RUNNER_ROW_HEIGHT = RUNNER_BAND_HEIGHT + 2 * RUNNER_ELEVATION_MAX_PX;
-
-// A chart-domain x to a pixel offset inside the plot area — the chart's own
-// axis layout math, replicated (Recharts exposes no scale to read). Shared by
-// the autoplay loop and the terrain silhouette so the runner can never stand
-// somewhere its ground isn't.
-function xToPixel(x: number, domainMin: number, domainMax: number, width: number, leftInset: number, rightInset: number): number {
-  const inner = Math.max(0, width - leftInset - rightInset);
-  return leftInset + ((x - domainMin) / (domainMax - domainMin || 1)) * inner;
-}
 
 // Module-level (not a closure) — takes everything it needs as a parameter,
 // so its identity never needs to be threaded through a useCallback dependency
