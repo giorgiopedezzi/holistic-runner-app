@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Gauge, Heart } from "lucide-react";
+import { MapPin, Gauge, Heart, AlertTriangle } from "lucide-react";
 import {
   axisDomainMinMax, distanceTicks, timeTicks,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
@@ -596,10 +596,24 @@ export function ActivityChartSection({
           "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
           "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
         } as CSSProperties}>
-          {/* Left column: Play/Stop only. */}
-          <div className="flex items-center gap-1.5">
-            <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
-            <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+          {/* Left column: Play/Stop, plus — only when the planned overlay
+              actually runs past the real activity's own distance — a small
+              note underneath explaining why the runner stops short of the
+              planned workout's full length. `mt-2` keeps it visibly
+              separate from the buttons rather than glued to them. */}
+          <div className="flex flex-col items-start gap-2">
+            <div className="flex items-center gap-1.5">
+              <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
+              <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+            </div>
+            {plannedOverlay && plannedOverlay.totalDistanceM > (chartData[chartData.length - 1]?.x ?? 0) && (
+              <span className="hra-activity-plan-note hra-text-warning text-meta italic mt-2">
+                <AlertTriangle size={12} />
+                {t("activity.plannedWorkout.animationShortNote",
+                  `Actual distance ${fmtKm(distanceM)} instead of the planned ${fmtKm(plannedOverlay.totalDistanceM)}.`,
+                  { actual: fmtKm(distanceM), planned: fmtKm(plannedOverlay.totalDistanceM) })}
+              </span>
+            )}
           </div>
           {/* Middle column: the planned-workout pill + card toggle, the
               Actual/Planned legend while the overlay is actually shown, then

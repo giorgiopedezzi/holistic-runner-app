@@ -304,6 +304,7 @@
   "activity.plannedWorkout.unnamedInstance": "Piano senza nome",
   "activity.plannedWorkout.legendActual": "Effettivo",
   "activity.plannedWorkout.legendPlanned": "Pianificato",
+  "activity.plannedWorkout.animationShortNote": "Distanza reale {{actual}} invece dei {{planned}} pianificati.",
   "activity.stat.distance": "Distanza",
   "activity.stat.movingTime": "Tempo in movimento",
   "activity.stat.duration": "Durata",
