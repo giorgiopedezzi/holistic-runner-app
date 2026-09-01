@@ -120,6 +120,28 @@ export function SplashScreen() {
   const runnerReady = plotWidth !== 0 && chartData.length > 0;
   const runnerIconRef = useRef<RunnerIconHandle>(null);
 
+  // Same "light effect" ActivityChartSection's own autoplay drives (see that
+  // file's setHoverHighlight/showRow) — two CSS-only overlay layers over the
+  // chart's plot area, positioned by --hover-x and toggled via a data
+  // attribute rather than React state, so a 60fps loop never re-renders the
+  // chart. Reused verbatim (.hra-chart-hover-dim/-glow, index.css) rather
+  // than rebuilt, same "no new visual system" constraint the Story's own
+  // scope names.
+  const hoverDimRef = useRef<HTMLDivElement>(null);
+  const hoverGlowRef = useRef<HTMLDivElement>(null);
+  function setHoverHighlight(cx: number | null) {
+    for (const ref of [hoverDimRef, hoverGlowRef]) {
+      const el = ref.current;
+      if (!el) continue;
+      if (cx == null) {
+        el.dataset.active = "false";
+      } else {
+        el.style.setProperty("--hover-x", `${cx}px`);
+        el.dataset.active = "true";
+      }
+    }
+  }
+
   // Re-synced every render, same "always read current data/layout" pattern
   // ActivityChartSection's own playCtxRef uses — so a plotWidth change
   // mid-play (e.g. a window resize) doesn't leave the loop reading stale
@@ -150,8 +172,10 @@ export function SplashScreen() {
       return xToPixel(x, domainMin, domainMax, w, MARGIN_LEFT + AXIS_WIDTH, MARGIN_RIGHT + RIGHT_AXES_WIDTH);
     }
     function showRow(row: ChartRow, idx: number, dwelling: boolean) {
+      const cx = pixelX(row.x);
       const dynamics = playCtxRef.current.rowDynamics[idx] ?? NEUTRAL_DYNAMICS;
-      runnerIconRef.current?.show(pixelX(row.x), rowColor(row), row.pauseDurationSec ?? null, dwelling, dynamics);
+      runnerIconRef.current?.show(cx, rowColor(row), row.pauseDurationSec ?? null, dwelling, dynamics);
+      setHoverHighlight(cx);
     }
     function advanceRow(sec: number): { row: ChartRow; idx: number } {
       const { chartData: data, rowDynamics: dyn } = playCtxRef.current;
@@ -210,11 +234,11 @@ export function SplashScreen() {
   if (dismissed) return null;
 
   return (
-    <div className="hra-splash-layer hra-splash-backdrop fixed inset-0 flex flex-col items-center justify-center gap-8 p-6">
-      <p className="text-heading hra-text-primary text-center max-w-md">
+    <div className="hra-splash-layer hra-splash-backdrop fixed inset-0 flex flex-col items-center justify-center gap-10 p-6">
+      <p className="hra-splash-copy text-display hra-text-primary text-center max-w-2xl">
         {t("splash.copy", "Your running app. What you need — just what you need, no noise. The data that matters, lit by your effort. Your heart. You.")}
       </p>
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-2xl">
         <ChartCard>
           <div className="hra-runner-row relative mb-1" style={{ "--runner-row-height": `${RUNNER_ROW_HEIGHT}px` } as CSSProperties}>
             {runnerReady ? (
@@ -228,7 +252,11 @@ export function SplashScreen() {
           </div>
           {/* Non-interactive: no onMouseMove/onMouseLeave handler does
               anything (no-ops below) — the splash has no hover, no
-              Play/Stop, no metric/axis toggles, only the Skip button. */}
+              Play/Stop, no metric/axis toggles, only the Skip button. The
+              hover-dim/hover-glow overlay still lights up, but it's driven
+              by the autoplay's own cx (setHoverHighlight in showRow above),
+              the same "light effect" ActivityChartSection's real autoplay
+              drives — not by mouse events here. */}
           <div ref={plotRef} className="relative pointer-events-none">
             {runnerReady && (
               <MainOverlayChart
@@ -238,6 +266,8 @@ export function SplashScreen() {
                 onMouseMove={() => {}} onMouseLeave={() => {}}
               />
             )}
+            <div ref={hoverDimRef} className="hra-chart-hover-dim" data-active="false" />
+            <div ref={hoverGlowRef} className="hra-chart-hover-glow" data-active="false" />
           </div>
         </ChartCard>
       </div>
