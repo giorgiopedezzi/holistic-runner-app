@@ -17,6 +17,7 @@ import { BodyTab }      from "@/components/BodyTab";
 import { PlansTab }     from "@/components/PlansTab";
 import { ManageTab }    from "@/components/ManageTab";
 import { SettingsTab }  from "@/components/SettingsTab";
+import { FeedbackTab }  from "@/components/FeedbackTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
@@ -32,6 +33,7 @@ const TABS = [
   { id: "body",        labelKey: "nav.body",       fallback: "Body"              },
   { id: "manage",      labelKey: "nav.manage",     fallback: "Data & Sync"       },
   { id: "settings",    labelKey: "nav.settings",   fallback: "Settings"          },
+  { id: "feedback",    labelKey: "nav.feedback",   fallback: "Feedback"          },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -210,6 +212,7 @@ function AppShell() {
         {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
         {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
         {tab === "settings"   && <SettingsTab appearance={appearance} />}
+        {tab === "feedback"   && <FeedbackTab />}
       </main>
 
       {/* Global success/error notifications (utils/toast.ts) — mounted once

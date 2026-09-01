@@ -98,6 +98,32 @@ export interface SavedDateRange {
   race_activity_type_id:  number | null;
 }
 
+// Anonymous visitor feedback (HRA-226) — every field independently optional
+// server-side; feature_interest round-trips as a JSON-serialized string, not
+// a parsed array (mirrors garmin-stats' FeedbackRow, the raw DB shape).
+export const PRICING_CHOICES = ["free_only", "3_5", "8_12", "15_plus"] as const;
+export type PricingChoice = typeof PRICING_CHOICES[number];
+export const FEATURE_INTERESTS = ["multi_user_coach", "shared_groups"] as const;
+export type FeatureInterest = typeof FEATURE_INTERESTS[number];
+
+export interface FeedbackSubmission {
+  free_text?: string;
+  pricing_choice?: PricingChoice;
+  pricing_why_not_free_text?: string;
+  feature_interest?: FeatureInterest[];
+  feature_interest_other_free_text?: string;
+}
+
+export interface FeedbackEntry {
+  id:                                 number;
+  free_text:                          string | null;
+  pricing_choice:                     PricingChoice | null;
+  pricing_why_not_free_text:          string | null;
+  feature_interest:                   string | null;
+  feature_interest_other_free_text:   string | null;
+  created_at:                         string;
+}
+
 // A saved RunPlan DSL v1 template (HRA-111/HRA-112, amended HRA-113) — mirrors
 // garmin-stats/src/db.ts's PlanTemplateRow. parsed_plan is JSON-serialized, not
 // parsed here — the domain shape it deserializes to lives in types/runplan.ts

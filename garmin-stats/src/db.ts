@@ -333,6 +333,21 @@ export function initSchema(db: DatabaseSync): void {
       scheduled_time        TEXT
     );
 
+    -- Anonymous visitor feedback (HRA-226): one row per submission, no
+    -- identity captured. Every field independently optional at the DB level —
+    -- the "at least one field non-empty" rule is enforced app-side
+    -- (feedback.controller.ts), since SQLite has no clean way to express
+    -- "not all of N nullable columns are null" as a single CHECK.
+    CREATE TABLE IF NOT EXISTS feedback (
+      id                            INTEGER PRIMARY KEY AUTOINCREMENT,
+      free_text                     TEXT,
+      pricing_choice                TEXT,
+      pricing_why_not_free_text     TEXT,
+      feature_interest              TEXT,
+      feature_interest_other_free_text TEXT,
+      created_at                    TEXT    DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
     CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
     CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
@@ -631,6 +646,17 @@ export interface DateRangeRow {
   race_activity_name: string | null;
   race_distance_m: number | null;
   race_activity_type_id: number | null;
+}
+
+export interface FeedbackRow {
+  id: number;
+  free_text: string | null;
+  pricing_choice: string | null;
+  pricing_why_not_free_text: string | null;
+  // Stored as a JSON-serialized string[] (see repositories/feedback.repo.ts).
+  feature_interest: string | null;
+  feature_interest_other_free_text: string | null;
+  created_at: string;
 }
 
 // A race-type activity (activity_type_id != Training), as offered on the

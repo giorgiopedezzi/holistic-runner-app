@@ -16,6 +16,7 @@ import type { DateRangesRepo } from "../repositories/date-ranges.repo.ts";
 import type { ActivityTypesRepo } from "../repositories/activity-types.repo.ts";
 import type { PlanTemplatesRepo } from "../repositories/plan-templates.repo.ts";
 import type { PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
+import type { FeedbackRepo } from "../repositories/feedback.repo.ts";
 import type { ActivitiesService } from "../services/activities.service.ts";
 import type { BodyService } from "../services/body.service.ts";
 import type { ClassificationService } from "../services/classification.service.ts";
@@ -32,6 +33,7 @@ export interface AppContext {
   repos: {
     activities: ActivitiesRepo; body: BodyRepo; settings: SettingsRepo; dateRanges: DateRangesRepo;
     activityTypes: ActivityTypesRepo; planTemplates: PlanTemplatesRepo; planInstances: PlanInstancesRepo;
+    feedback: FeedbackRepo;
   };
   services: {
     activities: ActivitiesService;

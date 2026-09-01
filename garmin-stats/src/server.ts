@@ -22,6 +22,7 @@ import { createDateRangesRepo } from "./repositories/date-ranges.repo.ts";
 import { createActivityTypesRepo } from "./repositories/activity-types.repo.ts";
 import { createPlanTemplatesRepo } from "./repositories/plan-templates.repo.ts";
 import { createPlanInstancesRepo } from "./repositories/plan-instances.repo.ts";
+import { createFeedbackRepo } from "./repositories/feedback.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -51,6 +52,7 @@ const dateRangesRepo = createDateRangesRepo(db);
 const activityTypesRepo = createActivityTypesRepo(db);
 const planTemplatesRepo = createPlanTemplatesRepo(db);
 const planInstancesRepo = createPlanInstancesRepo(db);
+const feedbackRepo      = createFeedbackRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -73,6 +75,7 @@ const server = http.createServer(createApiHandler({
   repos: {
     activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
     activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
+    feedback: feedbackRepo,
   },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,

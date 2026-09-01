@@ -22,6 +22,7 @@ import { createLocalesController } from "../controllers/locales.controller.ts";
 import { createDateRangesController } from "../controllers/date-ranges.controller.ts";
 import { createActivityTypesController } from "../controllers/activity-types.controller.ts";
 import { createPlanTemplatesController } from "../controllers/plan-templates.controller.ts";
+import { createFeedbackController } from "../controllers/feedback.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -35,6 +36,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activityTypes = createActivityTypesController(ctx);
   const planTemplates = createPlanTemplatesController(ctx);
   const locales      = createLocalesController(ctx);
+  const feedback     = createFeedbackController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -148,6 +150,11 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await demo(planTemplates.regenerateInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route)) return await planTemplates.validateInstanceDay(req, res, url);
+        // HRA-226: deliberately NOT wrapped in demo() — this is the one write
+        // route DEMO_MODE must not block, since demo visitors are a primary
+        // source of feedback submissions. Do not reflexively wrap this in
+        // demo() later.
+        if (route === "/api/v1/feedback")                  return await feedback.create(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);
