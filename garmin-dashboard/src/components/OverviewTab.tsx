@@ -54,7 +54,7 @@ interface Props {
 // tick, so no manual positioning is needed for "starts from the horizontal
 // center of the bar."
 const GROUP_MODES: GroupMode[] = ["single", "week", "month"];
-const GROUP_LABEL: Record<GroupMode, string> = { single: "Single", week: "Week", month: "Month" };
+const GROUP_LABEL: Record<GroupMode, string> = { single: "By activity", week: "By week", month: "By month" };
 // Whether current and compare render as one overlapped chart (default) or
 // two separate ones, side by side — a per-tab toggle (TrendsBySport), only
 // shown while comparison is enabled.
@@ -970,7 +970,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
             <button key={v}
               className="hra-segment-item" data-active={viewMode === v}
               onClick={() => setViewMode(v)}>
-              {v === "overlap" ? t("overview.view.overlap", "Overlapping") : t("overview.view.distinct", "Distinct")}
+              {v === "overlap" ? t("overview.view.overlap", "Overlay") : t("overview.view.distinct", "Side by side")}
             </button>
           ))}
         </div>

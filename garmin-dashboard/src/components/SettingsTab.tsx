@@ -443,7 +443,7 @@ export function SettingsTab({ appearance }: Props) {
 
       <AccordionCard title={t("settings.overviewTrends.title", "Overview & Trends")} expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
         <p className="hra-text-secondary text-label mt-0 mb-4" >
-          {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"Single\" mode), or before \"Week\"/\"Month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
+          {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"By activity\" mode), or before \"By week\"/\"By month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
         </p>
         {draft && saved && (
           <>

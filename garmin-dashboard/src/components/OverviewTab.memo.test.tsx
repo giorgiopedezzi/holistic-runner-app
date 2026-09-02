@@ -4,8 +4,8 @@
  * domain/trends.ts) is genuinely memoized, not just wrapped in useMemo for
  * show: renders the real tab, spies on the (real, unmocked) domain function,
  * and asserts it's called once on mount and NOT again when an unrelated
- * re-render happens (clicking the "Single" grouping button, which doesn't
- * touch the activities array the memo depends on).
+ * re-render happens (clicking the "By activity" grouping button, which
+ * doesn't touch the activities array the memo depends on).
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -45,11 +45,11 @@ describe("TrendsBySport sport-grouping memoization", () => {
 
     render(<OverviewTab range={fakeRange("2026-07-01", "2026-08-01")} compareRange={fakeCompareRange("2026-06-01", "2026-06-30")} savedRanges={[]} />);
 
-    // "Single" is always enabled regardless of data — its presence proves
-    // TrendsBySport rendered (graph-first reorg moved the "Distance & pace/HR
-    // trend" section title out of the running case, so it's no longer a
-    // reliable mount signal here).
-    const singleButton = await screen.findByRole("button", { name: "Single" });
+    // "By activity" is always enabled regardless of data — its presence
+    // proves TrendsBySport rendered (graph-first reorg moved the "Distance &
+    // pace/HR trend" section title out of the running case, so it's no
+    // longer a reliable mount signal here).
+    const singleButton = await screen.findByRole("button", { name: "By activity" });
     await waitFor(() => expect(spy).toHaveBeenCalled());
     const callsAfterMount = spy.mock.calls.length;
 

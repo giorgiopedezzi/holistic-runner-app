@@ -131,6 +131,43 @@ describe("TrainingPlanAccordion — unsaved structured change survives navigatio
   });
 });
 
+// HRA-244: runplan.accordion.totalDays used to always render the English
+// literal " days" regardless of count (e.g. "1 days"). i18next pluralization
+// (totalDays_one/totalDays_other, driven by the `count` option) fixes it;
+// this exercises both the singular and plural default-text paths, since the
+// test environment never loads real translations (see src/i18n.ts's own
+// comment on t()'s defaultValue fallback).
+function daysSection(dayCount: number): Section {
+  return {
+    name: "Base", week_spec: "1", raw_dsl: "SECTION \"Base\" WEEKS 1", pace_policy: {},
+    weeks: [{
+      number: 1, raw_dsl: "WEEK 1", pace_policy: {},
+      days: Array.from({ length: dayCount }, (_, i) => ({
+        day: i + 1, workout_type: "run", needs_review: false, warnings: [],
+        raw_dsl: `D${i + 1}: 10km @ RG`, notes: undefined,
+        segments: [{ type: "continuous", target: { kind: "distance", distance_m: 10000, raw: "10km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "10km @ RG" }],
+      })),
+    }],
+  };
+}
+
+describe("TrainingPlanAccordion — totalDays pluralization", () => {
+  it("renders singular '1 day' for a one-day section (not '1 days')", () => {
+    const sections = [buildTemplateSectionView(daysSection(1), {})];
+    render(<TrainingPlanAccordion ownerName="Test plan" sections={sections} onSectionEdit={() => {}} onWeekEdit={() => {}} onDayEdit={() => {}} offsetUnit="s/km" />);
+
+    expect(screen.getAllByText(/^1 day ·/).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/^1 days ·/)).not.toBeInTheDocument();
+  });
+
+  it("renders plural 'N days' for a multi-day section", () => {
+    const sections = [buildTemplateSectionView(daysSection(3), {})];
+    render(<TrainingPlanAccordion ownerName="Test plan" sections={sections} onSectionEdit={() => {}} onWeekEdit={() => {}} onDayEdit={() => {}} offsetUnit="s/km" />);
+
+    expect(screen.getAllByText(/^3 days ·/).length).toBeGreaterThan(0);
+  });
+});
+
 describe("TrainingPlanAccordion — keyboard interaction", () => {
   it("Enter commits a structured field edit the same way blur does", () => {
     render(<Harness />);

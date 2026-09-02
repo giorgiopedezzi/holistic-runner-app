@@ -218,7 +218,7 @@ function fmtDistance(distance: DistanceTotal, t: Translate): string {
 // now joined into one compact string for the always-visible title row.
 function compactTotals(totals: AggregateTotals, t: Translate): string {
   return [
-    t("runplan.accordion.totalDays", `${totals.totalDays} days`, { n: totals.totalDays }),
+    t("runplan.accordion.totalDays", totals.totalDays === 1 ? "1 day" : `${totals.totalDays} days`, { count: totals.totalDays }),
     t("runplan.accordion.activeDays", `${totals.activeDays} active`, { n: totals.activeDays }),
     t("runplan.accordion.runningDays", `${totals.runningDays} running`, { n: totals.runningDays }),
     t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays }),
