@@ -482,6 +482,35 @@ export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegm
   };
 }
 
+// ── structured interval-segment presentation (HRA-230) ──────────────────────
+// Extends the same contract to IntervalSegment: a primary row (Repetitions,
+// Distance/Duration, Pace) plus, only when the segment's own `r:` clause is
+// present, a subordinate recovery row (Recovery, Recovery pace). One grouped
+// block per day — never one card per repetition. Purely presentational, same
+// as buildContinuousSegmentPresentation above.
+
+export interface IntervalSegmentPresentation {
+  repetitions: string;
+  distanceOrDuration: string;
+  pace: string;
+  recovery?: { recovery: string; recoveryPace?: string };
+}
+
+export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentPresentation | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
+  const [segment] = day.segments;
+  if (segment.type !== "interval") return null;
+  return {
+    repetitions: segment.reps == null ? "?" : String(segment.reps),
+    distanceOrDuration: formatDistanceOrDurationValue(segment.work_target),
+    pace: segment.work_intensity.raw,
+    recovery: segment.rest == null ? undefined : {
+      recovery: formatDistanceOrDurationValue(segment.rest.target),
+      recoveryPace: segment.rest.intensity?.raw,
+    },
+  };
+}
+
 export function buildTemplateSectionView(section: Section, planPolicy: PacePolicy): SectionView {
   const weeks: WeekView[] = section.weeks.map(week => {
     const policy = getEffectivePacePolicy(planPolicy, section.pace_policy, week.pace_policy);

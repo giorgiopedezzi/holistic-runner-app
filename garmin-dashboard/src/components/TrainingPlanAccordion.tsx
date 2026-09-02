@@ -22,7 +22,7 @@ import { AlertTriangle, Bed, CircleHelp, Download, Play } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
-import { buildContinuousSegmentPresentation, weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
+import { buildContinuousSegmentPresentation, buildIntervalSegmentPresentation, weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
 import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
 
@@ -532,6 +532,12 @@ function TemplateDayRow({
   // continuous segment (interval/progression/rest_block/multi-segment days
   // are out of this Story's scope, later Stories).
   const presentation = buildContinuousSegmentPresentation(day);
+  // HRA-230: same contract for a single interval segment — Repetitions,
+  // Distance/Duration, Pace as the primary row, plus a subordinate Recovery
+  // row when the segment's own `r:` clause is present. day.segments holds at
+  // most one non-null presentation at a time (continuous XOR interval), so
+  // both can render unconditionally below without an extra dispatch.
+  const intervalPresentation = buildIntervalSegmentPresentation(day);
 
   // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
@@ -555,6 +561,43 @@ function TemplateDayRow({
                 <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
                 <span className="hra-text-primary text-data">{presentation.pace}</span>
               </div>
+            </div>
+          )}
+          {/* HRA-230: one grouped block for the whole interval, not a card
+              per repetition — the primary row above, an indented recovery
+              row directly below it only when the segment has an `r:`
+              clause, visibly associated by shared containment + indent
+              (no card-per-repetition duplication). */}
+          {intervalPresentation && (
+            <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
+              <div className="flex gap-4">
+                <div className="flex flex-col">
+                  <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
+                  <span className="hra-text-primary text-data">{intervalPresentation.repetitions}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
+                  <span className="hra-text-primary text-data">{intervalPresentation.distanceOrDuration}</span>
+                </div>
+                <div className="flex flex-col">
+                  <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
+                  <span className="hra-text-primary text-data">{intervalPresentation.pace}</span>
+                </div>
+              </div>
+              {intervalPresentation.recovery && (
+                <div className="flex gap-4 pl-3">
+                  <div className="flex flex-col">
+                    <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
+                    <span className="hra-text-primary text-data">{intervalPresentation.recovery.recovery}</span>
+                  </div>
+                  {intervalPresentation.recovery.recoveryPace && (
+                    <div className="flex flex-col">
+                      <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryPaceLabel", "Recovery pace")}</span>
+                      <span className="hra-text-primary text-data">{intervalPresentation.recovery.recoveryPace}</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           {/* HRA-126: once approved, the dsl/note inputs simply don't render —

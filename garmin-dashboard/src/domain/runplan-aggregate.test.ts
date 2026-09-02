@@ -1,7 +1,8 @@
 import { describe, it, expect } from "vitest";
 import {
   aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
-  buildContinuousSegmentPresentation, buildDayClassificationContext, buildInstanceSectionView, buildTemplateSectionView,
+  buildContinuousSegmentPresentation, buildDayClassificationContext, buildInstanceSectionView,
+  buildIntervalSegmentPresentation, buildTemplateSectionView,
   classifyResolvedDay, computeResolvedDayDistance,
   computeResolvedDayMetrics, computeTemplateDayDistance, getEffectivePacePolicy,
   groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
@@ -286,6 +287,92 @@ describe("buildContinuousSegmentPresentation (HRA-229)", () => {
     const view = dayView([]);
     delete (view as { segments?: WorkoutSegment[] }).segments;
     expect(buildContinuousSegmentPresentation(view)).toBeNull();
+  });
+});
+
+describe("buildIntervalSegmentPresentation (HRA-230)", () => {
+  function dayView(segments: WorkoutSegment[]): DayView {
+    return {
+      day: 1, workout_type: "run", dsl: "D1: x", needs_review: false, warnings: [],
+      distance: { meters: 0, approximate: false }, segments,
+    };
+  }
+
+  it("groups the epic's own example — distance work + distance recovery with an offset pace — into one block", () => {
+    const view = dayView([{
+      type: "interval", reps: 3,
+      work_target: { kind: "distance", distance_m: 8000, raw: "8000m" },
+      work_intensity: { kind: "anchor", anchor: "RG", raw: "RG" },
+      rest: {
+        target: { kind: "distance", distance_m: 1000, raw: "1km" },
+        intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: 30, raw: "RG+30" },
+        raw: "r:1km @ RG+30",
+      },
+      raw: "3x8000m @ RG r:1km @ RG+30",
+    }]);
+    expect(buildIntervalSegmentPresentation(view)).toEqual({
+      repetitions: "3", distanceOrDuration: "8 km", pace: "RG",
+      recovery: { recovery: "1 km", recoveryPace: "RG+30" },
+    });
+  });
+
+  it("renders a duration recovery target with its own pace", () => {
+    const view = dayView([{
+      type: "interval", reps: 5,
+      work_target: { kind: "distance", distance_m: 1000, raw: "1000m" },
+      work_intensity: { kind: "absolute", pace_sec_per_km: 240, raw: "4:00/km" },
+      rest: {
+        target: { kind: "duration", duration_sec: 90, raw: "90s" },
+        intensity: { kind: "absolute", pace_sec_per_km: 360, raw: "6:00/km" },
+        raw: "r:90s @ 6:00/km",
+      },
+      raw: "5x1000m @ 4:00/km r:90s @ 6:00/km",
+    }]);
+    expect(buildIntervalSegmentPresentation(view)).toEqual({
+      repetitions: "5", distanceOrDuration: "1 km", pace: "4:00/km",
+      recovery: { recovery: "90 s", recoveryPace: "6:00/km" },
+    });
+  });
+
+  it("renders a standing/walk/jog recovery with no pace as a recovery row with no recovery pace field", () => {
+    const view = dayView([{
+      type: "interval", reps: 8,
+      work_target: { kind: "distance", distance_m: 400, raw: "400m" },
+      work_intensity: { kind: "anchor", anchor: "TH", raw: "TH" },
+      rest: {
+        target: { kind: "distance", distance_m: 400, raw: "400m" },
+        rest_type: "stand",
+        raw: "r:400m stand",
+      },
+      raw: "8x400m @ TH r:400m stand",
+    }]);
+    expect(buildIntervalSegmentPresentation(view)).toEqual({
+      repetitions: "8", distanceOrDuration: "400 m", pace: "TH",
+      recovery: { recovery: "400 m", recoveryPace: undefined },
+    });
+  });
+
+  it("renders only the primary row, with no recovery, for an interval with no r: clause", () => {
+    const view = dayView([{
+      type: "interval", reps: 4,
+      work_target: { kind: "distance", distance_m: 3000, raw: "3000m" },
+      work_intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" },
+      raw: "4x3000m @ RG-20",
+    }]);
+    expect(buildIntervalSegmentPresentation(view)).toEqual({
+      repetitions: "4", distanceOrDuration: "3 km", pace: "RG-20", recovery: undefined,
+    });
+  });
+
+  it("returns null for a non-run day, a multi-segment day, and a non-interval single segment", () => {
+    expect(buildIntervalSegmentPresentation({ ...dayView([]), workout_type: "rest" })).toBeNull();
+    expect(buildIntervalSegmentPresentation(dayView([
+      { type: "interval", reps: 3, work_target: target("distance", 1000), work_intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "3x1km @ RG" },
+      { type: "continuous", target: target("distance", 1000), intensity: { kind: "anchor", anchor: "FL", raw: "FL" }, raw: "1km @ FL" },
+    ]))).toBeNull();
+    expect(buildIntervalSegmentPresentation(dayView([
+      { type: "continuous", target: target("distance", 5000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" },
+    ]))).toBeNull();
   });
 });
 
