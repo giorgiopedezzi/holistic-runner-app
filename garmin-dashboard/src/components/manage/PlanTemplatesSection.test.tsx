@@ -272,7 +272,7 @@ describe("PlanTemplatesSection — keyboard expansion and aria-expanded", () => 
 });
 
 describe("PlanTemplatesSection — existing action enablement is unchanged", () => {
-  it("Save disabled until generated + named; Approve/Clear pending changes visible in the shared action bar, not inside a section", async () => {
+  it("Save disabled until generated + named; Activate/Clear pending changes visible in the shared action bar, not inside a section", async () => {
     installFetch({
       "POST /api/v1/plan-templates/generate": json({
         plan: {
@@ -304,8 +304,8 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     fireEvent.click(await screen.findByRole("option", { name: "5k" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
-    // Save/Approve/Clear pending changes render once, outside any AccordionCard section.
-    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    // Save/Activate/Clear pending changes render once, outside any AccordionCard section.
+    expect(screen.getByRole("button", { name: "Activate" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clear pending changes" })).toBeEnabled();
   });
 });

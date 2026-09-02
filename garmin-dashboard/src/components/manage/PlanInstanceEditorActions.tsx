@@ -51,7 +51,7 @@ export function PlanInstanceEditorActions({
     <div className="hra-plan-instance-section-gap hra-row-wrap items-center" >
       {!fieldsLocked ? (
         <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading || demoMode} title={demoTitle}>
-          {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create instance")}
+          {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create plan from template")}
         </button>
       ) : (
         <>
@@ -59,7 +59,7 @@ export function PlanInstanceEditorActions({
             {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           </button>
           <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved || demoMode} title={demoTitle}>
-            {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
+            {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
           </button>
           {/* AC3/AC6: label + date picker + button as ONE real control — a
               button-shaped div with the DatePicker nested INSIDE it

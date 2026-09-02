@@ -29,7 +29,7 @@ import { ErrorBanner }  from "@/components/ui";
 const TABS = [
   { id: "overview",    labelKey: "nav.overview",   fallback: "Overview & Trends" },
   { id: "activities",  labelKey: "nav.activities", fallback: "Activities"        },
-  { id: "plans",       labelKey: "nav.trainingPlans", fallback: "Training plans" },
+  { id: "plans",       labelKey: "nav.trainingPlans", fallback: "Plans" },
   { id: "body",        labelKey: "nav.body",       fallback: "Body"              },
   { id: "manage",      labelKey: "nav.manage",     fallback: "Data & Sync"       },
   { id: "settings",    labelKey: "nav.settings",   fallback: "Settings"          },

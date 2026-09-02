@@ -56,7 +56,7 @@ export function PlanTemplateHelpModal({ onClose }: Props) {
 
   const sections: { heading: string; body: string; code?: string }[] = [
     {
-      heading: t("manage.planTemplates.help.overview.heading", "What a template is"),
+      heading: t("manage.planTemplates.help.overview.heading", "What a plan template is"),
       body: t(
         "manage.planTemplates.help.overview.body",
         "A template describes the reusable structure of a training plan — weeks, days, and workouts — without committing to a race date or concrete pace numbers. Pace anchors like RG (race goal) or FL (fartlek/easy) stay symbolic. A template is later instantiated into a concrete instance for one specific race, where paces get resolved to real numbers and days get real calendar dates.",
@@ -120,10 +120,10 @@ export function PlanTemplateHelpModal({ onClose }: Props) {
       ),
     },
     {
-      heading: t("manage.planTemplates.help.saveApprove.heading", "Save vs Approve"),
+      heading: t("manage.planTemplates.help.saveApprove.heading", "Save vs Activate"),
       body: t(
         "manage.planTemplates.help.saveApprove.body",
-        "Save persists the template — but only if the DSL parses and has no outstanding warnings anywhere in it; that's an automatic gate. Approve is a separate, deliberate step: a human sign-off on the exact version that's currently saved. It only becomes available once the template is saved with nothing unsaved pending, and any further edit — even one that saves cleanly again — clears the approval, because it was a sign-off on one specific version, not a general \"this is fine\".",
+        "Save persists the template — but only if the DSL parses and has no outstanding warnings anywhere in it; that's an automatic gate. Activate is a separate, deliberate step: it locks the exact version that's currently saved for use. It only becomes available once the template is saved with nothing unsaved pending, and any further edit — even one that saves cleanly again — clears the activation, because it locked one specific version, not a general \"this is fine\".",
       ),
     },
     {

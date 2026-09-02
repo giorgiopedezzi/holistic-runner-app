@@ -41,25 +41,25 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
     }
     return (
       <span className="hra-text-secondary text-meta italic" >
-        {t("manage.planInstances.openToEditHint", "Open to edit")}
+        {t("manage.planInstances.openToEditHint", "Open and edit")}
       </span>
     );
   }
 
   const title = instance ? (
     <span className="flex items-center gap-2 flex-1 min-w-0">
-      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{instance.name ?? t("manage.planInstances.untitled", "Untitled instance")}</span>
+      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{instance.name ?? t("manage.planInstances.untitled", "Untitled race plan")}</span>
       {instance.event && <span className="hra-text-muted text-meta" >{t(`manage.planTemplates.event.${instance.event}`, instance.event)}</span>}
       <span className="hra-text-muted text-meta" >{instance.start_date}</span>
       <Badge
-        label={instance.approved_at ? t("manage.planInstances.approved", "Approved") : t("manage.planInstances.notApproved", "Not approved")}
+        label={instance.approved_at ? t("manage.planInstances.approved", "Activated") : t("manage.planInstances.notApproved", "Not activated")}
         color={instance.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
       />
       {!expanded && rowStatusHint()}
     </span>
   ) : (
     <span className="flex items-center gap-2 flex-1 min-w-0">
-      <span>{newInstanceName || t("manage.planInstances.instantiateTitle", "New instance")}</span>
+      <span>{newInstanceName || t("manage.planInstances.instantiateTitle", "Create race plan")}</span>
       {!expanded && rowStatusHint()}
     </span>
   );

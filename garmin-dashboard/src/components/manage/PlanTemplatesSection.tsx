@@ -640,9 +640,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     try {
       await api.planTemplates.approve(editingId);
       await refreshTemplates();
-      notify(t("manage.planTemplates.approveSucceeded", "Template approved."));
+      notify(t("manage.planTemplates.approveSucceeded", "Template activated."));
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : t("manage.planTemplates.approveFailed", "Failed to approve template"));
+      setSaveError(e instanceof Error ? e.message : t("manage.planTemplates.approveFailed", "Failed to activate template"));
     }
     setApproveLoading(false);
   }
@@ -686,7 +686,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // HRA-140 Ask #2/#4: a row's own status hint — a dirty row (whether
   // that's a stashed draft while collapsed, or the live editor while this
   // row is the active/open one — isRowDirty covers both) gets the warning
-  // icon; a collapsed-and-clean row gets the plain "Open to edit" hint; an
+  // icon; a collapsed-and-clean row gets the plain "Open and edit" hint; an
   // active-and-clean row gets nothing (already open, nothing pending — the
   // hint would just be noise).
   function rowStatusHint(key: RowKey) {
@@ -703,7 +703,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (key === activeKey) return null;
     return (
       <span className="hra-text-secondary text-meta italic" >
-        {t("manage.planTemplates.openToEditHint", "Open to edit")}
+        {t("manage.planTemplates.openToEditHint", "Open and edit")}
       </span>
     );
   }
@@ -752,7 +752,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         <span className={`overflow-hidden text-ellipsis whitespace-nowrap ${dirty ? "hra-text-warning" : ""}`}>{tpl.name}</span>
         {tpl.event && <span className="hra-text-muted text-meta" >{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
         <Badge
-          label={tpl.approved_at ? t("manage.planTemplates.approved", "Approved") : t("manage.planTemplates.notApproved", "Not approved")}
+          label={tpl.approved_at ? t("manage.planTemplates.approved", "Activated") : t("manage.planTemplates.notApproved", "Not activated")}
           color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
         />
         {rowStatusHint(tpl.id)}
@@ -994,7 +994,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading || demoMode}
             title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
           >
-            {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
+            {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
           </button>
           <button className="hra-btn" onClick={onRestoreClick} disabled={!isEditorDirty()}>
             {t("manage.planTemplates.clearPendingChangesButton", "Clear pending changes")}
@@ -1049,7 +1049,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   return (
     <Card>
       <div className="flex items-center justify-between mb-1">
-        <div className="hra-block-title">{t("manage.planTemplates.title", "Training-plan templates")}</div>
+        <div className="hra-block-title">{t("manage.planTemplates.title", "Plan templates")}</div>
         <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1 px-2.5 text-meta cursor-pointer"  onClick={() => setShowHelp(true)}>
           {t("manage.planTemplates.howToUse", "How to use it")}
         </button>

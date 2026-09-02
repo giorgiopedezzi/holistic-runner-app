@@ -35,10 +35,10 @@ export function PlansTab() {
 
   return (
     <>
-      <SectionTitle>{t("manage.planTemplatesSectionTitle", "Training-plan templates")}</SectionTitle>
+      <SectionTitle>{t("manage.planTemplatesSectionTitle", "Plan templates")}</SectionTitle>
       <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
 
-      <SectionTitle>{t("manage.planInstancesSectionTitle", "Training-plan instances")}</SectionTitle>
+      <SectionTitle>{t("manage.planInstancesSectionTitle", "Race plans")}</SectionTitle>
       <PlanInstancesSection templates={templates} />
     </>
   );

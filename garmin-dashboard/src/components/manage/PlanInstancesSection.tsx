@@ -374,9 +374,9 @@ export function PlanInstancesSection({ templates }: Props) {
       const built = apiDaysToSections(created.days);
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
-      notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
+      notify(t("manage.planInstances.instantiateSucceeded", "Plan created from template."));
     } catch (e) {
-      setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
+      setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create plan from template"));
     }
     setInstantiateLoading(false);
   }
@@ -614,9 +614,9 @@ export function PlanInstancesSection({ templates }: Props) {
       const approved = await api.planInstances.approve(editingId);
       setEditApprovedAt(approved.approved_at);
       await refreshInstances();
-      notify(t("manage.planInstances.approveSucceeded", "Instance approved."));
+      notify(t("manage.planInstances.approveSucceeded", "Race plan activated."));
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : t("manage.planInstances.approveFailed", "Failed to approve instance"));
+      setEditError(e instanceof Error ? e.message : t("manage.planInstances.approveFailed", "Failed to activate race plan"));
     }
     setApproveLoading(false);
   }
@@ -931,9 +931,9 @@ export function PlanInstancesSection({ templates }: Props) {
 
   return (
     <Card className="hra-instantiate-form">
-      <div className="hra-block-title mb-1" >{t("manage.planInstances.title", "Training-plan instances")}</div>
+      <div className="hra-block-title mb-1" >{t("manage.planInstances.title", "Race plans")}</div>
       <div className="hra-text-secondary text-meta mb-3" >
-        {t("manage.planInstances.description", "A concrete instantiation of a template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
+        {t("manage.planInstances.description", "A concrete race plan generated from a plan template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
       </div>
       {listError && <ErrorBanner message={listError} />}
 
@@ -972,10 +972,10 @@ export function PlanInstancesSection({ templates }: Props) {
       )}
       {deleteError && <ErrorBanner message={deleteError} />}
       <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new", isDirty)} disabled={newDraftPending || !templates || templates.length === 0}>
-        {t("manage.planInstances.newInstance", "New instance")}
+        {t("manage.planInstances.newInstance", "Create race plan")}
       </button>
       {templates && templates.length === 0 && (
-        <div className="hra-text-muted text-meta mt-1.5" >{t("manage.planInstances.noTemplates", "Save a template first — an instance is always created from one.")}</div>
+        <div className="hra-text-muted text-meta mt-1.5" >{t("manage.planInstances.noTemplates", "Save a plan template first — a race plan is always created from one.")}</div>
       )}
 
       <PlanInstanceConfirmations

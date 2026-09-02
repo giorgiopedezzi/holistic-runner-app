@@ -76,11 +76,11 @@ export function PlanInstanceFormFields({
           own persisted values, fieldsLocked/fieldDisabled just gate
           interactivity, not visibility (AC1's "same screen shape"). */}
       <div className="hra-instance-identity-grid hra-plan-instance-form-row grid gap-2.5">
-        <Field label={t("manage.planInstances.templateLabel", "Template")} required>
+        <Field label={t("manage.planInstances.templateLabel", "Plan template")} required>
           <Select
             value={templateId} onValueChange={onTemplateSelectChange}
             options={(templates ?? []).map(tpl => ({ value: String(tpl.id), label: tpl.name }))}
-            placeholder={t("manage.planInstances.templatePlaceholder", "Pick a template…")}
+            placeholder={t("manage.planInstances.templatePlaceholder", "Pick a plan template…")}
             triggerClassName="w-full"
             disabled={fieldsLocked}
           />
@@ -100,7 +100,7 @@ export function PlanInstanceFormFields({
       </div>
       <div className="hra-text-muted hra-plan-instance-section-gap text-meta" >
         <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
-        {!fieldsLocked && !formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Template above to enable the rest of this form.")}</>}
+        {!fieldsLocked && !formEnabled && <> — {t("manage.planInstances.pickTemplateFirst", "pick a Plan template above to enable the rest of this form.")}</>}
       </div>
 
       {/* Row 2 — timing. */}
