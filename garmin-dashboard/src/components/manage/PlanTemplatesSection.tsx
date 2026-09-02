@@ -47,6 +47,23 @@ interface EditorState { dslSource: string; sections: SectionView[]; offsetUnit: 
 
 const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [], offsetUnit: "s/km" };
 
+// HRA-238: default open/collapsed state for the three-stage Plan text ->
+// Conversion prompt -> Workout DSL authoring pipeline, computed once
+// whenever a row is opened (startCreate/startEdit/reopenDraft) — never
+// recomputed reactively as the user types, so opening a section by hand
+// is never fought by this logic. DSL presence wins over text presence
+// (an existing template's own case, since a loaded template never carries
+// stashed-only originalText/generatedPrompt — HRA-200 fields are never
+// persisted): the DSL section opens, text/prompt collapse but stay
+// reachable. Otherwise text presence decides, mirroring a fresh/in-progress
+// authoring session's own natural point of focus.
+interface PipelineExpansion { text: boolean; prompt: boolean; dsl: boolean }
+function computeDefaultExpansion(hasText: boolean, hasPrompt: boolean, hasDsl: boolean): PipelineExpansion {
+  if (hasDsl) return { text: false, prompt: false, dsl: true };
+  if (hasText) return { text: true, prompt: hasPrompt, dsl: false };
+  return { text: true, prompt: false, dsl: false };
+}
+
 // HRA-200: split+join, not String.replace(pattern, value) — replace() treats
 // "$" sequences in the replacement string specially (e.g. "$&", "$1"), which
 // pasted training-plan text could easily contain unintentionally.
@@ -193,6 +210,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [language, setLanguage] = useState("");
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
 
+  // HRA-238: independent open/collapsed state for the three pipeline
+  // sections (Plan text / Conversion prompt / Workout DSL) — NOT a
+  // single-expand accordion like the outer template row: the user may need
+  // to compare artifacts, so more than one section can be open at once.
+  // Defaults are (re)computed only when a row opens (computeDefaultExpansion
+  // below), never reactively as the user edits.
+  const [textExpanded, setTextExpanded] = useState(true);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [dslExpanded, setDslExpanded] = useState(false);
+
   // HRA-140: the active row's own "last saved/loaded" snapshot — what
   // isEditorDirty() below diffs the live fields against. `savedDslSource`
   // above already served this exact role for dslSource (canApprove already
@@ -234,8 +261,23 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setBaselineName(""); setBaselineEvent(""); setBaselineDistanceValue("");
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     setOriginalText(""); setLanguage(""); setGeneratedPrompt(null);
+    // HRA-238: a reset row is always blank (no text, no prompt, no DSL) —
+    // the "new empty template" default: Plan text expanded, the other two
+    // collapsed but visible.
+    const exp = computeDefaultExpansion(false, false, false);
+    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
     lastGeneratedRef.current = null;
   }
+
+  // HRA-238 AC4: a DSL parse/preview error forces Workout DSL open
+  // regardless of whatever the row's other two sections are doing —
+  // "remains expanded... do not automatically open or alter Plan text and
+  // Conversion prompt." Reacts to genError itself (set by runGenerate's
+  // catch, including the debounced auto-regenerate path), not just the
+  // initial open, so a later edit that turns out invalid also re-exposes it.
+  useEffect(() => {
+    if (genError) setDslExpanded(true);
+  }, [genError]);
 
   // HRA-140: whether the currently-active row's live fields differ from its
   // own last-saved/loaded baseline — the single source of truth for both
@@ -329,6 +371,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setName(template.name); setBaselineName(template.name);
     setSavedDslSource(template.dsl_source);
     setEditor({ dslSource: template.dsl_source, sections: [], offsetUnit: "s/km" });
+    // HRA-238: an existing template's originalText/generatedPrompt are
+    // never persisted (HRA-200), so this is always the "template containing
+    // DSL" case — Workout DSL opens, Plan text/Conversion prompt collapse
+    // (but stay reachable).
+    const exp = computeDefaultExpansion(false, false, template.dsl_source.trim() !== "");
+    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
     await runGenerate(template.dsl_source, { autoFillDistance: false });
   }
 
@@ -342,6 +390,11 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setName(draft.name); setEvent(draft.event);
     setDistanceValue(draft.distanceValue); setDistanceUnit(draft.distanceUnit);
     setOriginalText(draft.originalText); setLanguage(draft.language); setGeneratedPrompt(draft.generatedPrompt);
+    // HRA-238: a stashed draft carries its own text/prompt/DSL state,
+    // unlike startEdit's always-blank text/prompt — recompute defaults from
+    // what this specific draft actually holds.
+    const exp = computeDefaultExpansion(draft.originalText.trim() !== "", draft.generatedPrompt != null, draft.dslSource.trim() !== "");
+    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
     if (template) {
       setSavedDslSource(template.dsl_source);
       setBaselineName(template.name);
@@ -619,6 +672,43 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     );
   }
 
+  // HRA-238: short, derivable-only-from-existing-data status labels for
+  // each pipeline section's header. "Modified" (Conversion prompt) is
+  // deliberately not implemented, per the Story's own caveat — there is no
+  // stored baseline for generatedPrompt to diff against (unlike dslSource's
+  // savedDslSource), and adding one would be a new persistence model.
+  function planTextStateLabel(): string {
+    if (originalText.trim() === "") return t("manage.planTemplates.pipeline.stateNotProvided", "Not provided");
+    if (generatedPrompt != null) return t("manage.planTemplates.pipeline.statePromptGenerated", "Prompt generated");
+    return t("manage.planTemplates.pipeline.stateReady", "Ready");
+  }
+  function conversionPromptStateLabel(): string {
+    return generatedPrompt != null
+      ? t("manage.planTemplates.pipeline.stateGenerated", "Generated")
+      : t("manage.planTemplates.pipeline.stateNotGenerated", "Not generated");
+  }
+  function workoutDslStateLabel(): string {
+    if (editor.dslSource.trim() === "") return t("manage.planTemplates.pipeline.stateEmpty", "Empty");
+    if (!generated) return t("manage.planTemplates.pipeline.stateReadyToPreview", "Ready to preview");
+    if (genError || hasOutstandingWarnings(editor, planWarnings)) return t("manage.planTemplates.pipeline.stateNeedsReview", "Needs review");
+    return t("manage.planTemplates.pipeline.stateValid", "Valid");
+  }
+
+  // HRA-238: one pipeline section's header — the order+title baked into the
+  // translated header string itself (e.g. "1 · Plan text") on the left, a
+  // short status on the right; `AccordionCard` appends the ▲/▼ chevron and
+  // owns `aria-expanded`. Order/title/status/expanded-state are all real
+  // text or a real ARIA attribute — never color alone (accessibility
+  // requirement).
+  function pipelineSectionTitle(header: string, status: string) {
+    return (
+      <span className="flex items-center justify-between flex-1 min-w-0 gap-2">
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{header}</span>
+        <span className="hra-text-secondary text-meta shrink-0">{status}</span>
+      </span>
+    );
+  }
+
   function renderRowTitle(tpl: PlanTemplate) {
     return (
       <span className="flex items-center gap-2 flex-1 min-w-0">
@@ -691,81 +781,133 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </label>
         </div>
 
-        {/* HRA-200: paste a messy real-world plan, generate a ready-to-copy
-            LLM prompt (built from the tested base prompt), run it externally,
-            then paste the returned DSL below into the DSL text field — this
-            app never calls an LLM API itself. */}
-        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
-          {t("manage.planTemplates.aiPrompt.originalTextLabel", "Original text")}
-          <textarea
-            className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 text-meta p-2"
-            value={originalText}
-            onChange={e => setOriginalText(e.target.value)}
-            placeholder={t("manage.planTemplates.aiPrompt.originalTextPlaceholder", "Paste the raw training plan text here (PDF/prose, any language)…")}
-            rows={4}
-          />
-        </label>
-
-        <div className="hra-plan-instance-section-gap flex items-start gap-2.5 flex-wrap">
-          <label className="hra-template-name-field hra-text-secondary text-meta">
-            {t("manage.planTemplates.aiPrompt.languageLabel", "Language (optional)")}
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
-              value={language}
-              onChange={e => setLanguage(e.target.value)}
-              placeholder={t("manage.planTemplates.aiPrompt.languagePlaceholder", "e.g. Italian")}
-            />
-          </label>
-          <button
-            className="hra-btn self-end"
-            onClick={onGeneratePrompt}
-            disabled={originalText.trim() === ""}
+        {/* HRA-238: Plan text -> Conversion prompt -> Workout DSL authoring
+            pipeline — three INDEPENDENTLY collapsible sections, not a
+            single-expand accordion (the user may need to compare artifacts,
+            so more than one can be open at once). The ordering communicates
+            the normal transformation flow without enforcing it — every
+            section opens directly at any time (AC2's direct-DSL path).
+            Default open/collapsed state is computed once when the row opens
+            (computeDefaultExpansion, called from startCreate/startEdit/
+            reopenDraft), never reactively as the user types. */}
+        <div className="hra-plan-instance-section-gap flex flex-col gap-2">
+          <AccordionCard
+            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.planTextHeader", "1 · Plan text"), planTextStateLabel())}
+            expanded={textExpanded} onToggle={() => setTextExpanded(v => !v)}
           >
-            {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
-          </button>
+            {/* HRA-200: paste a messy real-world plan, generate a
+                ready-to-copy LLM prompt (built from the tested base prompt),
+                run it externally, then paste the returned DSL into Workout
+                DSL below — this app never calls an LLM API itself. The
+                language field belongs here (it describes the source text),
+                per this Story's own explicit placement. */}
+            <div className="flex flex-col gap-2.5">
+              <p className="hra-text-secondary text-meta m-0">
+                {t("manage.planTemplates.pipeline.planTextDescription", "Paste the original training plan in any readable format or language.")}
+              </p>
+              <label className="hra-text-secondary text-meta block" >
+                {t("manage.planTemplates.aiPrompt.originalTextLabel", "Original text")}
+                <textarea
+                  className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 text-meta p-2"
+                  value={originalText}
+                  onChange={e => setOriginalText(e.target.value)}
+                  placeholder={t("manage.planTemplates.aiPrompt.originalTextPlaceholder", "Paste the raw training plan text here (PDF/prose, any language)…")}
+                  rows={4}
+                />
+              </label>
+
+              <div className="flex items-start gap-2.5 flex-wrap">
+                <label className="hra-template-name-field hra-text-secondary text-meta">
+                  {t("manage.planTemplates.aiPrompt.languageLabel", "Language (optional)")}
+                  <input
+                    className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
+                    value={language}
+                    onChange={e => setLanguage(e.target.value)}
+                    placeholder={t("manage.planTemplates.aiPrompt.languagePlaceholder", "e.g. Italian")}
+                  />
+                </label>
+                <button
+                  className="hra-btn self-end"
+                  onClick={onGeneratePrompt}
+                  disabled={originalText.trim() === ""}
+                >
+                  {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
+                </button>
+              </div>
+            </div>
+          </AccordionCard>
+
+          <AccordionCard
+            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.conversionPromptHeader", "2 · Conversion prompt"), conversionPromptStateLabel())}
+            expanded={promptExpanded} onToggle={() => setPromptExpanded(v => !v)}
+          >
+            <div className="flex flex-col gap-2.5">
+              <p className="hra-text-secondary text-meta m-0">
+                {t("manage.planTemplates.pipeline.conversionPromptDescription", "Use this prompt with your preferred AI, then paste the resulting plan into Workout DSL.")}
+              </p>
+              <label className="hra-text-secondary text-meta block" >
+                {t("manage.planTemplates.aiPrompt.generatedLabel", "Generated prompt")}
+                <div className="flex items-start gap-2.5 mt-1">
+                  <textarea
+                    className="hra-border-strong hra-bg-card hra-text-primary w-full font-mono text-meta p-2"
+                    value={generatedPrompt ?? ""}
+                    readOnly
+                    placeholder={generatedPrompt == null ? t("manage.planTemplates.pipeline.conversionPromptEmpty", "Generate a prompt from the plan text, or paste an existing prompt here.") : undefined}
+                    rows={4}
+                  />
+                  <div className="flex flex-col gap-2.5 shrink-0">
+                    <button className="hra-btn" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
+                      {t("manage.planTemplates.aiPrompt.copyButton", "Copy prompt")}
+                    </button>
+                    <button className="hra-btn" onClick={onSaveAsPrompt} disabled={generatedPrompt == null}>
+                      {t("manage.planTemplates.aiPrompt.saveAsButton", "Save prompt as…")}
+                    </button>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </AccordionCard>
+
+          <AccordionCard
+            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.workoutDslHeader", "3 · Workout DSL"), workoutDslStateLabel())}
+            expanded={dslExpanded} onToggle={() => setDslExpanded(v => !v)}
+          >
+            <div className="flex flex-col gap-2.5">
+              <p className="hra-text-secondary text-meta m-0">
+                {t("manage.planTemplates.pipeline.workoutDslDescription", "Source of truth for the structured plan.")}
+              </p>
+              <label className="hra-text-secondary text-meta block" >
+                {t("manage.planTemplates.dslSourceLabel", "DSL text")}
+                <textarea
+                  className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
+                  value={editor.dslSource}
+                  onChange={e => setEditor({ dslSource: e.target.value, sections: [], offsetUnit: "s/km" })}
+                  rows={8}
+                />
+              </label>
+              <div className="hra-row-wrap" >
+                <label className="hra-btn cursor-pointer" >
+                  {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
+                  <input
+                    type="file" accept=".txt,.csv" className="hidden"
+                    onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
+                  />
+                </label>
+                <button className="hra-btn" onClick={() => runGenerate(editor.dslSource)} disabled={genLoading || editor.dslSource.trim() === ""}>
+                  {genLoading ? t("manage.planTemplates.generating", "Parsing…") : t("manage.planTemplates.generateButton", "Generate / refresh preview")}
+                </button>
+              </div>
+              {genError && <ErrorBanner message={genError} />}
+            </div>
+          </AccordionCard>
         </div>
 
-        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
-          {t("manage.planTemplates.aiPrompt.generatedLabel", "Generated prompt")}
-          <div className="flex items-start gap-2.5 mt-1">
-            <textarea
-              className="hra-border-strong hra-bg-card hra-text-primary w-full font-mono text-meta p-2"
-              value={generatedPrompt ?? ""}
-              readOnly
-              rows={4}
-            />
-            <div className="flex flex-col gap-2.5 shrink-0">
-              <button className="hra-btn" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
-                {t("manage.planTemplates.aiPrompt.copyButton", "Copy")}
-              </button>
-              <button className="hra-btn" onClick={onSaveAsPrompt} disabled={generatedPrompt == null}>
-                {t("manage.planTemplates.aiPrompt.saveAsButton", "Save as…")}
-              </button>
-            </div>
-          </div>
-        </label>
-
-        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
-          {t("manage.planTemplates.dslSourceLabel", "DSL text")}
-          <textarea
-            className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
-            value={editor.dslSource}
-            onChange={e => setEditor({ dslSource: e.target.value, sections: [], offsetUnit: "s/km" })}
-            rows={8}
-          />
-        </label>
-
+        {/* HRA-238 AC6: Save/Approve/Restore stay global template-lifecycle
+            actions, in one shared bar OUTSIDE the three-stage pipeline —
+            never presented as a fourth authoring step. Gating rules
+            (canSave/canApprove/onRestoreClick) are byte-identical to before
+            this Story. */}
         <div className="hra-plan-instance-section-gap hra-row-wrap" >
-          <label className="hra-btn cursor-pointer" >
-            {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
-            <input
-              type="file" accept=".txt,.csv" className="hidden"
-              onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
-            />
-          </label>
-          <button className="hra-btn" onClick={() => runGenerate(editor.dslSource)} disabled={genLoading || editor.dslSource.trim() === ""}>
-            {genLoading ? t("manage.planTemplates.generating", "Parsing…") : t("manage.planTemplates.generateButton", "Generate / refresh preview")}
-          </button>
           <button className="hra-btn" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}>
             {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           </button>
@@ -780,7 +922,6 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </button>
         </div>
 
-        {genError && <ErrorBanner message={genError} />}
         {patchError && <ErrorBanner message={patchError} />}
         {saveError && <ErrorBanner message={saveError} />}
 
