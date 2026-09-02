@@ -419,6 +419,7 @@
   "runplan.accordion.unsupportedLabel": "Non supportato nella vista strutturata",
   "runplan.accordion.segmentLabel": "Segmento {{n}}",
   "runplan.accordion.unknownValueTooltip": "Token non riconosciuto — mostrato così com'è, non rappresentabile nella vista strutturata",
+  "runplan.accordion.editRejectedTooltip": "Valore non valido — ripristinato l'ultimo salvato",
   "runplan.accordion.viewToggleLabel": "Vista",
   "runplan.accordion.viewStructured": "Strutturata",
   "runplan.accordion.viewDsl": "DSL",

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
+  recomposeDayLine, replaceSegmentInDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
 } from "./runplan-patch";
 
 describe("splitNote", () => {
@@ -52,6 +52,29 @@ describe("recomposeDayLine", () => {
   });
   it("clearing notes drops the trailing comment", () => {
     expect(recomposeDayLine("D1: 5km @ RG # easy", { notes: "" })).toBe("D1: 5km @ RG");
+  });
+});
+
+describe("replaceSegmentInDayLine (HRA-234)", () => {
+  it("replaces one segment in a multi-segment day, leaving the other segment and note untouched", () => {
+    const result = replaceSegmentInDayLine("D3: 10km @ RG+20 ; 5km @ RG-5 # taper", 0, "10km @ RG+45");
+    expect(result).toBe("D3: 10km @ RG+45 ; 5km @ RG-5 # taper");
+  });
+  it("replaces the second segment, leaving the first untouched", () => {
+    const result = replaceSegmentInDayLine("D3: 10km @ RG+20 ; 5km @ RG-5", 1, "6km @ RG-5");
+    expect(result).toBe("D3: 10km @ RG+20 ; 6km @ RG-5");
+  });
+  it("works on a single-segment day", () => {
+    expect(replaceSegmentInDayLine("D1: 5km @ RG", 0, "8km @ RG")).toBe("D1: 8km @ RG");
+  });
+  it("preserves suffix/tag prefix", () => {
+    expect(replaceSegmentInDayLine("D6a [long]: 12mi @ AEROBIC", 0, "14mi @ AEROBIC")).toBe("D6a [long]: 14mi @ AEROBIC");
+  });
+  it("returns the line unchanged for an out-of-range segment index", () => {
+    expect(replaceSegmentInDayLine("D1: 5km @ RG", 1, "8km @ RG")).toBe("D1: 5km @ RG");
+  });
+  it("returns the line unchanged when it doesn't match the D-line grammar", () => {
+    expect(replaceSegmentInDayLine("not a day line", 0, "x")).toBe("not a day line");
   });
 });
 

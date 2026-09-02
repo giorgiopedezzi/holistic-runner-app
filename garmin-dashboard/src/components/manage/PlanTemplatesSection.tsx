@@ -36,16 +36,16 @@ import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHea
 import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
-import type { EventType, ParseWarning } from "@/types/runplan";
+import type { EventType, OffsetUnit, ParseWarning } from "@/types/runplan";
 import { useDemoMode } from "@/hooks/useDemoMode";
 // HRA-200: frontend-owned copy of docs/utils/template-generator-AI-prompt.txt
 // (the already-tested base prompt) — kept in sync manually, see that file's
 // own header for the sync-risk note.
 import aiPromptTemplate from "@/assets/template-generator-ai-prompt.txt?raw";
 
-interface EditorState { dslSource: string; sections: SectionView[] }
+interface EditorState { dslSource: string; sections: SectionView[]; offsetUnit: OffsetUnit }
 
-const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [] };
+const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [], offsetUnit: "s/km" };
 
 // HRA-200: split+join, not String.replace(pattern, value) — replace() treats
 // "$" sequences in the replacement string specially (e.g. "$&", "$1"), which
@@ -298,7 +298,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       lastGeneratedRef.current = dslSource;
       setPlanWarnings(warnings);
       const sections = plan.sections.map(s => buildTemplateSectionView(s, plan.metadata.pace_policy));
-      setEditor({ dslSource, sections });
+      setEditor({ dslSource, sections, offsetUnit: plan.metadata.offset_unit });
       // Auto-fill the custom-event distance from the plan's own race day the
       // first time it generates with nothing typed yet — never overwrites a
       // value the user already entered. The DSL's own UNIT declaration is a
@@ -328,7 +328,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setDistanceValue(resolvedDistance); setBaselineDistanceValue(resolvedDistance);
     setName(template.name); setBaselineName(template.name);
     setSavedDslSource(template.dsl_source);
-    setEditor({ dslSource: template.dsl_source, sections: [] });
+    setEditor({ dslSource: template.dsl_source, sections: [], offsetUnit: "s/km" });
     await runGenerate(template.dsl_source, { autoFillDistance: false });
   }
 
@@ -397,7 +397,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   async function onFileUpload(file: File) {
     const text = await file.text();
-    setEditor({ dslSource: text, sections: [] });
+    setEditor({ dslSource: text, sections: [], offsetUnit: "s/km" });
     setPlanWarnings([]);
   }
 
@@ -467,7 +467,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       if (!result.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, name: patch.name ?? section.name, notes: patch.notes ?? section.notes, raw_dsl: newRawDsl };
-      return { dslSource: result.source, sections };
+      return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -486,7 +486,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       weeks[weekIndex] = { ...week, notes: patch.notes ?? week.notes, raw_dsl: newRawDsl };
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, weeks };
-      return { dslSource: result.source, sections };
+      return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -505,7 +505,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       weeks[weekIndex] = { ...week, days };
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, weeks };
-      return { dslSource: result.source, sections };
+      return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -750,7 +750,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           <textarea
             className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
             value={editor.dslSource}
-            onChange={e => setEditor({ dslSource: e.target.value, sections: [] })}
+            onChange={e => setEditor({ dslSource: e.target.value, sections: [], offsetUnit: "s/km" })}
             rows={8}
           />
         </label>
@@ -797,6 +797,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             onSectionEdit={onSectionEdit}
             onWeekEdit={onWeekEdit}
             onDayEdit={onDayEdit}
+            offsetUnit={editor.offsetUnit}
           />
         )}
 

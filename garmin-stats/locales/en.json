@@ -419,6 +419,7 @@
   "runplan.accordion.unsupportedLabel": "Unsupported in Structured view",
   "runplan.accordion.segmentLabel": "Segment {{n}}",
   "runplan.accordion.unknownValueTooltip": "Unrecognized token — shown as written, not representable in Structured view",
+  "runplan.accordion.editRejectedTooltip": "Not a valid value — reverted to the last saved one",
   "runplan.accordion.viewToggleLabel": "View",
   "runplan.accordion.viewStructured": "Structured",
   "runplan.accordion.viewDsl": "DSL",

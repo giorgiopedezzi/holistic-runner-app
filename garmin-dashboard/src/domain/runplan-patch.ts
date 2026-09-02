@@ -79,6 +79,25 @@ export function swapDayContent(dslA: string, dslB: string): [string, string] {
   return [`${mA[1]}${mB[2]}`, `${mB[1]}${mA[2]}`];
 }
 
+// HRA-234: patches ONE `;`-joined segment's text within a day's full line
+// (prefix + workout body + optional "# note"), leaving every other
+// segment's text and the note untouched — the structured field editors'
+// own AC4 requirement ("editing one field on a multi-segment day does not
+// alter the other segments' DSL text"). Malformed lines (prefix doesn't
+// match the grammar, or segmentIndex is out of range) are returned
+// unchanged, same "don't guess" convention as swapDayContent above.
+export function replaceSegmentInDayLine(currentFullLine: string, segmentIndex: number, newSegmentText: string): string {
+  const { main, note } = splitNote(currentFullLine);
+  const m = DAY_LINE_RE.exec(main);
+  if (!m) return currentFullLine;
+  const prefix = m[1];
+  const segments = m[2].split(";").map(s => s.trim());
+  if (segmentIndex < 0 || segmentIndex >= segments.length) return currentFullLine;
+  segments[segmentIndex] = newSegmentText;
+  const newMain = `${prefix}${segments.join(" ; ")}`;
+  return note ? `${newMain} # ${note}` : newMain;
+}
+
 export type ReplaceResult =
   | { ok: true; source: string }
   | { ok: false; reason: "not-found" | "ambiguous" };
