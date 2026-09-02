@@ -99,6 +99,7 @@
   "manage.upload.deviceCheckTimeout": "Device check timed out — try again",
   "manage.upload.deviceCheckFailed": "Couldn't check device status",
   "manage.sync.doneMessage": "Done — {{imported}} imported, {{skipped}} skipped, {{errors}} errors.",
+  "manage.sync.noResult": "Sync ended without a result",
   "manage.sync.syncFailed": "Sync failed",
   "manage.sync.syncingEllipsis": "Syncing…",
   "manage.oauth.withings.noun": "measurements",

@@ -99,6 +99,7 @@
   "manage.upload.deviceCheckTimeout": "Verifica del dispositivo scaduta — riprova",
   "manage.upload.deviceCheckFailed": "Impossibile verificare lo stato del dispositivo",
   "manage.sync.doneMessage": "Fatto — {{imported}} importate, {{skipped}} saltate, {{errors}} errori.",
+  "manage.sync.noResult": "Sincronizzazione terminata senza risultato",
   "manage.sync.syncFailed": "Sincronizzazione non riuscita",
   "manage.sync.syncingEllipsis": "Sincronizzazione…",
   "manage.oauth.withings.noun": "misurazioni",
