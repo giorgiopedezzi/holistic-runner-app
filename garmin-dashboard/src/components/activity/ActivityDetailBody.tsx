@@ -10,7 +10,7 @@ import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
 import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
-import { fmtDuration, fmtElevation, fmtDate } from "@/utils/fmt";
+import { fmtDuration, fmtElevation, fmtDate, fmtSource } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
 import { detectPauses, computeHrRecovery } from "@/domain/pauses";
 import {
@@ -248,7 +248,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           )}
           <span className="hra-text-secondary text-label">{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
-            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${activity.source}`, { source: activity.source })}</span>
+            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(activity.source)}`, { source: fmtSource(activity.source) })}</span>
           )}
           <div className="flex-1" />
           {activity && <ActivityTypePicker activity={activity} onUpdate={setActivity} />}

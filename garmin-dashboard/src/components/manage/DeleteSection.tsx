@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, BodyMeasurement } from "@/types/api";
-import { fmtKm, fmtWeight, fmtDate } from "@/utils/fmt";
+import { fmtKm, fmtWeight, fmtDate, fmtSource } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 import { useDemoMode } from "@/hooks/useDemoMode";
 
@@ -131,7 +131,7 @@ export function DeleteSection() {
             <div className="hra-text-muted text-meta" >{t("manage.delete.noActivitiesInRange", "No activities in this range.")}</div>
           ) : activityPreview.map(a => (
             <div key={a.id} className="hra-list-row hra-text-secondary text-meta">
-              {fmtDate(a.date_only)} — {a.sport ?? "other"} — {fmtKm(a.distance_m)} — {a.source ?? "garmin"}
+              {fmtDate(a.date_only)} — {a.sport ?? "other"} — {fmtKm(a.distance_m)} — {fmtSource(a.source ?? "garmin")}
             </div>
           ))}
         </div>

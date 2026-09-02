@@ -158,7 +158,7 @@ function AppShell() {
               <span
                 className="hra-status-dot"
                 data-online={online}
-                title={online ? t("app.serverConnected", "Server connected") : t("app.serverOffline", "Server offline")}
+                title={online ? t("app.serverConnected", "Data service ready") : t("app.serverOffline", "Server offline")}
               />
             )}
 

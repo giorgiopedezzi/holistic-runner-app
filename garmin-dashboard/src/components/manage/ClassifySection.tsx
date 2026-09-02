@@ -125,7 +125,7 @@ export function ClassifySection() {
 
   return (
     <Card>
-      <div className="hra-block-title mb-1" >{t("manage.classify.title", "AI workout classification")}</div>
+      <div className="hra-block-title mb-1" >{t("manage.classify.title", "Identify workout types")}</div>
       <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.classify.description", "Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata / Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.")}
       </div>

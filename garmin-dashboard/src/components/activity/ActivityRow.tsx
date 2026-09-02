@@ -5,7 +5,7 @@ import { api } from "@/api/client";
 import { Badge } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
-import { fmtPace, fmtDuration, fmtKm, fmtDate } from "@/utils/fmt";
+import { fmtPace, fmtDuration, fmtKm, fmtDate, fmtSource } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { ActivityTypePicker } from "./ActivityTypePicker";
@@ -121,7 +121,7 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
           )}
           <span className="font-semibold">{fmtKm(a.distance_m)}</span>
           {a.source && (
-            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${a.source}`, { source: a.source })}</span>
+            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(a.source)}`, { source: fmtSource(a.source) })}</span>
           )}
         </div>
 

@@ -27,7 +27,7 @@ describe("ActivityRow", () => {
 
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(screen.getByText("10.00 km")).toBeInTheDocument();
-    expect(screen.getByText("via garmin")).toBeInTheDocument();
+    expect(screen.getByText("via Garmin")).toBeInTheDocument();
     expect(screen.getByText("♥ 152")).toBeInTheDocument();
   });
 
