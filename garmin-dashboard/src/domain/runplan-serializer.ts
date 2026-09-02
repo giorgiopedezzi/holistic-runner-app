@@ -220,3 +220,34 @@ export function applyRecoveryPaceEdit(segment: WorkoutSegment, raw: string, offs
   if (!reparseIntensityOk(intensity, offsetUnit)) return null;
   return { ...segment, rest: { ...segment.rest, intensity } };
 }
+
+// ── HRA-235: field-level rejection messages ─────────────────────────────────
+// One human-readable explanation per field kind, for the caller (
+// TrainingPlanAccordion.tsx's makeFieldCommit) to attach to a ParseWarning
+// alongside the field's current DSL content when an apply*Edit above returns
+// null. Untranslated, like every other ParseWarning.message already rendered
+// in this file's caller (day.warnings) — these are diagnostic strings
+// mirroring backend-parser output, not app chrome copy, so the frontend-i18n
+// exemption for "backend/user-provided free text" applies the same way here.
+export function describeTargetRejectionMessage(raw: string): string {
+  const trimmed = raw.trim();
+  const target = parseTargetToken(raw);
+  return target.kind === "unknown"
+    ? `"${trimmed}" is not a recognized distance or duration (e.g. "10km", "45min").`
+    : `"${trimmed}" did not round-trip to an equivalent value — rejected to avoid silently changing the plan.`;
+}
+
+export function describeIntensityRejectionMessage(raw: string, offsetUnit: OffsetUnit): string {
+  const trimmed = raw.trim();
+  const intensity = parseIntensityToken(raw, offsetUnit);
+  return intensity.kind === "unknown"
+    ? `"${trimmed}" is not a recognized pace (e.g. "4:30/km", "RG+20", "RG").`
+    : `"${trimmed}" did not round-trip to an equivalent value — rejected to avoid silently changing the plan.`;
+}
+
+export function describeRepetitionsRejectionMessage(raw: string): string {
+  const trimmed = raw.trim();
+  return trimmed === ""
+    ? `Repetitions cannot be empty — use a whole number or "?".`
+    : `"${trimmed}" is not a whole number of repetitions (or "?").`;
+}

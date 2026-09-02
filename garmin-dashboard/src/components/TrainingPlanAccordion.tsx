@@ -16,7 +16,7 @@
  * derived by walking children (any day -> any week -> any section), never
  * stored, matching docs/runplan-dsl.md's own documented rule for this.
  */
-import { useEffect, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Bed, CircleHelp, Download, ListTodo, Play, SquareSlash } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
@@ -30,10 +30,11 @@ import {
 } from "../domain/runplan-aggregate";
 import { recomposeDayLine, replaceSegmentInDayLine, splitNote } from "@/domain/runplan-patch";
 import {
-  applyDistanceOrDurationEdit, applyPaceEdit, applyRecoveryPaceEdit, applyRecoveryTargetEdit, applyRepetitionsEdit, serializeSegment,
+  applyDistanceOrDurationEdit, applyPaceEdit, applyRecoveryPaceEdit, applyRecoveryTargetEdit, applyRepetitionsEdit,
+  describeIntensityRejectionMessage, describeRepetitionsRejectionMessage, describeTargetRejectionMessage, serializeSegment,
 } from "@/domain/runplan-serializer";
 import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
-import type { OffsetUnit, WorkoutSegment } from "@/types/runplan";
+import type { OffsetUnit, ParseWarning, WorkoutSegment } from "@/types/runplan";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
 // below — plain index tuples, same "sectionIndex/weekIndex/dayIndex" shape
@@ -261,35 +262,71 @@ function ValueSpan({ value, unknown, unknownTooltip }: { value: string; unknown?
   );
 }
 
-// HRA-234: the editable counterpart to ValueSpan above — shown instead of it
-// whenever the caller supplies an `onCommit`. Local "draft" buffer (not a
-// controlled `value={value}` input) so an edit that fails to round-trip
-// (AC6) can visibly snap back to the last-known-good value rather than
-// leaving whatever the user typed on screen with no feedback that it wasn't
-// applied. Commits on blur or Enter, not per-keystroke (matches this file's
-// existing debounce-free-but-not-per-keystroke inputs elsewhere, and avoids
-// reparsing a half-typed token on every character).
-function EditableValueField({ value, onCommit, ariaLabel, rejectedTooltip }: {
-  value: string; onCommit: (raw: string) => boolean; ariaLabel: string; rejectedTooltip: string;
+// HRA-235: the result of a structured-field commit attempt — `error` carries
+// the SAME {line, content, message} shape docs/runplan-dsl.md's ParseWarning
+// already uses, so a rejected edit reads as one consistent diagnostic
+// language with the day-level parse warnings below (day.warnings), not a
+// bespoke error format. `content` is the segment's own CURRENT DSL text
+// (still valid, still what's actually in day.dsl right now — see
+// makeFieldCommit) rather than the rejected raw input, since AC2/AC3 ask for
+// "the underlying DSL location it corresponds to", i.e. where to go fix it,
+// not a copy of what was typed. `line` is always 1: a template day's DSL is
+// one line by construction, so there is no real multi-line document position
+// to report here — the shape is reused for its (content, message) fields and
+// for consistency with the parser's own warnings, not for line navigation.
+export type FieldEditResult = { ok: true } | { ok: false; error: ParseWarning };
+
+// HRA-234, extended HRA-235: the editable counterpart to ValueSpan above —
+// shown instead of it whenever the caller supplies an `onCommit`. Local
+// "draft" buffer (not a controlled `value={value}` input) so an edit that
+// fails to round-trip (AC6) can visibly snap back to the last-known-good
+// value rather than leaving whatever the user typed on screen with no
+// feedback that it wasn't applied. Commits on blur or Enter, not
+// per-keystroke (matches this file's existing debounce-free-but-not-per-
+// keystroke inputs elsewhere, and avoids reparsing a half-typed token on
+// every character).
+// HRA-235: a rejection now renders a real inline error message on THIS field
+// (AC1 — not just the day-level warnings list below), `aria-describedby`
+// programmatically ties the input to that message (AC4), and a real
+// `<button>` (keyboard-reachable by construction, AC4) lets the user jump to
+// the corresponding DSL text via `onNavigateToDsl` (AC3).
+function EditableValueField({ value, onCommit, ariaLabel, onNavigateToDsl, t }: {
+  value: string; onCommit: (raw: string) => FieldEditResult; ariaLabel: string; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
 }) {
   const [draft, setDraft] = useState(value);
-  const [rejected, setRejected] = useState(false);
-  useEffect(() => { setDraft(value); setRejected(false); }, [value]);
+  const [error, setError] = useState<ParseWarning | null>(null);
+  const errorId = useId();
+  useEffect(() => { setDraft(value); setError(null); }, [value]);
   function commit() {
-    if (draft === value) { setRejected(false); return; }
-    const applied = onCommit(draft);
-    if (!applied) { setDraft(value); setRejected(true); } else setRejected(false);
+    if (draft === value) { setError(null); return; }
+    const result = onCommit(draft);
+    if (!result.ok) { setDraft(value); setError(result.error); } else setError(null);
   }
   return (
-    <input
-      className={[inputClass, "text-data p-1 w-24", rejected ? "hra-text-danger" : ""].filter(Boolean).join(" ")}
-      value={draft}
-      onChange={e => setDraft(e.target.value)}
-      onBlur={commit}
-      onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
-      aria-label={ariaLabel}
-      title={rejected ? rejectedTooltip : undefined}
-    />
+    <div className="flex flex-col gap-0.5">
+      <input
+        className={[inputClass, "text-data p-1 w-24", error ? "hra-text-danger" : ""].filter(Boolean).join(" ")}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        aria-label={ariaLabel}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+      />
+      {error && (
+        <div id={errorId} role="alert" className="hra-text-danger text-meta flex items-center gap-1.5">
+          <span>{error.message}</span>
+          <button
+            type="button"
+            className="hra-text-danger underline bg-transparent border-0 p-0 cursor-pointer text-meta"
+            onClick={() => onNavigateToDsl(error)}
+          >
+            {t("runplan.accordion.editRejectedViewInDsl", "View in DSL")}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -354,25 +391,24 @@ function UnsavedBadge({ t }: { t: Translate }) {
 // builds these), in which case the field falls back to the original
 // read-only ValueSpan, unchanged from HRA-229/230/232.
 export interface ContinuousFieldEdit {
-  distanceOrDuration: (raw: string) => boolean;
-  pace: (raw: string) => boolean;
+  distanceOrDuration: (raw: string) => FieldEditResult;
+  pace: (raw: string) => FieldEditResult;
 }
 export interface IntervalFieldEdit extends ContinuousFieldEdit {
-  repetitions: (raw: string) => boolean;
-  recovery?: (raw: string) => boolean;
-  recoveryPace?: (raw: string) => boolean;
+  repetitions: (raw: string) => FieldEditResult;
+  recovery?: (raw: string) => FieldEditResult;
+  recoveryPace?: (raw: string) => FieldEditResult;
 }
 
-function ContinuousFields({ presentation, unknownTooltip, edit, t }: {
-  presentation: ContinuousSegmentPresentation; unknownTooltip: string; edit?: ContinuousFieldEdit; t: Translate;
+function ContinuousFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t }: {
+  presentation: ContinuousSegmentPresentation; unknownTooltip: string; edit?: ContinuousFieldEdit; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
 }) {
-  const rejectedTooltip = t("runplan.accordion.editRejectedTooltip", "Not a valid value — reverted to the last saved one");
   return (
     <div className="flex gap-4">
       <div className="flex flex-col">
         <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
         {edit ? (
-          <EditableValueField value={presentation.distanceOrDuration} onCommit={edit.distanceOrDuration} ariaLabel={t("runplan.accordion.distanceDurationLabel", "Distance / Duration")} rejectedTooltip={rejectedTooltip} />
+          <EditableValueField value={presentation.distanceOrDuration} onCommit={edit.distanceOrDuration} ariaLabel={t("runplan.accordion.distanceDurationLabel", "Distance / Duration")} onNavigateToDsl={onNavigateToDsl} t={t} />
         ) : (
           <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
         )}
@@ -380,7 +416,7 @@ function ContinuousFields({ presentation, unknownTooltip, edit, t }: {
       <div className="flex flex-col">
         <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
         {edit ? (
-          <EditableValueField value={presentation.pace} onCommit={edit.pace} ariaLabel={t("runplan.accordion.paceLabel", "Pace")} rejectedTooltip={rejectedTooltip} />
+          <EditableValueField value={presentation.pace} onCommit={edit.pace} ariaLabel={t("runplan.accordion.paceLabel", "Pace")} onNavigateToDsl={onNavigateToDsl} t={t} />
         ) : (
           <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
         )}
@@ -389,17 +425,16 @@ function ContinuousFields({ presentation, unknownTooltip, edit, t }: {
   );
 }
 
-function IntervalFields({ presentation, unknownTooltip, edit, t }: {
-  presentation: IntervalSegmentPresentation; unknownTooltip: string; edit?: IntervalFieldEdit; t: Translate;
+function IntervalFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t }: {
+  presentation: IntervalSegmentPresentation; unknownTooltip: string; edit?: IntervalFieldEdit; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
 }) {
-  const rejectedTooltip = t("runplan.accordion.editRejectedTooltip", "Not a valid value — reverted to the last saved one");
   return (
     <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
       <div className="flex gap-4">
         <div className="flex flex-col">
           <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
           {edit ? (
-            <EditableValueField value={presentation.repetitions} onCommit={edit.repetitions} ariaLabel={t("runplan.accordion.repetitionsLabel", "Repetitions")} rejectedTooltip={rejectedTooltip} />
+            <EditableValueField value={presentation.repetitions} onCommit={edit.repetitions} ariaLabel={t("runplan.accordion.repetitionsLabel", "Repetitions")} onNavigateToDsl={onNavigateToDsl} t={t} />
           ) : (
             <ValueSpan value={presentation.repetitions} unknown={presentation.repetitionsUnknown} unknownTooltip={unknownTooltip} />
           )}
@@ -407,7 +442,7 @@ function IntervalFields({ presentation, unknownTooltip, edit, t }: {
         <div className="flex flex-col">
           <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
           {edit ? (
-            <EditableValueField value={presentation.distanceOrDuration} onCommit={edit.distanceOrDuration} ariaLabel={t("runplan.accordion.distanceDurationLabel", "Distance / Duration")} rejectedTooltip={rejectedTooltip} />
+            <EditableValueField value={presentation.distanceOrDuration} onCommit={edit.distanceOrDuration} ariaLabel={t("runplan.accordion.distanceDurationLabel", "Distance / Duration")} onNavigateToDsl={onNavigateToDsl} t={t} />
           ) : (
             <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
           )}
@@ -415,7 +450,7 @@ function IntervalFields({ presentation, unknownTooltip, edit, t }: {
         <div className="flex flex-col">
           <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
           {edit ? (
-            <EditableValueField value={presentation.pace} onCommit={edit.pace} ariaLabel={t("runplan.accordion.paceLabel", "Pace")} rejectedTooltip={rejectedTooltip} />
+            <EditableValueField value={presentation.pace} onCommit={edit.pace} ariaLabel={t("runplan.accordion.paceLabel", "Pace")} onNavigateToDsl={onNavigateToDsl} t={t} />
           ) : (
             <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
           )}
@@ -426,7 +461,7 @@ function IntervalFields({ presentation, unknownTooltip, edit, t }: {
           <div className="flex flex-col">
             <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
             {edit?.recovery ? (
-              <EditableValueField value={presentation.recovery.recovery} onCommit={edit.recovery} ariaLabel={t("runplan.accordion.recoveryLabel", "Recovery")} rejectedTooltip={rejectedTooltip} />
+              <EditableValueField value={presentation.recovery.recovery} onCommit={edit.recovery} ariaLabel={t("runplan.accordion.recoveryLabel", "Recovery")} onNavigateToDsl={onNavigateToDsl} t={t} />
             ) : (
               <ValueSpan value={presentation.recovery.recovery} unknown={presentation.recovery.recoveryUnknown} unknownTooltip={unknownTooltip} />
             )}
@@ -435,7 +470,7 @@ function IntervalFields({ presentation, unknownTooltip, edit, t }: {
             <div className="flex flex-col">
               <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryPaceLabel", "Recovery pace")}</span>
               {edit?.recoveryPace ? (
-                <EditableValueField value={presentation.recovery.recoveryPace} onCommit={edit.recoveryPace} ariaLabel={t("runplan.accordion.recoveryPaceLabel", "Recovery pace")} rejectedTooltip={rejectedTooltip} />
+                <EditableValueField value={presentation.recovery.recoveryPace} onCommit={edit.recoveryPace} ariaLabel={t("runplan.accordion.recoveryPaceLabel", "Recovery pace")} onNavigateToDsl={onNavigateToDsl} t={t} />
               ) : (
                 <ValueSpan value={presentation.recovery.recoveryPace} unknown={presentation.recovery.recoveryPaceUnknown} unknownTooltip={unknownTooltip} />
               )}
@@ -748,6 +783,33 @@ function TemplateDayRow({
   const unsupportedPresentation = buildUnsupportedPresentation(day);
   const unknownTooltip = t("runplan.accordion.unknownValueTooltip", "Unrecognized token — shown as written, not representable in Structured view");
 
+  // HRA-235: the DSL textarea's own ref + a pending "select this substring
+  // once the DSL panel is visible" request — see navigateToDsl/the effect
+  // below. A ref (not just a moved-view flag) is needed because the actual
+  // focus()/setSelectionRange() call can only happen once the textarea has
+  // actually mounted, which for view === "dsl" happens on the render AFTER
+  // the one that requests it.
+  const dslTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [pendingDslHighlight, setPendingDslHighlight] = useState<string | null>(null);
+  // HRA-235 AC3: switches this day to DSL view and requests that the
+  // error's own `content` (the segment's current, still-valid DSL text —
+  // see makeFieldCommit below) be selected there, so the user lands directly
+  // on the corresponding spot instead of hunting the single-line DSL text
+  // for it themselves.
+  function navigateToDsl(error: ParseWarning) {
+    setPendingDslHighlight(error.content);
+    setView("dsl");
+  }
+  useEffect(() => {
+    if (view !== "dsl" || pendingDslHighlight == null) return;
+    const el = dslTextareaRef.current;
+    if (!el) return;
+    const idx = day.dsl.indexOf(pendingDslHighlight);
+    el.focus();
+    el.setSelectionRange(idx === -1 ? 0 : idx, idx === -1 ? day.dsl.length : idx + pendingDslHighlight.length);
+    setPendingDslHighlight(null);
+  }, [view, pendingDslHighlight, day.dsl]);
+
   // HRA-234: builds one field's commit function, scoped to a single segment
   // (by index — AC4's "only the touched segment's DSL text changes"). Each
   // apply* function (domain/runplan-serializer.ts) parses `raw`, builds the
@@ -755,16 +817,29 @@ function TemplateDayRow({
   // value that doesn't round-trip) — this wrapper's only job is turning a
   // successful apply into a serialize + splice-into-day.dsl + onEdit call,
   // through the SAME onDayEdit({dsl}) path a manual DSL edit already uses
-  // (AC5 — no new endpoint). Returns false (never touches day.dsl) on any
-  // rejection, so EditableValueField knows to revert its own draft text.
+  // (AC5 — no new endpoint). Returns {ok:false} (never touches day.dsl) on
+  // any rejection, so EditableValueField knows to revert its own draft text
+  // and show the attached error (HRA-235).
   function makeFieldCommit<TArgs extends unknown[]>(
-    segmentIndex: number, applyEdit: (segment: WorkoutSegment, raw: string, ...args: TArgs) => WorkoutSegment | null, ...args: TArgs
-  ): (raw: string) => boolean {
+    segmentIndex: number,
+    applyEdit: (segment: WorkoutSegment, raw: string, ...args: TArgs) => WorkoutSegment | null,
+    describeRejection: (raw: string, ...args: TArgs) => string,
+    ...args: TArgs
+  ): (raw: string) => FieldEditResult {
     return (raw: string) => {
       const segment = day.segments?.[segmentIndex];
-      if (!segment) return false;
+      if (!segment) {
+        return { ok: false, error: { line: 1, content: "", message: t("runplan.accordion.editRejectedNoSegment", "No segment found to edit.") } };
+      }
+      // HRA-235: the error's `content` — where a rejection is reported — is
+      // this segment's CURRENT, still-valid DSL text (unaffected by the
+      // rejected edit), not the typed input: AC2/AC3 ask where to go fix it,
+      // not a copy of what was rejected.
+      const currentSegmentDsl = serializeSegment(segment, offsetUnit);
       const updated = applyEdit(segment, raw, ...args);
-      if (!updated) return false;
+      if (!updated) {
+        return { ok: false, error: { line: 1, content: currentSegmentDsl, message: describeRejection(raw, ...args) } };
+      }
       // EditableValueField only calls this when the typed text actually
       // differs from what's on screen (its own commit() short-circuits a
       // no-op edit before calling onCommit at all) — so an unchanged day.dsl
@@ -772,24 +847,26 @@ function TemplateDayRow({
       // (a malformed day.dsl/segmentIndex — see that function's own "return
       // unchanged, don't guess" convention), a genuine rejection.
       const newDsl = replaceSegmentInDayLine(day.dsl, segmentIndex, serializeSegment(updated, offsetUnit));
-      if (newDsl === day.dsl) return false;
+      if (newDsl === day.dsl) {
+        return { ok: false, error: { line: 1, content: currentSegmentDsl, message: t("runplan.accordion.editRejectedNoDslChange", "Could not apply this change to this day's DSL text.") } };
+      }
       onEdit({ dsl: newDsl });
-      return true;
+      return { ok: true };
     };
   }
   function continuousEditFor(segmentIndex: number): ContinuousFieldEdit {
     return {
-      distanceOrDuration: makeFieldCommit(segmentIndex, applyDistanceOrDurationEdit),
-      pace: makeFieldCommit(segmentIndex, applyPaceEdit, offsetUnit),
+      distanceOrDuration: makeFieldCommit(segmentIndex, applyDistanceOrDurationEdit, describeTargetRejectionMessage),
+      pace: makeFieldCommit(segmentIndex, applyPaceEdit, describeIntensityRejectionMessage, offsetUnit),
     };
   }
   function intervalEditFor(segmentIndex: number, hasRecovery: boolean): IntervalFieldEdit {
     return {
-      distanceOrDuration: makeFieldCommit(segmentIndex, applyDistanceOrDurationEdit),
-      pace: makeFieldCommit(segmentIndex, applyPaceEdit, offsetUnit),
-      repetitions: makeFieldCommit(segmentIndex, applyRepetitionsEdit),
-      recovery: hasRecovery ? makeFieldCommit(segmentIndex, applyRecoveryTargetEdit) : undefined,
-      recoveryPace: hasRecovery ? makeFieldCommit(segmentIndex, applyRecoveryPaceEdit, offsetUnit) : undefined,
+      distanceOrDuration: makeFieldCommit(segmentIndex, applyDistanceOrDurationEdit, describeTargetRejectionMessage),
+      pace: makeFieldCommit(segmentIndex, applyPaceEdit, describeIntensityRejectionMessage, offsetUnit),
+      repetitions: makeFieldCommit(segmentIndex, applyRepetitionsEdit, describeRepetitionsRejectionMessage),
+      recovery: hasRecovery ? makeFieldCommit(segmentIndex, applyRecoveryTargetEdit, describeTargetRejectionMessage) : undefined,
+      recoveryPace: hasRecovery ? makeFieldCommit(segmentIndex, applyRecoveryPaceEdit, describeIntensityRejectionMessage, offsetUnit) : undefined,
     };
   }
   const editable = !readOnlyDays;
@@ -847,7 +924,7 @@ function TemplateDayRow({
               {/* HRA-229/HRA-234: editable once a segment-level serializer
                   exists to regenerate day.dsl from a field edit — read-only
                   (unchanged since HRA-229) when readOnlyDays. */}
-              {presentation && <ContinuousFields presentation={presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(0) : undefined} t={t} />}
+              {presentation && <ContinuousFields presentation={presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(0) : undefined} onNavigateToDsl={navigateToDsl} t={t} />}
               {/* HRA-230/HRA-234: one grouped block for the whole interval,
                   not a card per repetition — the primary row above, an
                   indented recovery row directly below it only when the
@@ -856,7 +933,7 @@ function TemplateDayRow({
               {intervalPresentation && (
                 <IntervalFields
                   presentation={intervalPresentation} unknownTooltip={unknownTooltip}
-                  edit={editable ? intervalEditFor(0, intervalPresentation.recovery != null) : undefined} t={t}
+                  edit={editable ? intervalEditFor(0, intervalPresentation.recovery != null) : undefined} onNavigateToDsl={navigateToDsl} t={t}
                 />
               )}
               {/* HRA-232: a ;-joined multi-segment day — each segment gets its
@@ -875,12 +952,12 @@ function TemplateDayRow({
                         {t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index })}
                       </div>
                       {entry.kind === "continuous" && (
-                        <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(entry.index - 1) : undefined} t={t} />
+                        <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(entry.index - 1) : undefined} onNavigateToDsl={navigateToDsl} t={t} />
                       )}
                       {entry.kind === "interval" && (
                         <IntervalFields
                           presentation={entry.presentation} unknownTooltip={unknownTooltip}
-                          edit={editable ? intervalEditFor(entry.index - 1, entry.presentation.recovery != null) : undefined} t={t}
+                          edit={editable ? intervalEditFor(entry.index - 1, entry.presentation.recovery != null) : undefined} onNavigateToDsl={navigateToDsl} t={t}
                         />
                       )}
                       {entry.kind === "unsupported" && (
@@ -902,6 +979,7 @@ function TemplateDayRow({
             <label className="hra-text-secondary text-meta" >
               {t("runplan.accordion.dslLabel", "Workout (DSL)")}
               <textarea
+                ref={dslTextareaRef}
                 className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}
                 value={day.dsl}
                 onChange={e => onEdit({ dsl: e.target.value })}
