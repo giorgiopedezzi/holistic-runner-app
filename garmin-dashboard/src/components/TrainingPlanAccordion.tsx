@@ -614,6 +614,14 @@ function TemplateDayRow({
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  // HRA-233: per-day Structured/DSL selector, default Structured — replaces
+  // the DSL textarea's old always-visible presence. Local component state
+  // (not persisted/lifted) is safe here because the actual edit buffer lives
+  // in the parent's day.dsl/onEdit round-trip (PlanTemplatesSection's own
+  // `sections` state) — switching view only toggles which JSX renders, it
+  // never unmounts/resets the controlled `value={day.dsl}` textarea's
+  // source of truth, so an in-progress unsaved DSL edit survives the switch.
+  const [view, setView] = useState<"structured" | "dsl">("structured");
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
   // HRA-229: read-only Distance/Duration + Pace fields, built purely from
   // day.segments — only non-null for a template day with exactly one
@@ -654,83 +662,108 @@ function TemplateDayRow({
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
         <div className="flex flex-col gap-2">
-          {/* HRA-231: REST/OTHER/TODO's dedicated labeled state, in place of
-              the empty Distance/Pace/Repetitions fields those day types
-              would otherwise never fill. */}
-          {statePresentation && StateIcon && (
-            <div className="hra-text-secondary flex items-center gap-2 text-label">
-              <StateIcon size={14} />
-              {t(STATE_DAY_LABEL_KEYS[statePresentation][0], STATE_DAY_LABEL_KEYS[statePresentation][1])}
-            </div>
-          )}
-          {/* HRA-231: progression / CROSS/STRENGTH — not hidden (the raw DSL
-              text still renders below, unchanged), just honestly marked as
-              not yet representable here. */}
-          {unsupportedPresentation && (
-            <div className="hra-text-muted flex items-center gap-2 text-label">
-              <SquareSlash size={14} />
-              {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
-            </div>
-          )}
-          {/* HRA-229: read-only, above the still-editable DSL text input
-              below — never writes back into raw_dsl/target/intensity. */}
-          {presentation && <ContinuousFields presentation={presentation} unknownTooltip={unknownTooltip} t={t} />}
-          {/* HRA-230: one grouped block for the whole interval, not a card
-              per repetition — the primary row above, an indented recovery
-              row directly below it only when the segment has an `r:`
-              clause, visibly associated by shared containment + indent
-              (no card-per-repetition duplication). */}
-          {intervalPresentation && <IntervalFields presentation={intervalPresentation} unknownTooltip={unknownTooltip} t={t} />}
-          {/* HRA-232: a ;-joined multi-segment day — each segment gets its
-              own labeled "Segment N" card, in source order, internally
-              reusing the same Continuous/Interval fields above. A segment
-              that's neither (progression/rest_block — no defined structured
-              shape yet, same open decision unsupportedPresentation already
-              flags) shows the same unsupported marker at its own slot,
-              rather than silently disappearing from the ordered sequence. */}
-          {multiSegmentPresentation && (
-            <div className="flex flex-col gap-2">
-              {multiSegmentPresentation.map(entry => (
-                <div key={entry.index} className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
-                  <div className="hra-text-secondary text-label">
-                    {t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index })}
-                  </div>
-                  {entry.kind === "continuous" && <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} t={t} />}
-                  {entry.kind === "interval" && <IntervalFields presentation={entry.presentation} unknownTooltip={unknownTooltip} t={t} />}
-                  {entry.kind === "unsupported" && (
-                    <div className="hra-text-muted flex items-center gap-2 text-label">
-                      <SquareSlash size={14} />
-                      {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
-                    </div>
-                  )}
-                </div>
+          {/* HRA-233: per-day Structured/DSL selector, default Structured —
+              replaces the DSL textarea's old always-visible presence below.
+              Only affects the DSL text panel; Note stays visible regardless
+              (it isn't part of raw_dsl). Not shown for a readOnlyDays day —
+              there's nothing to switch to edit, same gate the DSL/Note block
+              itself already used before this Story. `aria-pressed` (not just
+              the app's usual `data-active`) exposes the selected state
+              programmatically, per this Story's own explicit AC. */}
+          {!readOnlyDays && (
+            <div className="hra-segment self-start" role="group" aria-label={t("runplan.accordion.viewToggleLabel", "View")} >
+              {(["structured", "dsl"] as const).map(v => (
+                <button
+                  key={v} type="button" className="hra-segment-item py-1 px-2" data-active={view === v}
+                  aria-pressed={view === v} onClick={() => setView(v)}
+                >
+                  {v === "structured" ? t("runplan.accordion.viewStructured", "Structured") : t("runplan.accordion.viewDsl", "DSL")}
+                </button>
               ))}
             </div>
+          )}
+          {view === "structured" && (
+            <>
+              {/* HRA-231: REST/OTHER/TODO's dedicated labeled state, in place
+                  of the empty Distance/Pace/Repetitions fields those day
+                  types would otherwise never fill. */}
+              {statePresentation && StateIcon && (
+                <div className="hra-text-secondary flex items-center gap-2 text-label">
+                  <StateIcon size={14} />
+                  {t(STATE_DAY_LABEL_KEYS[statePresentation][0], STATE_DAY_LABEL_KEYS[statePresentation][1])}
+                </div>
+              )}
+              {/* HRA-231: progression / CROSS/STRENGTH — not hidden (the raw
+                  DSL text is still reachable via the toggle above), just
+                  honestly marked as not yet representable here. */}
+              {unsupportedPresentation && (
+                <div className="hra-text-muted flex items-center gap-2 text-label">
+                  <SquareSlash size={14} />
+                  {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
+                </div>
+              )}
+              {/* HRA-229: read-only — never writes back into
+                  raw_dsl/target/intensity. */}
+              {presentation && <ContinuousFields presentation={presentation} unknownTooltip={unknownTooltip} t={t} />}
+              {/* HRA-230: one grouped block for the whole interval, not a card
+                  per repetition — the primary row above, an indented recovery
+                  row directly below it only when the segment has an `r:`
+                  clause, visibly associated by shared containment + indent
+                  (no card-per-repetition duplication). */}
+              {intervalPresentation && <IntervalFields presentation={intervalPresentation} unknownTooltip={unknownTooltip} t={t} />}
+              {/* HRA-232: a ;-joined multi-segment day — each segment gets its
+                  own labeled "Segment N" card, in source order, internally
+                  reusing the same Continuous/Interval fields above. A segment
+                  that's neither (progression/rest_block — no defined
+                  structured shape yet, same open decision
+                  unsupportedPresentation already flags) shows the same
+                  unsupported marker at its own slot, rather than silently
+                  disappearing from the ordered sequence. */}
+              {multiSegmentPresentation && (
+                <div className="flex flex-col gap-2">
+                  {multiSegmentPresentation.map(entry => (
+                    <div key={entry.index} className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
+                      <div className="hra-text-secondary text-label">
+                        {t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index })}
+                      </div>
+                      {entry.kind === "continuous" && <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} t={t} />}
+                      {entry.kind === "interval" && <IntervalFields presentation={entry.presentation} unknownTooltip={unknownTooltip} t={t} />}
+                      {entry.kind === "unsupported" && (
+                        <div className="hra-text-muted flex items-center gap-2 text-label">
+                          <SquareSlash size={14} />
+                          {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
           {/* HRA-126: once approved, the dsl/note inputs simply don't render —
               same "hide the input, the title/tooltip already shows the value"
               pattern readOnlySectionWeek already uses for Section/Week above. */}
+          {!readOnlyDays && view === "dsl" && (
+            <label className="hra-text-secondary text-meta" >
+              {t("runplan.accordion.dslLabel", "Workout (DSL)")}
+              <textarea
+                className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}
+                value={day.dsl}
+                onChange={e => onEdit({ dsl: e.target.value })}
+                rows={2}
+              />
+            </label>
+          )}
           {!readOnlyDays && (
-            <>
-              <label className="hra-text-secondary text-meta" >
-                {t("runplan.accordion.dslLabel", "Workout (DSL)")}
-                <textarea
-                  className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}
-                  value={day.dsl}
-                  onChange={e => onEdit({ dsl: e.target.value })}
-                  rows={2}
-                />
-              </label>
-              <label className="hra-text-secondary text-meta" >
-                {t("runplan.accordion.noteLabel", "Note")}
-                <input
-                  className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
-                  value={day.notes ?? ""}
-                  onChange={e => onEdit({ notes: e.target.value })}
-                  placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-                />
-              </label>
-            </>
+            <label className="hra-text-secondary text-meta" >
+              {t("runplan.accordion.noteLabel", "Note")}
+              <input
+                className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
+                value={day.notes ?? ""}
+                onChange={e => onEdit({ notes: e.target.value })}
+                placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+              />
+            </label>
           )}
           {day.needs_review && day.warnings.length > 0 && (
             <ul className="hra-warning-list hra-text-danger text-meta m-0">
