@@ -18,11 +18,14 @@
  */
 import { useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Bed, CircleHelp, Download, Play } from "lucide-react";
+import { AlertTriangle, Bed, CircleHelp, Download, ListTodo, Play, SquareSlash } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
-import { buildContinuousSegmentPresentation, buildIntervalSegmentPresentation, weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
+import {
+  buildContinuousSegmentPresentation, buildIntervalSegmentPresentation, buildStateDayPresentation, buildUnsupportedPresentation,
+  weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type StateDayKind, type WeekView,
+} from "../domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
 import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
 
@@ -214,6 +217,34 @@ const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, st
 };
 function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
   return workoutType === "run" || workoutType === "rest" ? workoutType : "other";
+}
+
+// HRA-231: the template-only REST/OTHER/TODO dedicated structured state
+// (buildStateDayPresentation) — distinct from WORKOUT_TYPE_SWITCH_ICONS
+// above, which is an instance-only edit control with a different value set
+// (todo/cross/strength all fold into "other" there; here each keeps its own
+// label since there is no editing to fold for).
+const STATE_DAY_ICONS: Record<StateDayKind, (props: { size?: number }) => ReactNode> = {
+  rest: Bed, other: CircleHelp, todo: ListTodo,
+};
+const STATE_DAY_LABEL_KEYS: Record<StateDayKind, [string, string]> = {
+  rest: ["runplan.accordion.stateRestLabel", "Rest day"],
+  other: ["runplan.accordion.stateOtherLabel", "Other"],
+  todo: ["runplan.accordion.stateTodoLabel", "Not yet planned"],
+};
+
+// HRA-231: wraps a structured field's value, marking it visibly (muted +
+// tooltip, same .hra-tooltip/data-tooltip idiom NoteIcon above already
+// uses) whenever the underlying Target/Intensity was kind "unknown" — a
+// genuinely unrecognized token or the explicit "?" placeholder, per
+// docs/runplan-dsl.md (parsed identically) — rather than silently
+// presenting it like a normal resolved value.
+function ValueSpan({ value, unknown, unknownTooltip }: { value: string; unknown?: boolean; unknownTooltip: string }) {
+  return unknown ? (
+    <span className="hra-tooltip hra-text-muted text-data cursor-help" data-tooltip={unknownTooltip}>{value}</span>
+  ) : (
+    <span className="hra-text-primary text-data">{value}</span>
+  );
 }
 
 // HRA-125: an instance day's title shows its real calendar date + weekday
@@ -538,6 +569,17 @@ function TemplateDayRow({
   // most one non-null presentation at a time (continuous XOR interval), so
   // both can render unconditionally below without an extra dispatch.
   const intervalPresentation = buildIntervalSegmentPresentation(day);
+  // HRA-231: REST/OTHER/TODO's own dedicated labeled state — mutually
+  // exclusive with presentation/intervalPresentation above (workout_type
+  // disjoint from "run").
+  const statePresentation = buildStateDayPresentation(day);
+  const StateIcon = statePresentation ? STATE_DAY_ICONS[statePresentation] : null;
+  // HRA-231: a progression segment or a CROSS/STRENGTH day — neither has a
+  // defined structured shape yet (Epic HRA-228's open decision, deferred) —
+  // flagged so the view says so honestly instead of showing nothing beyond
+  // the still-editable raw DSL text below.
+  const unsupportedPresentation = buildUnsupportedPresentation(day);
+  const unknownTooltip = t("runplan.accordion.unknownValueTooltip", "Unrecognized token — shown as written, not representable in Structured view");
 
   // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
@@ -549,17 +591,35 @@ function TemplateDayRow({
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
         <div className="flex flex-col gap-2">
+          {/* HRA-231: REST/OTHER/TODO's dedicated labeled state, in place of
+              the empty Distance/Pace/Repetitions fields those day types
+              would otherwise never fill. */}
+          {statePresentation && StateIcon && (
+            <div className="hra-text-secondary flex items-center gap-2 text-label">
+              <StateIcon size={14} />
+              {t(STATE_DAY_LABEL_KEYS[statePresentation][0], STATE_DAY_LABEL_KEYS[statePresentation][1])}
+            </div>
+          )}
+          {/* HRA-231: progression / CROSS/STRENGTH — not hidden (the raw DSL
+              text still renders below, unchanged), just honestly marked as
+              not yet representable here. */}
+          {unsupportedPresentation && (
+            <div className="hra-text-muted flex items-center gap-2 text-label">
+              <SquareSlash size={14} />
+              {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
+            </div>
+          )}
           {/* HRA-229: read-only, above the still-editable DSL text input
               below — never writes back into raw_dsl/target/intensity. */}
           {presentation && (
             <div className="flex gap-4">
               <div className="flex flex-col">
                 <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
-                <span className="hra-text-primary text-data">{presentation.distanceOrDuration}</span>
+                <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
               </div>
               <div className="flex flex-col">
                 <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
-                <span className="hra-text-primary text-data">{presentation.pace}</span>
+                <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
               </div>
             </div>
           )}
@@ -573,27 +633,27 @@ function TemplateDayRow({
               <div className="flex gap-4">
                 <div className="flex flex-col">
                   <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
-                  <span className="hra-text-primary text-data">{intervalPresentation.repetitions}</span>
+                  <ValueSpan value={intervalPresentation.repetitions} unknown={intervalPresentation.repetitionsUnknown} unknownTooltip={unknownTooltip} />
                 </div>
                 <div className="flex flex-col">
                   <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
-                  <span className="hra-text-primary text-data">{intervalPresentation.distanceOrDuration}</span>
+                  <ValueSpan value={intervalPresentation.distanceOrDuration} unknown={intervalPresentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
                 </div>
                 <div className="flex flex-col">
                   <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
-                  <span className="hra-text-primary text-data">{intervalPresentation.pace}</span>
+                  <ValueSpan value={intervalPresentation.pace} unknown={intervalPresentation.paceUnknown} unknownTooltip={unknownTooltip} />
                 </div>
               </div>
               {intervalPresentation.recovery && (
                 <div className="flex gap-4 pl-3">
                   <div className="flex flex-col">
                     <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
-                    <span className="hra-text-primary text-data">{intervalPresentation.recovery.recovery}</span>
+                    <ValueSpan value={intervalPresentation.recovery.recovery} unknown={intervalPresentation.recovery.recoveryUnknown} unknownTooltip={unknownTooltip} />
                   </div>
                   {intervalPresentation.recovery.recoveryPace && (
                     <div className="flex flex-col">
                       <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryPaceLabel", "Recovery pace")}</span>
-                      <span className="hra-text-primary text-data">{intervalPresentation.recovery.recoveryPace}</span>
+                      <ValueSpan value={intervalPresentation.recovery.recoveryPace} unknown={intervalPresentation.recovery.recoveryPaceUnknown} unknownTooltip={unknownTooltip} />
                     </div>
                   )}
                 </div>

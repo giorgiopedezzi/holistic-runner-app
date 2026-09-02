@@ -442,7 +442,16 @@ export function weekDateRange(week: WeekView): { start: string; end: string } | 
 
 export interface ContinuousSegmentPresentation {
   distanceOrDuration: string;
+  // HRA-231: flagged true when target.kind === "unknown" (a genuinely
+  // unrecognized token or the explicit "?" placeholder, per
+  // docs/runplan-dsl.md — the two are parsed identically) — the value shown
+  // is still the raw token as written, just marked as not truly
+  // representable in the Structured view rather than presented as a normal
+  // resolved value. Omitted (not `false`) in the ordinary case so existing
+  // `toEqual` fixtures asserting the un-flagged shape are unaffected.
+  distanceOrDurationUnknown?: true;
   pace: string;
+  paceUnknown?: true;
 }
 
 // Splits a raw token like "30min" into its leading number and trailing unit
@@ -478,7 +487,9 @@ export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegm
   if (segment.type !== "continuous") return null;
   return {
     distanceOrDuration: formatDistanceOrDurationValue(segment.target),
+    distanceOrDurationUnknown: segment.target.kind === "unknown" ? true : undefined,
     pace: segment.intensity.raw,
+    paceUnknown: segment.intensity.kind === "unknown" ? true : undefined,
   };
 }
 
@@ -491,9 +502,15 @@ export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegm
 
 export interface IntervalSegmentPresentation {
   repetitions: string;
+  // HRA-231: true when reps is unspecified (null) — the "?" shown is the
+  // DSL's own placeholder, not a resolved value. Same omit-when-absent
+  // convention as the other *Unknown flags below.
+  repetitionsUnknown?: true;
   distanceOrDuration: string;
+  distanceOrDurationUnknown?: true;
   pace: string;
-  recovery?: { recovery: string; recoveryPace?: string };
+  paceUnknown?: true;
+  recovery?: { recovery: string; recoveryUnknown?: true; recoveryPace?: string; recoveryPaceUnknown?: true };
 }
 
 export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentPresentation | null {
@@ -502,13 +519,52 @@ export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentP
   if (segment.type !== "interval") return null;
   return {
     repetitions: segment.reps == null ? "?" : String(segment.reps),
+    repetitionsUnknown: segment.reps == null ? true : undefined,
     distanceOrDuration: formatDistanceOrDurationValue(segment.work_target),
+    distanceOrDurationUnknown: segment.work_target.kind === "unknown" ? true : undefined,
     pace: segment.work_intensity.raw,
+    paceUnknown: segment.work_intensity.kind === "unknown" ? true : undefined,
     recovery: segment.rest == null ? undefined : {
       recovery: formatDistanceOrDurationValue(segment.rest.target),
+      recoveryUnknown: segment.rest.target.kind === "unknown" ? true : undefined,
       recoveryPace: segment.rest.intensity?.raw,
+      recoveryPaceUnknown: segment.rest.intensity?.kind === "unknown" ? true : undefined,
     },
   };
+}
+
+// ── structured REST/OTHER/TODO presentation (HRA-231) ───────────────────────
+// REST/OTHER/TODO days carry no segments to show as Distance/Pace/
+// Repetitions — rendering those fields empty would read as an incomplete
+// workout. Each gets its own dedicated, honest labeled state instead.
+// Purely presentational, same contract as the two presentations above.
+
+export type StateDayKind = "rest" | "other" | "todo";
+
+export function buildStateDayPresentation(day: DayView): StateDayKind | null {
+  return day.workout_type === "rest" || day.workout_type === "other" || day.workout_type === "todo"
+    ? day.workout_type
+    : null;
+}
+
+// ── structured unsupported-portion presentation (HRA-231) ───────────────────
+// Neither ProgressionSegment (TARGET PROG A -> B) nor CROSS/STRENGTH days
+// have a defined structured shape yet (Epic HRA-228's "known open decision",
+// deferred) — this flags that so the Structured view says so honestly
+// instead of silently showing nothing beyond the still-editable raw DSL text
+// already rendered below it (never hidden or discarded). Day-level
+// granularity, not per-segment: a mixed day containing any progression
+// segment is flagged as a whole, since there is no per-segment card shape
+// for a multi-segment day in this Story's scope either —
+// buildContinuousSegmentPresentation/buildIntervalSegmentPresentation above
+// are themselves single-segment-only.
+
+export type UnsupportedReason = "progression" | "cross_strength";
+
+export function buildUnsupportedPresentation(day: DayView): UnsupportedReason | null {
+  if (day.workout_type === "cross" || day.workout_type === "strength") return "cross_strength";
+  if (day.workout_type === "run" && day.segments?.some(seg => seg.type === "progression")) return "progression";
+  return null;
 }
 
 export function buildTemplateSectionView(section: Section, planPolicy: PacePolicy): SectionView {
