@@ -682,7 +682,7 @@ function InstanceDayRow({
             className={[inputClass, "row-start-1 col-start-2 w-full min-w-0 font-mono text-label p-1.5"].filter(Boolean).join(" ")}
             value={workoutText}
             onChange={e => onEdit({ dsl: recomposeDayLine(`${dayPrefix}${e.target.value}`, { notes: day.notes }) })}
-            aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
+            aria-label={t("runplan.accordion.dslLabel", "Workout plan text (DSL)")}
           />
         )}
         <span className="hra-text-secondary row-start-1 col-start-3 flex items-center gap-2 text-meta" >
@@ -1008,7 +1008,7 @@ function TemplateDayRow({
               pattern readOnlySectionWeek already uses for Section/Week above. */}
           {!readOnlyDays && view === "dsl" && (
             <label className="hra-text-secondary text-meta" >
-              {t("runplan.accordion.dslLabel", "Workout (DSL)")}
+              {t("runplan.accordion.dslLabel", "Workout plan text (DSL)")}
               <textarea
                 ref={dslTextareaRef}
                 className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}

@@ -283,7 +283,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "RG" })); // dirty the regenerate-bucket
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
-    const dslInputs = await screen.findAllByLabelText("Workout (DSL)");
+    const dslInputs = await screen.findAllByLabelText("Workout plan text (DSL)");
     fireEvent.change(dslInputs[0], { target: { value: "6km @ RG" } }); // 1 manual edit on/after the cutover
 
     fireEvent.click(screen.getByRole("button", { name: /Regenerate from/ }));
@@ -357,7 +357,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
 
-    const dslInputs = await screen.findAllByLabelText("Workout (DSL)");
+    const dslInputs = await screen.findAllByLabelText("Workout plan text (DSL)");
     const rowA = dslInputs[0].closest(".card")!;
     const rowB = dslInputs[1].closest(".card")!;
     const dt = fakeDataTransfer();
@@ -381,7 +381,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Swap" }));
     await waitFor(() => expect(screen.queryByText(title)).not.toBeInTheDocument());
 
-    const dslInputsAfter = screen.getAllByLabelText("Workout (DSL)");
+    const dslInputsAfter = screen.getAllByLabelText("Workout plan text (DSL)");
     expect(dslInputsAfter[0]).toHaveValue("3km @ 5:30/km");
     expect(dslInputsAfter[1]).toHaveValue("5km @ 5:30/km");
   });
@@ -481,7 +481,7 @@ describe("PlanInstancesSection — happy path", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Activate" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(screen.getByRole("button", { name: /Regenerate from/ })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.queryByLabelText("Workout (DSL)")).not.toBeInTheDocument(); // day edits gone too
+    expect(screen.queryByLabelText("Workout plan text (DSL)")).not.toBeInTheDocument(); // day edits gone too
   });
 });
 

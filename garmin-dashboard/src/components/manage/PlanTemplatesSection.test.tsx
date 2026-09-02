@@ -54,7 +54,7 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
 
     expect(await screen.findByLabelText("Original text")).toBeInTheDocument(); // Plan text expanded
     expect(screen.queryByLabelText("Generated prompt")).not.toBeInTheDocument(); // Conversion prompt collapsed
-    expect(screen.queryByLabelText("DSL text")).not.toBeInTheDocument(); // Workout DSL collapsed
+    expect(screen.queryByLabelText("Workout plan text")).not.toBeInTheDocument(); // Workout DSL collapsed
     // All three headers stay visible regardless of expansion.
     expect(pipelineHeader(/Plan text/)).toBeInTheDocument();
     expect(pipelineHeader(/Conversion prompt/)).toBeInTheDocument();
@@ -95,13 +95,13 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
 
     fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
 
-    expect(await screen.findByLabelText("DSL text")).toHaveValue(TEMPLATE.dsl_source); // Workout DSL expanded
+    expect(await screen.findByLabelText("Workout plan text")).toHaveValue(TEMPLATE.dsl_source); // Workout DSL expanded
     expect(screen.queryByLabelText("Original text")).not.toBeInTheDocument(); // Plan text collapsed
     expect(screen.queryByLabelText("Generated prompt")).not.toBeInTheDocument(); // Conversion prompt collapsed
     // Headers stay reachable — clicking one opens it without touching the others.
     fireEvent.click(pipelineHeader(/Plan text/));
     expect(await screen.findByLabelText("Original text")).toBeInTheDocument();
-    expect(screen.getByLabelText("DSL text")).toBeInTheDocument(); // Workout DSL untouched — both can be open at once
+    expect(screen.getByLabelText("Workout plan text")).toBeInTheDocument(); // Workout DSL untouched — both can be open at once
   });
 });
 
@@ -130,7 +130,7 @@ describe("PlanTemplatesSection — direct DSL path (AC2)", () => {
     expect(screen.queryByLabelText("Original text")).not.toBeInTheDocument();
 
     fireEvent.click(pipelineHeader(/Workout DSL/));
-    const dslField = await screen.findByLabelText("DSL text");
+    const dslField = await screen.findByLabelText("Workout plan text");
     fireEvent.change(dslField, { target: { value: "D1: 5km @ RG" } });
     expect(screen.queryByLabelText("Original text")).not.toBeInTheDocument(); // never (re)opened
     expect(screen.queryByLabelText("Generated prompt")).not.toBeInTheDocument(); // never opened
@@ -192,7 +192,7 @@ describe("PlanTemplatesSection — structural edits highlight the touched row (H
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
     fireEvent.click(pipelineHeader(/Workout DSL/));
-    fireEvent.change(await screen.findByLabelText("DSL text"), { target: { value: "D1: 5km @ RG" } });
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: "D1: 5km @ RG" } });
     // No manual "Generate" button anymore — the preview is live, debounced
     // off editor.dslSource (700ms), so just wait past that for it to settle.
     await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
@@ -205,7 +205,7 @@ describe("PlanTemplatesSection — structural edits highlight the touched row (H
     const dayTrigger = screen.getAllByText("D1: 5km @ RG").find(el => el.tagName !== "TEXTAREA") as HTMLElement;
     fireEvent.click(dayTrigger.closest('[role="button"]') as HTMLElement);
     fireEvent.click(screen.getByRole("button", { name: "DSL" }));
-    const dayDslField = await screen.findByLabelText("Workout (DSL)");
+    const dayDslField = await screen.findByLabelText("Workout plan text (DSL)");
     fireEvent.change(dayDslField, { target: { value: "D1: 8km @ RG" } });
     fireEvent.blur(dayDslField);
 
@@ -222,13 +222,13 @@ describe("PlanTemplatesSection — collapsing and reopening a section preserves 
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
 
     fireEvent.click(pipelineHeader(/Workout DSL/)); // open
-    fireEvent.change(await screen.findByLabelText("DSL text"), { target: { value: "D1: 10km @ RG" } });
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: "D1: 10km @ RG" } });
 
     fireEvent.click(pipelineHeader(/Workout DSL/)); // collapse
-    expect(screen.queryByLabelText("DSL text")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Workout plan text")).not.toBeInTheDocument();
 
     fireEvent.click(pipelineHeader(/Workout DSL/)); // reopen
-    expect(await screen.findByLabelText("DSL text")).toHaveValue("D1: 10km @ RG");
+    expect(await screen.findByLabelText("Workout plan text")).toHaveValue("D1: 10km @ RG");
   });
 });
 
@@ -241,14 +241,14 @@ describe("PlanTemplatesSection — invalid DSL surfaces the error inside an expa
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
 
     fireEvent.click(pipelineHeader(/Workout DSL/));
-    const dslField = await screen.findByLabelText("DSL text");
+    const dslField = await screen.findByLabelText("Workout plan text");
     fireEvent.change(dslField, { target: { value: "!!! not valid dsl" } });
 
     // No manual "Generate" button anymore — the preview is live, debounced
     // off editor.dslSource (700ms), so just wait past that for it to settle.
     expect(await screen.findByText("Unexpected token", {}, { timeout: 2000 })).toBeInTheDocument();
     expect(dslField).toHaveValue("!!! not valid dsl"); // entered text unchanged
-    expect(screen.getByLabelText("DSL text")).toBeInTheDocument(); // section remains expanded
+    expect(screen.getByLabelText("Workout plan text")).toBeInTheDocument(); // section remains expanded
   });
 });
 
@@ -263,11 +263,11 @@ describe("PlanTemplatesSection — keyboard expansion and aria-expanded", () => 
     expect(dslHeader).toHaveAttribute("aria-expanded", "false");
     fireEvent.keyDown(dslHeader, { key: "Enter" });
     expect(dslHeader).toHaveAttribute("aria-expanded", "true");
-    expect(await screen.findByLabelText("DSL text")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Workout plan text")).toBeInTheDocument();
 
     fireEvent.keyDown(dslHeader, { key: " " });
     expect(dslHeader).toHaveAttribute("aria-expanded", "false");
-    expect(screen.queryByLabelText("DSL text")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Workout plan text")).not.toBeInTheDocument();
   });
 });
 
@@ -288,7 +288,7 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
     fireEvent.click(pipelineHeader(/Workout DSL/));
-    const dslField = await screen.findByLabelText("DSL text");
+    const dslField = await screen.findByLabelText("Workout plan text");
     fireEvent.change(dslField, { target: { value: "D1: 5km @ RG" } });
     // No manual "Generate" button anymore — the preview is live, debounced
     // off editor.dslSource (700ms), so just wait past that for it to settle.
@@ -326,7 +326,7 @@ describe("PlanTemplatesSection — regression: parsed preview still renders belo
     });
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
-    await screen.findByLabelText("DSL text");
+    await screen.findByLabelText("Workout plan text");
 
     expect(await screen.findByText("Week 1")).toBeInTheDocument();
   });

@@ -91,20 +91,20 @@ describe("TrainingPlanAccordion — repeated Structured/DSL toggling without dat
     expandDay();
 
     fireEvent.click(viewToggle("DSL"));
-    const dslInput = screen.getByLabelText("Workout (DSL)");
+    const dslInput = screen.getByLabelText("Workout plan text (DSL)");
     fireEvent.change(dslInput, { target: { value: "D1: 12km @ RG" } });
     expect(dslInput).toHaveValue("D1: 12km @ RG");
 
     fireEvent.click(viewToggle("Structured"));
-    expect(screen.queryByLabelText("Workout (DSL)")).not.toBeInTheDocument(); // unmounted while Structured is active
+    expect(screen.queryByLabelText("Workout plan text (DSL)")).not.toBeInTheDocument(); // unmounted while Structured is active
 
     fireEvent.click(viewToggle("DSL"));
-    expect(screen.getByLabelText("Workout (DSL)")).toHaveValue("D1: 12km @ RG"); // not reverted
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toHaveValue("D1: 12km @ RG"); // not reverted
 
     // A second full toggle cycle — repeated switching, not just once.
     fireEvent.click(viewToggle("Structured"));
     fireEvent.click(viewToggle("DSL"));
-    expect(screen.getByLabelText("Workout (DSL)")).toHaveValue("D1: 12km @ RG");
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toHaveValue("D1: 12km @ RG");
   });
 });
 
@@ -119,15 +119,15 @@ describe("TrainingPlanAccordion — unsaved structured change survives navigatio
 
     // The commit already patched day.dsl in the parent (Harness) — verify via DSL view.
     fireEvent.click(viewToggle("DSL"));
-    expect(screen.getByLabelText("Workout (DSL)")).toHaveValue("D1: 10km @ RG+50");
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toHaveValue("D1: 10km @ RG+50");
 
     // Navigate away: collapse the day's own AccordionCard, then reopen it.
     fireEvent.click(dayToggle());
-    expect(screen.queryByLabelText("Workout (DSL)")).not.toBeInTheDocument(); // collapsed, unmounted
+    expect(screen.queryByLabelText("Workout plan text (DSL)")).not.toBeInTheDocument(); // collapsed, unmounted
 
     fireEvent.click(dayToggle()); // reopen
     fireEvent.click(viewToggle("DSL"));
-    expect(screen.getByLabelText("Workout (DSL)")).toHaveValue("D1: 10km @ RG+50"); // edit preserved
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toHaveValue("D1: 10km @ RG+50"); // edit preserved
   });
 });
 
@@ -142,7 +142,7 @@ describe("TrainingPlanAccordion — keyboard interaction", () => {
     fireEvent.keyDown(distanceField, { key: "Enter" });
 
     fireEvent.click(viewToggle("DSL"));
-    expect(screen.getByLabelText("Workout (DSL)")).toHaveValue("D1: 15km @ RG");
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toHaveValue("D1: 15km @ RG");
   });
 
   it("the view-toggle group is keyboard-reachable and exposes its selection via aria-pressed", () => {

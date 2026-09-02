@@ -964,7 +964,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 {t("manage.planTemplates.pipeline.workoutDslDescription", "Source of truth for the structured plan.")}
               </p>
               <label className="hra-text-secondary text-meta block" >
-                {t("manage.planTemplates.dslSourceLabel", "DSL text")}
+                {t("manage.planTemplates.dslSourceLabel", "Workout plan text")}
                 {renderDslTextarea()}
               </label>
               <div className="hra-row-wrap" >
