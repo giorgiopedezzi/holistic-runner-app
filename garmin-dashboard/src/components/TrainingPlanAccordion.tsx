@@ -22,7 +22,7 @@ import { AlertTriangle, Bed, CircleHelp, Download, Play } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
-import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
+import { buildContinuousSegmentPresentation, weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
 import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
 
@@ -527,6 +527,11 @@ function TemplateDayRow({
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
+  // HRA-229: read-only Distance/Duration + Pace fields, built purely from
+  // day.segments — only non-null for a template day with exactly one
+  // continuous segment (interval/progression/rest_block/multi-segment days
+  // are out of this Story's scope, later Stories).
+  const presentation = buildContinuousSegmentPresentation(day);
 
   // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
@@ -538,6 +543,20 @@ function TemplateDayRow({
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
       >
         <div className="flex flex-col gap-2">
+          {/* HRA-229: read-only, above the still-editable DSL text input
+              below — never writes back into raw_dsl/target/intensity. */}
+          {presentation && (
+            <div className="flex gap-4">
+              <div className="flex flex-col">
+                <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
+                <span className="hra-text-primary text-data">{presentation.distanceOrDuration}</span>
+              </div>
+              <div className="flex flex-col">
+                <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
+                <span className="hra-text-primary text-data">{presentation.pace}</span>
+              </div>
+            </div>
+          )}
           {/* HRA-126: once approved, the dsl/note inputs simply don't render —
               same "hide the input, the title/tooltip already shows the value"
               pattern readOnlySectionWeek already uses for Section/Week above. */}

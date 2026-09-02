@@ -389,6 +389,13 @@ export interface DayView {
   // HH:MM 24-hour or undefined/null (display default 08:00).
   id?: number;
   scheduled_time?: string | null;
+  // HRA-229: the day's raw parsed segments — only ever set on the template
+  // path (buildTemplateSectionView). Instance days carry ResolvedSegment,
+  // a different (already pace-resolved) shape out of this Story's scope, so
+  // buildInstanceSectionView leaves this undefined. Lets
+  // buildContinuousSegmentPresentation below detect the "exactly one
+  // continuous segment" case without threading a second parallel prop.
+  segments?: WorkoutSegment[];
 }
 
 // Local alias so this file doesn't need to import ParseWarning just for this one signature.
@@ -425,13 +432,63 @@ export function weekDateRange(week: WeekView): { start: string; end: string } | 
   return { start: dates.reduce((a, b) => (a < b ? a : b)), end: dates.reduce((a, b) => (a > b ? a : b)) };
 }
 
+// ── structured continuous-segment presentation (HRA-229) ───────────────────
+// A read-only view-model for a template day with EXACTLY one continuous
+// segment — the accordion renders this above the day's still-unchanged,
+// still-editable DSL text input, so a workout like "10km @ FL" shows as
+// labeled Distance/Duration + Pace fields instead of raw DSL punctuation.
+// Purely presentational: the underlying raw_dsl/target/intensity are never
+// modified, only reformatted for display.
+
+export interface ContinuousSegmentPresentation {
+  distanceOrDuration: string;
+  pace: string;
+}
+
+// Splits a raw token like "30min" into its leading number and trailing unit
+// letters, reinserting the space the DSL's own compact grammar omits
+// ("30min" -> "30 min"). Falls back to the raw token unchanged when it
+// doesn't match this shape (never expected for a real duration Target, but
+// keeps this a total function rather than one that can throw on bad input).
+function insertSpaceBeforeUnit(raw: string): string {
+  const match = raw.match(/^(-?\d+(?:\.\d+)?)\s*([a-zA-Z'"/]+)$/);
+  return match ? `${match[1]} ${match[2]}` : raw;
+}
+
+// Distance/Duration normalization per the Story: spacing only for a
+// duration ("30min" -> "30 min", the DSL's own unit token is kept verbatim);
+// a distance is reformatted from its semantic distance_m so a whole number
+// of km always reads as km ("10km" -> "10 km", "8000m" -> "8 km") rather
+// than echoing whichever unit the author happened to type. A non-round
+// meter value still resolves to km (2 decimal places, trailing zeros
+// trimmed) once it's >= 1km, since km is this app's own default distance
+// unit elsewhere (fmtDistance above); anything under 1km stays in meters.
+function formatDistanceOrDurationValue(target: Target): string {
+  if (target.kind === "duration") return insertSpaceBeforeUnit(target.raw);
+  if (target.kind === "unknown") return target.raw;
+  const meters = target.distance_m;
+  if (meters % 1000 === 0) return `${meters / 1000} km`;
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2).replace(/\.?0+$/, "")} km`;
+  return `${meters} m`;
+}
+
+export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegmentPresentation | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
+  const [segment] = day.segments;
+  if (segment.type !== "continuous") return null;
+  return {
+    distanceOrDuration: formatDistanceOrDurationValue(segment.target),
+    pace: segment.intensity.raw,
+  };
+}
+
 export function buildTemplateSectionView(section: Section, planPolicy: PacePolicy): SectionView {
   const weeks: WeekView[] = section.weeks.map(week => {
     const policy = getEffectivePacePolicy(planPolicy, section.pace_policy, week.pace_policy);
     const days: DayView[] = week.days.map(day => ({
       day: day.day, suffix: day.suffix, category: day.category, workout_type: day.workout_type,
       dsl: day.raw_dsl, notes: day.notes, needs_review: day.needs_review, warnings: day.warnings,
-      distance: computeTemplateDayDistance(day, policy),
+      distance: computeTemplateDayDistance(day, policy), segments: day.segments,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl, days,

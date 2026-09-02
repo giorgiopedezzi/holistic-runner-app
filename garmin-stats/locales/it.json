@@ -394,6 +394,8 @@
   "runplan.accordion.noteLabel": "Nota",
   "runplan.accordion.notePlaceholder": "Nota opzionale",
   "runplan.accordion.dslLabel": "Allenamento (DSL)",
+  "runplan.accordion.distanceDurationLabel": "Distanza / Durata",
+  "runplan.accordion.paceLabel": "Ritmo",
   "runplan.accordion.scheduledTimeLabel": "Orario previsto",
   "runplan.accordion.exportFitLabel": "Genera file fit dell'allenamento",
   "runplan.accordion.exportSectionFitLabel": "Genera fit per questa sezione",

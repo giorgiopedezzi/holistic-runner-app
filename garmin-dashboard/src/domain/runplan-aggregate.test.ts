@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
   aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
-  buildDayClassificationContext, buildInstanceSectionView, buildTemplateSectionView,
+  buildContinuousSegmentPresentation, buildDayClassificationContext, buildInstanceSectionView, buildTemplateSectionView,
   classifyResolvedDay, computeResolvedDayDistance,
   computeResolvedDayMetrics, computeTemplateDayDistance, getEffectivePacePolicy,
   groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
+  type DayView,
 } from "./runplan-aggregate";
 import type {
   DayEntry, PacePolicy, ResolvedDay, ResolvedSegment, Section, Target, Week, WorkoutSegment,
@@ -235,6 +236,56 @@ describe("view-model builders", () => {
     const section: Section = { name: "Base", week_spec: "1", pace_policy: {}, raw_dsl: "SECTION \"Base\" WEEKS 1", weeks: [week] };
     const view = buildTemplateSectionView(section, {});
     expect(view.weeks[0].days[0].trainingLoadCategory).toBeUndefined();
+  });
+});
+
+describe("buildContinuousSegmentPresentation (HRA-229)", () => {
+  function dayView(segments: WorkoutSegment[]): DayView {
+    return {
+      day: 1, workout_type: "run", dsl: "D1: x", needs_review: false, warnings: [],
+      distance: { meters: 0, approximate: false }, segments,
+    };
+  }
+
+  it("normalizes a whole-km distance target, keeping the pace token verbatim", () => {
+    const view = dayView([{
+      type: "continuous", target: { kind: "distance", distance_m: 10000, raw: "10km" },
+      intensity: { kind: "anchor", anchor: "FL", raw: "FL" }, raw: "10km @ FL",
+    }]);
+    expect(buildContinuousSegmentPresentation(view)).toEqual({ distanceOrDuration: "10 km", pace: "FL" });
+  });
+
+  it("normalizes a meters target that's a whole number of km", () => {
+    const view = dayView([{
+      type: "continuous", target: { kind: "distance", distance_m: 8000, raw: "8000m" },
+      intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "8000m @ RG",
+    }]);
+    expect(buildContinuousSegmentPresentation(view)).toEqual({ distanceOrDuration: "8 km", pace: "RG" });
+  });
+
+  it("normalizes a duration target's spacing, keeping an absolute pace token verbatim", () => {
+    const view = dayView([{
+      type: "continuous", target: { kind: "duration", duration_sec: 1800, raw: "30min" },
+      intensity: { kind: "absolute", pace_sec_per_km: 256, raw: "4:16/km" }, raw: "30min @ 4:16/km",
+    }]);
+    expect(buildContinuousSegmentPresentation(view)).toEqual({ distanceOrDuration: "30 min", pace: "4:16/km" });
+  });
+
+  it("returns null for a non-run day, a multi-segment day, and a non-continuous single segment", () => {
+    expect(buildContinuousSegmentPresentation({ ...dayView([]), workout_type: "rest" })).toBeNull();
+    expect(buildContinuousSegmentPresentation(dayView([
+      { type: "continuous", target: target("distance", 5000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" },
+      { type: "continuous", target: target("distance", 1000), intensity: { kind: "anchor", anchor: "FL", raw: "FL" }, raw: "1km @ FL" },
+    ]))).toBeNull();
+    expect(buildContinuousSegmentPresentation(dayView([
+      { type: "rest_block", target: target("distance", 400), raw: "REST 400m" },
+    ]))).toBeNull();
+  });
+
+  it("returns null when a template day has no segments array (instance path)", () => {
+    const view = dayView([]);
+    delete (view as { segments?: WorkoutSegment[] }).segments;
+    expect(buildContinuousSegmentPresentation(view)).toBeNull();
   });
 });
 
