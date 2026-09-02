@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   aggregateResolvedDays, aggregateTemplateSection, aggregateTemplateWeek,
   buildContinuousSegmentPresentation, buildDayClassificationContext, buildInstanceSectionView,
-  buildIntervalSegmentPresentation, buildStateDayPresentation, buildTemplateSectionView, buildUnsupportedPresentation,
+  buildIntervalSegmentPresentation, buildMultiSegmentPresentation, buildStateDayPresentation, buildTemplateSectionView, buildUnsupportedPresentation,
   classifyResolvedDay, computeResolvedDayDistance,
   computeResolvedDayMetrics, computeTemplateDayDistance, getEffectivePacePolicy,
   groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
@@ -443,6 +443,67 @@ describe("buildUnsupportedPresentation (HRA-231)", () => {
     expect(buildUnsupportedPresentation(dayView("run", [
       { type: "continuous", target: target("distance", 5000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" },
     ]))).toBeNull();
+  });
+});
+
+describe("buildMultiSegmentPresentation (HRA-232)", () => {
+  function dayView(segments: WorkoutSegment[]): DayView {
+    return {
+      day: 1, workout_type: "run", dsl: "D1: x", needs_review: false, warnings: [],
+      distance: { meters: 0, approximate: false }, segments,
+    };
+  }
+
+  it("returns null for a single-segment day, a non-run day, and a day with no segments array", () => {
+    expect(buildMultiSegmentPresentation(dayView([
+      { type: "continuous", target: target("distance", 5000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" },
+    ]))).toBeNull();
+    expect(buildMultiSegmentPresentation({ ...dayView([]), workout_type: "rest" })).toBeNull();
+    const noSegments = dayView([]);
+    delete (noSegments as { segments?: WorkoutSegment[] }).segments;
+    expect(buildMultiSegmentPresentation(noSegments)).toBeNull();
+  });
+
+  it("the epic's own example — two continuous segments in source order, each labeled Segment 1 / Segment 2", () => {
+    const view = dayView([
+      { type: "continuous", target: target("distance", 10000), intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: 20, raw: "RG+20" }, raw: "10km @ RG+20" },
+      { type: "continuous", target: target("distance", 10000), intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -5, raw: "RG-5" }, raw: "10km @ RG-5" },
+    ]);
+    expect(buildMultiSegmentPresentation(view)).toEqual([
+      { index: 1, kind: "continuous", presentation: { distanceOrDuration: "10 km", pace: "RG+20" } },
+      { index: 2, kind: "continuous", presentation: { distanceOrDuration: "10 km", pace: "RG-5" } },
+    ]);
+  });
+
+  it("a 3+ segment day mixing continuous and interval segments renders all segments, correctly labeled and ordered", () => {
+    const view = dayView([
+      { type: "continuous", target: target("distance", 3000), intensity: { kind: "anchor", anchor: "FL", raw: "FL" }, raw: "3km @ FL" },
+      {
+        type: "interval", reps: 4,
+        work_target: { kind: "distance", distance_m: 1000, raw: "1000m" },
+        work_intensity: { kind: "anchor", anchor: "RG", raw: "RG" },
+        rest: { target: { kind: "distance", distance_m: 200, raw: "200m" }, raw: "r:200m" },
+        raw: "4x1000m @ RG r:200m",
+      },
+      { type: "continuous", target: target("distance", 2000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "2km @ RG" },
+    ]);
+    const entries = buildMultiSegmentPresentation(view);
+    expect(entries).toHaveLength(3);
+    expect(entries!.map(e => e.index)).toEqual([1, 2, 3]);
+    expect(entries![0]).toEqual({ index: 1, kind: "continuous", presentation: { distanceOrDuration: "3 km", pace: "FL" } });
+    expect(entries![1]).toMatchObject({ index: 2, kind: "interval", presentation: { repetitions: "4", distanceOrDuration: "1 km", pace: "RG" } });
+    expect(entries![2]).toEqual({ index: 3, kind: "continuous", presentation: { distanceOrDuration: "2 km", pace: "RG" } });
+  });
+
+  it("marks a progression segment within a multi-segment day as unsupported at its own slot, without dropping it from the sequence", () => {
+    const view = dayView([
+      { type: "continuous", target: target("distance", 5000), intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" },
+      { type: "progression", target: target("distance", 3000), start_intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, end_intensity: { kind: "anchor", anchor: "FL", raw: "FL" }, raw: "3km PROG RG -> FL" },
+    ]);
+    expect(buildMultiSegmentPresentation(view)).toEqual([
+      { index: 1, kind: "continuous", presentation: { distanceOrDuration: "5 km", pace: "RG" } },
+      { index: 2, kind: "unsupported" },
+    ]);
   });
 });
 

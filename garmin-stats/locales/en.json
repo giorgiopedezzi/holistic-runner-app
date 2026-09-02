@@ -417,6 +417,7 @@
   "runplan.accordion.stateOtherLabel": "Other",
   "runplan.accordion.stateTodoLabel": "Not yet planned",
   "runplan.accordion.unsupportedLabel": "Unsupported in Structured view",
+  "runplan.accordion.segmentLabel": "Segment {{n}}",
   "runplan.accordion.unknownValueTooltip": "Unrecognized token — shown as written, not representable in Structured view",
   "manage.planTemplatesSectionTitle": "Training-plan templates",
   "manage.planTemplates.title": "Training-plan templates",

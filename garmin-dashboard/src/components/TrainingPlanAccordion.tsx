@@ -23,8 +23,10 @@ import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import {
-  buildContinuousSegmentPresentation, buildIntervalSegmentPresentation, buildStateDayPresentation, buildUnsupportedPresentation,
-  weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type StateDayKind, type WeekView,
+  buildContinuousSegmentPresentation, buildIntervalSegmentPresentation, buildMultiSegmentPresentation, buildStateDayPresentation,
+  buildUnsupportedPresentation,
+  weekDateRange, type AggregateTotals, type ContinuousSegmentPresentation, type DayView, type DistanceTotal,
+  type IntervalSegmentPresentation, type SectionView, type StateDayKind, type WeekView,
 } from "../domain/runplan-aggregate";
 import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
 import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
@@ -292,6 +294,61 @@ function UnsavedBadge({ t }: { t: Translate }) {
     <span className="hra-text-warning inline-flex items-center"  title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}>
       <AlertTriangle size={12} />
     </span>
+  );
+}
+
+// HRA-232: the field JSX HRA-229/HRA-230 already established for a single
+// continuous/interval segment, factored out so the new per-"Segment N"-card
+// rendering (multi-segment days) reuses the exact same fields instead of
+// duplicating the markup — the single-segment path below (unwrapped, no
+// "Segment N" label) still renders through these same two components.
+function ContinuousFields({ presentation, unknownTooltip, t }: { presentation: ContinuousSegmentPresentation; unknownTooltip: string; t: Translate }) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex flex-col">
+        <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
+        <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
+      </div>
+      <div className="flex flex-col">
+        <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
+        <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
+      </div>
+    </div>
+  );
+}
+
+function IntervalFields({ presentation, unknownTooltip, t }: { presentation: IntervalSegmentPresentation; unknownTooltip: string; t: Translate }) {
+  return (
+    <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
+      <div className="flex gap-4">
+        <div className="flex flex-col">
+          <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
+          <ValueSpan value={presentation.repetitions} unknown={presentation.repetitionsUnknown} unknownTooltip={unknownTooltip} />
+        </div>
+        <div className="flex flex-col">
+          <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
+          <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
+        </div>
+        <div className="flex flex-col">
+          <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
+          <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
+        </div>
+      </div>
+      {presentation.recovery && (
+        <div className="flex gap-4 pl-3">
+          <div className="flex flex-col">
+            <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
+            <ValueSpan value={presentation.recovery.recovery} unknown={presentation.recovery.recoveryUnknown} unknownTooltip={unknownTooltip} />
+          </div>
+          {presentation.recovery.recoveryPace && (
+            <div className="flex flex-col">
+              <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryPaceLabel", "Recovery pace")}</span>
+              <ValueSpan value={presentation.recovery.recoveryPace} unknown={presentation.recovery.recoveryPaceUnknown} unknownTooltip={unknownTooltip} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -569,6 +626,12 @@ function TemplateDayRow({
   // most one non-null presentation at a time (continuous XOR interval), so
   // both can render unconditionally below without an extra dispatch.
   const intervalPresentation = buildIntervalSegmentPresentation(day);
+  // HRA-232: a ;-joined multi-segment day ("10km @ RG+20 ; 10km @ RG-5") —
+  // mutually exclusive with presentation/intervalPresentation above by
+  // construction (those two require day.segments.length === 1; this
+  // requires > 1), same convention statePresentation/unsupportedPresentation
+  // already establish relative to each other.
+  const multiSegmentPresentation = buildMultiSegmentPresentation(day);
   // HRA-231: REST/OTHER/TODO's own dedicated labeled state — mutually
   // exclusive with presentation/intervalPresentation above (workout_type
   // disjoint from "run").
@@ -611,53 +674,37 @@ function TemplateDayRow({
           )}
           {/* HRA-229: read-only, above the still-editable DSL text input
               below — never writes back into raw_dsl/target/intensity. */}
-          {presentation && (
-            <div className="flex gap-4">
-              <div className="flex flex-col">
-                <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
-                <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
-              </div>
-              <div className="flex flex-col">
-                <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
-                <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
-              </div>
-            </div>
-          )}
+          {presentation && <ContinuousFields presentation={presentation} unknownTooltip={unknownTooltip} t={t} />}
           {/* HRA-230: one grouped block for the whole interval, not a card
               per repetition — the primary row above, an indented recovery
               row directly below it only when the segment has an `r:`
               clause, visibly associated by shared containment + indent
               (no card-per-repetition duplication). */}
-          {intervalPresentation && (
-            <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
-              <div className="flex gap-4">
-                <div className="flex flex-col">
-                  <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
-                  <ValueSpan value={intervalPresentation.repetitions} unknown={intervalPresentation.repetitionsUnknown} unknownTooltip={unknownTooltip} />
-                </div>
-                <div className="flex flex-col">
-                  <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
-                  <ValueSpan value={intervalPresentation.distanceOrDuration} unknown={intervalPresentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
-                </div>
-                <div className="flex flex-col">
-                  <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
-                  <ValueSpan value={intervalPresentation.pace} unknown={intervalPresentation.paceUnknown} unknownTooltip={unknownTooltip} />
-                </div>
-              </div>
-              {intervalPresentation.recovery && (
-                <div className="flex gap-4 pl-3">
-                  <div className="flex flex-col">
-                    <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
-                    <ValueSpan value={intervalPresentation.recovery.recovery} unknown={intervalPresentation.recovery.recoveryUnknown} unknownTooltip={unknownTooltip} />
+          {intervalPresentation && <IntervalFields presentation={intervalPresentation} unknownTooltip={unknownTooltip} t={t} />}
+          {/* HRA-232: a ;-joined multi-segment day — each segment gets its
+              own labeled "Segment N" card, in source order, internally
+              reusing the same Continuous/Interval fields above. A segment
+              that's neither (progression/rest_block — no defined structured
+              shape yet, same open decision unsupportedPresentation already
+              flags) shows the same unsupported marker at its own slot,
+              rather than silently disappearing from the ordered sequence. */}
+          {multiSegmentPresentation && (
+            <div className="flex flex-col gap-2">
+              {multiSegmentPresentation.map(entry => (
+                <div key={entry.index} className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
+                  <div className="hra-text-secondary text-label">
+                    {t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index })}
                   </div>
-                  {intervalPresentation.recovery.recoveryPace && (
-                    <div className="flex flex-col">
-                      <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryPaceLabel", "Recovery pace")}</span>
-                      <ValueSpan value={intervalPresentation.recovery.recoveryPace} unknown={intervalPresentation.recovery.recoveryPaceUnknown} unknownTooltip={unknownTooltip} />
+                  {entry.kind === "continuous" && <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} t={t} />}
+                  {entry.kind === "interval" && <IntervalFields presentation={entry.presentation} unknownTooltip={unknownTooltip} t={t} />}
+                  {entry.kind === "unsupported" && (
+                    <div className="hra-text-muted flex items-center gap-2 text-label">
+                      <SquareSlash size={14} />
+                      {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
                     </div>
                   )}
                 </div>
-              )}
+              ))}
             </div>
           )}
           {/* HRA-126: once approved, the dsl/note inputs simply don't render —

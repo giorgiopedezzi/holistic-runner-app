@@ -481,16 +481,20 @@ function formatDistanceOrDurationValue(target: Target): string {
   return `${meters} m`;
 }
 
-export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegmentPresentation | null {
-  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
-  const [segment] = day.segments;
-  if (segment.type !== "continuous") return null;
+function continuousSegmentPresentation(segment: Extract<WorkoutSegment, { type: "continuous" }>): ContinuousSegmentPresentation {
   return {
     distanceOrDuration: formatDistanceOrDurationValue(segment.target),
     distanceOrDurationUnknown: segment.target.kind === "unknown" ? true : undefined,
     pace: segment.intensity.raw,
     paceUnknown: segment.intensity.kind === "unknown" ? true : undefined,
   };
+}
+
+export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegmentPresentation | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
+  const [segment] = day.segments;
+  if (segment.type !== "continuous") return null;
+  return continuousSegmentPresentation(segment);
 }
 
 // ── structured interval-segment presentation (HRA-230) ──────────────────────
@@ -513,10 +517,7 @@ export interface IntervalSegmentPresentation {
   recovery?: { recovery: string; recoveryUnknown?: true; recoveryPace?: string; recoveryPaceUnknown?: true };
 }
 
-export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentPresentation | null {
-  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
-  const [segment] = day.segments;
-  if (segment.type !== "interval") return null;
+function intervalSegmentPresentation(segment: Extract<WorkoutSegment, { type: "interval" }>): IntervalSegmentPresentation {
   return {
     repetitions: segment.reps == null ? "?" : String(segment.reps),
     repetitionsUnknown: segment.reps == null ? true : undefined,
@@ -531,6 +532,13 @@ export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentP
       recoveryPaceUnknown: segment.rest.intensity?.kind === "unknown" ? true : undefined,
     },
   };
+}
+
+export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentPresentation | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
+  const [segment] = day.segments;
+  if (segment.type !== "interval") return null;
+  return intervalSegmentPresentation(segment);
 }
 
 // ── structured REST/OTHER/TODO presentation (HRA-231) ───────────────────────
@@ -565,6 +573,36 @@ export function buildUnsupportedPresentation(day: DayView): UnsupportedReason | 
   if (day.workout_type === "cross" || day.workout_type === "strength") return "cross_strength";
   if (day.workout_type === "run" && day.segments?.some(seg => seg.type === "progression")) return "progression";
   return null;
+}
+
+// ── structured ordered multi-segment presentation (HRA-232) ────────────────
+// A `;`-joined day ("10km @ RG+20 ; 10km @ RG-5") carries more than one
+// WorkoutSegment in source order — each renders as its own labeled
+// "Segment N" card, reusing HRA-229's continuous / HRA-230's interval
+// presentation per segment rather than a single run-together DSL line. Only
+// engages for day.segments.length > 1 — the length===1 single-segment path
+// stays exactly as buildContinuousSegmentPresentation/
+// buildIntervalSegmentPresentation already render it (no card wrapper, no
+// "Segment 1" label), so this and those two builders are mutually exclusive
+// by construction, same convention buildUnsupportedPresentation already uses
+// relative to them. A segment that's neither continuous nor interval
+// (progression/rest_block — no defined structured shape yet, same open
+// decision buildUnsupportedPresentation already flags at the whole-day
+// level) surfaces as its own "unsupported" entry so segment order/count stay
+// honest instead of silently dropping that segment's slot.
+export type MultiSegmentEntry =
+  | { index: number; kind: "continuous"; presentation: ContinuousSegmentPresentation }
+  | { index: number; kind: "interval"; presentation: IntervalSegmentPresentation }
+  | { index: number; kind: "unsupported" };
+
+export function buildMultiSegmentPresentation(day: DayView): MultiSegmentEntry[] | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length <= 1) return null;
+  return day.segments.map((segment, i) => {
+    const index = i + 1;
+    if (segment.type === "continuous") return { index, kind: "continuous" as const, presentation: continuousSegmentPresentation(segment) };
+    if (segment.type === "interval") return { index, kind: "interval" as const, presentation: intervalSegmentPresentation(segment) };
+    return { index, kind: "unsupported" as const };
+  });
 }
 
 export function buildTemplateSectionView(section: Section, planPolicy: PacePolicy): SectionView {
