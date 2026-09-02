@@ -429,7 +429,7 @@ function IntervalFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t
   presentation: IntervalSegmentPresentation; unknownTooltip: string; edit?: IntervalFieldEdit; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
 }) {
   return (
-    <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
+    <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2" role="group" aria-label={t("runplan.accordion.intervalGroupLabel", "Interval")}>
       <div className="flex gap-4">
         <div className="flex flex-col">
           <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
@@ -457,7 +457,7 @@ function IntervalFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t
         </div>
       </div>
       {presentation.recovery && (
-        <div className="flex gap-4 pl-3">
+        <div className="flex gap-4 pl-3" role="group" aria-label={t("runplan.accordion.recoveryLabel", "Recovery")}>
           <div className="flex flex-col">
             <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
             {edit?.recovery ? (
@@ -946,10 +946,12 @@ function TemplateDayRow({
                   disappearing from the ordered sequence. */}
               {multiSegmentPresentation && (
                 <div className="flex flex-col gap-2">
-                  {multiSegmentPresentation.map(entry => (
-                    <div key={entry.index} className="hra-border-strong rounded-md p-2 flex flex-col gap-2">
+                  {multiSegmentPresentation.map(entry => {
+                    const segmentLabel = t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index });
+                    return (
+                    <div key={entry.index} className="hra-border-strong rounded-md p-2 flex flex-col gap-2" role="group" aria-label={segmentLabel}>
                       <div className="hra-text-secondary text-label">
-                        {t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index })}
+                        {segmentLabel}
                       </div>
                       {entry.kind === "continuous" && (
                         <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(entry.index - 1) : undefined} onNavigateToDsl={navigateToDsl} t={t} />
@@ -967,7 +969,8 @@ function TemplateDayRow({
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </>

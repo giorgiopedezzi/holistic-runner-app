@@ -397,6 +397,7 @@
   "runplan.accordion.distanceDurationLabel": "Distanza / Durata",
   "runplan.accordion.paceLabel": "Ritmo",
   "runplan.accordion.repetitionsLabel": "Ripetizioni",
+  "runplan.accordion.intervalGroupLabel": "Intervallo",
   "runplan.accordion.recoveryLabel": "Recupero",
   "runplan.accordion.recoveryPaceLabel": "Ritmo di recupero",
   "runplan.accordion.scheduledTimeLabel": "Orario previsto",
