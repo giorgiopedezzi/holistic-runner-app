@@ -466,15 +466,19 @@ function insertSpaceBeforeUnit(raw: string): string {
 
 // Distance/Duration normalization per the Story: spacing only for a
 // duration ("30min" -> "30 min", the DSL's own unit token is kept verbatim);
-// a distance is reformatted from its semantic distance_m so a whole number
-// of km always reads as km ("10km" -> "10 km", "8000m" -> "8 km") rather
-// than echoing whichever unit the author happened to type. A non-round
-// meter value still resolves to km (2 decimal places, trailing zeros
-// trimmed) once it's >= 1km, since km is this app's own default distance
-// unit elsewhere (fmtDistance above); anything under 1km stays in meters.
+// an m/km-authored distance is reformatted from its semantic distance_m so a
+// whole number of km always reads as km ("10km" -> "10 km", "8000m" ->
+// "8 km") rather than echoing whichever of those two the author happened to
+// type. A non-round meter value still resolves to km (2 decimal places,
+// trailing zeros trimmed) once it's >= 1km, since km is this app's own
+// default distance unit elsewhere (fmtDistance above); anything under 1km
+// stays in meters. A mile-authored distance is never folded into this — it
+// stays in mi, spacing-normalized only, same as duration: recomputing from
+// distance_m would silently convert every "Nmi" day's displayed unit to km.
 function formatDistanceOrDurationValue(target: Target): string {
   if (target.kind === "duration") return insertSpaceBeforeUnit(target.raw);
   if (target.kind === "unknown") return target.raw;
+  if (target.raw.endsWith("mi")) return insertSpaceBeforeUnit(target.raw);
   const meters = target.distance_m;
   if (meters % 1000 === 0) return `${meters / 1000} km`;
   if (meters >= 1000) return `${(meters / 1000).toFixed(2).replace(/\.?0+$/, "")} km`;

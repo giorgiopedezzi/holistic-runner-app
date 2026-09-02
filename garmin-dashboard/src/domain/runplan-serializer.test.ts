@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatAbsoluteIntensity, formatDistanceTarget, formatDurationTarget, formatOffsetIntensity,
-  parseIntensityToken, parseTargetToken, reparseIntensityOk, reparseTargetOk, serializeIntensity, serializeSegment,
+  parseIntensityToken, parseTargetToken, reparseIntensityOk, reparseTargetOk, serializeIntensity, serializeSegment, serializeTarget,
 } from "./runplan-serializer";
 import type { IntervalSegment, OffsetIntensity } from "@/types/runplan";
 
@@ -50,6 +50,11 @@ describe("serializeTarget / serializeIntensity round-trip", () => {
     const target = parseTargetToken("5km");
     expect(reparseTargetOk(target)).toBe(true);
   });
+  it("a mile-authored distance target serializes back to its own unit, never km", () => {
+    const target = parseTargetToken("3mi");
+    expect(serializeTarget(target)).toBe("3mi");
+    expect(reparseTargetOk(target)).toBe(true);
+  });
   it("unknown target never round-trips (AC6)", () => {
     expect(reparseTargetOk(parseTargetToken("garbage"))).toBe(false);
   });
@@ -69,12 +74,18 @@ describe("serializeSegment", () => {
     const seg = { type: "continuous" as const, target: parseTargetToken("10km"), intensity: parseIntensityToken("FL", "s/km"), raw: "" };
     expect(serializeSegment(seg, "s/km")).toBe("10km @ FL");
   });
-  it("interval with rest", () => {
+  it("interval with rest — a target's own raw unit token is preserved verbatim, never reformatted", () => {
     const seg: IntervalSegment = {
       type: "interval", reps: 4, work_target: parseTargetToken("1000m"), work_intensity: parseIntensityToken("RG-20", "s/km"),
       rest: { target: parseTargetToken("400m"), intensity: parseIntensityToken("jog", "s/km"), rest_type: "jog", raw: "" },
       raw: "",
     };
-    expect(serializeSegment(seg, "s/km")).toBe("4x1km @ RG-20 r:400m @ jog jog");
+    // "1000m" stays "1000m" (not reformatted to "1km") — serializeTarget
+    // always echoes a Target's own `raw`, since makeFieldCommit
+    // (TrainingPlanAccordion.tsx) re-serializes a segment's WHOLE target on
+    // every field edit, including edits to an unrelated field; recomputing
+    // from distance_m here would silently rewrite an untouched distance's
+    // unit (most visibly, a mile-authored day turning into km).
+    expect(serializeSegment(seg, "s/km")).toBe("4x1000m @ RG-20 r:400m @ jog jog");
   });
 });

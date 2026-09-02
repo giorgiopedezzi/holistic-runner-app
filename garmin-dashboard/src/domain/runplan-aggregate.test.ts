@@ -264,6 +264,14 @@ describe("buildContinuousSegmentPresentation (HRA-229)", () => {
     expect(buildContinuousSegmentPresentation(view)).toEqual({ distanceOrDuration: "8 km", pace: "RG" });
   });
 
+  it("a mile-authored distance target displays in mi, never reformatted into km", () => {
+    const view = dayView([{
+      type: "continuous", target: { kind: "distance", distance_m: 4828.02, raw: "3mi" },
+      intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "3mi @ RG",
+    }]);
+    expect(buildContinuousSegmentPresentation(view)).toEqual({ distanceOrDuration: "3 mi", pace: "RG" });
+  });
+
   it("normalizes a duration target's spacing, keeping an absolute pace token verbatim", () => {
     const view = dayView([{
       type: "continuous", target: { kind: "duration", duration_sec: 1800, raw: "30min" },

@@ -42,6 +42,26 @@ import type { OffsetUnit, ParseWarning, WorkoutSegment } from "@/types/runplan";
 export interface DayRef { sectionIndex: number; weekIndex: number; dayIndex: number }
 export interface WeekRef { sectionIndex: number; weekIndex: number }
 
+// HRA-140 follow-up: identifies whichever Section/Week/Day row a caller's
+// own most-recent structured edit touched — used purely to flag that one
+// row's AccordionCard (hra-edited-row-highlight, index.css), independent of
+// DayRef/WeekRef above (drag-and-drop refs, no "kind" discriminant since
+// each is only ever compared against its own kind).
+export type EditedRef =
+  | { kind: "section"; sectionIndex: number }
+  | ({ kind: "week" } & WeekRef)
+  | ({ kind: "day" } & DayRef);
+
+function isSectionHighlighted(ref: EditedRef | undefined, sectionIndex: number): boolean {
+  return ref?.kind === "section" && ref.sectionIndex === sectionIndex;
+}
+function isWeekHighlighted(ref: EditedRef | undefined, sectionIndex: number, weekIndex: number): boolean {
+  return ref?.kind === "week" && ref.sectionIndex === sectionIndex && ref.weekIndex === weekIndex;
+}
+function isDayHighlighted(ref: EditedRef | undefined, sectionIndex: number, weekIndex: number, dayIndex: number): boolean {
+  return ref?.kind === "day" && ref.sectionIndex === sectionIndex && ref.weekIndex === weekIndex && ref.dayIndex === dayIndex;
+}
+
 interface TrainingPlanAccordionProps {
   // The owning template's/instance's own name — substituted for the
   // implicit default section's display name (raw_dsl === ""), never written
@@ -128,6 +148,12 @@ interface TrainingPlanAccordionProps {
   // instead), so PlanInstancesSection never needs to pass this — defaults to
   // the DSL grammar's own default ("s/km").
   offsetUnit?: OffsetUnit;
+  // HRA-140 follow-up: the Section/Week/Day the caller's own most-recent
+  // structured edit touched — highlights just that one row's AccordionCard,
+  // in sync with the raw DSL textarea's own last-patched-line highlight
+  // (PlanTemplatesSection.tsx). Optional: PlanInstancesSection never tracks
+  // this, so instance rows are never highlighted this way.
+  highlightedRef?: EditedRef;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -734,7 +760,7 @@ function InstanceDayRow({
 // hooks unconditionally in one component, then early-returning, would
 // violate the rules of hooks.
 function TemplateDayRow({
-  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit,
+  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit, highlighted,
 }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
@@ -742,6 +768,7 @@ function TemplateDayRow({
   dayRef?: DayRef;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   offsetUnit: OffsetUnit;
+  highlighted: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -879,6 +906,7 @@ function TemplateDayRow({
       <AccordionCard
         title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
+        className={highlighted ? "hra-edited-row-highlight" : undefined}
       >
         <div className="flex flex-col gap-2">
           {/* HRA-233: per-day Structured/DSL selector, default Structured —
@@ -1019,7 +1047,10 @@ function TemplateDayRow({
 
 // Dispatches on day.date (HRA-125's own instance-vs-template signal) — kept
 // hook-free so each branch's component owns its own hooks unconditionally.
-function DayEditor({ offsetUnit, ...props }: {
+// `highlighted` is destructured out (not part of `...props`) since only
+// TemplateDayRow accepts it — InstanceDayRow never does (see highlightedRef's
+// own doc comment: instance rows are never highlighted this way).
+function DayEditor({ offsetUnit, highlighted, ...props }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
   readOnlyDays: boolean;
@@ -1030,14 +1061,15 @@ function DayEditor({ offsetUnit, ...props }: {
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
   offsetUnit: OffsetUnit;
+  highlighted: boolean;
 }) {
   return props.day.date != null
     ? <InstanceDayRow {...props} date={props.day.date} />
-    : <TemplateDayRow {...props} offsetUnit={offsetUnit} />;
+    : <TemplateDayRow {...props} offsetUnit={offsetUnit} highlighted={highlighted} />;
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportFit, offsetUnit,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportFit, offsetUnit, highlightedRef,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -1056,6 +1088,7 @@ function WeekEditor({
   // that prop's own doc comment on TrainingPlanAccordionProps.
   onExportFit?: () => void;
   offsetUnit: OffsetUnit;
+  highlightedRef?: EditedRef;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -1084,6 +1117,7 @@ function WeekEditor({
           />
         }
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
+        className={isWeekHighlighted(highlightedRef, sectionIndex, weekIndex) ? "hra-edited-row-highlight" : undefined}
       >
         <div className="flex flex-col gap-3">
           {!readOnlySectionWeek && (
@@ -1106,6 +1140,7 @@ function WeekEditor({
               isDayDirty={isDayDirty}
               onExportDayFit={onExportDayFit}
               offsetUnit={offsetUnit}
+              highlighted={isDayHighlighted(highlightedRef, sectionIndex, weekIndex, dayIndex)}
             />
           ))}
         </div>
@@ -1115,7 +1150,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit, highlightedRef,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -1134,6 +1169,7 @@ function SectionEditor({
   onExportSectionFit?: (section: SectionView) => void;
   onExportWeekFit?: (section: SectionView, week: WeekView) => void;
   offsetUnit: OffsetUnit;
+  highlightedRef?: EditedRef;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -1157,6 +1193,7 @@ function SectionEditor({
         />
       }
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
+      className={isSectionHighlighted(highlightedRef, sectionIndex) ? "hra-edited-row-highlight" : undefined}
     >
       <div className="flex flex-col gap-3">
         {isDefaultSection ? (
@@ -1202,6 +1239,7 @@ function SectionEditor({
             onExportDayFit={onExportDayFit}
             onExportFit={onExportWeekFit ? () => onExportWeekFit(section, week) : undefined}
             offsetUnit={offsetUnit}
+            highlightedRef={highlightedRef}
           />
         ))}
       </div>
@@ -1210,7 +1248,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit = "s/km",
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit = "s/km", highlightedRef,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -1234,6 +1272,7 @@ export function TrainingPlanAccordion({
           onExportSectionFit={onExportSectionFit}
           onExportWeekFit={onExportWeekFit}
           offsetUnit={offsetUnit}
+          highlightedRef={highlightedRef}
         />
       ))}
     </div>

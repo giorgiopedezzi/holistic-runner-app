@@ -1746,6 +1746,48 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-border-bottom  { border-bottom: 1px solid var(--border); }
 .hra-bg-card        { background: var(--bg-card); }
 .hra-bg-surface     { background: var(--bg-surface); }
+/* PlanTemplatesSection's Workout DSL textarea overlay (HRA-140 follow-up) —
+   the real <textarea> sits on top with fully transparent text (only its
+   caret shows), a backdrop <pre> underneath renders the same text with the
+   most-recently-patched line <mark>ed. Both share font-mono/text-meta/p-2 so
+   they line up; the wrap owns the border/background that used to live on
+   the plain textarea. */
+.hra-dsl-editor-wrap {
+  position: relative;
+  display: block;
+}
+.hra-dsl-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  overflow: auto;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  scrollbar-width: none;
+}
+.hra-dsl-editor-backdrop::-webkit-scrollbar { display: none; }
+.hra-dsl-editor-backdrop mark {
+  background: color-mix(in srgb, var(--accent-orange) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.hra-dsl-editor-textarea {
+  position: relative;
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  border: none;
+}
+/* TrainingPlanAccordion's just-edited Section/Week/Day row (HRA-140
+   follow-up) — same accent-orange language as the DSL textarea's <mark>,
+   applied to AccordionCard's outer wrapper via its className prop. */
+.hra-edited-row-highlight > .hra-accordion-trigger {
+  background: color-mix(in srgb, var(--accent-orange) 12%, transparent);
+  border-left: 3px solid var(--accent-orange);
+}
 /* Modal popup's dim backdrop (ActivityModal) — a fixed black scrim, not a
    theme token, since it's deliberately theme-independent (dims whatever's
    behind it the same way in light or dark). */

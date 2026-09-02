@@ -135,8 +135,9 @@ describe("PlanTemplatesSection — direct DSL path (AC2)", () => {
     expect(screen.queryByLabelText("Original text")).not.toBeInTheDocument(); // never (re)opened
     expect(screen.queryByLabelText("Generated prompt")).not.toBeInTheDocument(); // never opened
 
-    fireEvent.click(screen.getByRole("button", { name: "Generate / refresh preview" }));
-    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid")); // parsed successfully
+    // No manual "Generate" button anymore — the preview is live, debounced
+    // off editor.dslSource (700ms), so just wait past that for it to settle.
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 }); // parsed successfully
 
     // Save also needs Name + Event type (unchanged, pre-existing rules) —
     // neither lives inside the pipeline, so filling them doesn't touch
@@ -174,6 +175,46 @@ describe("PlanTemplatesSection — prompt generation preserves original text", (
   });
 });
 
+describe("PlanTemplatesSection — structural edits highlight the touched row (HRA-140 follow-up)", () => {
+  it("editing a Day's DSL via the structured view highlights that Day's own row, not others", async () => {
+    installFetch({
+      "POST /api/v1/plan-templates/generate": json({
+        plan: {
+          metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+          sections: [{
+            name: "Plan", week_spec: "*", raw_dsl: "", pace_policy: {},
+            weeks: [{ number: 1, raw_dsl: "WEEK 1", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 5km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }] }] }],
+          }],
+        },
+        warnings: [],
+      }),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    fireEvent.change(await screen.findByLabelText("DSL text"), { target: { value: "D1: 5km @ RG" } });
+    // No manual "Generate" button anymore — the preview is live, debounced
+    // off editor.dslSource (700ms), so just wait past that for it to settle.
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
+
+    expect(document.querySelector(".hra-edited-row-highlight")).not.toBeInTheDocument(); // nothing edited yet
+
+    fireEvent.click(screen.getByText("Week 1").closest('[role="button"]') as HTMLElement); // expand the week to reveal its day
+    // The raw DSL <textarea>'s own (undirtied) value also text-matches per
+    // the HTML spec's textarea.value getter — filter it out.
+    const dayTrigger = screen.getAllByText("D1: 5km @ RG").find(el => el.tagName !== "TEXTAREA") as HTMLElement;
+    fireEvent.click(dayTrigger.closest('[role="button"]') as HTMLElement);
+    fireEvent.click(screen.getByRole("button", { name: "DSL" }));
+    const dayDslField = await screen.findByLabelText("Workout (DSL)");
+    fireEvent.change(dayDslField, { target: { value: "D1: 8km @ RG" } });
+    fireEvent.blur(dayDslField);
+
+    const highlighted = document.querySelectorAll(".hra-edited-row-highlight");
+    expect(highlighted).toHaveLength(1); // only the Day row, not the Week/Section rows too
+    expect(highlighted[0]).toHaveTextContent("D1: 8km @ RG");
+  });
+});
+
 describe("PlanTemplatesSection — collapsing and reopening a section preserves content (AC5)", () => {
   it("Workout DSL text survives collapsing and reopening just that section", async () => {
     installFetch({});
@@ -202,9 +243,10 @@ describe("PlanTemplatesSection — invalid DSL surfaces the error inside an expa
     fireEvent.click(pipelineHeader(/Workout DSL/));
     const dslField = await screen.findByLabelText("DSL text");
     fireEvent.change(dslField, { target: { value: "!!! not valid dsl" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate / refresh preview" }));
 
-    expect(await screen.findByText("Unexpected token")).toBeInTheDocument();
+    // No manual "Generate" button anymore — the preview is live, debounced
+    // off editor.dslSource (700ms), so just wait past that for it to settle.
+    expect(await screen.findByText("Unexpected token", {}, { timeout: 2000 })).toBeInTheDocument();
     expect(dslField).toHaveValue("!!! not valid dsl"); // entered text unchanged
     expect(screen.getByLabelText("DSL text")).toBeInTheDocument(); // section remains expanded
   });
@@ -230,7 +272,7 @@ describe("PlanTemplatesSection — keyboard expansion and aria-expanded", () => 
 });
 
 describe("PlanTemplatesSection — existing action enablement is unchanged", () => {
-  it("Save disabled until generated + named; Approve/Restore visible in the shared action bar, not inside a section", async () => {
+  it("Save disabled until generated + named; Approve/Clear pending changes visible in the shared action bar, not inside a section", async () => {
     installFetch({
       "POST /api/v1/plan-templates/generate": json({
         plan: {
@@ -248,8 +290,9 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     fireEvent.click(pipelineHeader(/Workout DSL/));
     const dslField = await screen.findByLabelText("DSL text");
     fireEvent.change(dslField, { target: { value: "D1: 5km @ RG" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate / refresh preview" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()); // no name yet
+    // No manual "Generate" button anymore — the preview is live, debounced
+    // off editor.dslSource (700ms), so just wait past that for it to settle.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled(), { timeout: 2000 }); // no name yet
 
     fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "My Plan" } });
     // Event type is a custom Select (Radix), not a native <select> — pick it
@@ -261,9 +304,9 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     fireEvent.click(await screen.findByRole("option", { name: "5k" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
-    // Save/Approve/Restore render once, outside any AccordionCard section.
+    // Save/Approve/Clear pending changes render once, outside any AccordionCard section.
     expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Restore" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear pending changes" })).toBeEnabled();
   });
 });
 

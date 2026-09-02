@@ -29,9 +29,17 @@ export function formatDurationTarget(duration_sec: number): string {
   return `${duration_sec}s`;
 }
 
+// Always the ORIGINAL token text (a Target's `raw`, set once by
+// parseTargetToken and never touched again), never recomputed from
+// distance_m/duration_sec — makeFieldCommit re-serializes a segment's WHOLE
+// target on every field edit, including edits to a different field
+// entirely (e.g. Pace), so recomputing here would silently rewrite an
+// untouched distance's own unit (a mi-authored day's target turning into km
+// the moment its pace was edited) or a duration's (min -> s). formatDistanceTarget/
+// formatDurationTarget above stay exported only to keep this file's mirror
+// of garmin-stats/src/domain/runplan/serializer.ts structurally 1:1.
 export function serializeTarget(target: Target): string {
-  if (target.kind === "unknown") return target.raw;
-  return target.kind === "distance" ? formatDistanceTarget(target.distance_m) : formatDurationTarget(target.duration_sec);
+  return target.raw;
 }
 
 export function formatAbsoluteIntensity(pace_sec_per_km: number): string {
