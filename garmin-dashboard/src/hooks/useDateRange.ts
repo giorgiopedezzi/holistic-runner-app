@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { isoToday, isoAgo } from "@/utils/date";
+import { isoToday, isoAgo, ALL_SENTINEL } from "@/utils/date";
 import { useUrlState } from "@/hooks/useUrlState";
 
 export interface DateRangeState {
@@ -51,7 +51,7 @@ export function useDateRange(defaultDays = 30, urlKeys?: DateRangeUrlKeys): Date
   const setTo   = urlKeys ? setUrlTo   : setLocalTo;
 
   const setPreset = useCallback((days: number) => {
-    setFrom(days >= 9999 ? "2000-01-01" : isoAgo(days));
+    setFrom(days >= 9999 ? ALL_SENTINEL : isoAgo(days));
     setTo(isoToday());
   }, [setFrom, setTo]);
 

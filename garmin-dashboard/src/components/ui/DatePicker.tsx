@@ -11,6 +11,11 @@ interface DatePickerProps {
   min?: string;
   max?: string;
   disabled?: boolean;
+  // Overrides the trigger's displayed text (e.g. "All available data" in
+  // place of the useDateRange "All" preset's internal 2000-01-01 sentinel,
+  // HRA-256) without changing value/onChange/calendar behavior — the picker
+  // stays fully functional, only what's shown on the closed trigger differs.
+  label?: string;
 }
 
 // Parses/formats local calendar dates only (no timezone shift) — matches
@@ -30,7 +35,7 @@ function toIso(d: Date): string {
 // shadcn Popover+Calendar date picker (HRA-98) — drop-in replacement for
 // <input type="date" value min max onChange>, same value/onChange contract
 // so every call site's own state and side effects are unchanged.
-export function DatePicker({ value, onChange, min, max, disabled }: DatePickerProps) {
+export function DatePicker({ value, onChange, min, max, disabled, label }: DatePickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const selected = parseIso(value);
@@ -51,7 +56,7 @@ export function DatePicker({ value, onChange, min, max, disabled }: DatePickerPr
             depend on every date field being the same width to stay aligned
             column-for-column regardless of which date/format/language is
             showing. */}
-        <span className="hra-date-trigger-text">{value ? fmtDate(value) : t("common.selectDate", "Select date")}</span>
+        <span className="hra-date-trigger-text">{label ?? (value ? fmtDate(value) : t("common.selectDate", "Select date"))}</span>
       </PopoverTrigger>
       <PopoverContent>
         <Calendar

@@ -12,6 +12,7 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { useQuery } from "./useQuery";
 import { useDateRange } from "./useDateRange";
 import { useCompareRange } from "./useCompareRange";
+import { ALL_SENTINEL, daysBetween } from "@/utils/date";
 import { useAppearance } from "./useAppearance";
 import { installFetch, json } from "@/test/api-stub";
 import { settings } from "@/test/fixtures";
@@ -153,6 +154,45 @@ describe("useCompareRange", () => {
 
       act(() => result.current.setEnabled(false));
       expect(new URLSearchParams(window.location.search).get("compareEnabled")).toBe("0");
+    });
+
+    // HRA-256: selecting "All" must not manufacture an automatic multi-decade
+    // "previous period" comparison off the useDateRange sentinel.
+    it("selecting All disables comparison and does not derive a compare range from the sentinel", () => {
+      const { result, rerender } = renderHook(
+        ({ from, to }) => useCompareRange(from, to, URL_KEYS),
+        { initialProps: { from: "2026-08-01", to: "2026-08-10" } },
+      );
+      expect(result.current.enabled).toBe(true);
+
+      rerender({ from: ALL_SENTINEL, to: "2026-08-10" });
+
+      expect(result.current.enabled).toBe(false);
+      expect(result.current.from).not.toBe("1999-12-31");
+      expect(daysBetween(result.current.from, result.current.to)).toBeLessThan(365);
+    });
+
+    it("mounting directly into All (e.g. a bookmarked URL) starts with comparison disabled", () => {
+      const { result } = renderHook(() => useCompareRange(ALL_SENTINEL, "2026-08-10", URL_KEYS));
+
+      expect(result.current.enabled).toBe(false);
+      expect(daysBetween(result.current.from, result.current.to)).toBeLessThan(365);
+    });
+
+    it("manually re-enabling comparison while All stays selected is not overridden by a later `to` edit", () => {
+      const { result, rerender } = renderHook(
+        ({ from, to }) => useCompareRange(from, to, URL_KEYS),
+        { initialProps: { from: "2026-08-01", to: "2026-08-10" } },
+      );
+      rerender({ from: ALL_SENTINEL, to: "2026-08-10" });
+      expect(result.current.enabled).toBe(false);
+
+      act(() => result.current.setEnabled(true));
+      expect(result.current.enabled).toBe(true);
+
+      // `from` stays the sentinel — only `to` changes, still within All.
+      rerender({ from: ALL_SENTINEL, to: "2026-08-11" });
+      expect(result.current.enabled).toBe(true);
     });
 
     // main.tsx wraps the real app in <StrictMode>, which in dev mode

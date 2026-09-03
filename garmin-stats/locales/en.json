@@ -25,6 +25,7 @@
   "dateRange.pickRace": "Pick a race…",
   "dateRange.noneOption": "— none —",
   "dateRange.comparedTo": "Compared to",
+  "dateRange.allAvailable": "All available data",
   "overview.chartTooltip.pace": "pace",
   "overview.chartTooltip.hr": "HR",
   "overview.legend.current": "(current)",

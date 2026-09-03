@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { shiftIsoDate, daysBetween } from "@/utils/date";
+import { shiftIsoDate, daysBetween, ALL_SENTINEL } from "@/utils/date";
 import { useUrlState } from "@/hooks/useUrlState";
 
 export interface CompareRangeState {
@@ -35,6 +35,17 @@ export function defaultCompareRange(from: string, to: string): { from: string; t
   return { from: compareFrom, to: compareTo };
 }
 
+// All available data has no natural "previous period" to mirror — feeding
+// the sentinel into defaultCompareRange() manufactures a multi-decade
+// comparison window nobody asked for (HRA-256). Falls back to a trivial,
+// inert placeholder; comparison itself starts/goes disabled whenever `from`
+// is the sentinel (see useCompareRange below), so this value is never
+// actually fetched until the user manually re-enables and picks a real
+// range.
+function safeDefaultCompareRange(from: string, to: string): { from: string; to: string } {
+  return from === ALL_SENTINEL ? { from: to, to } : defaultCompareRange(from, to);
+}
+
 // Mirrors useDateRange's shape/pattern. Resets to the default window
 // whenever the CURRENT range (from/to) changes — a deliberate choice (not
 // "keep whatever was last picked"): the compare range is meant to track the
@@ -42,15 +53,18 @@ export function defaultCompareRange(from: string, to: string): { from: string; t
 // predictable comparison window again rather than silently carrying over a
 // stale manual pick of a different length from a previous current range.
 export function useCompareRange(from: string, to: string, urlKeys?: CompareRangeUrlKeys): CompareRangeState {
-  const [defaultRange] = useState(() => defaultCompareRange(from, to));
+  const [defaultRange] = useState(() => safeDefaultCompareRange(from, to));
 
   const [localRange, setLocalRange] = useState(defaultRange);
-  const [localEnabled, setLocalEnabled] = useState(true);
+  // Starts disabled when mounting straight into All (e.g. a shared/bookmarked
+  // "All" URL) — mirrors the "selecting All disables comparison" rule below
+  // instead of only applying it on a later transition.
+  const [localEnabled, setLocalEnabled] = useState(from !== ALL_SENTINEL);
   // Always called (rules-of-hooks) even when urlKeys is absent — see
   // useDateRange's identical HRA-196 pattern.
   const [urlFrom, setUrlFrom] = useUrlState(urlKeys?.from ?? "", defaultRange.from);
   const [urlTo, setUrlTo] = useUrlState(urlKeys?.to ?? "", defaultRange.to);
-  const [urlEnabledParam, setUrlEnabledParam] = useUrlState(urlKeys?.enabled ?? "", "1");
+  const [urlEnabledParam, setUrlEnabledParam] = useUrlState(urlKeys?.enabled ?? "", from === ALL_SENTINEL ? "0" : "1");
 
   const compFrom = urlKeys ? urlFrom : localRange.from;
   const compTo   = urlKeys ? urlTo   : localRange.to;
@@ -75,6 +89,18 @@ export function useCompareRange(from: string, to: string, urlKeys?: CompareRange
     const prevRange = prevRangeRef.current;
     prevRangeRef.current = { from, to };
     if (!prevRange || (prevRange.from === from && prevRange.to === to)) return;
+    if (from === ALL_SENTINEL) {
+      // All is selected — never derive an automatic multi-decade "previous
+      // period" off the sentinel (HRA-256). Only the actual transition INTO
+      // All forces comparison off; a later edit to `to` alone (from stays
+      // the sentinel) skips the auto-update without touching `enabled`, so a
+      // comparison the user manually re-enables while All stays selected
+      // survives it.
+      if (prevRange.from !== ALL_SENTINEL) {
+        if (urlKeys) setUrlEnabledParam("0"); else setLocalEnabled(false);
+      }
+      return;
+    }
     const next = defaultCompareRange(from, to);
     if (urlKeys) {
       setUrlFrom(next.from);
@@ -85,7 +111,7 @@ export function useCompareRange(from: string, to: string, urlKeys?: CompareRange
     // urlKeys is a caller-stable module-scope object (never changes identity
     // per call site); including it would re-run this effect on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, setUrlFrom, setUrlTo]);
+  }, [from, to, setUrlFrom, setUrlTo, setUrlEnabledParam]);
 
   return { from: compFrom, to: compTo, setFrom, setTo, enabled, setEnabled };
 }

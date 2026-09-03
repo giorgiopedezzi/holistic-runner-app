@@ -25,6 +25,7 @@
   "dateRange.pickRace": "Scegli una gara…",
   "dateRange.noneOption": "— nessuno —",
   "dateRange.comparedTo": "Confrontato con",
+  "dateRange.allAvailable": "Tutti i dati disponibili",
   "overview.chartTooltip.pace": "ritmo",
   "overview.chartTooltip.hr": "FC",
   "overview.legend.current": "(attuale)",

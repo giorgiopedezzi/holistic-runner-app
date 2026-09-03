@@ -22,6 +22,7 @@ import { ActivityRow } from "@/components/activity/ActivityRow";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
 import { SPORT_COLOR, type Activity, type SavedDateRange, type SportSummary } from "@/types/api";
 import { fmtPace, fmtKm, fmtMinSecRaw, fmtDate } from "@/utils/fmt";
+import { ALL_SENTINEL } from "@/utils/date";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
 import { getResolvedTheme } from "@/utils/theme";
 import {
@@ -621,7 +622,10 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // English would be a regression introduced by this Story, not an existing
   // gap. Named-range names aren't threaded this deep (savedRanges lives
   // several components up) — a plain date span is used instead.
-  const periodLabel = `${fmtDate(from)} – ${fmtDate(to)}`;
+  // "All available data" reads as an intentional range, not the useDateRange
+  // "All" preset's internal 2000-01-01 sentinel (HRA-256).
+  const fromLabel = from === ALL_SENTINEL ? t("dateRange.allAvailable", "All available data") : fmtDate(from);
+  const periodLabel = `${fromLabel} – ${fmtDate(to)}`;
   const comparePeriodLabel = `${fmtDate(compareFrom)} – ${fmtDate(compareTo)}`;
   const overlapTitlePeriod = compareEnabled && viewMode === "overlap"
     ? t("overview.mainGraphPeriodCompare", `${periodLabel} vs ${comparePeriodLabel}`, { current: periodLabel, compare: comparePeriodLabel })

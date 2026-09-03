@@ -11,6 +11,7 @@ import { installFetch, problem, paginated } from "@/test/api-stub";
 import { bodyMeasurement, dateRange } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
 import { fmtDate } from "@/utils/fmt";
+import { ALL_SENTINEL } from "@/utils/date";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -42,6 +43,20 @@ describe("BodyTab", () => {
     render(<BodyTab from="2026-07-15" to="2026-08-14" />);
 
     expect(await screen.findByText(/No body measurements in the selected range/i)).toBeInTheDocument();
+  });
+
+  // HRA-256: the useDateRange "All" preset's internal 2000-01-01 sentinel
+  // must not leak into the metrics section heading.
+  it("selecting All shows 'All available data' in the metrics heading, not the 2000-01-01 sentinel", async () => {
+    installFetch({
+      "GET /api/v1/body-measurements": paginated([bodyMeasurement()]),
+      "GET /api/v1/body-measurements/correlation": paginated([]),
+      "GET /api/v1/body-measurements/range": dateRange(),
+    });
+    render(<BodyTab from={ALL_SENTINEL} to="2026-08-14" />);
+
+    expect(await screen.findByText(/Body metrics — All available data to 2026-08-14/i)).toBeInTheDocument();
+    expect(screen.queryByText(/2000-01-01/)).not.toBeInTheDocument();
   });
 
   it("surfaces the API error message on failure", async () => {

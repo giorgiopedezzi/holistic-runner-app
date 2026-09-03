@@ -18,6 +18,7 @@
   "dateRange.pickRace": "レースを選択…",
   "dateRange.noneOption": "— なし —",
   "dateRange.comparedTo": "比較対象",
+  "dateRange.allAvailable": "利用可能な全データ",
   "overview.chartTooltip.pace": "ペース",
   "overview.chartTooltip.hr": "心拍数",
   "overview.legend.current": "現在",

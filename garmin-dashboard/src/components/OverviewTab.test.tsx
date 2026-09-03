@@ -13,6 +13,7 @@ import { sportSummary, dateRange, settings, activity } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
 import type { DateRangeState } from "@/hooks/useDateRange";
 import type { CompareRangeState } from "@/hooks/useCompareRange";
+import { ALL_SENTINEL } from "@/utils/date";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -54,6 +55,27 @@ describe("OverviewTab", () => {
     render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
 
     expect(await screen.findByText(/No activities in the selected range/i)).toBeInTheDocument();
+  });
+
+  // HRA-256: the useDateRange "All" preset's internal 2000-01-01 sentinel
+  // must never render as a literal date anywhere on the tab (date picker,
+  // empty-state message), and automatic comparison must not manufacture a
+  // multi-decade "previous period" off it.
+  it("selecting All never renders the 2000-01-01 sentinel and disables automatic comparison", async () => {
+    installFetch({
+      "GET /api/v1/summary": paginated([]),
+      "GET /api/v1/range": dateRange(),
+      "GET /api/v1/activities": paginated([]),
+      "GET /api/v1/settings": settings(),
+      "GET /api/v1/date-ranges": paginated([]),
+    });
+    const disabledCompare: CompareRangeState = { from: "2026-08-10", to: "2026-08-10", setFrom: () => {}, setTo: () => {}, enabled: false, setEnabled: () => {} };
+    render(<OverviewTab range={fakeRange(ALL_SENTINEL, "2026-08-14")} compareRange={disabledCompare} savedRanges={[]} />);
+
+    await screen.findByText(/No activities in the selected range/i);
+    expect(screen.queryByText(/2000/)).not.toBeInTheDocument();
+    // Appears twice: the "from" date-picker trigger AND the empty-state message.
+    expect(screen.getAllByText(/All available data/i).length).toBeGreaterThan(0);
   });
 
   it("surfaces the API error message on failure", async () => {

@@ -5,6 +5,7 @@ import { defaultCompareRange, type CompareRangeState } from "@/hooks/useCompareR
 import { DatePicker, Select, Switch } from "@/components/ui";
 import type { SavedDateRange } from "@/types/api";
 import { fmtDate } from "@/utils/fmt";
+import { ALL_SENTINEL } from "@/utils/date";
 
 // One shared bar — preset dropdown, manual from/to pickers, and a named-
 // range picker — used everywhere a date range is chosen (Overview & Trends,
@@ -27,10 +28,12 @@ function savedRangeLabel(r: SavedDateRange): string {
 export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, savedRanges = [], racePicker }: Props) {
   const { t } = useTranslation();
   function isActive(days: number) {
-    const target = days >= 9999 ? "2000-01-01"
+    const target = days >= 9999 ? ALL_SENTINEL
       : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
     return from === target;
   }
+  const allSelected = from === ALL_SENTINEL;
+  const allAvailableLabel = t("dateRange.allAvailable", "All available data");
 
   // Derived, not separately stored — the named-range dropdown shows
   // whichever saved range's (from_date, to_date) currently matches the live
@@ -102,7 +105,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
         <span className="hra-text-muted text-meta">or</span>
-        <DatePicker value={from} max={to} onChange={setFrom} />
+        <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
         <span className="hra-text-muted text-meta">→</span>
         <DatePicker value={to} min={from} onChange={setTo} />
         <span className="hra-text-muted text-meta">or</span>

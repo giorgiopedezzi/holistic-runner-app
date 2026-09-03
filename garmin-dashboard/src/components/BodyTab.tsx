@@ -13,6 +13,7 @@ import {
   Stat, StatGrid, SectionTitle, Empty, ErrorBanner, LoadingSpinner, RangeEmpty, Checkbox,
 } from "@/components/ui";
 import { fmtWeight, fmtPercent, fmtDate } from "@/utils/fmt";
+import { ALL_SENTINEL } from "@/utils/date";
 import { getUnitSystem, kgToLb, kmToMi, weightUnitLabel, distanceUnitLabel } from "@/utils/units";
 import {
   type PrimaryKey, type OtherKey, type MetricKey, type MetricRow,
@@ -131,6 +132,9 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
 
 export function BodyTab({ from, to }: Props) {
   const { t } = useTranslation();
+  // "All available data" reads as an intentional range, not the useDateRange
+  // "All" preset's internal 2000-01-01 sentinel (HRA-256).
+  const fromLabel = from === ALL_SENTINEL ? t("dateRange.allAvailable", "All available data") : from;
   const listQ        = useQuery(() => api.body.list(from, to),        [from, to]);
   const correlationQ = useQuery(() => api.body.correlation(from, to), [from, to]);
   const rangeQ       = useQuery(() => api.body.range(),               []);
@@ -200,7 +204,7 @@ export function BodyTab({ from, to }: Props) {
         )}
       </StatGrid>
 
-      <SectionTitle>{t("body.metricsSectionTitle", `Body metrics — ${from} to ${to}`, { from, to })}</SectionTitle>
+      <SectionTitle>{t("body.metricsSectionTitle", `Body metrics — ${fromLabel} to ${to}`, { from: fromLabel, to })}</SectionTitle>
 
       <div className="hra-border-strong inline-flex gap-3.5 items-center py-1.5 px-3.5 rounded-full mb-4">
         {checkbox(t("body.metric.weight_kg", METRIC_DEFS.weight_kg.label), showWeight, () => setShowWeight(v => !v), METRIC_DEFS.weight_kg.color)}
