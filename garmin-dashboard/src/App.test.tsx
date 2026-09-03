@@ -59,12 +59,12 @@ describe("App tab switching", () => {
     installFetch(appRoutes());
     render(<App />);
 
-    // HRA-248 AC1: no tab URL param -> "Your agenda" selected, first in the
-    // primary nav, before "Overview & Trends".
+    // HRA-248 AC1 (still true post-HRA-253): no tab URL param -> "Your
+    // agenda" selected, first in the sidebar's Primary group.
     const nav = screen.getByRole("navigation");
     const navButtons = within(nav).getAllByRole("button");
     expect(navButtons[0]).toHaveTextContent("Your agenda");
-    expect(navButtons[1]).toHaveTextContent("Overview & Trends");
+    expect(navButtons[1]).toHaveTextContent("Training plans");
     expect(await screen.findByText("There is no active plan today.")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Overview & Trends" }));
@@ -85,6 +85,81 @@ describe("App tab switching", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
+  });
+
+  it("renders exactly one nav landmark, grouped Primary/Review/Manage/utility, with the old horizontal header gone (HRA-253)", async () => {
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    // Exactly one nav landmark for the whole sidebar.
+    expect(screen.getAllByRole("navigation")).toHaveLength(1);
+    const nav = screen.getByRole("navigation");
+    const navButtons = within(nav).getAllByRole("button");
+    expect(navButtons.map(b => b.textContent)).toEqual([
+      "Your agenda", "Training plans",
+      "Overview & Trends", "Activities", "Body",
+      "Data & Sync",
+      "Settings", "Feedback",
+    ]);
+
+    // Review/Manage group headings are present and precede their items in
+    // document order (Primary has no heading, per scope).
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.getByText("Manage")).toBeInTheDocument();
+
+    // The old horizontal header/nav bar no longer renders anywhere.
+    expect(container.querySelector(".hra-header")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-nav")).not.toBeInTheDocument();
+    expect(screen.queryByText("Garmin Stats")).not.toBeInTheDocument();
+    expect(screen.getByText("Runs Free")).toBeInTheDocument();
+  });
+
+  it("marks exactly one sidebar item aria-current='page', matching the active tab, and updates it on click", async () => {
+    installFetch(appRoutes());
+    render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const nav = screen.getByRole("navigation");
+    const current = () => within(nav).getAllByRole("button").filter(b => b.getAttribute("aria-current") === "page");
+
+    expect(current()).toHaveLength(1);
+    expect(current()[0]).toHaveTextContent("Your agenda");
+
+    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
+    await screen.findByText("Not connected to Strava");
+
+    expect(current()).toHaveLength(1);
+    expect(current()[0]).toHaveTextContent("Data & Sync");
+  });
+
+  it("selects the matching sidebar item as current when a tab is opened directly via URL (?tab=body)", async () => {
+    installFetch(appRoutes());
+    window.history.replaceState(null, "", "/?tab=body");
+    render(<App />);
+    await screen.findByText(/Latest measurement/);
+
+    const nav = screen.getByRole("navigation");
+    const bodyButton = within(nav).getByRole("button", { name: "Body" });
+    expect(bodyButton).toHaveAttribute("aria-current", "page");
+  });
+
+  it("preserves existing from/to/compareFrom/compareTo/compareEnabled query params on a sidebar navigation click", async () => {
+    installFetch(appRoutes());
+    window.history.replaceState(null, "", "/?from=2026-07-01&to=2026-07-31&compareFrom=2026-06-01&compareTo=2026-06-30&compareEnabled=true");
+    render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
+    await screen.findByText("Not connected to Strava");
+
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get("tab")).toBe("manage");
+    expect(params.get("from")).toBe("2026-07-01");
+    expect(params.get("to")).toBe("2026-07-31");
+    expect(params.get("compareFrom")).toBe("2026-06-01");
+    expect(params.get("compareTo")).toBe("2026-06-30");
+    expect(params.get("compareEnabled")).toBe("true");
   });
 });
 

@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import "@/i18n";
+import {
+  CalendarDays, ListTodo, TrendingUp, Activity as ActivityIcon,
+  HeartPulse, RefreshCw, Settings as SettingsIcon, MessageSquare,
+} from "lucide-react";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
 import { useAppearance } from "@/hooks/useAppearance";
@@ -23,22 +27,28 @@ import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
 
-// labelKey/fallback: the header nav bar's own strings are the one concrete
+// labelKey/fallback: the sidebar nav's own strings are the one concrete
 // pipeline example proving i18n end to end (HRA-104) — fallback is the
 // pre-existing English literal, used as t()'s defaultValue so nothing flashes
 // a bare translation key before the backend bundle loads.
+// `group` drives sidebar section placement (HRA-253) — top→bottom: primary
+// (no heading), review (under "Review"), manage (under "Manage"), utility
+// (Settings/Feedback, pinned to the bottom of the nav). `icon` is purely
+// decorative (aria-hidden at render) — the visible label remains each item's
+// one accessible name.
 const TABS = [
-  { id: "agenda",      labelKey: "nav.agenda",     fallback: "Your agenda"       },
-  { id: "overview",    labelKey: "nav.overview",   fallback: "Overview & Trends" },
-  { id: "activities",  labelKey: "nav.activities", fallback: "Activities"        },
-  { id: "plans",       labelKey: "nav.trainingPlans", fallback: "Plans" },
-  { id: "body",        labelKey: "nav.body",       fallback: "Body"              },
-  { id: "manage",      labelKey: "nav.manage",     fallback: "Data & Sync"       },
-  { id: "settings",    labelKey: "nav.settings",   fallback: "Settings"          },
-  { id: "feedback",    labelKey: "nav.feedback",   fallback: "Feedback"          },
+  { id: "agenda",      labelKey: "nav.agenda",        fallback: "Your agenda",       group: "primary", icon: CalendarDays   },
+  { id: "plans",       labelKey: "nav.trainingPlans",  fallback: "Training plans",   group: "primary", icon: ListTodo       },
+  { id: "overview",    labelKey: "nav.overview",       fallback: "Overview & Trends", group: "review",  icon: TrendingUp     },
+  { id: "activities",  labelKey: "nav.activities",     fallback: "Activities",       group: "review",  icon: ActivityIcon   },
+  { id: "body",        labelKey: "nav.body",           fallback: "Body",             group: "review",  icon: HeartPulse     },
+  { id: "manage",      labelKey: "nav.manage",         fallback: "Data & Sync",      group: "manage",  icon: RefreshCw      },
+  { id: "settings",    labelKey: "nav.settings",       fallback: "Settings",         group: "utility", icon: SettingsIcon   },
+  { id: "feedback",    labelKey: "nav.feedback",       fallback: "Feedback",         group: "utility", icon: MessageSquare  },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
+type TabDef = typeof TABS[number];
 
 // Manage tab doesn't need the global date bar to be the primary control
 const TABS_WITH_DATERANGE: TabId[] = ["overview", "activities", "body"];
@@ -131,97 +141,135 @@ function AppShell() {
     />
   );
 
+  const primaryTabs = TABS.filter(tabDef => tabDef.group === "primary");
+  const reviewTabs = TABS.filter(tabDef => tabDef.group === "review");
+  const manageTabs = TABS.filter(tabDef => tabDef.group === "manage");
+  const utilityTabs = TABS.filter(tabDef => tabDef.group === "utility");
+
+  // Shared renderer for every sidebar destination (HRA-253) — same
+  // id/labelKey/fallback shape and tab/setTab mechanism the old header nav
+  // used, just grouped now. `aria-current="page"` (not a custom class) is the
+  // one active-item signal so assistive tech and CSS share the same source of
+  // truth; the icon is aria-hidden, so the item's one accessible name is its
+  // visible label text.
+  function renderNavItem(tabDef: TabDef) {
+    const Icon = tabDef.icon;
+    const isActive = tab === tabDef.id;
+    return (
+      <button
+        key={tabDef.id}
+        type="button"
+        className={[
+          "hra-sidebar-item", "hra-nav-hover",
+          tabDef.id === "manage" ? "hra-sidebar-manage" : "",
+        ].filter(Boolean).join(" ")}
+        aria-current={isActive ? "page" : undefined}
+        data-active={tabDef.id === "manage" ? isActive : undefined}
+        onClick={() => setTab(tabDef.id)}
+      >
+        <span className="hra-sidebar-item-icon" aria-hidden="true"><Icon size={16} /></span>
+        <span>{t(tabDef.labelKey, tabDef.fallback)}</span>
+      </button>
+    );
+  }
+
   return (
     <>
       {/* HRA-223: mounted once at the top of AppShell, gating the rest of
           the UI until dismissed (skip or autoplay finish) — self-contained,
           reads/writes its own sessionStorage flag. */}
       <SplashScreen />
-      <div className="min-h-screen flex flex-col">
+      <div className="flex h-screen overflow-hidden">
       {/* Ambient glow is a pure body::before (index.css) now — no JS-rendered
           layer here (correction pass). */}
 
-      {/* ── header ───────────────────────────────────────────────────── */}
-      {/* Single compact row now — the date-range controls moved into
-          <main> (below), left-aligned above the tab content, instead of
-          living in the header. Header keeps a little breathing room
-          (.hra-header's padding) rather than shrinking to the bare minimum.
-          `.hra-header-inner` still shares <main>'s own maxWidth/padding
-          (1240px, 24px — widened from 860px per the graph-first reorg, so
-          the main trend graph has real room to breathe) so the nav tabs
-          land in the same columns as the content below — the header bar
-          itself stays full-bleed (background/blur/border), only its content
-          is column-aligned. */}
-      <header className="hra-header">
-        <div className="hra-header-inner">
-          <div className="hra-header-row">
-            <span className="hra-brand">Garmin Stats</span>
+      {/* ── sidebar (HRA-253) ───────────────────────────────────────────── */}
+      {/* Persistent left shell, replacing the old horizontal header/nav —
+          stays visible while the content column (below) scrolls
+          independently. One <nav> landmark holds every tab destination
+          (Primary, then Review/Manage under their own headings, then the
+          Settings/Feedback utility pair pinned to its own bottom via
+          .hra-sidebar-utility-group's margin-top: auto); the language picker
+          and server-status indicator sit just below it, outside the nav
+          landmark since they aren't navigation actions, but still read as
+          one visually contiguous utility cluster (.hra-sidebar-footer). */}
+      <aside className="hra-sidebar">
+        <span className="hra-brand">Runs Free</span>
 
-            {online !== null && (
-              <span
-                className="hra-status-dot"
-                data-online={online}
-                title={online ? t("app.serverConnected", "Data service ready") : t("app.serverOffline", "Server offline")}
-              />
-            )}
-
-            <nav className="hra-nav">
-              {TABS.map(tabDef => (
-                <button
-                  key={tabDef.id}
-                  className={[
-                    "hra-pill", "hra-nav-pill", "hra-nav-hover",
-                    tabDef.id === "manage" ? "hra-nav-manage" : "",
-                    tab === tabDef.id ? "hra-pill-active" : "",
-                  ].filter(Boolean).join(" ")}
-                  data-active={tabDef.id === "manage" ? tab === tabDef.id : undefined}
-                  onClick={() => setTab(tabDef.id)}
-                >
-                  {t(tabDef.labelKey, tabDef.fallback)}
-                </button>
-              ))}
-            </nav>
-
-            <LanguagePicker appearance={appearance} />
+        <nav className="hra-sidebar-nav" aria-label={t("nav.mainNavigation", "Main navigation")}>
+          <div className="hra-sidebar-core">
+            <div className="hra-sidebar-group">
+              {primaryTabs.map(renderNavItem)}
+            </div>
+            <div className="hra-sidebar-group">
+              <span className="hra-sidebar-group-heading">{t("nav.groupReview", "Review")}</span>
+              {reviewTabs.map(renderNavItem)}
+            </div>
+            <div className="hra-sidebar-group">
+              <span className="hra-sidebar-group-heading">{t("nav.groupManage", "Manage")}</span>
+              {manageTabs.map(renderNavItem)}
+            </div>
           </div>
+
+          <div className="hra-sidebar-group hra-sidebar-utility-group">
+            {utilityTabs.map(renderNavItem)}
+          </div>
+        </nav>
+
+        <div className="hra-sidebar-footer">
+          <LanguagePicker appearance={appearance} />
+
+          {online !== null && (
+            <span
+              className="hra-status-dot"
+              data-online={online}
+              role="status"
+              aria-label={online ? t("app.serverConnected", "Data service ready") : t("app.serverOffline", "Server offline")}
+              title={online ? t("app.serverConnected", "Data service ready") : t("app.serverOffline", "Server offline")}
+            />
+          )}
         </div>
-      </header>
+      </aside>
 
-      {/* ── main ─────────────────────────────────────────────────────── */}
-      <main className="hra-app-main flex-1">
+      {/* ── content column ──────────────────────────────────────────────── */}
+      <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
+        <main className="hra-app-main flex-1">
 
-        {online === false && (
-          <div className="mb-5">
-            <ErrorBanner message={t("app.serverUnreachable", "API server unreachable — run: cd garmin-stats && node src/server.ts")} />
-          </div>
-        )}
+          {online === false && (
+            <div className="mb-5">
+              <ErrorBanner message={t("app.serverUnreachable", "API server unreachable — run: cd garmin-stats && node src/server.ts")} />
+            </div>
+          )}
 
-        {/* Date-range controls — left-aligned, above the tab content (moved
-            out of the header). Overview & Trends renders its own DateRangeBar
-            internally now (wrapped, with the Summary card, in one sticky
-            header — see OverviewTab.tsx), so it's excluded here to avoid a
-            duplicate bar. */}
-        {showDateRange && tab !== "overview" && (
-          <div className="mb-5">
-            <DateRangeBar {...range} savedRanges={savedRanges} racePicker={tab === "activities" ? racePicker : undefined} />
-          </div>
-        )}
+          {/* Date-range controls — left-aligned, above the tab content.
+              Overview & Trends renders its own DateRangeBar internally now
+              (wrapped, with the Summary card, in one sticky header — see
+              OverviewTab.tsx), so it's excluded here to avoid a duplicate
+              bar. */}
+          {showDateRange && tab !== "overview" && (
+            <div className="mb-5">
+              <DateRangeBar {...range} savedRanges={savedRanges} racePicker={tab === "activities" ? racePicker : undefined} />
+            </div>
+          )}
 
-        {tab === "agenda"     && <AgendaTab onNavigateToPlans={() => setTab("plans")} />}
-        {tab === "overview"   && (
-          <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
-        )}
-        {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
-        {tab === "plans"      && <PlansTab />}
-        {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
-        {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
-        {tab === "settings"   && <SettingsTab appearance={appearance} />}
-        {tab === "feedback"   && <FeedbackTab />}
-      </main>
+          {tab === "agenda"     && <AgendaTab onNavigateToPlans={() => setTab("plans")} />}
+          {tab === "overview"   && (
+            <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
+          )}
+          {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
+          {tab === "plans"      && <PlansTab />}
+          {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
+          {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
+          {tab === "settings"   && <SettingsTab appearance={appearance} />}
+          {tab === "feedback"   && <FeedbackTab />}
+        </main>
 
-      {/* Global success/error notifications (utils/toast.ts) — mounted once
-          here so any component can call notify() without a Provider. */}
-      <ToastContainer />
+        {/* Global success/error notifications (utils/toast.ts) — mounted
+            once here so any component can call notify() without a Provider.
+            Fixed-position (.hra-toast-stack), so its DOM position within the
+            content column is not visually load-bearing. */}
+        <ToastContainer />
+      </div>
       </div>
     </>
   );
