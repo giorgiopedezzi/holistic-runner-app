@@ -832,17 +832,22 @@ body {
    three-stop light->neutral->black recipe, which read as an odd green cast
    whenever the accent itself was green/lime (the accent tint and the
    unrelated black-mix end fought each other). Both stops are also blended
-   80% into transparent, so the card sits at ~80% opacity over the page's
-   own ambient glow — a hairline of it shows through, glass rather than a
-   solid panel — with a faint inset top highlight standing in for a light
-   source and a soft outer shadow for lift, so cards read as gently raised.
-   The border itself never changes on hover — only the glow does ("a light,
-   not a border"): :hover adds an accent-colored glow shadow on top of the
-   resting shadow/highlight stack, border-color stays exactly as-is. */
+   93% into transparent (raised from 80%, direct feedback: any surface that
+   shows data — cards, accordions, charts, all built on this one primitive —
+   must cover the background, now that a custom background image can sit
+   behind everything; only the sidebar chrome stays deliberately
+   near-transparent), so the card sits at ~93% opacity over the page's own
+   ambient glow/background image — a hairline of it shows through, glass
+   rather than a fully solid panel — with a faint inset top highlight
+   standing in for a light source and a soft outer shadow for lift, so cards
+   read as gently raised. The border itself never changes on hover — only
+   the glow does ("a light, not a border"): :hover adds an accent-colored
+   glow shadow on top of the resting shadow/highlight stack, border-color
+   stays exactly as-is. */
 .card {
   background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 80%, transparent) 0%,
-  color-mix(in srgb, color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 80%, transparent) 100%);
+  color-mix(in srgb, color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 93%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 93%, transparent) 100%);
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--card-border));
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -2261,11 +2266,12 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    (more accent at the top-left) so the hero reads as the same "gradient,
    slightly 3D" card language but a notch more emphasized; the ring's own
    glow and the sparkline's end-dot glow are separate classes since they're
-   SVG filters, not div backgrounds. */
+   SVG filters, not div backgrounds. Same 93%-opaque treatment as .card
+   itself (raised from 80% — this is a data surface too). */
 .hra-hero-tint {
   background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, color-mix(in srgb, var(--accent) 16%, var(--card-bg)) 80%, transparent) 0%,
-  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 80%, transparent) 100%);
+  color-mix(in srgb, color-mix(in srgb, var(--accent) 16%, var(--card-bg)) 93%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 93%, transparent) 100%);
 }
 .hra-hero-ring-glow {
   filter: drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 38%, transparent));
