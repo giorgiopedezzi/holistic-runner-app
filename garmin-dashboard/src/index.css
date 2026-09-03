@@ -1955,17 +1955,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+/* Top row: brand + language picker side by side (moved out of the old
+   bottom footer per explicit feedback — the brand also reads a size up
+   (--text-heading, same combo .hra-agenda-title already uses) for a bit more
+   visual presence than the previous --text-label-sized wordmark). */
+.hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
 .hra-brand {
   display: block;
-  font-weight: var(--text-data--font-weight); font-size: var(--text-label); letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
-  padding: 0 12px;
+  font-weight: var(--text-heading--font-weight); font-size: var(--text-heading); letter-spacing: -0.02em; flex-shrink: 0; color: var(--text-primary);
 }
 /* One <nav> landmark for the whole sidebar. flex: 1 lets it fill the
    remaining vertical space so .hra-sidebar-utility-group (Settings/Feedback)
-   can pin itself to the nav's own bottom edge via margin-top: auto, which in
-   turn sits flush above .hra-sidebar-footer (language + status, outside the
-   nav landmark) — the two read as one continuous utility cluster even
-   though only one of them is inside <nav>. */
+   can pin itself to the nav's own bottom edge via margin-top: auto. */
 .hra-sidebar-nav { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .hra-sidebar-core { display: flex; flex-direction: column; gap: 20px; }
 .hra-sidebar-group { display: flex; flex-direction: column; gap: 2px; }
@@ -1975,7 +1976,6 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 0 12px; margin-bottom: 4px;
 }
 .hra-sidebar-utility-group { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
-.hra-sidebar-footer { display: flex; flex-direction: column; gap: 6px; padding: 0 12px; }
 /* Restrained active state (no large pill treatment, per HRA-253 scope) —
    aria-current="page" is the one source of truth both assistive tech and
    this selector read off, no separate active className. */
@@ -1993,13 +1993,8 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   font-weight: var(--text-data--font-weight);
 }
 .hra-sidebar-item-icon { display: inline-flex; flex-shrink: 0; }
-.hra-status-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block;
-}
-.hra-status-dot[data-online="true"]  { background: var(--accent-green); }
-.hra-status-dot[data-online="false"] { background: var(--accent-red); }
 
-/* Language picker (HRA-104) — sidebar footer dropdown. Trigger reuses
+/* Language picker (HRA-104) — sidebar top-row dropdown. Trigger reuses
    .hra-date-trigger's compact bordered-chip look; the list is a plain button
    column (not Radix Select — just two flag+code choices, no native <select>
    semantics needed), styled to match .hra-select-item's visual language. */

@@ -186,15 +186,18 @@ function AppShell() {
       {/* ── sidebar (HRA-253) ───────────────────────────────────────────── */}
       {/* Persistent left shell, replacing the old horizontal header/nav —
           stays visible while the content column (below) scrolls
-          independently. One <nav> landmark holds every tab destination
-          (Primary, then Review/Manage under their own headings, then the
-          Settings/Feedback utility pair pinned to its own bottom via
-          .hra-sidebar-utility-group's margin-top: auto); the language picker
-          and server-status indicator sit just below it, outside the nav
-          landmark since they aren't navigation actions, but still read as
-          one visually contiguous utility cluster (.hra-sidebar-footer). */}
+          independently. Top row: brand + language picker, side by side. One
+          <nav> landmark holds every tab destination (Primary, then
+          Review/Manage under their own headings, then the Settings/Feedback
+          utility pair pinned to the nav's own bottom via
+          .hra-sidebar-utility-group's margin-top: auto). The server-status
+          dot was removed post-review (kept only the `online` state driving
+          the ErrorBanner in <main>, unrelated to the sidebar). */}
       <aside className="hra-sidebar">
-        <span className="hra-brand">Runs Free</span>
+        <div className="hra-sidebar-top">
+          <span className="hra-brand">Runs Free</span>
+          <LanguagePicker appearance={appearance} />
+        </div>
 
         <nav className="hra-sidebar-nav" aria-label={t("nav.mainNavigation", "Main navigation")}>
           <div className="hra-sidebar-core">
@@ -215,20 +218,6 @@ function AppShell() {
             {utilityTabs.map(renderNavItem)}
           </div>
         </nav>
-
-        <div className="hra-sidebar-footer">
-          <LanguagePicker appearance={appearance} />
-
-          {online !== null && (
-            <span
-              className="hra-status-dot"
-              data-online={online}
-              role="status"
-              aria-label={online ? t("app.serverConnected", "Data service ready") : t("app.serverOffline", "Server offline")}
-              title={online ? t("app.serverConnected", "Data service ready") : t("app.serverOffline", "Server offline")}
-            />
-          )}
-        </div>
       </aside>
 
       {/* ── content column ──────────────────────────────────────────────── */}

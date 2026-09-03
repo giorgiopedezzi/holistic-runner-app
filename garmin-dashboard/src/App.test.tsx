@@ -114,9 +114,11 @@ describe("App tab switching", () => {
     expect(screen.queryByText("Garmin Stats")).not.toBeInTheDocument();
     expect(screen.getByText("Runs Free")).toBeInTheDocument();
 
-    // Server-status indicator exposes online/offline through an accessible
-    // name, not color alone (the dot itself stays purely decorative).
-    await waitFor(() => expect(screen.getByRole("status")).toHaveAccessibleName("Data service ready"));
+    // Post-review feedback: the server-status dot was removed from the
+    // sidebar entirely (no role="status" indicator renders anywhere), and
+    // the language picker sits next to the brand instead of in a footer.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-status-dot")).not.toBeInTheDocument();
   });
 
   it("marks exactly one sidebar item aria-current='page', matching the active tab, and updates it on click", async () => {

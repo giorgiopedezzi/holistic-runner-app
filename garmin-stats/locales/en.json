@@ -251,8 +251,6 @@
   "splash.copy4": "Your heart.",
   "splash.copy5": "You.",
   "splash.skip": "Skip",
-  "app.serverConnected": "Data service ready",
-  "app.serverOffline": "Server offline",
   "app.serverUnreachable": "API server unreachable — run: cd garmin-stats && node src/server.ts",
   "api.gatewayError": "Couldn't reach the API server ({{status}}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.",
   "api.genericError": "API error {{status}}: {{path}}",
