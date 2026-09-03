@@ -45,7 +45,11 @@ const OFFSET_UNIT_RE = /^OFFSET_UNIT\s+(s\/km|s\/mi)$/i;
 const DEFAULT_REST_RE = /^DEFAULT_REST\s+(stand|walk|jog)$/i;
 const PACE_LINE_RE = /^PACE\s+(\S+)=(.+)$/;
 
-const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))\s+WEEKS\s+(\S+)$/i;
+// HRA-?: WEEKS clause is optional — a bare `SECTION "<name>"` (weeks implied
+// by the WEEK headers that follow) is just as valid as one naming its own
+// span; week_spec is purely descriptive metadata (never consulted by
+// instantiate.ts), so an omitted clause simply defaults to "*".
+const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))(?:\s+WEEKS\s+(\S+))?$/i;
 const WEEK_RE = /^WEEK\s+(\d+)(?:\s+START\s+(\d{4}-\d{2}-\d{2}))?$/i;
 const DAY_RE = /^D(\d+)([a-c])?(?:\s*\[([^\]]+)\])?\s*:\s*(.*)$/;
 
@@ -287,7 +291,7 @@ export function parseDayEntry(rawLine: string, ctx: DayParseContext): DayEntry {
 
   if (day < 1 || day > 7) warn("Day number should be 1 through 7.");
 
-  const base = { day, suffix, category, notes: note, raw_dsl: rawLine };
+  const base = { day, suffix, category, notes: note, raw_dsl: main };
 
   if (workoutText === "REST") {
     return { ...base, workout_type: "rest", segments: [], needs_review: warnings.length > 0, warnings };
@@ -432,7 +436,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       closeSection(currentSection);
       currentWeek = undefined;
       const name = sectionMatch[1] ?? sectionMatch[2];
-      currentSection = { name, week_spec: sectionMatch[3], notes: note, pace_policy: {}, weeks: [], raw_dsl: text };
+      currentSection = { name, week_spec: sectionMatch[3] ?? "*", notes: note, pace_policy: {}, weeks: [], raw_dsl: main };
       plan.sections.push(currentSection);
       scope = "section";
       metadataClosed = true;
@@ -446,7 +450,7 @@ export function parseRunPlanDSL(input: string): import("./types.ts").ParseResult
       ensureDefaultSection();
       currentWeek = {
         number: parseInt(weekMatch[1], 10), start_date: weekMatch[2], notes: note,
-        pace_policy: {}, days: [], raw_dsl: text,
+        pace_policy: {}, days: [], raw_dsl: main,
       };
       currentSection!.weeks.push(currentWeek);
       scope = "week";

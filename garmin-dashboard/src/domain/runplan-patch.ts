@@ -9,7 +9,9 @@
 // returns the new line text; `replaceSpan` does the actual content-anchored
 // substitution, refusing to guess when the old text isn't found exactly once.
 
-const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))\s+WEEKS\s+(\S+)$/i;
+// WEEKS clause is optional (mirrors garmin-stats/src/domain/runplan/
+// parser.ts's own SECTION_RE) — a bare `SECTION "<name>"` is valid too.
+const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))(?:\s+WEEKS\s+(\S+))?$/i;
 const WEEK_RE = /^WEEK\s+(\d+)(?:\s+START\s+(\d{4}-\d{2}-\d{2}))?$/i;
 
 export function splitNote(line: string): { main: string; note?: string } {
@@ -19,8 +21,9 @@ export function splitNote(line: string): { main: string; note?: string } {
 }
 
 // Rebuilds a SECTION header line, preserving the original WEEKS spec exactly
-// (never editable in this Story — only name/note are). Always re-emits the
-// name quoted, even if the original used the grammar's bare-token
+// (never editable in this Story — only name/note are), or defaulting to "*"
+// when the original line omitted the WEEKS clause entirely. Always re-emits
+// the name quoted, even if the original used the grammar's bare-token
 // alternative — a deliberate, benign normalization: still valid per the
 // backend's own SECTION_RE, and safer once a name might later gain a space.
 export function serializeSectionHeader(currentRawDsl: string, patch: { name?: string; notes?: string }): string {
@@ -28,7 +31,7 @@ export function serializeSectionHeader(currentRawDsl: string, patch: { name?: st
   const m = SECTION_RE.exec(main);
   if (!m) throw new Error(`Cannot parse SECTION header to patch: ${currentRawDsl}`);
   const name = patch.name ?? (m[1] ?? m[2]);
-  const weekSpec = m[3];
+  const weekSpec = m[3] ?? "*";
   const newNote = patch.notes !== undefined ? patch.notes : note;
   return `SECTION "${name}" WEEKS ${weekSpec}${newNote ? ` # ${newNote}` : ""}`;
 }

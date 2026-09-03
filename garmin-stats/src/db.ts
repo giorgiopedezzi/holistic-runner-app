@@ -8,7 +8,7 @@ const config  = loadConfig();
 // config is now sourced from env vars, not that file. Observable behavior
 // change from the old CONFIG_DIR-relative resolution (HRA-217).
 const DB_PATH_ARG = getArg("--db");
-const DB_PATH = path.resolve(DB_PATH_ARG ?? config.database.path);
+export const DB_PATH = path.resolve(DB_PATH_ARG ?? config.database.path);
 
 export type Db = DatabaseSync;
 
@@ -16,11 +16,55 @@ export type Db = DatabaseSync;
 export type { SQLInputValue };
 export type SQLParams = Record<string, SQLInputValue>;
 
+// The actual live connection, swapped in place by reopenDb() below. Every
+// caller of openDb() only ever holds the Proxy returned by it (see
+// openConnection/makeLiveProxy), never this variable directly, so swapping it
+// out — e.g. after jobs/demo-db-restore.ts overwrites the DB file on disk —
+// is invisible to every repository/service/controller already holding a
+// reference: their `db` is the same Proxy object, forwarding to whatever
+// `liveTarget` currently is.
+let liveTarget: DatabaseSync | undefined;
+
+function openConnection(): DatabaseSync {
+  const conn = new DatabaseSync(DB_PATH);
+  conn.exec("PRAGMA journal_mode = WAL");
+  conn.exec("PRAGMA foreign_keys = ON");
+  return conn;
+}
+
+// A thin pass-through Proxy so `db.prepare(...)`, `db.exec(...)`, etc. keep
+// working exactly as before, while actually resolving against whatever
+// `liveTarget` is at call time (not whatever it was when the Proxy was
+// created) — the mechanism that makes reopenDb() a genuine in-place swap.
+function makeLiveProxy(): DatabaseSync {
+  return new Proxy({}, {
+    get(_t, prop) {
+      if (!liveTarget) throw new Error("Database connection is not open (mid-restore?).");
+      const value = (liveTarget as unknown as Record<PropertyKey, unknown>)[prop];
+      return typeof value === "function" ? value.bind(liveTarget) : value;
+    },
+  }) as DatabaseSync;
+}
+
 export function openDb(): DatabaseSync {
-  const db = new DatabaseSync(DB_PATH);
-  db.exec("PRAGMA journal_mode = WAL");
-  db.exec("PRAGMA foreign_keys = ON");
-  return db;
+  liveTarget = openConnection();
+  return makeLiveProxy();
+}
+
+// jobs/demo-db-restore.ts: closes the live connection so the DB file on disk
+// is free to be overwritten. Swallow close errors — a connection already in
+// a bad state is exactly why we're restoring in the first place.
+export function closeDbForRestore(): void {
+  try { liveTarget?.close(); } catch { /* ignore */ }
+  liveTarget = undefined;
+}
+
+// jobs/demo-db-restore.ts: opens a fresh connection against DB_PATH (now the
+// just-restored backup file) and makes it the Proxy's new target. Must be
+// followed by initSchema(db) — the backup could predate a schema change this
+// version of the app expects.
+export function reopenDb(): void {
+  liveTarget = openConnection();
 }
 
 export function initSchema(db: DatabaseSync): void {

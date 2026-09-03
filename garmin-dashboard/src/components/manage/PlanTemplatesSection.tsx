@@ -78,6 +78,12 @@ function fillAiPromptTemplate(
     .split("{{UNIT_OPTIONAL}}").join(unit);
 }
 
+// The prompt's own <training_plan> placeholder, used verbatim in place of
+// pasted text when the user intends to attach the source document itself to
+// the AI conversation instead — the AI is expected to read the attached file
+// rather than the prompt body for the actual plan content.
+const ATTACHMENT_PLACEHOLDER = "use the attached document";
+
 // HRA-120: event is now an explicit, required template field (replacing the
 // old DSL-text EVENT line); distance_m is required only for "custom".
 const EVENT_OPTIONS: readonly EventType[] = ["5k", "10k", "half", "marathon", "custom"];
@@ -296,6 +302,21 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (genError) setDslExpanded(true);
   }, [genError]);
 
+  // Warn before a refresh/tab close discards unsaved edits — either the
+  // active row's own live fields (isEditorDirty) or any other row's stashed
+  // draft. Re-registered every render (no dep array) since isEditorDirty
+  // reads several pieces of state; the listener itself is cheap to attach.
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (Object.keys(drafts).length > 0 || (activeKey != null && isEditorDirty())) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  });
+
   // HRA-140: whether the currently-active row's live fields differ from its
   // own last-saved/loaded baseline — the single source of truth for both
   // the Restore confirm gate (Ask #3) and what gets stashed on collapse
@@ -486,6 +507,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // against an LLM — this app never calls an LLM API itself.
   function onGeneratePrompt() {
     setGeneratedPrompt(fillAiPromptTemplate(originalText, language, event, name, distanceUnit));
+    setPromptExpanded(true);
+  }
+
+  // Same prompt, but with the <training_plan> body replaced by a fixed
+  // placeholder — for when the source is a document the user will attach
+  // directly to the AI conversation rather than paste as text. Never needs
+  // Original text filled in, since the AI is meant to read the attachment.
+  function onGeneratePromptForAttachment() {
+    setGeneratedPrompt(fillAiPromptTemplate(ATTACHMENT_PLACEHOLDER, language, event, name, distanceUnit));
+    setPromptExpanded(true);
   }
 
   async function onCopyPrompt() {
@@ -658,14 +689,20 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (isEditorDirty()) { setPendingRestoreConfirm(true); return; }
     doRestore();
   }
-  function doRestore() {
+  // HRA-?: restores the active row's fields to their last-saved/loaded
+  // baseline WITHOUT collapsing it — activeKey is deliberately never
+  // touched here, so whichever row was open stays open.
+  async function doRestore() {
     setPendingRestoreConfirm(false);
-    if (activeKey != null) {
-      const key = String(activeKey);
-      setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    if (activeKey == null) return;
+    const key = String(activeKey);
+    setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    if (activeKey === "new") {
+      resetEditorState();
+    } else {
+      const template = templates?.find(tpl => tpl.id === activeKey);
+      if (template) await startEdit(template);
     }
-    resetEditorState();
-    setActiveKey(null);
   }
   function cancelRestoreConfirm() { setPendingRestoreConfirm(false); }
 
@@ -692,11 +729,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   function rowStatusHint(key: RowKey) {
     if (isRowDirty(key)) {
       return (
-        <span
-          title={t("manage.planTemplates.unsavedChanges", "Unsaved changes")}
-          className="hra-text-warning inline-flex items-center"
-        >
-          <AlertTriangle size={14} />
+        <span className="inline-flex items-center gap-1">
+          <AlertTriangle size={14} className="hra-text-warning shrink-0" />
+          <span className="hra-text-secondary text-meta">{t("manage.planTemplates.unsavedChanges", "There are pending changes")}</span>
         </span>
       );
     }
@@ -920,7 +955,19 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 >
                   {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
                 </button>
+                <button
+                  className="hra-btn self-end"
+                  onClick={onGeneratePromptForAttachment}
+                >
+                  {t("manage.planTemplates.aiPrompt.generateForAttachmentButton", "Generate prompt for an attached document")}
+                </button>
               </div>
+              <p className="hra-text-secondary text-meta m-0">
+                {t(
+                  "manage.planTemplates.aiPrompt.attachmentHint",
+                  "Prefer attaching the original document instead of pasting text? Click \"Generate prompt for an attached document\" above, then upload both the generated prompt and the document to your preferred AI (e.g. Qwen3 8B works well).",
+                )}
+              </p>
             </div>
           </AccordionCard>
 

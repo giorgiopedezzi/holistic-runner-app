@@ -12,7 +12,8 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { loadConfig, getArg } from "./config.ts";
-import { openDb, initSchema } from "./db.ts";
+import { openDb, initSchema, DB_PATH } from "./db.ts";
+import { scheduleDemoDbRestore } from "./jobs/demo-db-restore.ts";
 import { createApiHandler } from "./http/router.ts";
 import { startWithingsCallbackServer } from "./http/withings-callback.ts";
 import { createActivitiesRepo } from "./repositories/activities.repo.ts";
@@ -38,6 +39,14 @@ const PORT   = parseInt(getArg("--port") ?? "3001");
 
 const db = openDb();
 initSchema(db);
+
+// Hosted-demo self-heal: periodically reset the DB back to a pristine backup
+// copy (see jobs/demo-db-restore.ts). Gated only on the backup path being
+// configured — independent of demoMode (a write-guard concern), so this
+// works even with DEMO_MODE unset/false. Unset in every other environment.
+if (config.demoDbBackupPath) {
+  scheduleDemoDbRestore(db, DB_PATH, config.demoDbBackupPath);
+}
 
 // Custom-uploaded backgrounds land here (gitignored). Created up front so the
 // settings controller can read/write it.

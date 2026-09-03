@@ -68,10 +68,7 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
 
     fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate full prompt" }));
-    // Conversion prompt itself is still collapsed at this point — expansion
-    // is only recomputed when the row (re)opens, never reactively — so open
-    // it by hand to confirm the prompt was actually generated.
-    fireEvent.click(pipelineHeader(/Conversion prompt/));
+    // Conversion prompt opens on its own once generated — no manual expand.
     const promptField = await screen.findByLabelText("Generated prompt") as HTMLTextAreaElement;
     expect(promptField.value).toContain("Week 1: 5km easy"); // jest-dom's toHaveValue doesn't accept asymmetric matchers
 
@@ -160,7 +157,7 @@ describe("PlanTemplatesSection — prompt generation preserves original text", (
     const textField = await screen.findByLabelText("Original text");
     fireEvent.change(textField, { target: { value: "Original plan text here" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate full prompt" }));
-    fireEvent.click(pipelineHeader(/Conversion prompt/)); // expand to inspect the result
+    // Conversion prompt opens on its own once generated — no manual expand needed.
 
     expect(textField).toHaveValue("Original plan text here");
     expect(await screen.findByLabelText("Generated prompt")).not.toHaveValue("");

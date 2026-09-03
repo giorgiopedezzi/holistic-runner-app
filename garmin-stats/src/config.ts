@@ -23,6 +23,13 @@ export interface Config {
   // endpoints listed in http/demo-guard.ts with 403 so a public demo can't
   // destroy the database. Default false — unset behaves exactly as before.
   demoMode: boolean;
+  // Hosted-demo DB reset (jobs/demo-db-restore.ts): path to a pristine backup
+  // copy of the database that is assumed to always exist and never change.
+  // When set, the server periodically overwrites the live DB with this copy
+  // so a public demo self-heals from whatever visitors have done to it —
+  // independent of demoMode (unset/false doesn't disable this). Unset
+  // disables the feature entirely.
+  demoDbBackupPath?: string;
   // Local Ollama instance for the workout classifier (ollama-service.ts).
   // No API key — Ollama's HTTP API is unauthenticated by default on
   // localhost. model is a real Ollama model tag (`ollama pull <model>`
@@ -74,6 +81,7 @@ export function loadConfig(): Config {
       skip_duplicates: parseBoolEnv(process.env.SYNC_SKIP_DUPLICATES, true),
     },
     demoMode: parseBoolEnv(process.env.DEMO_MODE, false),
+    demoDbBackupPath: process.env.DEMO_DB_BACKUP_PATH,
     ollama: {
       host: process.env.OLLAMA_HOST,
       model: process.env.OLLAMA_MODEL,
