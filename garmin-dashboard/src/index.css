@@ -118,7 +118,7 @@
      genuinely accent-tinted rather than a flat gray regardless of accent —
      an 8%/9% accent concentration barely registers against a near-white
      --bg/--card-bg the way it does against a near-black one. */
-  --ambient-accent-mix: 8%;
+  --ambient-accent-mix: 3%;
   --ambient-dark-mix:   30%;
   --card-accent-mix:    9%;
   --card-dark-mix:      12%;
@@ -230,7 +230,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --accent-blue:    #3a8ef5;
   --accent-red:     #EF4444;
   --accent-orange:  #f59e0b;
-  --ambient-accent-mix: 8%;  --ambient-dark-mix: 30%;
+  --ambient-accent-mix: 3%;  --ambient-dark-mix: 30%;
   --card-accent-mix:    9%;  --card-dark-mix:    12%;
   color-scheme: dark;
 }
@@ -251,7 +251,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --accent-blue:    #3a8ef5;
   --accent-red:     #EF4444;
   --accent-orange:  #d97706;
-  --ambient-accent-mix: 8%;  --ambient-dark-mix: 30%;
+  --ambient-accent-mix: 3%;  --ambient-dark-mix: 30%;
   --card-accent-mix:    9%;  --card-dark-mix:    12%;
   color-scheme: dark;
 }
@@ -277,7 +277,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
      actually reads at all. The far-corner (black) mix stays roughly in the
      same range as dark's — it's the near-corner accent stop that was doing
      almost nothing before. */
-  --ambient-accent-mix: 22%; --ambient-dark-mix: 26%;
+  --ambient-accent-mix: 8%; --ambient-dark-mix: 26%;
   --card-accent-mix:    20%; --card-dark-mix:    14%;
   color-scheme: light;
 }
@@ -298,7 +298,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --accent-blue:    #2f6fe0;
   --accent-red:     #D14343;
   --accent-orange:  #b45309;
-  --ambient-accent-mix: 22%; --ambient-dark-mix: 26%;
+  --ambient-accent-mix: 8%; --ambient-dark-mix: 26%;
   --card-accent-mix:    20%; --card-dark-mix:    14%;
   color-scheme: light;
 }
@@ -1316,10 +1316,10 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: var(--bg-image, radial-gradient(135% 135% at 0% 0%,
+  background: var(--bg-image, radial-gradient(160% 160% at 0% 0%,
   color-mix(in srgb, var(--accent) var(--ambient-accent-mix), var(--bg)) 0%,
-  var(--bg) 46%,
-  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 100%));
+  var(--bg) 35%,
+  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 50%));
   background-size: cover;
   background-position: center;
   animation: hra-atmosphere-shimmer 12s ease-in-out infinite;

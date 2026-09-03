@@ -283,7 +283,7 @@ export function SplashScreen() {
           below it IS translated copy. */}
       <div className="hra-splash-brand">
         <p className="hra-splash-brand-title">Runs Free</p>
-        <p className="hra-splash-brand-tagline">{t("splash.brandTagline", "Your running. Just what matters.")}</p>
+        <p className="hra-splash-brand-tagline">{t("splash.brandTagline", "Your running. Just what matters, lit by your effort")}</p>
       </div>
       <div className="hra-splash-copy text-display hra-text-primary text-center max-w-2xl">
         <p>{t("splash.copy1", "Your running app.")}</p>
