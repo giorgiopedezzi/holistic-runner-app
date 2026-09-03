@@ -277,6 +277,14 @@ export function SplashScreen() {
 
   return (
     <div className="hra-splash-layer hra-splash-backdrop fixed inset-0 flex flex-col items-center justify-center gap-10 p-6">
+      {/* Brand lockup — upper-left, not glued to the corner (direct
+          feedback: the splash had no "Runs Free" identity on it). Static,
+          same not-translated role App.tsx's sidebar brand has; the tagline
+          below it IS translated copy. */}
+      <div className="hra-splash-brand">
+        <p className="hra-splash-brand-title">Runs Free</p>
+        <p className="hra-splash-brand-tagline">{t("splash.brandTagline", "Your running. Just what matters.")}</p>
+      </div>
       <div className="hra-splash-copy text-display hra-text-primary text-center max-w-2xl">
         <p>{t("splash.copy1", "Your running app.")}</p>
         <p>{t("splash.copy2", "What you need. Just what you need, no noise.")}</p>

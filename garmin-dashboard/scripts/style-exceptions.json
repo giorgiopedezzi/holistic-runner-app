@@ -645,6 +645,18 @@
       "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
     },
     {
+      "file": "src/components/SettingsTab.tsx",
+      "symbol": "BackgroundSwatch",
+      "category": "custom-property-style",
+      "element": "div",
+      "attribute": "style",
+      "properties": [
+        "--swatch-bg"
+      ],
+      "count": 1,
+      "rationale": "A bundled background preset's own runtime CSS gradient value crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
       "file": "src/components/ui/Select.tsx",
       "symbol": "Select",
       "category": "custom-property-style",

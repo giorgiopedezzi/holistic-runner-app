@@ -2,12 +2,13 @@
  * SettingsTab.tsx
  * Global app settings, persisted server-side (this app deliberately avoids
  * localStorage — see CLAUDE.md): outlier-detection thresholds used by
- * ActivityModal.tsx's chart, and appearance (theme + automatic ambient
- * glow — the earlier per-user background picture picker was removed in the
- * 2026-08-16 correction pass, see frontend.md's Appearance section).
+ * ActivityModal.tsx's chart, and appearance (theme, palette, and a
+ * background picker — bundled preset, custom upload, or the automatic
+ * ambient glow default; see BackgroundPicker's own comment for why it's back
+ * after the 2026-08-16 correction pass had removed it).
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
@@ -16,6 +17,7 @@ import { THEME_NAMES, DATE_FORMAT_OPTIONS, PALETTE_NAMES } from "@/types/api";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
 import { useUrlState } from "@/hooks/useUrlState";
+import { BUNDLED_BACKGROUNDS, BUNDLED_BACKGROUND_ORDER } from "@/utils/backgrounds";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
 // self-converting fmtPace — because outlier_min_speed_kmh is a technical tuning
 // parameter always stored/labeled in km/h regardless of the app's unit system,
@@ -157,6 +159,102 @@ export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
           onClick={() => appearance.setPalette?.(p)}
         />
       ))}
+    </div>
+  );
+}
+
+// Background picker — re-introduced per explicit product feedback,
+// reversing part of the 2026-08-16 correction pass that removed it in favor
+// of the automatic ambient glow alone (see index.css's body::before). The
+// backend (Settings.background_kind/background_value, PUT .../background,
+// POST .../background/upload) and api/client.ts's setBackground/
+// uploadBackground/backgroundImageUrl were never removed — this wires an
+// already-live backend capability back into the UI, not new plumbing.
+// "None" restores the automatic ambient glow (useAppearance.ts's
+// applyBackground clears --bg-image, which falls back to it). Same swatch
+// shell as Theme/Palette (.hra-theme-swatch) but its own preview/selected
+// styling (.hra-bg-swatch*, index.css) — see that CSS's own comment for why.
+function BackgroundSwatch({ previewCss, label, selected, onClick }: {
+  previewCss?: string; label: string; selected: boolean; onClick: () => void;
+}) {
+  return (
+    <button className="hra-lift hra-theme-swatch hra-bg-swatch" data-selected={selected} onClick={onClick}>
+      <div
+        className="hra-bg-swatch-preview"
+        style={previewCss ? ({ "--swatch-bg": previewCss } as CSSProperties) : undefined}
+      />
+      <div className="hra-theme-swatch-label">{label}</div>
+      {selected && <div className="hra-theme-swatch-badge">✓</div>}
+    </button>
+  );
+}
+
+const BACKGROUND_PRESET_LABEL: Record<string, string> = {
+  aurora: "Aurora", sunset: "Sunset", ocean: "Ocean", midnight: "Midnight",
+};
+
+export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) {
+  const { t } = useTranslation();
+  const kind = appearance.settings?.background_kind ?? "none";
+  const value = appearance.settings?.background_value;
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function pick(nextKind: "none" | "bundled", presetId?: string) {
+    setError(null);
+    try {
+      await appearance.setBackground?.(nextKind, presetId);
+    } catch {
+      setError(t("settings.background.setFailed", "Couldn't update the background."));
+    }
+  }
+
+  async function handleUpload(file: File) {
+    setError(null);
+    setUploading(true);
+    try {
+      await appearance.uploadBackground?.(file);
+    } catch {
+      setError(t("settings.background.uploadFailed", "Upload failed — try a smaller image or a different format."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="hra-chip-row gap-2.5 mb-2.5">
+        <BackgroundSwatch
+          label={t("settings.background.none", "None")}
+          selected={kind === "none"}
+          onClick={() => pick("none")}
+        />
+        {BUNDLED_BACKGROUND_ORDER.map(id => {
+          const preset = BUNDLED_BACKGROUNDS[id];
+          return (
+            <BackgroundSwatch
+              key={id}
+              previewCss={preset.css}
+              label={t(`settings.background.preset.${id}`, BACKGROUND_PRESET_LABEL[id] ?? preset.label)}
+              selected={kind === "bundled" && value === id}
+              onClick={() => pick("bundled", id)}
+            />
+          );
+        })}
+      </div>
+      <div className="hra-row-wrap items-center gap-2.5">
+        <label className="hra-btn cursor-pointer">
+          {uploading ? t("settings.savingEllipsis", "Saving…") : t("settings.background.upload", "Upload image…")}
+          <input
+            type="file" accept="image/*" className="hidden" disabled={uploading}
+            onChange={e => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
+          />
+        </label>
+        {kind === "custom" && (
+          <span className="hra-text-muted text-meta">{t("settings.background.customActive", "Custom image active")}</span>
+        )}
+      </div>
+      {error && <ErrorBanner message={error} />}
     </div>
   );
 }
@@ -382,26 +480,26 @@ export function SettingsTab({ appearance }: Props) {
 
   return (
     <div>
-      {/* Background picture picker removed (2026-08-16 correction pass) —
-          replaced by the app-wide automatic ambient glow layer (index.css's
-          body::before: two radial accent/accent-glow washes over the theme
-          base), which needs no per-user picking. See frontend.md's
-          Appearance section.
-          Two stacked rows (not the earlier 2-column grid, and no separate
-          accent row any more — each palette bakes its own fixed accent in,
-          see PalettePicker), then the live chrome preview strip, each
-          full-width so the row itself reads as one group rather than two
-          side-by-side halves. */}
+      {/* Background picker re-introduced per explicit product feedback (see
+          BackgroundPicker's own comment) — a third stacked row, same
+          full-width-group shape as Theme/Palette, then the live chrome
+          preview strip. */}
       <AccordionCard title={t("settings.appearance.title", "Appearance")} expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
         <div className="mb-5">
           <div className="hra-text-secondary text-meta mb-2.5" >{t("settings.appearance.themeLabel", "Theme")}</div>
           <ThemePicker appearance={appearance} />
         </div>
-        <div>
+        <div className="mb-5">
           <div className="hra-text-secondary text-meta mb-2.5" >
             {t("settings.appearance.paletteDescription", "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.")}
           </div>
           <PalettePicker appearance={appearance} />
+        </div>
+        <div>
+          <div className="hra-text-secondary text-meta mb-2.5" >
+            {t("settings.appearance.backgroundDescription", "Background — a bundled preset, or your own uploaded image, behind the app in place of the automatic ambient glow.")}
+          </div>
+          <BackgroundPicker appearance={appearance} />
         </div>
         <ChromePreviewStrip />
       </AccordionCard>

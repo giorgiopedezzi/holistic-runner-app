@@ -43,11 +43,13 @@ export function AgendaTab({ onNavigateToPlans }: Props) {
   const instance = state.data;
   if (instance == null) {
     return (
-      <Empty
-        message={t("agenda.emptyLine1", "There is no active plan today.")}
-        emphasis={t("agenda.emptyLine2", "Run free. Or rest. Be happy.")}
-        action={{ label: t("agenda.viewPlans", "View race plans"), onClick: onNavigateToPlans }}
-      />
+      <div className="hra-agenda-empty-center">
+        <Empty
+          message={t("agenda.emptyLine1", "There is no active plan today.")}
+          emphasis={t("agenda.emptyLine2", "Run free. Or rest. Be happy.")}
+          action={{ label: t("agenda.viewPlans", "View race plans"), onClick: onNavigateToPlans }}
+        />
+      </div>
     );
   }
 

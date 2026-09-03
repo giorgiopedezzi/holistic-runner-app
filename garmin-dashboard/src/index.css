@@ -1160,6 +1160,20 @@ body {
   display: flex; align-items: center; justify-content: center; font-size: var(--text-meta); font-weight: var(--text-data--font-weight); line-height: 1;
 }
 
+/* Background picker swatches (SettingsTab's BackgroundPicker) — reuse the
+   .hra-theme-swatch shell (border/selected/label/badge sizing) but NOT its
+   preview mechanism: Theme/Palette preview a fixed small enum of real
+   look-alikes via data-theme-preview/data-palette-preview (--preview-accent
+   above), whereas a background preset's color is a genuinely per-instance
+   runtime value (BUNDLED_BACKGROUNDS' own gradient string) with no such
+   enum — hence the --swatch-bg custom-property hook instead, and a plain
+   --accent selected/badge color here (no "preview a hypothetical theme"
+   need). */
+.hra-bg-swatch-preview { background: var(--swatch-bg, var(--bg-surface)); padding: 16px 10px; }
+.hra-bg-swatch[data-selected="true"] { border-color: var(--accent); }
+.hra-bg-swatch[data-selected="true"] .hra-theme-swatch-label { color: var(--accent); }
+.hra-bg-swatch .hra-theme-swatch-badge { background: var(--accent); }
+
 /* Chart hover-highlight (dashboard design-system rework, "hover flash
    effect" — but as a smooth highlight TRANSITION, never a literal flash).
    Two CSS-only overlay layers sit on top of the chart's plot area, each
@@ -1273,14 +1287,15 @@ body {
   .hra-loading-bar { animation: none !important; left: 0; width: 100%; opacity: 0.5; }
 }
 
-/* Automatic ambient (corrected 2026-08-16, then again 2026-08-17 — replaces
-   the earlier per-user background-picture picker entirely: no setting, no
-   localStorage, nothing to persist). Single-hue radial ramp per the approved
-   soft-ambient render: lighter at the top-left corner, darker toward the
-   bottom-right, ONE accent hue throughout — no second independent color
-   (the brief 2026-08-16 two-glow accent+cyan version was replaced the next
-   day). Light end = --accent kissed into --bg at --ambient-accent-mix; dark
-   end = --bg mixed toward black at --ambient-dark-mix — same two-stop
+/* Automatic ambient (corrected 2026-08-16, then again 2026-08-17), now the
+   DEFAULT rather than the only option (re-introduced per explicit product
+   feedback — a per-user background picker is back in Settings › Appearance,
+   useAppearance.ts's applyBackground). Single-hue radial ramp per the
+   approved soft-ambient render: lighter at the top-left corner, darker
+   toward the bottom-right, ONE accent hue throughout — no second independent
+   color (the brief 2026-08-16 two-glow accent+cyan version was replaced the
+   next day). Light end = --accent kissed into --bg at --ambient-accent-mix;
+   dark end = --bg mixed toward black at --ambient-dark-mix — same two-stop
    recipe as .card's own radial (--card-accent-mix/--card-dark-mix), just
    page-sized. Both mix strengths are per-theme custom properties (:root),
    not fixed percentages — light theme's are set much higher than dark's,
@@ -1288,14 +1303,18 @@ body {
    near-black --bg/--card-bg is nearly invisible against a near-white one.
    Follows accent + theme automatically via var(). Cards stay ~80% opaque on
    top, so the ramp shows through the page's margins and, faintly, through
-   the cards themselves (glass, not solid). */
+   the cards themselves (glass, not solid). This whole gradient is now only
+   the FALLBACK value of --bg-image (unset by default) — a bundled preset or
+   uploaded photo sets --bg-image directly and this never renders while one
+   is active. */
 /* Atmosphere shimmer (dashboard design-system rework) — a very low-frequency
    opacity breathe on the ambient glow ONLY, never on data colors: "Gradient
    = DATA, Animation = ATMOSPHERE." 12s, ease-in-out, a small ±8% opacity
    swing (0.92↔1) — deliberately understated; this is meant to be felt more
    than seen. Graphite disables it outright below (its own comment explains
    why) rather than just reducing it further, per the stated preference for
-   that theme specifically. */
+   that theme specifically. A real bundled/custom background (data-background
+   below) disables it too — a fixed picture, not a color-cycling wash. */
 @keyframes hra-atmosphere-shimmer {
   0%, 100% { opacity: 0.92; }
   50%      { opacity: 1; }
@@ -1306,11 +1325,17 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(135% 135% at 0% 0%,
+  background: var(--bg-image, radial-gradient(135% 135% at 0% 0%,
   color-mix(in srgb, var(--accent) var(--ambient-accent-mix), var(--bg)) 0%,
   var(--bg) 46%,
-  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 100%);
+  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 100%));
+  background-size: cover;
+  background-position: center;
   animation: hra-atmosphere-shimmer 12s ease-in-out infinite;
+}
+:root[data-background="bundled"] body::before,
+:root[data-background="custom"]  body::before {
+  animation: none;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -1810,6 +1835,14 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    scrim like the modal one above, since it gates the whole app rather than
    floating over visible content). */
 .hra-splash-backdrop { background: var(--bg); }
+/* Brand lockup, upper-left of the splash (HRA-223 follow-up, direct
+   feedback: the splash had no "Runs Free" identity on it at all). Absolutely
+   positioned so it sits apart from the centered copy/animation column below
+   it rather than competing with it for the same flex flow; padded off both
+   edges ("not glued") rather than flush to the corner. */
+.hra-splash-brand { position: absolute; top: 32px; left: 32px; }
+.hra-splash-brand-title { font-size: var(--text-display); font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); margin: 0; }
+.hra-splash-brand-tagline { font-size: var(--text-heading); font-style: italic; color: var(--text-secondary); margin: 4px 0 0; }
 /* Splash copy's entrance (HRA-223 amendment) — a single quiet fade + rise on
    mount, not a looping/attention-grabbing effect: the splash is on screen
    for the animation's own 10s run, so a "simple but nice" one-shot beat is
@@ -2035,6 +2068,15 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 24px 24px 48px;
 }
 .hra-app-main > .hra-section-title:first-child { margin-top: 0; }
+/* AgendaTab's "no active plan" empty state (direct feedback: center it in
+   the screen rather than reading as a stray top-of-page line). 72px
+   approximates .hra-app-main's own top+bottom padding (24+48 above), so the
+   centering is against the visible content area's height, not the raw
+   viewport (which would ignore that padding and sit slightly low). Scoped to
+   this one call site, not Empty.tsx itself — every other <Empty/> usage
+   (an in-card/in-table "no data" line) stays exactly where it renders in the
+   surrounding flow. */
+.hra-agenda-empty-center { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 72px); }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }
 .hra-section-gap-top { margin-top: var(--section-gap); }

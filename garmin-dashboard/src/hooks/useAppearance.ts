@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef } from "react";
 import { api } from "@/api/client";
-import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette, StoredPalette } from "@/types/api";
+import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette, StoredPalette, BackgroundKind } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { setResolvedTheme } from "@/utils/theme";
 import { setDateFormatSystem } from "@/utils/dateFormat";
 import { useSettings } from "@/hooks/useSettings";
+import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
 import i18next, { detectLanguageFromLocale } from "@/i18n";
 
 // 'auto' resolves via the OS's prefers-color-scheme — the one appearance
@@ -40,18 +41,40 @@ function resolvePalette(stored: StoredPalette, theme: Theme): Palette {
   return theme === "dark" ? "graphite" : "warm";
 }
 
+// Re-introduces a per-user background image (reverses part of the 2026-08-16
+// correction pass, per explicit product feedback) — sets --bg-image (read by
+// index.css's body::before, falling back to the automatic ambient gradient
+// when unset) and a data-background attribute (switches off the gradient's
+// own shimmer animation for a real bundled/custom picture, see index.css).
+// "custom" wraps the streamed image URL in url(...); "bundled" uses the
+// preset's own CSS gradient value directly; "none" (or an unrecognized
+// bundled id) clears both so the default ambient glow shows through.
+function applyBackground(settings: Settings) {
+  const root = document.documentElement;
+  if (settings.background_kind === "bundled" && settings.background_value) {
+    const preset = BUNDLED_BACKGROUNDS[settings.background_value];
+    if (preset) {
+      root.style.setProperty("--bg-image", preset.css);
+      root.setAttribute("data-background", "bundled");
+      return;
+    }
+  }
+  if (settings.background_kind === "custom" && settings.background_value) {
+    root.style.setProperty("--bg-image", `url("${api.settings.backgroundImageUrl(settings.background_value)}")`);
+    root.setAttribute("data-background", "custom");
+    return;
+  }
+  root.style.removeProperty("--bg-image");
+  root.removeAttribute("data-background");
+}
+
 // Applies theme + unit system straight to the document/module state — a
 // data-theme attribute (matched by index.css's [data-theme="..."] blocks)
 // and utils/units.ts's module-level unit system. Called both on initial
 // load and after every change, so everything always mirrors the persisted
 // setting (this app has no localStorage, so there's no earlier client-side
 // value to reconcile with — the backend is the only source of truth, 'auto'
-// aside). No longer touches a background image — the page background is
-// index.css's automatic ambient glow (body::before), not a per-user
-// picture (2026-08-16 correction pass, see frontend.md's Appearance
-// section); `Settings.background_kind`/`background_value` still exist on
-// the type/backend (an API-contract change is Epic HRA-36's job, not this
-// correction's) but nothing here reads them anymore.
+// aside).
 function applyToDocument(settings: Settings) {
   const theme = resolveTheme(settings.theme);
   document.documentElement.setAttribute("data-theme", theme);
@@ -62,6 +85,7 @@ function applyToDocument(settings: Settings) {
   // above (defaults to 'auto' server-side) — see that function's own
   // comment.
   document.documentElement.setAttribute("data-palette", resolvePalette(settings.palette, theme));
+  applyBackground(settings);
 
   // --accent/--on-accent are no longer set from JS — each
   // [data-theme][data-palette] block in index.css defines its own fixed
@@ -113,6 +137,15 @@ export interface AppearanceActions {
   // are — keeps the pre-existing hand-written AppearanceApi stub
   // (SettingsTab.pickers.test.tsx) valid without modification.
   setPalette?:      (palette: Palette) => Promise<void>;
+  // Optional for the same reason setAccentColor/setDateFormat/setLanguage/
+  // setPalette are — keeps the pre-existing hand-written AppearanceApi stub
+  // (SettingsTab.pickers.test.tsx) valid without modification. `value` is
+  // the bundled preset id; omit it (or pass "none") to clear the background.
+  setBackground?:   (kind: BackgroundKind, value?: string) => Promise<void>;
+  // Optional for the same reason setBackground is. Separate from
+  // setBackground since it POSTs raw file bytes, not a JSON body — see
+  // api/client.ts's uploadBackground.
+  uploadBackground?: (file: File) => Promise<void>;
 }
 export interface AppearanceMeta {
   resolvedTheme:       Theme | null;
@@ -207,6 +240,16 @@ export function useAppearance(): AppearanceApi {
     update(updated);
   }, [update]);
 
+  const setBackground = useCallback(async (kind: BackgroundKind, value?: string) => {
+    const updated = await api.settings.setBackground(kind, value);
+    update(updated);
+  }, [update]);
+
+  const uploadBackground = useCallback(async (file: File) => {
+    const updated = await api.settings.uploadBackground(file);
+    update(updated);
+  }, [update]);
+
   return {
     settings,
     setTheme,
@@ -215,6 +258,8 @@ export function useAppearance(): AppearanceApi {
     setDateFormat,
     setLanguage,
     setPalette,
+    setBackground,
+    uploadBackground,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
     resolvedLanguage: settings ? resolveLanguage(settings.language) : null,
