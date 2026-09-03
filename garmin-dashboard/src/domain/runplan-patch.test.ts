@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  recomposeDayLine, replaceSegmentInDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
+  findSectionSpan, findWeekSpan, recomposeDayLine, replaceSegmentInDayLine, replaceSpan, replaceWithinSpan,
+  serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
 } from "./runplan-patch";
 
 describe("splitNote", () => {
@@ -156,6 +157,68 @@ describe("multi-section/week/day fixture — patches touch only the intended lin
     const changedLines = original.split("\n").map((line, i) => [line, result.source.split("\n")[i]] as const)
       .filter(([before, after]) => before !== after);
     expect(changedLines).toEqual([["D1: 8km @ RG", "D1: 10km @ RG"]]);
+  });
+
+  it("editing a day whose text is duplicated in another week no longer looks ambiguous once scoped to its own week", () => {
+    // Both week 1 and week 2 have an identical "D1: 6km @ RG" line here —
+    // a whole-document replaceSpan would (correctly, on its own terms)
+    // refuse this as ambiguous, which is exactly the false-positive
+    // findWeekSpan/replaceWithinSpan exist to avoid.
+    const dup = [
+      `SECTION "Base" WEEKS 1-2`,
+      "WEEK 1",
+      "D1: 6km @ RG",
+      "WEEK 2",
+      "D1: 6km @ RG",
+    ].join("\n");
+    const sections = [{
+      raw_dsl: `SECTION "Base" WEEKS 1-2`,
+      weeks: [
+        { raw_dsl: "WEEK 1", days: [{ dsl: "D1: 6km @ RG" }] },
+        { raw_dsl: "WEEK 2", days: [{ dsl: "D1: 6km @ RG" }] },
+      ],
+    }];
+
+    expect(replaceSpan(dup, "D1: 6km @ RG", "D1: 8km @ RG")).toEqual({ ok: false, reason: "ambiguous" });
+
+    const week2Span = findWeekSpan(dup, sections, 0, 1);
+    const result = replaceWithinSpan(dup, week2Span, "D1: 6km @ RG", "D1: 8km @ RG");
+    expect(result).toEqual({
+      ok: true,
+      source: [`SECTION "Base" WEEKS 1-2`, "WEEK 1", "D1: 6km @ RG", "WEEK 2", "D1: 8km @ RG"].join("\n"),
+    });
+  });
+
+  it("editing a week header whose text is duplicated in another section no longer looks ambiguous once scoped to its own section", () => {
+    // Both sections restart week numbering at "WEEK 1" here.
+    const dup = [
+      `SECTION "Base" WEEKS 1-2`,
+      "WEEK 1",
+      "D1: 5km @ RG",
+      `SECTION "Peak" WEEKS 3-4`,
+      "WEEK 1",
+      "D1: 8km @ RG",
+    ].join("\n");
+    const sections = [
+      { raw_dsl: `SECTION "Base" WEEKS 1-2`, weeks: [{ raw_dsl: "WEEK 1", days: [] }] },
+      { raw_dsl: `SECTION "Peak" WEEKS 3-4`, weeks: [{ raw_dsl: "WEEK 1", days: [] }] },
+    ];
+
+    expect(replaceSpan(dup, "WEEK 1", "WEEK 1 # cutback")).toEqual({ ok: false, reason: "ambiguous" });
+
+    const secondSectionSpan = findSectionSpan(dup, sections, 1);
+    const result = replaceWithinSpan(dup, secondSectionSpan, "WEEK 1", "WEEK 1 # cutback");
+    expect(result).toEqual({
+      ok: true,
+      source: [
+        `SECTION "Base" WEEKS 1-2`, "WEEK 1", "D1: 5km @ RG",
+        `SECTION "Peak" WEEKS 3-4`, "WEEK 1 # cutback", "D1: 8km @ RG",
+      ].join("\n"),
+    });
+  });
+
+  it("replaceWithinSpan falls back to a whole-document replaceSpan when the span is null", () => {
+    expect(replaceWithinSpan(original, null, "WEEK 2", "WEEK 2 # cutback")).toEqual(replaceSpan(original, "WEEK 2", "WEEK 2 # cutback"));
   });
 
   it("chained edits to the same section (name, then note) each touch only their own line, applied in sequence", () => {

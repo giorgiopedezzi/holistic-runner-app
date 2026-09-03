@@ -32,7 +32,7 @@ import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui
 import { TrainingPlanAccordion, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
-import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
+import { findSectionSpan, findWeekSpan, recomposeDayLine, replaceSpan, replaceWithinSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
 import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
@@ -77,6 +77,12 @@ function fillAiPromptTemplate(
     .split("{{EVENT_NAME_OPTIONAL}}").join(eventName)
     .split("{{UNIT_OPTIONAL}}").join(unit);
 }
+
+// The prompt's own <training_plan> placeholder, used verbatim in place of
+// pasted text when the user intends to attach the source document itself to
+// the AI conversation instead — the AI is expected to read the attached file
+// rather than the prompt body for the actual plan content.
+const ATTACHMENT_PLACEHOLDER = "use the attached document";
 
 // HRA-120: event is now an explicit, required template field (replacing the
 // old DSL-text EVENT line); distance_m is required only for "custom".
@@ -296,6 +302,21 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (genError) setDslExpanded(true);
   }, [genError]);
 
+  // Warn before a refresh/tab close discards unsaved edits — either the
+  // active row's own live fields (isEditorDirty) or any other row's stashed
+  // draft. Re-registered every render (no dep array) since isEditorDirty
+  // reads several pieces of state; the listener itself is cheap to attach.
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (Object.keys(drafts).length > 0 || (activeKey != null && isEditorDirty())) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  });
+
   // HRA-140: whether the currently-active row's live fields differ from its
   // own last-saved/loaded baseline — the single source of truth for both
   // the Restore confirm gate (Ask #3) and what gets stashed on collapse
@@ -486,6 +507,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // against an LLM — this app never calls an LLM API itself.
   function onGeneratePrompt() {
     setGeneratedPrompt(fillAiPromptTemplate(originalText, language, event, name, distanceUnit));
+    setPromptExpanded(true);
+  }
+
+  // Same prompt, but with the <training_plan> body replaced by a fixed
+  // placeholder — for when the source is a document the user will attach
+  // directly to the AI conversation rather than paste as text. Never needs
+  // Original text filled in, since the AI is meant to read the attachment.
+  function onGeneratePromptForAttachment() {
+    setGeneratedPrompt(fillAiPromptTemplate(ATTACHMENT_PLACEHOLDER, language, event, name, distanceUnit));
+    setPromptExpanded(true);
   }
 
   async function onCopyPrompt() {
@@ -562,7 +593,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       try { newRawDsl = serializeWeekHeader(week.raw_dsl, patch); } catch (e) {
         setPatchError(e instanceof Error ? e.message : String(e)); return prev;
       }
-      const result = replaceSpan(prev.dslSource, week.raw_dsl, newRawDsl);
+      // Scoped to the enclosing section — plans commonly restart week
+      // numbering per section, so an identical "WEEK 1" header can recur
+      // verbatim elsewhere in the same dsl_source (see runplan-patch.ts's
+      // findSectionSpan comment).
+      const sectionSpan = findSectionSpan(prev.dslSource, prev.sections, sectionIndex);
+      const result = replaceWithinSpan(prev.dslSource, sectionSpan, week.raw_dsl, newRawDsl);
       if (!result.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
       setLastPatchedLine(newRawDsl);
       setLastEditedRef({ kind: "week", sectionIndex, weekIndex });
@@ -581,7 +617,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       const week = section.weeks[weekIndex];
       const day = week.days[dayIndex];
       const newLine = recomposeDayLine(day.dsl, patch);
-      const result = replaceSpan(prev.dslSource, day.dsl, newLine);
+      // Scoped to the enclosing week — the same day line (e.g. a rest day
+      // or a repeated easy-run line) very commonly recurs verbatim across
+      // other weeks, which would otherwise make a whole-document search
+      // ambiguous for a perfectly legitimate edit (see runplan-patch.ts's
+      // findWeekSpan comment).
+      const weekSpan = findWeekSpan(prev.dslSource, prev.sections, sectionIndex, weekIndex);
+      const result = replaceWithinSpan(prev.dslSource, weekSpan, day.dsl, newLine);
       if (!result.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
       setLastPatchedLine(newLine);
       setLastEditedRef({ kind: "day", sectionIndex, weekIndex, dayIndex });
@@ -658,14 +700,20 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (isEditorDirty()) { setPendingRestoreConfirm(true); return; }
     doRestore();
   }
-  function doRestore() {
+  // HRA-?: restores the active row's fields to their last-saved/loaded
+  // baseline WITHOUT collapsing it — activeKey is deliberately never
+  // touched here, so whichever row was open stays open.
+  async function doRestore() {
     setPendingRestoreConfirm(false);
-    if (activeKey != null) {
-      const key = String(activeKey);
-      setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    if (activeKey == null) return;
+    const key = String(activeKey);
+    setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    if (activeKey === "new") {
+      resetEditorState();
+    } else {
+      const template = templates?.find(tpl => tpl.id === activeKey);
+      if (template) await startEdit(template);
     }
-    resetEditorState();
-    setActiveKey(null);
   }
   function cancelRestoreConfirm() { setPendingRestoreConfirm(false); }
 
@@ -692,11 +740,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   function rowStatusHint(key: RowKey) {
     if (isRowDirty(key)) {
       return (
-        <span
-          title={t("manage.planTemplates.unsavedChanges", "Unsaved changes")}
-          className="hra-text-warning inline-flex items-center"
-        >
-          <AlertTriangle size={14} />
+        <span className="inline-flex items-center gap-1">
+          <AlertTriangle size={14} className="hra-text-warning shrink-0" />
+          <span className="hra-text-secondary text-meta">{t("manage.planTemplates.unsavedChanges", "There are pending changes")}</span>
         </span>
       );
     }
@@ -823,7 +869,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             Event type — so nothing ever appears/disappears in this row. */}
         <div className="hra-plan-instance-section-gap flex items-start gap-2.5 flex-wrap">
           <label className="hra-template-name-field hra-text-secondary text-meta">
-            {t("manage.planTemplates.nameLabel", "Name")}
+            {t("manage.planTemplates.nameLabel", "Name")}<span className="hra-text-danger"> *</span>
             <input
               className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
               value={name}
@@ -832,7 +878,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </label>
 
           <label className="shrink-0 hra-text-secondary text-meta">
-            {t("manage.planTemplates.eventLabel", "Event type")}
+            {t("manage.planTemplates.eventLabel", "Event type")}<span className="hra-text-danger"> *</span>
             <div className="mt-1">
               <Select
                 value={event}
@@ -849,9 +895,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               picked (onEventChange above); readOnly/an inert toggle just mean
               it can be seen and selected/copied but not changed, unlike
               disabled which would also dim it. Only Custom makes both
-              writable. */}
+              writable. The required marker only applies while Custom is
+              selected (canSave only requires distanceValue in that case) —
+              for the four standard events, Distance is filled in
+              automatically and can't be left empty. */}
           <label className="shrink-0 hra-text-secondary text-meta">
-            {t("manage.planTemplates.distanceLabel", "Distance")}
+            {t("manage.planTemplates.distanceLabel", "Distance")}{isCustomEvent && <span className="hra-text-danger"> *</span>}
             <div className="flex gap-1.5 mt-1">
               <input
                 className="hra-template-distance-input hra-border-strong hra-bg-card hra-text-primary p-1.5"
@@ -866,6 +915,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               </div>
             </div>
           </label>
+        </div>
+        <div className="hra-text-muted hra-plan-instance-section-gap text-meta">
+          <span className="hra-text-danger">*</span> {t("manage.planInstances.requiredLegend", "required")}
         </div>
 
         {/* HRA-238: Plan text -> Conversion prompt -> Workout DSL authoring
@@ -920,7 +972,19 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 >
                   {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
                 </button>
+                <button
+                  className="hra-btn self-end"
+                  onClick={onGeneratePromptForAttachment}
+                >
+                  {t("manage.planTemplates.aiPrompt.generateForAttachmentButton", "Generate prompt for an attached document")}
+                </button>
               </div>
+              <p className="hra-text-secondary text-meta m-0">
+                {t(
+                  "manage.planTemplates.aiPrompt.attachmentHint",
+                  "Prefer attaching the original document instead of pasting text? Click \"Generate prompt for an attached document\" above, then upload both the generated prompt and the document to your preferred AI (e.g. Qwen3 8B works well).",
+                )}
+              </p>
             </div>
           </AccordionCard>
 

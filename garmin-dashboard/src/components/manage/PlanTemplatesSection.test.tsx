@@ -68,10 +68,7 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
 
     fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate full prompt" }));
-    // Conversion prompt itself is still collapsed at this point — expansion
-    // is only recomputed when the row (re)opens, never reactively — so open
-    // it by hand to confirm the prompt was actually generated.
-    fireEvent.click(pipelineHeader(/Conversion prompt/));
+    // Conversion prompt opens on its own once generated — no manual expand.
     const promptField = await screen.findByLabelText("Generated prompt") as HTMLTextAreaElement;
     expect(promptField.value).toContain("Week 1: 5km easy"); // jest-dom's toHaveValue doesn't accept asymmetric matchers
 
@@ -142,7 +139,7 @@ describe("PlanTemplatesSection — direct DSL path (AC2)", () => {
     // Save also needs Name + Event type (unchanged, pre-existing rules) —
     // neither lives inside the pipeline, so filling them doesn't touch
     // Plan text or Conversion prompt either.
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Direct DSL plan" } });
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "Direct DSL plan" } });
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(await screen.findByRole("option", { name: "5k" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
@@ -160,7 +157,7 @@ describe("PlanTemplatesSection — prompt generation preserves original text", (
     const textField = await screen.findByLabelText("Original text");
     fireEvent.change(textField, { target: { value: "Original plan text here" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate full prompt" }));
-    fireEvent.click(pipelineHeader(/Conversion prompt/)); // expand to inspect the result
+    // Conversion prompt opens on its own once generated — no manual expand needed.
 
     expect(textField).toHaveValue("Original plan text here");
     expect(await screen.findByLabelText("Generated prompt")).not.toHaveValue("");
@@ -294,7 +291,7 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     // off editor.dslSource (700ms), so just wait past that for it to settle.
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled(), { timeout: 2000 }); // no name yet
 
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "My Plan" } });
+    fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: "My Plan" } });
     // Event type is a custom Select (Radix), not a native <select> — pick it
     // via role. The not-ready `t()` stub in this harness renders each
     // option's raw EventType value ("5k"), not the real locale's "5K" —

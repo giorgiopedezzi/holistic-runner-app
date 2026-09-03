@@ -217,12 +217,12 @@ test("OTHER fallback: a line with no D<n>: pattern degrades to a real, reparseab
 
 // ── comments ─────────────────────────────────────────────────────────────
 
-test("trailing '# note' on a day line is preserved through raw_dsl and survives reparse", () => {
+test("trailing '# note' on a day line is stripped from raw_dsl and stored in notes, not duplicated in the DSL", () => {
   const day = parseDayEntry("D2: 5km @ RG # easy shakeout", ctx);
   assert.equal(day.notes, "easy shakeout");
+  assert.equal(day.raw_dsl, "D2: 5km @ RG"); // DSL stays clean — comment lives only in notes
   assert.equal(day.segments.length, 1);
   const reparsed = parseDayEntry(day.raw_dsl, ctx);
-  assert.equal(reparsed.notes, "easy shakeout");
   assert.deepEqual(reparsed.segments, day.segments);
 });
 

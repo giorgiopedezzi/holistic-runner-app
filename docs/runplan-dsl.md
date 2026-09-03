@@ -31,8 +31,10 @@ it — see `docs/schema.md`'s `plan_templates`/`plan_instances`/`plan_instance_d
 ## Grammar (line-based)
 A document is an optional `PLAN` header, then metadata lines (`NAME`/`EVENT`/`DISTANCE`/`GOAL`/
 `START`/`UNIT`/`OFFSET_UNIT`/`DEFAULT_REST`/`PACE`, only valid before the first `SECTION`/`WEEK`/
-`DAY` line; `EVENT_TYPE` is accepted as an alias for `EVENT`), then `SECTION "<name>" WEEKS <spec>`
-blocks (a default `{name:"Plan", week_spec:"*"}` section is created if none is declared), each
+`DAY` line; `EVENT_TYPE` is accepted as an alias for `EVENT`), then `SECTION "<name>" [WEEKS <spec>]`
+blocks (`WEEKS <spec>` is optional — `week_spec` defaults to `"*"` when omitted, and is purely
+descriptive metadata never consulted by `instantiate.ts`; a default `{name:"Plan", week_spec:"*"}`
+section is created if no `SECTION` line is declared at all), each
 containing `WEEK <n> [START <date>]` blocks, each containing `D<1-7><suffix?> [tag]?: <workout>`
 lines. Trailing `# note` is captured on `SECTION`/`WEEK`/`DAY` lines; full-line `#...` comments and
 blank lines are ignored everywhere.

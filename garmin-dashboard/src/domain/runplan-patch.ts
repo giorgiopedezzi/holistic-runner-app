@@ -9,7 +9,9 @@
 // returns the new line text; `replaceSpan` does the actual content-anchored
 // substitution, refusing to guess when the old text isn't found exactly once.
 
-const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))\s+WEEKS\s+(\S+)$/i;
+// WEEKS clause is optional (mirrors garmin-stats/src/domain/runplan/
+// parser.ts's own SECTION_RE) — a bare `SECTION "<name>"` is valid too.
+const SECTION_RE = /^SECTION\s+(?:"([^"]+)"|(\S+))(?:\s+WEEKS\s+(\S+))?$/i;
 const WEEK_RE = /^WEEK\s+(\d+)(?:\s+START\s+(\d{4}-\d{2}-\d{2}))?$/i;
 
 export function splitNote(line: string): { main: string; note?: string } {
@@ -19,8 +21,9 @@ export function splitNote(line: string): { main: string; note?: string } {
 }
 
 // Rebuilds a SECTION header line, preserving the original WEEKS spec exactly
-// (never editable in this Story — only name/note are). Always re-emits the
-// name quoted, even if the original used the grammar's bare-token
+// (never editable in this Story — only name/note are), or defaulting to "*"
+// when the original line omitted the WEEKS clause entirely. Always re-emits
+// the name quoted, even if the original used the grammar's bare-token
 // alternative — a deliberate, benign normalization: still valid per the
 // backend's own SECTION_RE, and safer once a name might later gain a space.
 export function serializeSectionHeader(currentRawDsl: string, patch: { name?: string; notes?: string }): string {
@@ -28,7 +31,7 @@ export function serializeSectionHeader(currentRawDsl: string, patch: { name?: st
   const m = SECTION_RE.exec(main);
   if (!m) throw new Error(`Cannot parse SECTION header to patch: ${currentRawDsl}`);
   const name = patch.name ?? (m[1] ?? m[2]);
-  const weekSpec = m[3];
+  const weekSpec = m[3] ?? "*";
   const newNote = patch.notes !== undefined ? patch.notes : note;
   return `SECTION "${name}" WEEKS ${weekSpec}${newNote ? ` # ${newNote}` : ""}`;
 }
@@ -113,4 +116,83 @@ export function replaceSpan(source: string, oldText: string, newText: string): R
   const second = source.indexOf(oldText, first + oldText.length);
   if (second !== -1) return { ok: false, reason: "ambiguous" };
   return { ok: true, source: source.slice(0, first) + newText + source.slice(first + oldText.length) };
+}
+
+export interface Span { start: number; end: number }
+
+// Training plans repeat the same lines a lot — the same rest day or easy-run
+// line across weeks, or the same "WEEK 1" header re-used verbatim in a later
+// section — so replaceSpan searching the WHOLE dsl_source flags a plainly
+// legitimate edit as "ambiguous" the moment the touched line's text happens
+// to recur outside the section/week actually being edited. findSectionSpan/
+// findWeekSpan narrow the search to just the enclosing section/week's own
+// slice of the document first, so a duplicate elsewhere in the plan never
+// collides with the one actually being patched.
+//
+// Sections/weeks are walked in the same left-to-right order they already
+// appear in the parsed tree, advancing a monotonic cursor after each one —
+// so even if two headers share identical text, each is matched against its
+// own occurrence in the document rather than always the first. Returns null
+// (caller falls back to a whole-document replaceSpan) if a header's text
+// can't be located at all — a genuinely stale/edited-elsewhere case that
+// still needs the original "not-found" refusal.
+export function findSectionSpan(dslSource: string, sections: { raw_dsl: string }[], sectionIndex: number): Span | null {
+  let cursor = 0;
+  let start = 0;
+  for (let i = 0; i <= sectionIndex; i++) {
+    const raw = sections[i].raw_dsl;
+    if (raw === "") { start = 0; continue; } // implicit default section (HRA-115) — no header line to find
+    const idx = dslSource.indexOf(raw, cursor);
+    if (idx === -1) return null;
+    if (i === sectionIndex) start = idx;
+    cursor = idx + raw.length;
+  }
+  let end = dslSource.length;
+  const next = sections[sectionIndex + 1];
+  if (next && next.raw_dsl !== "") {
+    const idx = dslSource.indexOf(next.raw_dsl, cursor);
+    if (idx !== -1) end = idx;
+  }
+  return { start, end };
+}
+
+export function findWeekSpan(
+  dslSource: string,
+  sections: { raw_dsl: string; weeks: { raw_dsl: string }[] }[],
+  sectionIndex: number,
+  weekIndex: number,
+): Span | null {
+  const sectionSpan = findSectionSpan(dslSource, sections, sectionIndex);
+  if (!sectionSpan) return null;
+  const weeks = sections[sectionIndex].weeks;
+  const slice = dslSource.slice(sectionSpan.start, sectionSpan.end);
+  let cursor = 0;
+  let start = 0;
+  for (let i = 0; i <= weekIndex; i++) {
+    const raw = weeks[i].raw_dsl;
+    if (raw === "") return null; // instance week with no header text — nothing to anchor on
+    const idx = slice.indexOf(raw, cursor);
+    if (idx === -1) return null;
+    if (i === weekIndex) start = idx;
+    cursor = idx + raw.length;
+  }
+  let end = slice.length;
+  const next = weeks[weekIndex + 1];
+  if (next && next.raw_dsl !== "") {
+    const idx = slice.indexOf(next.raw_dsl, cursor);
+    if (idx !== -1) end = idx;
+  }
+  return { start: sectionSpan.start + start, end: sectionSpan.start + end };
+}
+
+// Same content-anchored, single-occurrence contract as replaceSpan, but
+// scoped to `span` (from findSectionSpan/findWeekSpan) first — falls back to
+// a whole-document replaceSpan when span is null, so callers get the exact
+// prior behavior wherever the enclosing section/week couldn't be located.
+export function replaceWithinSpan(fullSource: string, span: Span | null, oldText: string, newText: string): ReplaceResult {
+  if (!span) return replaceSpan(fullSource, oldText, newText);
+  const region = fullSource.slice(span.start, span.end);
+  const result = replaceSpan(region, oldText, newText);
+  if (!result.ok) return result;
+  return { ok: true, source: fullSource.slice(0, span.start) + result.source + fullSource.slice(span.end) };
 }
