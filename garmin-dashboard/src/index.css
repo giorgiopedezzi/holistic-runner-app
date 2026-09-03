@@ -606,8 +606,16 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
    Background moves from a 10%-over-transparent wash (fine sitting quietly
    in its own cell) to a near-opaque tint mixed with --bg-card instead of
    transparent — floating over neighboring cells, the translucent version
-   let their content bleed through and read as a mess. */
-.hra-agenda-event-card:hover {
+   let their content bleed through and read as a mess.
+   Bug fix: the trigger is the STABLE .rbc-row-segment ancestor's own hover,
+   not the card's own `:hover` — the card moving `bottom: 0` -> `bottom: 10px`
+   on its own hover shifts its box out from under a cursor sitting near the
+   collapsed card's bottom edge, dropping the hover, snapping back to
+   `bottom: 0`, re-entering the cursor, and re-triggering — a flicker loop
+   reported whenever the pointer started close to the bottom of the cell.
+   .rbc-row-segment itself never moves or resizes, so hovering it stays
+   stable regardless of how the card inside it repositions. */
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-card {
   /* Follow-up: width now follows the real (unclamped) text instead of a
      fixed +-60px push — a fixed push overshot short text and, worse, on
      the LAST column pushed part of the card past the calendar's own right
@@ -630,11 +638,11 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 /* Follow-up: icon + DSL text (and the gauge row) center within the now-much-
    wider card instead of staying pinned to its original left edge — left-
    alignment made sense at the compact collapsed width, not the expanded one. */
-.hra-agenda-event-card:hover .hra-agenda-event-main-row,
-.hra-agenda-event-card:hover .hra-agenda-gauges {
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-main-row,
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-gauges {
   justify-content: center;
 }
-.hra-agenda-event-card:hover .hra-agenda-event-title { text-align: center; }
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-title { text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   .hra-agenda-event-card { transition: none; }
 }
@@ -652,7 +660,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   font-size: 11px; color: var(--text-primary); min-width: 0;
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
 }
-.hra-agenda-event-card:hover .hra-agenda-event-title { -webkit-line-clamp: unset; overflow: visible; }
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-title { -webkit-line-clamp: unset; overflow: visible; }
 .hra-agenda-event-title-line { display: block; }
 
 /* REST/TODO — muted text + icon, no card at all (AC2's "instead of flat
