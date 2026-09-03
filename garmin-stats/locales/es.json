@@ -18,6 +18,7 @@
   "dateRange.pickRace": "Elige una carrera…",
   "dateRange.noneOption": "— ninguno —",
   "dateRange.comparedTo": "Comparado con",
+  "dateRange.allAvailable": "Todos los datos disponibles",
   "overview.chartTooltip.pace": "ritmo",
   "overview.chartTooltip.hr": "FC",
   "overview.legend.current": "Actual",

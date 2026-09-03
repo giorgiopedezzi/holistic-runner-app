@@ -57,6 +57,21 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     WHERE pid.date = ? AND pid.workout_type = ?
     ORDER BY pi.created_at DESC
   `);
+  // HRA-248: "Your agenda"'s today-centered home view — the one APPROVED
+  // instance (approved_at IS NOT NULL) whose resolved days cover a given
+  // date. No workout_type filter, unlike findDaysByDateAndWorkoutTypeStmt
+  // above — a REST day is a real dated row too (HRA-124) and must resolve
+  // just as well as a workout day. Newest-instance-first on the (out of
+  // scope here, see the sibling overlap-detection Story) chance more than
+  // one approved instance's days cover the same date.
+  const findActiveInstanceIdForDateStmt = db.prepare(`
+    SELECT pi.id
+    FROM plan_instance_days pid
+    JOIN plan_instances pi ON pi.id = pid.instance_id
+    WHERE pid.date = ? AND pi.approved_at IS NOT NULL
+    ORDER BY pi.created_at DESC
+    LIMIT 1
+  `);
   const insertDay = db.prepare(`
     INSERT INTO plan_instance_days
       (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review)
@@ -92,6 +107,30 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   );
   const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
+  // HRA-249: the candidate's own resolved date range for the overlap check
+  // below — MIN/MAX over its days rather than a dedicated stored range,
+  // since plan_instance_days.date is already the source of truth. Text
+  // comparison on ISO YYYY-MM-DD strings sorts chronologically, so this
+  // (and overlappingApprovedStmt below) never needs a Date object and is
+  // immune to the timezone boundary defects a Date-based comparison risks.
+  const instanceDateRangeStmt = db.prepare(
+    "SELECT MIN(date) AS start_date, MAX(date) AS end_date FROM plan_instance_days WHERE instance_id = ?",
+  );
+  // HRA-249: every OTHER approved instance whose own [MIN(date), MAX(date)]
+  // range overlaps a given [start, end] inclusively — start/end-boundary,
+  // full containment either direction, and a shared boundary date all count
+  // (standard inclusive interval overlap: existing.end >= candidateStart AND
+  // existing.start <= candidateEnd). `pi.id != ?` excludes the candidate
+  // itself (re-activating/re-approving never conflicts with itself);
+  // `approved_at IS NOT NULL` excludes every not-yet-approved instance.
+  const overlappingApprovedStmt = db.prepare(`
+    SELECT pi.id, pi.name, MIN(pid.date) AS start_date, MAX(pid.date) AS end_date
+    FROM plan_instances pi
+    JOIN plan_instance_days pid ON pid.instance_id = pi.id
+    WHERE pi.approved_at IS NOT NULL AND pi.id != ?
+    GROUP BY pi.id
+    HAVING MAX(pid.date) >= ? AND MIN(pid.date) <= ?
+  `);
   const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
   // HRA-135: one statement per field, run conditionally in updateFields() —
   // same granular-primitive style as updateName/updateStartDateAndPaceOverrides
@@ -123,6 +162,8 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       findDaysBySectionAndWeekStmt.all(instanceId, sectionName, weekNumber) as unknown as PlanInstanceDayRow[],
     daysByDateAndWorkoutType: (date: string, workoutType: string): PlanInstanceDayWithInstance[] =>
       findDaysByDateAndWorkoutTypeStmt.all(date, workoutType) as unknown as PlanInstanceDayWithInstance[],
+    activeInstanceIdForDate: (date: string): number | undefined =>
+      (findActiveInstanceIdForDateStmt.get(date) as { id: number } | undefined)?.id,
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
       const info = insertInstance.run({
         $template_id: i.template_id, $start_date: i.start_date,
@@ -175,6 +216,12 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;
     },
+    dateRangeForInstance: (id: number): { start_date: string; end_date: string } | undefined => {
+      const row = instanceDateRangeStmt.get(id) as { start_date: string | null; end_date: string | null };
+      return row.start_date != null && row.end_date != null ? { start_date: row.start_date, end_date: row.end_date } : undefined;
+    },
+    overlappingApproved: (excludeId: number, startDate: string, endDate: string): { id: number; name: string | null; start_date: string; end_date: string }[] =>
+      overlappingApprovedStmt.all(excludeId, startDate, endDate) as unknown as { id: number; name: string | null; start_date: string; end_date: string }[],
     remove: (id: number) => { deleteInstanceStmt.run(id); },
   };
 }

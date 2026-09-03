@@ -5,7 +5,7 @@ import { api } from "@/api/client";
 import { Badge } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
-import { fmtPace, fmtDuration, fmtKm, fmtDate } from "@/utils/fmt";
+import { fmtPace, fmtDuration, fmtKm, fmtDate, fmtSource } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { ActivityTypePicker } from "./ActivityTypePicker";
@@ -34,6 +34,15 @@ interface ActivityRowProps {
   // always visible, not gated behind expanding a row first ("even better if
   // you have to delete several activities" — explicit feedback).
   onDelete: (id: number) => void;
+  // Fired with the freshly saved Activity whenever this row's own
+  // ActivityTypePicker renames/retypes it (HRA — "keep current data in sync,
+  // without the need to refresh it"). The picker's PUT response already
+  // carries the new activity_name/activity_type_id; the caller is expected
+  // to fold that straight into whatever list state `activity` came from
+  // (this row has no state of its own — see the comment further down)
+  // rather than the previous behavior of silently discarding it and leaving
+  // the row's own header showing the old name until the next full refetch.
+  onUpdate: (a: Activity) => void;
   // What to render below the row when `expanded` — ActivityDetailBody, ie.
   // caller-provided so this component stays presentational (no fetch of its
   // own). Ignored while collapsed.
@@ -64,7 +73,7 @@ interface ActivityRowProps {
 // taller. Column 2 (42fr): the type picker + Save/Rename + Delete — the one
 // interactive cluster. Column 3 (16fr): duration/HR/pace, right-aligned,
 // untouched, still last.
-export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, onDelete, expandedContent }: ActivityRowProps) {
+export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, onDelete, onUpdate, expandedContent }: ActivityRowProps) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
   const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
@@ -121,21 +130,21 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
           )}
           <span className="font-semibold">{fmtKm(a.distance_m)}</span>
           {a.source && (
-            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${a.source}`, { source: a.source })}</span>
+            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(a.source)}`, { source: fmtSource(a.source) })}</span>
           )}
         </div>
 
         {/* Column 2 (44%) — the type picker + Save/Rename + Delete, the
-            row's one interactive cluster. stopPropagation — otherwise a
-            click on the type picker's select/save or the Delete button
-            would ALSO fire the row's own expand/collapse onClick above. */}
-        <div className="hra-row-wrap gap-2 min-w-0" onClick={e => e.stopPropagation()}>
-          {/* onUpdate is a no-op: nothing else in this row's own UI depends
-              on activity_type_id (unlike ActivityDetailBody, which
-              re-renders its classification section from it) — the picker
-              already shows its own just-saved selection via its internal
-              state. */}
-          <ActivityTypePicker activity={a} onUpdate={() => {}}
+            row's one interactive cluster. stopPropagation on both click AND
+            keydown — otherwise a click on the type picker's select/save or
+            the Delete button would ALSO fire the row's own expand/collapse
+            onClick above, and (the keydown case) typing a space into the
+            rename popover's name input would bubble up to the row's own
+            onKeyDown, which treats " " as an activate key: it called
+            preventDefault() (eating the space character) and toggled the
+            row's expand/collapse on every space typed. */}
+        <div className="hra-row-wrap gap-2 min-w-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+          <ActivityTypePicker activity={a} onUpdate={onUpdate}
             selectWidth={TYPE_SELECT_WIDTH} actionWidth={ACTION_BUTTON_WIDTH} height={ACTION_CONTROL_HEIGHT} />
           {!confirmDelete ? (
             <button

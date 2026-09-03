@@ -10,7 +10,7 @@ import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
 import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
-import { fmtDuration, fmtElevation, fmtDate } from "@/utils/fmt";
+import { fmtDuration, fmtElevation, fmtDate, fmtSource } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
 import { detectPauses, computeHrRecovery } from "@/domain/pauses";
 import {
@@ -28,6 +28,15 @@ interface DetailBodyProps {
   activityId: number;
   onDelete: (id: number) => void;
   onClose?: () => void;
+  // Mirrors ActivityRow's own onUpdate (HRA — "keep current data in sync,
+  // without the need to refresh it"): fired alongside this component's own
+  // setActivity whenever its ActivityTypePicker/ClassificationCard save, so a
+  // caller embedding this inline (ActivitiesTab's accordion row,
+  // OverviewTab's linked-race row) can fold the fresh Activity into whatever
+  // list state it owns instead of that sibling staying stale until a
+  // refetch. Optional — the popup (ActivityModal) variant has no sibling
+  // list to sync.
+  onActivityUpdate?: (a: Activity) => void;
 }
 
 // Everything an activity's detail view actually shows — used both inside
@@ -35,9 +44,15 @@ interface DetailBodyProps {
 // (the "accordion" activity_detail_view setting). onClose being undefined
 // is what makes this render as a plain content block instead of a popup
 // with an × button.
-export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBodyProps) {
+export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUpdate }: DetailBodyProps) {
   const { t } = useTranslation();
   const [activity, setActivity] = useState<Activity | null>(null);
+  // Wraps setActivity for the picker/classification save paths specifically
+  // (not the initial fetch below, which has no sibling list to notify yet).
+  function applyActivityUpdate(a: Activity) {
+    setActivity(a);
+    onActivityUpdate?.(a);
+  }
   const [track,    setTrack]    = useState<TrackPoint[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [error,    setError]    = useState<string | null>(null);
@@ -248,10 +263,10 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
           )}
           <span className="hra-text-secondary text-label">{activity && fmtDate(activity.date_only)}</span>
           {activity?.source && (
-            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${activity.source}`, { source: activity.source })}</span>
+            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(activity.source)}`, { source: fmtSource(activity.source) })}</span>
           )}
           <div className="flex-1" />
-          {activity && <ActivityTypePicker activity={activity} onUpdate={setActivity} />}
+          {activity && <ActivityTypePicker activity={activity} onUpdate={applyActivityUpdate} />}
           {!confirmDelete ? (
             <button
               className="hra-btn"
@@ -325,7 +340,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose }: DetailBody
                     </div>
                   }
                 >
-                  <ClassificationCard activity={activity} onUpdate={setActivity} splitMeters={splitMeters} onSplitMetersChange={setSplitMeters} />
+                  <ClassificationCard activity={activity} onUpdate={applyActivityUpdate} splitMeters={splitMeters} onSplitMetersChange={setSplitMeters} />
                 </AccordionCard>
               );
             })()}

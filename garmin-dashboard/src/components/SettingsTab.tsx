@@ -2,9 +2,9 @@
  * SettingsTab.tsx
  * Global app settings, persisted server-side (this app deliberately avoids
  * localStorage — see CLAUDE.md): outlier-detection thresholds used by
- * ActivityModal.tsx's chart, and appearance (theme + automatic ambient
- * glow — the earlier per-user background picture picker was removed in the
- * 2026-08-16 correction pass, see frontend.md's Appearance section).
+ * ActivityModal.tsx's chart, and appearance (theme, palette, and an
+ * upload-only background picker; see BackgroundPicker's own comment for why
+ * it's back after the 2026-08-16 correction pass had removed it).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -157,6 +157,71 @@ export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
           onClick={() => appearance.setPalette?.(p)}
         />
       ))}
+    </div>
+  );
+}
+
+// Background picker — re-introduced per explicit product feedback,
+// reversing part of the 2026-08-16 correction pass that removed it in favor
+// of the automatic ambient glow alone (see index.css's body::before). The
+// backend (Settings.background_kind/background_value, PUT .../background,
+// POST .../background/upload) and api/client.ts's setBackground/
+// uploadBackground/backgroundImageUrl were never removed — this wires an
+// already-live backend capability back into the UI, not new plumbing.
+// Upload-only per explicit follow-up feedback (no bundled-preset swatches) —
+// "Remove background" (kind "none") restores the automatic ambient glow
+// (useAppearance.ts's applyBackground clears --bg-image, which falls back to
+// it). `background_kind` still supports "bundled" on the type/backend (an
+// existing row set that way before this simplification still renders
+// correctly — applyBackground's own bundled branch is untouched), there's
+// just no UI path left to choose one.
+export function BackgroundPicker({ appearance }: { appearance: AppearanceApi }) {
+  const { t } = useTranslation();
+  const kind = appearance.settings?.background_kind ?? "none";
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleUpload(file: File) {
+    setError(null);
+    setUploading(true);
+    try {
+      await appearance.uploadBackground?.(file);
+    } catch {
+      setError(t("settings.background.uploadFailed", "Upload failed — try a smaller image or a different format."));
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleRemove() {
+    setError(null);
+    try {
+      await appearance.setBackground?.("none");
+    } catch {
+      setError(t("settings.background.setFailed", "Couldn't update the background."));
+    }
+  }
+
+  return (
+    <div>
+      <div className="hra-row-wrap items-center gap-2.5">
+        <label className="hra-btn cursor-pointer">
+          {uploading ? t("settings.savingEllipsis", "Saving…") : t("settings.background.upload", "Upload image…")}
+          <input
+            type="file" accept="image/*" className="hidden" disabled={uploading}
+            onChange={e => { const file = e.target.files?.[0]; if (file) handleUpload(file); e.target.value = ""; }}
+          />
+        </label>
+        {kind === "custom" && (
+          <>
+            <span className="hra-text-muted text-meta">{t("settings.background.customActive", "Custom image active")}</span>
+            <button type="button" className="hra-btn" data-variant="outline" onClick={handleRemove}>
+              {t("settings.background.remove", "Remove background")}
+            </button>
+          </>
+        )}
+      </div>
+      {error && <ErrorBanner message={error} />}
     </div>
   );
 }
@@ -382,26 +447,26 @@ export function SettingsTab({ appearance }: Props) {
 
   return (
     <div>
-      {/* Background picture picker removed (2026-08-16 correction pass) —
-          replaced by the app-wide automatic ambient glow layer (index.css's
-          body::before: two radial accent/accent-glow washes over the theme
-          base), which needs no per-user picking. See frontend.md's
-          Appearance section.
-          Two stacked rows (not the earlier 2-column grid, and no separate
-          accent row any more — each palette bakes its own fixed accent in,
-          see PalettePicker), then the live chrome preview strip, each
-          full-width so the row itself reads as one group rather than two
-          side-by-side halves. */}
+      {/* Background picker re-introduced per explicit product feedback (see
+          BackgroundPicker's own comment) — a third stacked row, same
+          full-width-group shape as Theme/Palette, then the live chrome
+          preview strip. */}
       <AccordionCard title={t("settings.appearance.title", "Appearance")} expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
         <div className="mb-5">
           <div className="hra-text-secondary text-meta mb-2.5" >{t("settings.appearance.themeLabel", "Theme")}</div>
           <ThemePicker appearance={appearance} />
         </div>
-        <div>
+        <div className="mb-5">
           <div className="hra-text-secondary text-meta mb-2.5" >
             {t("settings.appearance.paletteDescription", "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.")}
           </div>
           <PalettePicker appearance={appearance} />
+        </div>
+        <div>
+          <div className="hra-text-secondary text-meta mb-2.5" >
+            {t("settings.appearance.backgroundDescription", "Background — upload your own image behind the app, in place of the automatic ambient glow.")}
+          </div>
+          <BackgroundPicker appearance={appearance} />
         </div>
         <ChromePreviewStrip />
       </AccordionCard>
@@ -443,7 +508,7 @@ export function SettingsTab({ appearance }: Props) {
 
       <AccordionCard title={t("settings.overviewTrends.title", "Overview & Trends")} expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
         <p className="hra-text-secondary text-label mt-0 mb-4" >
-          {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"Single\" mode), or before \"Week\"/\"Month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
+          {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"By activity\" mode), or before \"By week\"/\"By month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
         </p>
         {draft && saved && (
           <>

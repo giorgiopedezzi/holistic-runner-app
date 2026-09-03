@@ -43,7 +43,7 @@ export async function runGarminSync(onProgress?: (p: SyncProgress) => void): Pro
     }
   }
 
-  if (!result) throw new Error("Sync ended without a result");
+  if (!result) throw new Error(i18next.t("manage.sync.noResult", "Sync ended without a result"));
   return result;
 }
 

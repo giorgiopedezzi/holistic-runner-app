@@ -24,7 +24,7 @@ const LANGUAGE_META: Record<Language, { label: string }> = {
   ja: { label: "ja" },
 };
 
-export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
+export function LanguagePicker({ appearance, compact }: { appearance: AppearanceApi; compact?: boolean }) {
   const { t } = useTranslation();
   // Falls back to the browser-detected default while settings haven't
   // resolved yet (appearance.resolvedLanguage is null on cold load) — same
@@ -41,7 +41,9 @@ export function LanguagePicker({ appearance }: { appearance: AppearanceApi }) {
       <PopoverTrigger asChild>
         <button className="hra-date-trigger" aria-label={t("common.changeLanguage", "Change language")}>
           <FlagIcon code={current} />
-          <span>{meta.label}</span>
+          {/* Collapsed sidebar rail (App.tsx) — icon only, still the button's
+              one accessible name via aria-label above. */}
+          {!compact && <span>{meta.label}</span>}
         </button>
       </PopoverTrigger>
       <PopoverContent align="end">

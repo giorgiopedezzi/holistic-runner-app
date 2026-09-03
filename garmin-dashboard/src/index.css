@@ -19,11 +19,13 @@
    re-validated per theme here — on light themes they still render, just
    without a fresh contrast pass. */
 :root {
-  /* .hra-header's own rendered height (10px+10px padding + 28px row) — the
-     `top` offset .hra-sticky-summary (below) needs so it sits flush under
-     the already-sticky header instead of overlapping it. Kept as one named
-     value so the two stay in sync if the header's own sizing ever changes. */
-  --header-height:  48px;
+  /* The `top` offset .hra-sticky-summary needs for its own sticky
+     positioning. Was the old horizontal header's rendered height; HRA-253
+     replaced that header with a sidebar, so the content column's own top
+     edge is now flush with its scroll container and this is 0 — kept as a
+     named value (rather than inlining `top: 0`) so a future header-like
+     element above <main> only needs to change this one place again. */
+  --header-height:  0px;
 
   /* Graphite — the primary/default palette (dashboard design-system
      rework). :root duplicates its values directly (not just a fallback) so
@@ -116,7 +118,7 @@
      genuinely accent-tinted rather than a flat gray regardless of accent —
      an 8%/9% accent concentration barely registers against a near-white
      --bg/--card-bg the way it does against a near-black one. */
-  --ambient-accent-mix: 8%;
+  --ambient-accent-mix: 3%;
   --ambient-dark-mix:   30%;
   --card-accent-mix:    9%;
   --card-dark-mix:      12%;
@@ -228,7 +230,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --accent-blue:    #3a8ef5;
   --accent-red:     #EF4444;
   --accent-orange:  #f59e0b;
-  --ambient-accent-mix: 8%;  --ambient-dark-mix: 30%;
+  --ambient-accent-mix: 3%;  --ambient-dark-mix: 30%;
   --card-accent-mix:    9%;  --card-dark-mix:    12%;
   color-scheme: dark;
 }
@@ -249,7 +251,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --accent-blue:    #3a8ef5;
   --accent-red:     #EF4444;
   --accent-orange:  #d97706;
-  --ambient-accent-mix: 8%;  --ambient-dark-mix: 30%;
+  --ambient-accent-mix: 3%;  --ambient-dark-mix: 30%;
   --card-accent-mix:    9%;  --card-dark-mix:    12%;
   color-scheme: dark;
 }
@@ -275,7 +277,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
      actually reads at all. The far-corner (black) mix stays roughly in the
      same range as dark's — it's the near-corner accent stop that was doing
      almost nothing before. */
-  --ambient-accent-mix: 22%; --ambient-dark-mix: 26%;
+  --ambient-accent-mix: 8%; --ambient-dark-mix: 26%;
   --card-accent-mix:    20%; --card-dark-mix:    14%;
   color-scheme: light;
 }
@@ -296,7 +298,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   --accent-blue:    #2f6fe0;
   --accent-red:     #D14343;
   --accent-orange:  #b45309;
-  --ambient-accent-mix: 22%; --ambient-dark-mix: 26%;
+  --ambient-accent-mix: 8%; --ambient-dark-mix: 26%;
   --card-accent-mix:    20%; --card-dark-mix:    14%;
   color-scheme: light;
 }
@@ -606,8 +608,16 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
    Background moves from a 10%-over-transparent wash (fine sitting quietly
    in its own cell) to a near-opaque tint mixed with --bg-card instead of
    transparent — floating over neighboring cells, the translucent version
-   let their content bleed through and read as a mess. */
-.hra-agenda-event-card:hover {
+   let their content bleed through and read as a mess.
+   Bug fix: the trigger is the STABLE .rbc-row-segment ancestor's own hover,
+   not the card's own `:hover` — the card moving `bottom: 0` -> `bottom: 10px`
+   on its own hover shifts its box out from under a cursor sitting near the
+   collapsed card's bottom edge, dropping the hover, snapping back to
+   `bottom: 0`, re-entering the cursor, and re-triggering — a flicker loop
+   reported whenever the pointer started close to the bottom of the cell.
+   .rbc-row-segment itself never moves or resizes, so hovering it stays
+   stable regardless of how the card inside it repositions. */
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-card {
   /* Follow-up: width now follows the real (unclamped) text instead of a
      fixed +-60px push — a fixed push overshot short text and, worse, on
      the LAST column pushed part of the card past the calendar's own right
@@ -630,11 +640,11 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 /* Follow-up: icon + DSL text (and the gauge row) center within the now-much-
    wider card instead of staying pinned to its original left edge — left-
    alignment made sense at the compact collapsed width, not the expanded one. */
-.hra-agenda-event-card:hover .hra-agenda-event-main-row,
-.hra-agenda-event-card:hover .hra-agenda-gauges {
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-main-row,
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-gauges {
   justify-content: center;
 }
-.hra-agenda-event-card:hover .hra-agenda-event-title { text-align: center; }
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-title { text-align: center; }
 @media (prefers-reduced-motion: reduce) {
   .hra-agenda-event-card { transition: none; }
 }
@@ -652,7 +662,7 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   font-size: 11px; color: var(--text-primary); min-width: 0;
   display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden;
 }
-.hra-agenda-event-card:hover .hra-agenda-event-title { -webkit-line-clamp: unset; overflow: visible; }
+.hra-agenda-calendar .rbc-row-segment:hover .hra-agenda-event-title { -webkit-line-clamp: unset; overflow: visible; }
 .hra-agenda-event-title-line { display: block; }
 
 /* REST/TODO — muted text + icon, no card at all (AC2's "instead of flat
@@ -822,17 +832,22 @@ body {
    three-stop light->neutral->black recipe, which read as an odd green cast
    whenever the accent itself was green/lime (the accent tint and the
    unrelated black-mix end fought each other). Both stops are also blended
-   80% into transparent, so the card sits at ~80% opacity over the page's
-   own ambient glow — a hairline of it shows through, glass rather than a
-   solid panel — with a faint inset top highlight standing in for a light
-   source and a soft outer shadow for lift, so cards read as gently raised.
-   The border itself never changes on hover — only the glow does ("a light,
-   not a border"): :hover adds an accent-colored glow shadow on top of the
-   resting shadow/highlight stack, border-color stays exactly as-is. */
+   93% into transparent (raised from 80%, direct feedback: any surface that
+   shows data — cards, accordions, charts, all built on this one primitive —
+   must cover the background, now that a custom background image can sit
+   behind everything; only the sidebar chrome stays deliberately
+   near-transparent), so the card sits at ~93% opacity over the page's own
+   ambient glow/background image — a hairline of it shows through, glass
+   rather than a fully solid panel — with a faint inset top highlight
+   standing in for a light source and a soft outer shadow for lift, so cards
+   read as gently raised. The border itself never changes on hover — only
+   the glow does ("a light, not a border"): :hover adds an accent-colored
+   glow shadow on top of the resting shadow/highlight stack, border-color
+   stays exactly as-is. */
 .card {
   background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 80%, transparent) 0%,
-  color-mix(in srgb, color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 80%, transparent) 100%);
+  color-mix(in srgb, color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 93%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 93%, transparent) 100%);
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--card-border));
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -1263,14 +1278,15 @@ body {
   .hra-loading-bar { animation: none !important; left: 0; width: 100%; opacity: 0.5; }
 }
 
-/* Automatic ambient (corrected 2026-08-16, then again 2026-08-17 — replaces
-   the earlier per-user background-picture picker entirely: no setting, no
-   localStorage, nothing to persist). Single-hue radial ramp per the approved
-   soft-ambient render: lighter at the top-left corner, darker toward the
-   bottom-right, ONE accent hue throughout — no second independent color
-   (the brief 2026-08-16 two-glow accent+cyan version was replaced the next
-   day). Light end = --accent kissed into --bg at --ambient-accent-mix; dark
-   end = --bg mixed toward black at --ambient-dark-mix — same two-stop
+/* Automatic ambient (corrected 2026-08-16, then again 2026-08-17), now the
+   DEFAULT rather than the only option (re-introduced per explicit product
+   feedback — a per-user background picker is back in Settings › Appearance,
+   useAppearance.ts's applyBackground). Single-hue radial ramp per the
+   approved soft-ambient render: lighter at the top-left corner, darker
+   toward the bottom-right, ONE accent hue throughout — no second independent
+   color (the brief 2026-08-16 two-glow accent+cyan version was replaced the
+   next day). Light end = --accent kissed into --bg at --ambient-accent-mix;
+   dark end = --bg mixed toward black at --ambient-dark-mix — same two-stop
    recipe as .card's own radial (--card-accent-mix/--card-dark-mix), just
    page-sized. Both mix strengths are per-theme custom properties (:root),
    not fixed percentages — light theme's are set much higher than dark's,
@@ -1278,14 +1294,18 @@ body {
    near-black --bg/--card-bg is nearly invisible against a near-white one.
    Follows accent + theme automatically via var(). Cards stay ~80% opaque on
    top, so the ramp shows through the page's margins and, faintly, through
-   the cards themselves (glass, not solid). */
+   the cards themselves (glass, not solid). This whole gradient is now only
+   the FALLBACK value of --bg-image (unset by default) — a bundled preset or
+   uploaded photo sets --bg-image directly and this never renders while one
+   is active. */
 /* Atmosphere shimmer (dashboard design-system rework) — a very low-frequency
    opacity breathe on the ambient glow ONLY, never on data colors: "Gradient
    = DATA, Animation = ATMOSPHERE." 12s, ease-in-out, a small ±8% opacity
    swing (0.92↔1) — deliberately understated; this is meant to be felt more
    than seen. Graphite disables it outright below (its own comment explains
    why) rather than just reducing it further, per the stated preference for
-   that theme specifically. */
+   that theme specifically. A real bundled/custom background (data-background
+   below) disables it too — a fixed picture, not a color-cycling wash. */
 @keyframes hra-atmosphere-shimmer {
   0%, 100% { opacity: 0.92; }
   50%      { opacity: 1; }
@@ -1296,11 +1316,17 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: radial-gradient(135% 135% at 0% 0%,
+  background: var(--bg-image, radial-gradient(160% 160% at 0% 0%,
   color-mix(in srgb, var(--accent) var(--ambient-accent-mix), var(--bg)) 0%,
-  var(--bg) 46%,
-  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 100%);
+  var(--bg) 35%,
+  color-mix(in srgb, black var(--ambient-dark-mix), var(--bg)) 50%));
+  background-size: cover;
+  background-position: center;
   animation: hra-atmosphere-shimmer 12s ease-in-out infinite;
+}
+:root[data-background="bundled"] body::before,
+:root[data-background="custom"]  body::before {
+  animation: none;
 }
 
 a { color: var(--accent); text-decoration: none; }
@@ -1549,8 +1575,36 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    it styled). */
 
 .hra-calendar { font-size: var(--text-label); color: var(--text-primary); }
-.hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
-.hra-calendar .rdp-nav { display: flex; justify-content: space-between; }
+/* navLayout="around" (Calendar.tsx) puts the prev/next buttons directly
+   beside the caption inside .rdp-month itself, one row, instead of
+   DayPicker's legacy separate .rdp-nav row above it — so the flex row lives
+   on .rdp-month, and the caption between the two buttons just needs to fill
+   the remaining width so the dropdown pills land centered between them. */
+.hra-calendar .rdp-month { display: flex; align-items: center; gap: 4px; padding-bottom: 8px; }
+.hra-calendar .rdp-month_caption { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 500; }
+/* Month/year dropdown navigation (captionLayout="dropdown", Calendar.tsx).
+   react-day-picker v10's own Dropdown renders TWO overlapping children per
+   dropdown_root: the real <select> (rdp-dropdown) that takes the click/native
+   picker, and an aria-hidden span (rdp-caption_label, despite the name — this
+   is the Dropdown component's own label+chevron, not DayPicker's separate
+   whole-caption label) that's the only one meant to be seen. Shipping no
+   default rdp CSS (see Calendar.tsx's own comment) means neither half had
+   its half of that contract — the select rendered as a plain visible native
+   control AND the label rendered next to it, full-size, instead of styling
+   the invisible/visible pairing. */
+.hra-calendar .rdp-dropdowns { display: flex; align-items: center; gap: 4px; }
+.hra-calendar .rdp-dropdown_root { position: relative; display: inline-flex; align-items: center; }
+.hra-calendar .rdp-dropdown_root .rdp-dropdown {
+  position: absolute; inset: 0; width: 100%; opacity: 0; border: none; cursor: pointer;
+}
+.hra-calendar .rdp-dropdown_root .rdp-caption_label {
+  display: flex; align-items: center; gap: 2px;
+  font-size: var(--text-label); font-weight: 500; color: var(--text-primary);
+  background: var(--bg-surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); padding: 2px 4px 2px 8px; pointer-events: none;
+}
+.hra-calendar .rdp-dropdown_root:hover .rdp-caption_label { background: var(--bg-card); }
+.hra-calendar .rdp-dropdown_root[data-disabled="true"] { opacity: 0.4; }
 .hra-calendar .rdp-button_previous,
 .hra-calendar .rdp-button_next {
   display: flex; align-items: center; justify-content: center;
@@ -1746,6 +1800,52 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-border-bottom  { border-bottom: 1px solid var(--border); }
 .hra-bg-card        { background: var(--bg-card); }
 .hra-bg-surface     { background: var(--bg-surface); }
+/* PlanTemplatesSection's Workout DSL textarea overlay (HRA-140 follow-up) —
+   the real <textarea> sits on top with fully transparent text (only its
+   caret shows), a backdrop <pre> underneath renders the same text with the
+   most-recently-patched line <mark>ed. Both share font-mono/text-meta/p-2 so
+   they line up; the wrap owns the border/background that used to live on
+   the plain textarea. */
+.hra-dsl-editor-wrap {
+  position: relative;
+  display: block;
+}
+.hra-dsl-editor-backdrop {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  overflow: auto;
+  pointer-events: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  scrollbar-width: none;
+}
+.hra-dsl-editor-backdrop::-webkit-scrollbar { display: none; }
+.hra-dsl-editor-backdrop mark {
+  background: color-mix(in srgb, var(--accent-orange) 30%, transparent);
+  color: inherit;
+  border-radius: 2px;
+}
+.hra-dsl-editor-textarea {
+  position: relative;
+  display: block;
+  width: 100%;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--text-primary);
+  border: none;
+}
+/* TrainingPlanAccordion's just-edited Section/Week/Day row (HRA-140
+   follow-up, extended to the instance editor's own day rows by HRA-249) —
+   same accent-orange language as the DSL textarea's <mark>. Template rows
+   are AccordionCards (the highlight lands on their nested trigger via the
+   first selector); an instance day row is a plain .card div (InstanceDayRow
+   has no accordion), so the second selector applies the same look directly. */
+.hra-edited-row-highlight > .hra-accordion-trigger,
+.card.hra-edited-row-highlight {
+  background: color-mix(in srgb, var(--accent-orange) 12%, transparent);
+  border-left: 3px solid var(--accent-orange);
+}
 /* Modal popup's dim backdrop (ActivityModal) — a fixed black scrim, not a
    theme token, since it's deliberately theme-independent (dims whatever's
    behind it the same way in light or dark). */
@@ -1754,6 +1854,25 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    scrim like the modal one above, since it gates the whole app rather than
    floating over visible content). */
 .hra-splash-backdrop { background: var(--bg); }
+/* Brand lockup, upper-left of the splash (HRA-223 follow-up, direct
+   feedback: the splash had no "Runs Free" identity on it at all). Absolutely
+   positioned so it sits apart from the centered copy/animation column below
+   it rather than competing with it for the same flex flow; padded off both
+   edges ("not glued") rather than flush to the corner. Manrope ExtraBold
+   (index.html loads weight 800 only) instead of --font-sans — a deliberate
+   one-off face for this lockup specifically, not a site-wide type change; no
+   tagline underneath (direct feedback: it diluted the mark) — just the name,
+   given intentional presence through size/weight/color instead. */
+.hra-splash-brand { position: absolute; top: 30px; left: 30px; }
+.hra-splash-brand-title {
+  font-family: "Manrope", var(--font-sans);
+  font-weight: 800; font-size: 21px; letter-spacing: -0.3px;
+  color: #F5F7FA; margin: 0;
+}
+/* "Free" in the same red the heart-rate line/"Your heart." copy already use
+   (--data-hr) — ties the brand mark to the animation it's sitting next to,
+   rather than introducing a new one-off red. */
+.hra-splash-brand-accent { color: var(--data-hr); }
 /* Splash copy's entrance (HRA-223 amendment) — a single quiet fade + rise on
    mount, not a looping/attention-grabbing effect: the splash is on screen
    for the animation's own 10s run, so a "simple but nice" one-shot beat is
@@ -1767,6 +1886,10 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-splash-copy { animation: hra-splash-copy-in 0.7s ease-out both; }
 .hra-splash-copy p { margin: 0; }
 .hra-splash-copy p + p { margin-top: 0.3em; }
+/* Subtagline under the bold headline — deliberately a lighter, non-bold
+   weight in the body role (not text-display) so it reads as a supporting
+   line rather than a second headline. */
+.hra-splash-copy-subtagline { font-size: var(--text-body); font-weight: 400; color: var(--text-secondary); }
 /* The closing beat — "Your heart. You." — steps up in size and shifts to
    the same HR red used everywhere else in the app (--data-hr), each line
    a little bigger than the last, ending on "You." as the largest. */
@@ -1842,6 +1965,19 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   font-size: var(--text-label);
 }
 
+/* Persistent non-blocking notice (HRA-249 — e.g. editing an already-active
+   race plan) — same recipe as .hra-error-banner above, but the
+   accent-orange "warning" language already used elsewhere (e.g.
+   .hra-edited-row-highlight) instead of the red "error" one. */
+.hra-warning-banner {
+  background: color-mix(in srgb, var(--accent-orange) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-orange) 27%, transparent);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  color: var(--accent-orange);
+  font-size: var(--text-label);
+}
+
 /* ════════════════════════════════════════════════════════════════════════
    Overview + Settings correction pass (2026-08-16) — every theme-related
    visual (background/border/box-shadow/filter/gradient) these two tabs and
@@ -1851,31 +1987,26 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    specific series color) — a --custom-property hook; every actual visual
    rule lives here. ════════════════════════════════════════════════════════ */
 
-/* ── Header (App.tsx) — two compact rows inside one sticky header (the
-   2026-08-16 single-row merge was undone per frontend.md's Header section):
-   row 1 = brand + status dot + nav pills; row 2 = DateRangeBar, right-
-   aligned, only for tabs with a range. Both rows shorter than the old
-   header so the hero starts higher. The bar itself (.hra-header) is full-
-   bleed — background/blur/border span the whole viewport width — but its
-   content (.hra-header-inner) is capped at the same maxWidth/padding as
-   <main>, so the nav tabs land in the same columns as the content below. */
-.hra-header {
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  padding: 10px 0;
-}
-
+/* ── Sidebar (App.tsx, HRA-253) — persistent left shell replacing the old
+   horizontal header/nav bar. Full viewport height, its own independent
+   scroll (overflow-y: auto) as a safety fallback for very short viewports —
+   the nav/utility content is expected to fit without scrolling at the
+   supported desktop breakpoints. Same background/border/blur recipe the old
+   .hra-header used, just applied to a vertical strip instead of a
+   horizontal bar — background dropped to a near-transparent 5% (was 78%,
+   direct feedback: "data must cover the background", so only chrome — this
+   sidebar — lets a custom background image/the ambient glow show strongly
+   through; .card and every other data-bearing surface keep their own
+   existing opacity untouched). backdrop-filter's blur is kept at the same
+   strength so nav text stays legible over a busy photo even at 5% tint.
+   Collapsible to an icon-only rail (direct feedback) — [data-collapsed]
+   drives the width transition here and every label-visibility rule below;
+   App.tsx persists the choice to localStorage. */
 /* Overview & Trends' DateRangeBar + named-range rows + "SUMMARY ..." card
    stay pinned while the rest of the tab (Total/Running/By sport/trend
-   charts) scrolls underneath — pins to the header's own bottom edge
-   (--header-height), one z-index below it so the header still wins if the
-   two ever visually collide, and paints a solid background so scrolled
-   content doesn't show through. */
+   charts) scrolls underneath — pins to --header-height (0 now that the
+   header is gone, see :root above) and paints a solid background so
+   scrolled content doesn't show through. */
 .hra-sticky-summary {
   position: sticky;
   top: var(--header-height);
@@ -1884,31 +2015,98 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--section-gap);
 }
-.hra-header-inner {
-  max-width: 1240px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 0 24px;
+
+.hra-sidebar {
+  width: 232px;
+  flex-shrink: 0;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+  gap: 20px;
+  padding: 20px 12px;
+  border-right: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
+  background: color-mix(in srgb, var(--bg-surface) 5%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: width 0.2s ease;
 }
-.hra-header-row {
-  display: flex; align-items: center; gap: 20px; height: 28px;
-}
-.hra-header-row--controls {
-  justify-content: flex-end; gap: 8px; margin-top: 6px;
-}
+.hra-sidebar[data-collapsed="true"] { width: 64px; }
+/* Top row: brand + language picker side by side (moved out of the old
+   bottom footer per explicit feedback — the brand also reads a size up
+   (--text-heading, same combo .hra-agenda-title already uses) for a bit more
+   visual presence than the previous --text-label-sized wordmark). Same
+   Manrope ExtraBold / red-accent treatment as the splash screen's own "Runs
+   Free" lockup (SplashScreen.tsx's .hra-splash-brand-title) — color stays
+   the theme-aware --text-primary rather than the splash's hardcoded
+   #F5F7FA, since (unlike the splash's fixed dark backdrop) this sidebar is
+   real chrome that has to keep working under the light theme too.
+   Collapsed: App.tsx swaps the text to "RF" rather than hiding it — still
+   decorative/non-interactive (LanguagePicker's own trigger below it is the
+   real control, kept via aria-label) — and the row switches to a stacked
+   column since there isn't enough of the 64px rail's width left beside the
+   language icon to keep them side by side without crowding. */
+.hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
 .hra-brand {
-  font-weight: var(--text-data--font-weight); font-size: var(--text-label); letter-spacing: -0.01em; flex-shrink: 0; color: var(--text-primary);
+  display: block;
+  font-family: "Manrope", var(--font-sans);
+  font-weight: 800; font-size: var(--text-heading); letter-spacing: -0.3px;
+  flex-shrink: 0; color: var(--text-primary);
 }
-.hra-status-dot {
-  width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; display: inline-block;
+.hra-brand-accent { color: var(--data-hr); }
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-top { flex-direction: column; justify-content: center; gap: 6px; }
+/* One <nav> landmark for the whole sidebar. flex: 1 lets it fill the
+   remaining vertical space so .hra-sidebar-utility-group (Settings/Feedback)
+   can pin itself to the nav's own bottom edge via margin-top: auto. */
+.hra-sidebar-nav { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.hra-sidebar-core { display: flex; flex-direction: column; gap: 20px; }
+.hra-sidebar-group { display: flex; flex-direction: column; gap: 2px; }
+.hra-sidebar-group-heading {
+  font-size: var(--text-meta); font-weight: var(--text-meta--font-weight);
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
+  padding: 0 12px; margin-bottom: 4px;
 }
-.hra-status-dot[data-online="true"]  { background: var(--accent-green); }
-.hra-status-dot[data-online="false"] { background: var(--accent-red); }
-.hra-nav { display: flex; gap: 2px; margin-left: auto; }
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-group-heading { display: none; }
+.hra-sidebar-utility-group { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+/* Restrained active state (no large pill treatment, per HRA-253 scope) —
+   aria-current="page" is the one source of truth both assistive tech and
+   this selector read off, no separate active className. */
+.hra-sidebar-item {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left;
+  padding: 7px 12px; border-radius: var(--radius-sm);
+  background: none; border: 1px solid transparent;
+  color: var(--text-secondary); cursor: pointer;
+  font-size: var(--text-label); font-weight: var(--text-body--font-weight);
+}
+.hra-sidebar-item[aria-current="page"] {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text-primary);
+  font-weight: var(--text-data--font-weight);
+}
+.hra-sidebar-item-icon { display: inline-flex; flex-shrink: 0; }
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-item { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Visually hidden while collapsed — NOT display:none, which would drop the
+   text from the accessibility tree and leave the button's one accessible
+   name empty (the icon stays aria-hidden either way). Standard sr-only
+   clip-and-collapse recipe; `title` on the button (App.tsx) covers sighted
+   mouse users the same way a visible label normally would. */
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-item-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* Icon-only rail toggle, pinned as the sidebar's own last row (not inside
+   <nav> — it isn't a "navigate to a tab" action). Same visual language as a
+   nav item so it doesn't read as a different kind of control. */
+.hra-sidebar-collapse-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 7px 12px; border-radius: var(--radius-sm);
+  background: none; border: 1px solid transparent;
+  color: var(--text-muted); cursor: pointer;
+}
 
-/* Language picker (HRA-104) — header nav bar dropdown. Trigger reuses
+/* Language picker (HRA-104) — sidebar top-row dropdown. Trigger reuses
    .hra-date-trigger's compact bordered-chip look; the list is a plain button
    column (not Radix Select — just two flag+code choices, no native <select>
    semantics needed), styled to match .hra-select-item's visual language. */
@@ -1929,7 +2127,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 /* Manage tab's subtle red tint while inactive (a destructive-adjacent
    section) — a data attribute instead of the inline conditional color the
    nav used to compute per render. */
-.hra-nav-manage[data-active="false"] { color: var(--accent-red); opacity: 0.7; }
+.hra-sidebar-manage[data-active="false"] { color: var(--accent-red); opacity: 0.7; }
 
 /* ── KPI value/label text (Stat, hero cards) — a shared scale so the same
    pattern (uppercase micro-label → bold tabular value → optional smaller
@@ -1949,6 +2147,15 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 24px 24px 48px;
 }
 .hra-app-main > .hra-section-title:first-child { margin-top: 0; }
+/* AgendaTab's "no active plan" empty state (direct feedback: center it in
+   the screen rather than reading as a stray top-of-page line). 72px
+   approximates .hra-app-main's own top+bottom padding (24+48 above), so the
+   centering is against the visible content area's height, not the raw
+   viewport (which would ignore that padding and sit slightly low). Scoped to
+   this one call site, not Empty.tsx itself — every other <Empty/> usage
+   (an in-card/in-table "no data" line) stays exactly where it renders in the
+   surrounding flow. */
+.hra-agenda-empty-center { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 72px); }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }
 .hra-section-gap-top { margin-top: var(--section-gap); }
@@ -2111,11 +2318,12 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    (more accent at the top-left) so the hero reads as the same "gradient,
    slightly 3D" card language but a notch more emphasized; the ring's own
    glow and the sparkline's end-dot glow are separate classes since they're
-   SVG filters, not div backgrounds. */
+   SVG filters, not div backgrounds. Same 93%-opaque treatment as .card
+   itself (raised from 80% — this is a data surface too). */
 .hra-hero-tint {
   background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, color-mix(in srgb, var(--accent) 16%, var(--card-bg)) 80%, transparent) 0%,
-  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 80%, transparent) 100%);
+  color-mix(in srgb, color-mix(in srgb, var(--accent) 16%, var(--card-bg)) 93%, transparent) 0%,
+  color-mix(in srgb, color-mix(in srgb, black 12%, var(--card-bg)) 93%, transparent) 100%);
 }
 .hra-hero-ring-glow {
   filter: drop-shadow(0 0 20px color-mix(in srgb, var(--accent) 38%, transparent));

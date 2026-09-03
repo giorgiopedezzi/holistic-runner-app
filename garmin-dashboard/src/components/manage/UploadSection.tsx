@@ -53,8 +53,12 @@ export function UploadSection() {
     <Card className="mb-4">
       <div className="hra-block-title mb-1" >{t("manage.upload.title", "Sync Garmin activities")}</div>
       <div className="hra-text-secondary text-meta mb-3" >
-        {t("manage.upload.description", "Runs the PowerShell MTP bridge to pull new .FIT files from your Forerunner 965 and import them into the DB. Connect the watch via USB first. Pulls every new file on the device — there's no date range to set here, since the device is diffed against what's already imported, not queried by date.")}
+        {t("manage.upload.description", "Syncs new activities from your watch. Connect via USB first — every new file on the device is pulled in, since it's diffed against what's already imported rather than filtered by date.")}
       </div>
+      <details className="hra-text-secondary text-meta mb-3">
+        <summary className="cursor-pointer">{t("manage.upload.howItWorksLabel", "How it works")}</summary>
+        <p className="mt-1">{t("manage.upload.howItWorksDescription", "Runs a PowerShell bridge over MTP to pull new .FIT files from your Forerunner 965 and import them into the DB.")}</p>
+      </details>
 
       <StatusLine
         state={checkingDevice ? "checking" : device?.connected ? "ok" : "warn"}

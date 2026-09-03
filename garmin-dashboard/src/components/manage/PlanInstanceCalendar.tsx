@@ -635,9 +635,15 @@ interface Props {
   // dayIndex} refs swapDaysByRef needs and stages the same pending-confirm
   // modal the List view's own drag-and-drop already uses.
   onDaySwap: (aDayId: number, bDayId: number) => void;
+  // HRA-248: additive — when supplied, the calendar opens centered on this
+  // date instead of the plan's first resolved day. Omitted (the default) at
+  // the existing Manage → Plans call site, which is unaffected; "Your
+  // agenda" passes today's Date so a runner lands on the right week/month
+  // without navigating there first.
+  initialDate?: Date;
 }
 
-export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEdit, onDaySwap }: Props) {
+export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate }: Props) {
   const events = useMemo(() => eventsFromSections(sections), [sections]);
   // HRA-151: AgendaDateHeader gets one calendar Date per render (react-big-
   // calendar's own dateHeader contract) with no direct link back to "this
@@ -647,7 +653,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     for (const e of events) map.set(toDateKey(e.start), e);
     return map;
   }, [events]);
-  const [date, setDate] = useState<Date>(() => events[0]?.start ?? new Date());
+  const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
   // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
   // useUrlState) so a refresh keeps the last-picked Month/Week view.
   const [rawView, setRawView] = useUrlState("planCalendarView", "month");

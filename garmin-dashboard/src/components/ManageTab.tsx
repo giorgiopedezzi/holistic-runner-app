@@ -42,7 +42,7 @@ export function ManageTab({ savedRanges }: Props) {
       <SectionTitle>{t("manage.dateRangesSectionTitle", "Named date ranges")}</SectionTitle>
       <DateRangesSection />
 
-      <SectionTitle>{t("manage.classifySectionTitle", "AI workout classification")}</SectionTitle>
+      <SectionTitle>{t("manage.classifySectionTitle", "Identify workout types")}</SectionTitle>
       <ClassifySection />
 
       <SectionTitle>{t("manage.deleteSectionTitle", "Delete — local database only")}</SectionTitle>

@@ -22,11 +22,29 @@ const ALL = "100000";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
+// HRA-249: the structured conflict body on POST .../plan-instances/:id/approve's
+// 409 — every already-approved instance whose resolved date range overlaps the
+// candidate being activated, mirroring garmin-stats/src/http/problem.ts's
+// Problem.overlaps.
+export interface PlanInstanceOverlapConflict {
+  id: number;
+  name: string | null;
+  start_date: string;
+  end_date: string;
+  overlap_start: string;
+  overlap_end: string;
+}
+export interface PlanInstanceOverlaps {
+  candidate: { id: number; name: string | null; start_date: string; end_date: string };
+  conflicts: PlanInstanceOverlapConflict[];
+}
+
 // Error carrying the HTTP status (0 = the request never reached the server), so
 // callers can branch on it if they need to. Its message is already human — see
-// buildApiError. (HRA-43)
+// buildApiError. (HRA-43) `overlaps` is set only for a plan-instance activation
+// conflict (HRA-249) — every other caller leaves it undefined.
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly overlaps?: PlanInstanceOverlaps) {
     super(message);
     this.name = "ApiError";
   }
@@ -60,9 +78,9 @@ async function buildApiError(res: Response, path: string): Promise<ApiError> {
       `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`,
       { status: res.status }));
   }
-  const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
+  const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string; overlaps?: PlanInstanceOverlaps } | null;
   const message = problem?.detail ?? problem?.title ?? await translate("api.genericError", `API error ${res.status}: ${path}`, { status: res.status, path });
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, message, problem?.overlaps);
 }
 
 async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
@@ -260,6 +278,22 @@ export const api = {
       "/api/v1/plan-instances", "GET", templateId != null ? { limit: ALL, template_id: String(templateId) } : { limit: ALL },
     )).data,
     getById: (id: number) => request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`),
+    // GET /api/v1/plan-instances/active?date= (HRA-248) — "Your agenda"'s
+    // today-centered home view. The endpoint 404s when no APPROVED
+    // instance's resolved days cover `date` — translated to `null` here
+    // (not rethrown) so useQuery's "success" branch can distinguish "no
+    // active plan" (null) from a genuine fetch failure (still throws,
+    // reaching useQuery's own "error" branch), same "expected absence isn't
+    // an error" reasoning `PlanInstanceCalendar`'s own 404 paths don't need
+    // since they're id-addressed, not existence-queried.
+    active: async (date: string): Promise<PlanInstanceWithDays | null> => {
+      try {
+        return await request<PlanInstanceWithDays>("/api/v1/plan-instances/active", "GET", { date });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
     // PATCH /api/v1/plan-instances/:id (HRA-135, replacing the earlier PUT) —
     // every field optional, at least one required; each provided field
     // replaces its current value, omitted fields stay untouched. `days`, when

@@ -8,6 +8,10 @@ interface AccordionCardProps {
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
+  // Applied to the outer wrapping element (not the trigger/panel individually)
+  // — lets a caller flag the whole card as e.g. just-edited (TrainingPlanAccordion's
+  // row highlight) without reaching into this component's own markup.
+  className?: string;
 }
 
 // A single collapsible section: a clickable "card" header (title + ▲/▼
@@ -27,9 +31,9 @@ interface AccordionCardProps {
 // the DOM rather than rendering it in place). Manual `role="button"` +
 // `tabIndex`/`onKeyDown` keeps it exactly as keyboard-operable as the
 // original `<button>` was.
-export function AccordionCard({ title, expanded, onToggle, children }: AccordionCardProps) {
+export function AccordionCard({ title, expanded, onToggle, children, className }: AccordionCardProps) {
   return (
-    <div className="hra-accordion-card">
+    <div className={["hra-accordion-card", className].filter(Boolean).join(" ")}>
       <div
         role="button"
         tabIndex={0}

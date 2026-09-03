@@ -6,9 +6,9 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "@/api/client";
-import { Card, ErrorBanner } from "@/components/ui";
-import { TrainingPlanAccordion, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
+import { api, ApiError } from "@/api/client";
+import { Card, ErrorBanner, WarningBanner } from "@/components/ui";
+import { TrainingPlanAccordion, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
@@ -67,6 +67,11 @@ export function PlanInstancesSection({ templates }: Props) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, PlanInstanceDraft>>({});
   const [confirmation, setConfirmation] = useState<PlanInstanceConfirmation>(null);
+  // HRA-249: the just-edited day, for TrainingPlanAccordion's
+  // hra-edited-row-highlight — same role as PlanTemplatesSection.tsx's own
+  // lastEditedRef, extended here since the instance editor previously never
+  // set one (readOnlyDays used to be tied to approval instead).
+  const [highlightedRef, setHighlightedRef] = useState<EditedRef | null>(null);
 
   const editor = usePlanInstanceEditorState();
   const {
@@ -141,6 +146,7 @@ export function PlanInstancesSection({ templates }: Props) {
     editor.reset();
     setInstantiateError(null);
     setEditError(null);
+    setHighlightedRef(null);
   }
 
   // Row 2: Start date and Days-before-race are two views of one relationship
@@ -374,9 +380,9 @@ export function PlanInstancesSection({ templates }: Props) {
       const built = apiDaysToSections(created.days);
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
-      notify(t("manage.planInstances.instantiateSucceeded", "Instance created."));
+      notify(t("manage.planInstances.instantiateSucceeded", "Plan created from template."));
     } catch (e) {
-      setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create instance"));
+      setInstantiateError(e instanceof Error ? e.message : t("manage.planInstances.instantiateFailed", "Failed to create plan from template"));
     }
     setInstantiateLoading(false);
   }
@@ -468,7 +474,7 @@ export function PlanInstancesSection({ templates }: Props) {
     }
   }
 
-  const dayEditor = usePlanDayEditor({ editingId, sections, setSections, t });
+  const dayEditor = usePlanDayEditor({ editingId, sections, setSections, t, setHighlightedRef });
 
   function onWorkoutTypeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
     setConfirmation({
@@ -614,9 +620,20 @@ export function PlanInstancesSection({ templates }: Props) {
       const approved = await api.planInstances.approve(editingId);
       setEditApprovedAt(approved.approved_at);
       await refreshInstances();
-      notify(t("manage.planInstances.approveSucceeded", "Instance approved."));
+      notify(t("manage.planInstances.approveSucceeded", "Race plan activated."));
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : t("manage.planInstances.approveFailed", "Failed to approve instance"));
+      // HRA-249: an overlap conflict (409, structured on e.overlaps) gets its
+      // own single-acknowledgement warning instead of the generic error
+      // banner — no "Activate anyway" override exists, so there's nothing
+      // for the confirmation's "confirm" action to do beyond dismissing.
+      // Replaces any earlier conflict warning rather than stacking (AC8: no
+      // duplicate warning entries on repeated attempts against the same
+      // conflict).
+      if (e instanceof ApiError && e.status === 409 && e.overlaps) {
+        setConfirmation({ type: "activation-conflict", overlaps: e.overlaps });
+      } else {
+        setEditError(e instanceof Error ? e.message : t("manage.planInstances.approveFailed", "Failed to activate race plan"));
+      }
     }
     setApproveLoading(false);
   }
@@ -692,23 +709,32 @@ export function PlanInstancesSection({ templates }: Props) {
     doRegenerate();
   }
 
-  // HRA-141 Ask #3: "Restore" (renamed from Cancel) discards the active
-  // row's unsaved edits and collapses it — since the list row itself only
-  // ever displays the real persisted `instances` data (never mutated by
-  // local typing), simply resetting local state + collapsing IS "reverting
-  // to the last-saved values"; there's nothing to re-populate. Gated on a
-  // confirm only when genuinely dirty (either bucket, HRA-136's own union).
+  // HRA-141 Ask #3, amended HRA-249: "Restore" discards the active row's
+  // unsaved edits WITHOUT collapsing it — for an existing instance that
+  // means re-populating from its actual persisted values (startEdit()
+  // re-fetches + rebuilds baselines, exactly what opening the row fresh
+  // does), not wiping to resetPlanScreen()'s blank defaults, which is what
+  // this used to do (the amendment's "Restore collapsing the row instead of
+  // just resetting it" / discarding real persisted data instead of only the
+  // unsaved edits). The "new" (never-instantiated) draft row has nothing
+  // persisted to restore to, so it still resets to blank — just without
+  // collapsing. Gated on a confirm only when genuinely dirty (either
+  // bucket, HRA-136's own union — HRA-249 extends "dirty" to cover day
+  // edits on an approved row too, see selectDirtyState).
   function onRestoreClick(dirty: boolean) {
     if (dirty) { setConfirmation({ type: "restore" }); return; }
-    doRestore();
+    void doRestore();
   }
-  function doRestore() {
-    if (activeKey != null) {
-      const key = String(activeKey);
-      setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+  async function doRestore() {
+    if (activeKey == null) return;
+    const key = String(activeKey);
+    setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
+    if (activeKey === "new") {
+      resetPlanScreen();
+      return;
     }
-    resetPlanScreen();
-    setActiveKey(null);
+    const instance = instances?.find(inst => inst.id === activeKey);
+    if (instance) await startEdit(instance);
   }
 
   async function onDelete(id: number) {
@@ -743,7 +769,7 @@ export function PlanInstancesSection({ templates }: Props) {
         break;
       case "restore":
         setConfirmation(null);
-        doRestore();
+        void doRestore();
         break;
       case "workout-type":
         dayEditor.applyWorkoutTypeChange(confirmation.change);
@@ -762,13 +788,19 @@ export function PlanInstancesSection({ templates }: Props) {
       case "delete":
         void onDelete(confirmation.instanceId);
         break;
+      // HRA-249: single acknowledgement, nothing to confirm — the overlap
+      // block has no "Activate anyway" override, so this just dismisses.
+      case "activation-conflict":
+        setConfirmation(null);
+        break;
     }
   }
 
-  // HRA-126: once approved, the plan view locks — Save and day-edit disabled,
-  // Approve disabled (no double-approve). Nothing is hidden or deleted — the
-  // instance stays fully viewable/retrievable, only the editing affordances
-  // go away.
+  // HRA-126, amended HRA-249: once approved, only the top form fields
+  // (fieldDisabled below) stay locked — Save/day-edit/Approve no longer
+  // force-disable, replaced by a persistent WarningBanner in
+  // renderEditorFields(). Activation itself stays hard-gated, but by the
+  // backend's own overlap check (onApprove above), not by this flag.
   const isApproved = editApprovedAt != null;
   const editWeek1AnchorMismatch = editorWeek1AnchorMismatch(sections);
   // HRA-133/HRA-134/HRA-136: once an instance exists (freshly created this
@@ -782,12 +814,18 @@ export function PlanInstancesSection({ templates }: Props) {
   const fieldDisabled = fieldsLocked ? isApproved : !formEnabled;
   const showWeek1AnchorWarning = week1AnchorMismatch || editWeek1AnchorMismatch;
   // HRA-136: the two disjoint dirty buckets from the Story's own Ask #4.
-  // Never true before an instance exists (fieldsLocked false) or once
-  // approved (editing an approved instance is out of scope, same HRA-126
-  // lock every other write already respects).
+  // Never true before an instance exists (fieldsLocked false); regenerateBucketDirty
+  // stays forced false once approved (Regenerate is unchanged, still locked by
+  // HRA-126 — out of this Story's scope), but saveBucketDirty (folded into
+  // isDirty) now also reflects a day edit on an approved row (HRA-249).
   const {
     regenerateBucketDirty, saveEnabled, regenerateDisabled, isDirty,
   } = selectDirtyState(editor.state, { fieldsLocked, isApproved, regenerateLoading });
+  // HRA-249: Restore's own "is there anything to discard" check — isDirty
+  // above is always false before an instance exists (fieldsLocked false),
+  // so the "new" draft row instead asks whether anything was typed into it
+  // at all (same hasEnteredData the template-switch confirm already uses).
+  const restoreDirty = fieldsLocked ? isDirty : hasEnteredData(editor.state);
 
   // HRA-141: everything that used to render as the whole `mode === "plan"`
   // screen (minus the outer Card/title-badge header, which the accordion's
@@ -852,6 +890,11 @@ export function PlanInstancesSection({ templates }: Props) {
 
         {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
         {fieldsLocked && editError && <ErrorBanner message={editError} />}
+        {/* HRA-249: replaces the old hard lock on Save/day-edit/Approve —
+            editing an already-active plan is now allowed, this just says so. */}
+        {fieldsLocked && isApproved && (
+          <WarningBanner message={t("manage.planInstances.approvedEditWarning", "This race plan is already active — you can still make changes here.")} />
+        )}
 
         <PlanInstanceEditorActions
           fieldsLocked={fieldsLocked}
@@ -873,7 +916,7 @@ export function PlanInstancesSection({ templates }: Props) {
           effectiveFrom={effectiveFrom}
           setEffectiveFrom={setEffectiveFrom}
           minEffectiveFrom={minEffectiveFrom}
-          isDirty={isDirty}
+          isDirty={restoreDirty}
           onRestoreClick={onRestoreClick}
           viewMode={viewMode}
           setViewMode={setViewMode}
@@ -904,7 +947,9 @@ export function PlanInstancesSection({ templates }: Props) {
                 onWeekEdit={() => {}}
                 onDayEdit={onDayEdit}
                 readOnlySectionWeek
-                readOnlyDays={isApproved}
+                // HRA-249: no longer tied to approval — editing an active
+                // plan is allowed (WarningBanner above says so instead).
+                readOnlyDays={false}
                 onDaySwap={onDayDragSwap}
                 onWeekSwap={onWeekDragSwap}
                 onScheduledTimeEdit={onScheduledTimeEdit}
@@ -913,10 +958,11 @@ export function PlanInstancesSection({ templates }: Props) {
                 onExportDayFit={onExportDayFit}
                 onExportSectionFit={onExportSectionFit}
                 onExportWeekFit={onExportWeekFit}
+                highlightedRef={highlightedRef ?? undefined}
               />
             ) : (
               <PlanInstanceCalendar
-                sections={sections} readOnlyDays={isApproved}
+                sections={sections} readOnlyDays={false}
                 onScheduledTimeEdit={onScheduledTimeEditByDayId} onDaySwap={onDayDragSwapByDayId}
               />
             )}
@@ -931,9 +977,9 @@ export function PlanInstancesSection({ templates }: Props) {
 
   return (
     <Card className="hra-instantiate-form">
-      <div className="hra-block-title mb-1" >{t("manage.planInstances.title", "Training-plan instances")}</div>
+      <div className="hra-block-title mb-1" >{t("manage.planInstances.title", "Race plans")}</div>
       <div className="hra-text-secondary text-meta mb-3" >
-        {t("manage.planInstances.description", "A concrete instantiation of a template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
+        {t("manage.planInstances.description", "A concrete race plan generated from a plan template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
       </div>
       {listError && <ErrorBanner message={listError} />}
 
@@ -972,10 +1018,10 @@ export function PlanInstancesSection({ templates }: Props) {
       )}
       {deleteError && <ErrorBanner message={deleteError} />}
       <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new", isDirty)} disabled={newDraftPending || !templates || templates.length === 0}>
-        {t("manage.planInstances.newInstance", "New instance")}
+        {t("manage.planInstances.newInstance", "Create race plan")}
       </button>
       {templates && templates.length === 0 && (
-        <div className="hra-text-muted text-meta mt-1.5" >{t("manage.planInstances.noTemplates", "Save a template first — an instance is always created from one.")}</div>
+        <div className="hra-text-muted text-meta mt-1.5" >{t("manage.planInstances.noTemplates", "Save a plan template first — a race plan is always created from one.")}</div>
       )}
 
       <PlanInstanceConfirmations

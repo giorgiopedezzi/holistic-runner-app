@@ -61,6 +61,15 @@ export function fmtSpeed(metersPerSec: number | null | undefined): string {
   return getUnitSystem() === "imperial" ? `${kmhToMph(kmh).toFixed(1)}` : `${kmh.toFixed(1)}`;
 }
 
+// activities.source is a lowercase backend enum ("garmin"/"strava"); this is
+// display-only capitalization for user-facing badges/copy, the persisted
+// value itself is untouched.
+const SOURCE_LABELS: Record<string, string> = { garmin: "Garmin", strava: "Strava", withings: "Withings" };
+export function fmtSource(source: string | null | undefined): string {
+  if (!source) return "—";
+  return SOURCE_LABELS[source] ?? source;
+}
+
 export function fmtPercent(v: number | null | undefined): string {
   return v != null ? `${v.toFixed(1)}%` : "—";
 }

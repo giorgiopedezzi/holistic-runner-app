@@ -16,21 +16,53 @@
  * derived by walking children (any day -> any week -> any section), never
  * stored, matching docs/runplan-dsl.md's own documented rule for this.
  */
-import { useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Bed, CircleHelp, Download, Play } from "lucide-react";
+import { AlertTriangle, Bed, CircleHelp, Download, ListTodo, Play, SquareSlash } from "lucide-react";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
-import { weekDateRange, type AggregateTotals, type DayView, type DistanceTotal, type SectionView, type WeekView } from "../domain/runplan-aggregate";
-import { recomposeDayLine, splitNote } from "@/domain/runplan-patch";
+import {
+  buildContinuousSegmentPresentation, buildIntervalSegmentPresentation, buildMultiSegmentPresentation, buildStateDayPresentation,
+  buildUnsupportedPresentation,
+  weekDateRange, type AggregateTotals, type ContinuousSegmentPresentation, type DayView, type DistanceTotal,
+  type IntervalSegmentPresentation, type SectionView, type StateDayKind, type WeekView,
+} from "../domain/runplan-aggregate";
+import { recomposeDayLine, replaceSegmentInDayLine, splitNote } from "@/domain/runplan-patch";
+import {
+  applyDistanceOrDurationEdit, applyPaceEdit, applyRecoveryPaceEdit, applyRecoveryTargetEdit, applyRepetitionsEdit,
+  describeIntensityRejectionMessage, describeRepetitionsRejectionMessage, describeTargetRejectionMessage, serializeSegment,
+} from "@/domain/runplan-serializer";
 import { PlannedPaceTargetChart } from "./PlannedPaceTargetChart";
+import type { OffsetUnit, ParseWarning, WorkoutSegment } from "@/types/runplan";
 
 // HRA-127 follow-up: identifies one Day/Week row for the drag-and-drop swap
 // below — plain index tuples, same "sectionIndex/weekIndex/dayIndex" shape
 // onSectionEdit/onWeekEdit/onDayEdit already key by.
 export interface DayRef { sectionIndex: number; weekIndex: number; dayIndex: number }
 export interface WeekRef { sectionIndex: number; weekIndex: number }
+
+// HRA-140 follow-up (extended to the instance editor by HRA-249): identifies
+// whichever Section/Week/Day row a caller's own most-recent structured edit
+// touched — used purely to flag that one row (hra-edited-row-highlight,
+// index.css — a template row's AccordionCard, or an instance day row's plain
+// .card div), independent of DayRef/WeekRef above (drag-and-drop refs, no
+// "kind" discriminant since each is only ever compared against its own
+// kind).
+export type EditedRef =
+  | { kind: "section"; sectionIndex: number }
+  | ({ kind: "week" } & WeekRef)
+  | ({ kind: "day" } & DayRef);
+
+function isSectionHighlighted(ref: EditedRef | undefined, sectionIndex: number): boolean {
+  return ref?.kind === "section" && ref.sectionIndex === sectionIndex;
+}
+function isWeekHighlighted(ref: EditedRef | undefined, sectionIndex: number, weekIndex: number): boolean {
+  return ref?.kind === "week" && ref.sectionIndex === sectionIndex && ref.weekIndex === weekIndex;
+}
+function isDayHighlighted(ref: EditedRef | undefined, sectionIndex: number, weekIndex: number, dayIndex: number): boolean {
+  return ref?.kind === "day" && ref.sectionIndex === sectionIndex && ref.weekIndex === weekIndex && ref.dayIndex === dayIndex;
+}
 
 interface TrainingPlanAccordionProps {
   // The owning template's/instance's own name — substituted for the
@@ -47,12 +79,13 @@ interface TrainingPlanAccordionProps {
   // text instead of inputs. Day dsl/note stay editable regardless. Default
   // false (templates, HRA-117, remain fully editable at every level).
   readOnlySectionWeek?: boolean;
-  // HRA-126: independent of readOnlySectionWeek — when true, Day dsl/note
-  // also stop being editable (the dsl/note inputs simply don't render, same
-  // "hide the input, the title/tooltip already shows the value" pattern
-  // readOnlySectionWeek uses above). Set by the instance card once an
-  // instance's approved_at is set, locking the whole plan view. Default
-  // false (an unapproved instance, or any template, stays fully editable).
+  // HRA-126, no longer tied to approval by HRA-249: independent of
+  // readOnlySectionWeek — when true, Day dsl/note also stop being editable
+  // (the dsl/note inputs simply don't render, same "hide the input, the
+  // title/tooltip already shows the value" pattern readOnlySectionWeek uses
+  // above). The instance card no longer sets this from an instance's
+  // approved_at (editing an active plan is now allowed, with a persistent
+  // warning instead of a lock) — default false.
   readOnlyDays?: boolean;
   // HRA-127 follow-up: native HTML5 drag-and-drop, as an alternative UX to
   // the picker-based swap the instance card already offers — dragging one
@@ -110,6 +143,22 @@ interface TrainingPlanAccordionProps {
   // there, same convention as onExportDayFit.
   onExportSectionFit?: (section: SectionView) => void;
   onExportWeekFit?: (section: SectionView, week: WeekView) => void;
+  // HRA-234: the plan's effective PACE offset unit (plan.metadata.offset_unit)
+  // — needed only by TemplateDayRow's structured Pace/Recovery-pace field
+  // editors, to serialize an edited offset intensity the same way the day
+  // will be re-parsed. Optional: instance days never reach that code path
+  // (day.date is always set for them, dispatching to InstanceDayRow
+  // instead), so PlanInstancesSection never needs to pass this — defaults to
+  // the DSL grammar's own default ("s/km").
+  offsetUnit?: OffsetUnit;
+  // HRA-140 follow-up: the Section/Week/Day the caller's own most-recent
+  // structured edit touched — highlights just that one row (a template
+  // row's AccordionCard, in sync with the raw DSL textarea's own
+  // last-patched-line highlight in PlanTemplatesSection.tsx; an instance
+  // day row's plain .card div, HRA-249). Optional: only a day kind is
+  // reachable for an instance (readOnlySectionWeek keeps its Section/Week
+  // read-only), so PlanInstancesSection only ever sets that one.
+  highlightedRef?: EditedRef;
 }
 
 // DayRef/WeekRef are always flat, plain object literals built with the same
@@ -174,7 +223,7 @@ function fmtDistance(distance: DistanceTotal, t: Translate): string {
 // now joined into one compact string for the always-visible title row.
 function compactTotals(totals: AggregateTotals, t: Translate): string {
   return [
-    t("runplan.accordion.totalDays", `${totals.totalDays} days`, { n: totals.totalDays }),
+    t("runplan.accordion.totalDays", totals.totalDays === 1 ? "1 day" : `${totals.totalDays} days`, { count: totals.totalDays }),
     t("runplan.accordion.activeDays", `${totals.activeDays} active`, { n: totals.activeDays }),
     t("runplan.accordion.runningDays", `${totals.runningDays} running`, { n: totals.runningDays }),
     t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays }),
@@ -214,6 +263,102 @@ const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, st
 };
 function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
   return workoutType === "run" || workoutType === "rest" ? workoutType : "other";
+}
+
+// HRA-231: the template-only REST/OTHER/TODO dedicated structured state
+// (buildStateDayPresentation) — distinct from WORKOUT_TYPE_SWITCH_ICONS
+// above, which is an instance-only edit control with a different value set
+// (todo/cross/strength all fold into "other" there; here each keeps its own
+// label since there is no editing to fold for).
+const STATE_DAY_ICONS: Record<StateDayKind, (props: { size?: number }) => ReactNode> = {
+  rest: Bed, other: CircleHelp, todo: ListTodo,
+};
+const STATE_DAY_LABEL_KEYS: Record<StateDayKind, [string, string]> = {
+  rest: ["runplan.accordion.stateRestLabel", "Rest day"],
+  other: ["runplan.accordion.stateOtherLabel", "Other"],
+  todo: ["runplan.accordion.stateTodoLabel", "Not yet planned"],
+};
+
+// HRA-231: wraps a structured field's value, marking it visibly (muted +
+// tooltip, same .hra-tooltip/data-tooltip idiom NoteIcon above already
+// uses) whenever the underlying Target/Intensity was kind "unknown" — a
+// genuinely unrecognized token or the explicit "?" placeholder, per
+// docs/runplan-dsl.md (parsed identically) — rather than silently
+// presenting it like a normal resolved value.
+function ValueSpan({ value, unknown, unknownTooltip }: { value: string; unknown?: boolean; unknownTooltip: string }) {
+  return unknown ? (
+    <span className="hra-tooltip hra-text-muted text-data cursor-help" data-tooltip={unknownTooltip}>{value}</span>
+  ) : (
+    <span className="hra-text-primary text-data">{value}</span>
+  );
+}
+
+// HRA-235: the result of a structured-field commit attempt — `error` carries
+// the SAME {line, content, message} shape docs/runplan-dsl.md's ParseWarning
+// already uses, so a rejected edit reads as one consistent diagnostic
+// language with the day-level parse warnings below (day.warnings), not a
+// bespoke error format. `content` is the segment's own CURRENT DSL text
+// (still valid, still what's actually in day.dsl right now — see
+// makeFieldCommit) rather than the rejected raw input, since AC2/AC3 ask for
+// "the underlying DSL location it corresponds to", i.e. where to go fix it,
+// not a copy of what was typed. `line` is always 1: a template day's DSL is
+// one line by construction, so there is no real multi-line document position
+// to report here — the shape is reused for its (content, message) fields and
+// for consistency with the parser's own warnings, not for line navigation.
+export type FieldEditResult = { ok: true } | { ok: false; error: ParseWarning };
+
+// HRA-234, extended HRA-235: the editable counterpart to ValueSpan above —
+// shown instead of it whenever the caller supplies an `onCommit`. Local
+// "draft" buffer (not a controlled `value={value}` input) so an edit that
+// fails to round-trip (AC6) can visibly snap back to the last-known-good
+// value rather than leaving whatever the user typed on screen with no
+// feedback that it wasn't applied. Commits on blur or Enter, not
+// per-keystroke (matches this file's existing debounce-free-but-not-per-
+// keystroke inputs elsewhere, and avoids reparsing a half-typed token on
+// every character).
+// HRA-235: a rejection now renders a real inline error message on THIS field
+// (AC1 — not just the day-level warnings list below), `aria-describedby`
+// programmatically ties the input to that message (AC4), and a real
+// `<button>` (keyboard-reachable by construction, AC4) lets the user jump to
+// the corresponding DSL text via `onNavigateToDsl` (AC3).
+function EditableValueField({ value, onCommit, ariaLabel, onNavigateToDsl, t }: {
+  value: string; onCommit: (raw: string) => FieldEditResult; ariaLabel: string; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
+}) {
+  const [draft, setDraft] = useState(value);
+  const [error, setError] = useState<ParseWarning | null>(null);
+  const errorId = useId();
+  useEffect(() => { setDraft(value); setError(null); }, [value]);
+  function commit() {
+    if (draft === value) { setError(null); return; }
+    const result = onCommit(draft);
+    if (!result.ok) { setDraft(value); setError(result.error); } else setError(null);
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <input
+        className={[inputClass, "text-data p-1 w-24", error ? "hra-text-danger" : ""].filter(Boolean).join(" ")}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+        aria-label={ariaLabel}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? errorId : undefined}
+      />
+      {error && (
+        <div id={errorId} role="alert" className="hra-text-danger text-meta flex items-center gap-1.5">
+          <span>{error.message}</span>
+          <button
+            type="button"
+            className="hra-text-danger underline bg-transparent border-0 p-0 cursor-pointer text-meta"
+            onClick={() => onNavigateToDsl(error)}
+          >
+            {t("runplan.accordion.editRejectedViewInDsl", "View in DSL")}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // HRA-125: an instance day's title shows its real calendar date + weekday
@@ -261,6 +406,110 @@ function UnsavedBadge({ t }: { t: Translate }) {
     <span className="hra-text-warning inline-flex items-center"  title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}>
       <AlertTriangle size={12} />
     </span>
+  );
+}
+
+// HRA-232: the field JSX HRA-229/HRA-230 already established for a single
+// continuous/interval segment, factored out so the new per-"Segment N"-card
+// rendering (multi-segment days) reuses the exact same fields instead of
+// duplicating the markup — the single-segment path below (unwrapped, no
+// "Segment N" label) still renders through these same two components.
+// HRA-234: the structured field editors for one continuous/interval segment
+// — one boolean-returning commit function per field, built by TemplateDayRow
+// (which owns the segment index + offsetUnit context this Story's new
+// serializer needs). Undefined when the day isn't editable (readOnlyDays, or
+// this segment/day isn't a template day at all — InstanceDayRow never
+// builds these), in which case the field falls back to the original
+// read-only ValueSpan, unchanged from HRA-229/230/232.
+export interface ContinuousFieldEdit {
+  distanceOrDuration: (raw: string) => FieldEditResult;
+  pace: (raw: string) => FieldEditResult;
+}
+export interface IntervalFieldEdit extends ContinuousFieldEdit {
+  repetitions: (raw: string) => FieldEditResult;
+  recovery?: (raw: string) => FieldEditResult;
+  recoveryPace?: (raw: string) => FieldEditResult;
+}
+
+function ContinuousFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t }: {
+  presentation: ContinuousSegmentPresentation; unknownTooltip: string; edit?: ContinuousFieldEdit; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
+}) {
+  return (
+    <div className="flex gap-4">
+      <div className="flex flex-col">
+        <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
+        {edit ? (
+          <EditableValueField value={presentation.distanceOrDuration} onCommit={edit.distanceOrDuration} ariaLabel={t("runplan.accordion.distanceDurationLabel", "Distance / Duration")} onNavigateToDsl={onNavigateToDsl} t={t} />
+        ) : (
+          <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
+        )}
+      </div>
+      <div className="flex flex-col">
+        <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
+        {edit ? (
+          <EditableValueField value={presentation.pace} onCommit={edit.pace} ariaLabel={t("runplan.accordion.paceLabel", "Pace")} onNavigateToDsl={onNavigateToDsl} t={t} />
+        ) : (
+          <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function IntervalFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t }: {
+  presentation: IntervalSegmentPresentation; unknownTooltip: string; edit?: IntervalFieldEdit; onNavigateToDsl: (error: ParseWarning) => void; t: Translate;
+}) {
+  return (
+    <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2" role="group" aria-label={t("runplan.accordion.intervalGroupLabel", "Interval")}>
+      <div className="flex gap-4">
+        <div className="flex flex-col">
+          <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
+          {edit ? (
+            <EditableValueField value={presentation.repetitions} onCommit={edit.repetitions} ariaLabel={t("runplan.accordion.repetitionsLabel", "Repetitions")} onNavigateToDsl={onNavigateToDsl} t={t} />
+          ) : (
+            <ValueSpan value={presentation.repetitions} unknown={presentation.repetitionsUnknown} unknownTooltip={unknownTooltip} />
+          )}
+        </div>
+        <div className="flex flex-col">
+          <span className="hra-text-secondary text-label">{t("runplan.accordion.distanceDurationLabel", "Distance / Duration")}</span>
+          {edit ? (
+            <EditableValueField value={presentation.distanceOrDuration} onCommit={edit.distanceOrDuration} ariaLabel={t("runplan.accordion.distanceDurationLabel", "Distance / Duration")} onNavigateToDsl={onNavigateToDsl} t={t} />
+          ) : (
+            <ValueSpan value={presentation.distanceOrDuration} unknown={presentation.distanceOrDurationUnknown} unknownTooltip={unknownTooltip} />
+          )}
+        </div>
+        <div className="flex flex-col">
+          <span className="hra-text-secondary text-label">{t("runplan.accordion.paceLabel", "Pace")}</span>
+          {edit ? (
+            <EditableValueField value={presentation.pace} onCommit={edit.pace} ariaLabel={t("runplan.accordion.paceLabel", "Pace")} onNavigateToDsl={onNavigateToDsl} t={t} />
+          ) : (
+            <ValueSpan value={presentation.pace} unknown={presentation.paceUnknown} unknownTooltip={unknownTooltip} />
+          )}
+        </div>
+      </div>
+      {presentation.recovery && (
+        <div className="flex gap-4 pl-3" role="group" aria-label={t("runplan.accordion.recoveryLabel", "Recovery")}>
+          <div className="flex flex-col">
+            <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryLabel", "Recovery")}</span>
+            {edit?.recovery ? (
+              <EditableValueField value={presentation.recovery.recovery} onCommit={edit.recovery} ariaLabel={t("runplan.accordion.recoveryLabel", "Recovery")} onNavigateToDsl={onNavigateToDsl} t={t} />
+            ) : (
+              <ValueSpan value={presentation.recovery.recovery} unknown={presentation.recovery.recoveryUnknown} unknownTooltip={unknownTooltip} />
+            )}
+          </div>
+          {presentation.recovery.recoveryPace && (
+            <div className="flex flex-col">
+              <span className="hra-text-secondary text-label">{t("runplan.accordion.recoveryPaceLabel", "Recovery pace")}</span>
+              {edit?.recoveryPace ? (
+                <EditableValueField value={presentation.recovery.recoveryPace} onCommit={edit.recoveryPace} ariaLabel={t("runplan.accordion.recoveryPaceLabel", "Recovery pace")} onNavigateToDsl={onNavigateToDsl} t={t} />
+              ) : (
+                <ValueSpan value={presentation.recovery.recoveryPace} unknown={presentation.recovery.recoveryPaceUnknown} unknownTooltip={unknownTooltip} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -328,7 +577,7 @@ function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabe
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, highlighted,
 }: {
   day: DayView;
   date: string;
@@ -340,6 +589,7 @@ function InstanceDayRow({
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  highlighted?: boolean;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
@@ -381,7 +631,7 @@ function InstanceDayRow({
   return (
     <div
       {...drag.handlers}
-      className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
+      className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}${highlighted ? " hra-edited-row-highlight" : ""}`}
       data-swappable={drag.swappable || undefined}
     >
       {/* Live follow-up (post-HRA-165): both rows are now ONE CSS Grid,
@@ -438,7 +688,7 @@ function InstanceDayRow({
             className={[inputClass, "row-start-1 col-start-2 w-full min-w-0 font-mono text-label p-1.5"].filter(Boolean).join(" ")}
             value={workoutText}
             onChange={e => onEdit({ dsl: recomposeDayLine(`${dayPrefix}${e.target.value}`, { notes: day.notes }) })}
-            aria-label={t("runplan.accordion.dslLabel", "Workout (DSL)")}
+            aria-label={t("runplan.accordion.dslLabel", "Workout plan text (DSL)")}
           />
         )}
         <span className="hra-text-secondary row-start-1 col-start-3 flex items-center gap-2 text-meta" >
@@ -516,17 +766,143 @@ function InstanceDayRow({
 // hooks unconditionally in one component, then early-returning, would
 // violate the rules of hooks.
 function TemplateDayRow({
-  day, onEdit, readOnlyDays, dayRef, onDaySwap,
+  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit, highlighted,
 }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
   readOnlyDays: boolean;
   dayRef?: DayRef;
   onDaySwap?: (a: DayRef, b: DayRef) => void;
+  offsetUnit: OffsetUnit;
+  highlighted: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  // HRA-233: per-day Structured/DSL selector, default Structured — replaces
+  // the DSL textarea's old always-visible presence. Local component state
+  // (not persisted/lifted) is safe here because the actual edit buffer lives
+  // in the parent's day.dsl/onEdit round-trip (PlanTemplatesSection's own
+  // `sections` state) — switching view only toggles which JSX renders, it
+  // never unmounts/resets the controlled `value={day.dsl}` textarea's
+  // source of truth, so an in-progress unsaved DSL edit survives the switch.
+  const [view, setView] = useState<"structured" | "dsl">("structured");
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
+  // HRA-229: read-only Distance/Duration + Pace fields, built purely from
+  // day.segments — only non-null for a template day with exactly one
+  // continuous segment (interval/progression/rest_block/multi-segment days
+  // are out of this Story's scope, later Stories).
+  const presentation = buildContinuousSegmentPresentation(day);
+  // HRA-230: same contract for a single interval segment — Repetitions,
+  // Distance/Duration, Pace as the primary row, plus a subordinate Recovery
+  // row when the segment's own `r:` clause is present. day.segments holds at
+  // most one non-null presentation at a time (continuous XOR interval), so
+  // both can render unconditionally below without an extra dispatch.
+  const intervalPresentation = buildIntervalSegmentPresentation(day);
+  // HRA-232: a ;-joined multi-segment day ("10km @ RG+20 ; 10km @ RG-5") —
+  // mutually exclusive with presentation/intervalPresentation above by
+  // construction (those two require day.segments.length === 1; this
+  // requires > 1), same convention statePresentation/unsupportedPresentation
+  // already establish relative to each other.
+  const multiSegmentPresentation = buildMultiSegmentPresentation(day);
+  // HRA-231: REST/OTHER/TODO's own dedicated labeled state — mutually
+  // exclusive with presentation/intervalPresentation above (workout_type
+  // disjoint from "run").
+  const statePresentation = buildStateDayPresentation(day);
+  const StateIcon = statePresentation ? STATE_DAY_ICONS[statePresentation] : null;
+  // HRA-231: a progression segment or a CROSS/STRENGTH day — neither has a
+  // defined structured shape yet (Epic HRA-228's open decision, deferred) —
+  // flagged so the view says so honestly instead of showing nothing beyond
+  // the still-editable raw DSL text below.
+  const unsupportedPresentation = buildUnsupportedPresentation(day);
+  const unknownTooltip = t("runplan.accordion.unknownValueTooltip", "Unrecognized token — shown as written, not representable in Structured view");
+
+  // HRA-235: the DSL textarea's own ref + a pending "select this substring
+  // once the DSL panel is visible" request — see navigateToDsl/the effect
+  // below. A ref (not just a moved-view flag) is needed because the actual
+  // focus()/setSelectionRange() call can only happen once the textarea has
+  // actually mounted, which for view === "dsl" happens on the render AFTER
+  // the one that requests it.
+  const dslTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const [pendingDslHighlight, setPendingDslHighlight] = useState<string | null>(null);
+  // HRA-235 AC3: switches this day to DSL view and requests that the
+  // error's own `content` (the segment's current, still-valid DSL text —
+  // see makeFieldCommit below) be selected there, so the user lands directly
+  // on the corresponding spot instead of hunting the single-line DSL text
+  // for it themselves.
+  function navigateToDsl(error: ParseWarning) {
+    setPendingDslHighlight(error.content);
+    setView("dsl");
+  }
+  useEffect(() => {
+    if (view !== "dsl" || pendingDslHighlight == null) return;
+    const el = dslTextareaRef.current;
+    if (!el) return;
+    const idx = day.dsl.indexOf(pendingDslHighlight);
+    el.focus();
+    el.setSelectionRange(idx === -1 ? 0 : idx, idx === -1 ? day.dsl.length : idx + pendingDslHighlight.length);
+    setPendingDslHighlight(null);
+  }, [view, pendingDslHighlight, day.dsl]);
+
+  // HRA-234: builds one field's commit function, scoped to a single segment
+  // (by index — AC4's "only the touched segment's DSL text changes"). Each
+  // apply* function (domain/runplan-serializer.ts) parses `raw`, builds the
+  // WHOLE updated segment, and is itself the AC6 gate (returns null on a
+  // value that doesn't round-trip) — this wrapper's only job is turning a
+  // successful apply into a serialize + splice-into-day.dsl + onEdit call,
+  // through the SAME onDayEdit({dsl}) path a manual DSL edit already uses
+  // (AC5 — no new endpoint). Returns {ok:false} (never touches day.dsl) on
+  // any rejection, so EditableValueField knows to revert its own draft text
+  // and show the attached error (HRA-235).
+  function makeFieldCommit<TArgs extends unknown[]>(
+    segmentIndex: number,
+    applyEdit: (segment: WorkoutSegment, raw: string, ...args: TArgs) => WorkoutSegment | null,
+    describeRejection: (raw: string, ...args: TArgs) => string,
+    ...args: TArgs
+  ): (raw: string) => FieldEditResult {
+    return (raw: string) => {
+      const segment = day.segments?.[segmentIndex];
+      if (!segment) {
+        return { ok: false, error: { line: 1, content: "", message: t("runplan.accordion.editRejectedNoSegment", "No segment found to edit.") } };
+      }
+      // HRA-235: the error's `content` — where a rejection is reported — is
+      // this segment's CURRENT, still-valid DSL text (unaffected by the
+      // rejected edit), not the typed input: AC2/AC3 ask where to go fix it,
+      // not a copy of what was rejected.
+      const currentSegmentDsl = serializeSegment(segment, offsetUnit);
+      const updated = applyEdit(segment, raw, ...args);
+      if (!updated) {
+        return { ok: false, error: { line: 1, content: currentSegmentDsl, message: describeRejection(raw, ...args) } };
+      }
+      // EditableValueField only calls this when the typed text actually
+      // differs from what's on screen (its own commit() short-circuits a
+      // no-op edit before calling onCommit at all) — so an unchanged day.dsl
+      // here means replaceSegmentInDayLine itself couldn't apply the patch
+      // (a malformed day.dsl/segmentIndex — see that function's own "return
+      // unchanged, don't guess" convention), a genuine rejection.
+      const newDsl = replaceSegmentInDayLine(day.dsl, segmentIndex, serializeSegment(updated, offsetUnit));
+      if (newDsl === day.dsl) {
+        return { ok: false, error: { line: 1, content: currentSegmentDsl, message: t("runplan.accordion.editRejectedNoDslChange", "Could not apply this change to this day's DSL text.") } };
+      }
+      onEdit({ dsl: newDsl });
+      return { ok: true };
+    };
+  }
+  function continuousEditFor(segmentIndex: number): ContinuousFieldEdit {
+    return {
+      distanceOrDuration: makeFieldCommit(segmentIndex, applyDistanceOrDurationEdit, describeTargetRejectionMessage),
+      pace: makeFieldCommit(segmentIndex, applyPaceEdit, describeIntensityRejectionMessage, offsetUnit),
+    };
+  }
+  function intervalEditFor(segmentIndex: number, hasRecovery: boolean): IntervalFieldEdit {
+    return {
+      distanceOrDuration: makeFieldCommit(segmentIndex, applyDistanceOrDurationEdit, describeTargetRejectionMessage),
+      pace: makeFieldCommit(segmentIndex, applyPaceEdit, describeIntensityRejectionMessage, offsetUnit),
+      repetitions: makeFieldCommit(segmentIndex, applyRepetitionsEdit, describeRepetitionsRejectionMessage),
+      recovery: hasRecovery ? makeFieldCommit(segmentIndex, applyRecoveryTargetEdit, describeTargetRejectionMessage) : undefined,
+      recoveryPace: hasRecovery ? makeFieldCommit(segmentIndex, applyRecoveryPaceEdit, describeIntensityRejectionMessage, offsetUnit) : undefined,
+    };
+  }
+  const editable = !readOnlyDays;
 
   // day.dsl is the whole raw line ("D3: 5km @ RG") — using it directly as
   // the label (ellipsis-truncated by TitleRow) reports the actual workout
@@ -536,32 +912,128 @@ function TemplateDayRow({
       <AccordionCard
         title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
+        className={highlighted ? "hra-edited-row-highlight" : undefined}
       >
         <div className="flex flex-col gap-2">
+          {/* HRA-233: per-day Structured/DSL selector, default Structured —
+              replaces the DSL textarea's old always-visible presence below.
+              Only affects the DSL text panel; Note stays visible regardless
+              (it isn't part of raw_dsl). Not shown for a readOnlyDays day —
+              there's nothing to switch to edit, same gate the DSL/Note block
+              itself already used before this Story. `aria-pressed` (not just
+              the app's usual `data-active`) exposes the selected state
+              programmatically, per this Story's own explicit AC. */}
+          {!readOnlyDays && (
+            <div className="hra-segment self-start" role="group" aria-label={t("runplan.accordion.viewToggleLabel", "View")} >
+              {(["structured", "dsl"] as const).map(v => (
+                <button
+                  key={v} type="button" className="hra-segment-item py-1 px-2" data-active={view === v}
+                  aria-pressed={view === v} onClick={() => setView(v)}
+                >
+                  {v === "structured" ? t("runplan.accordion.viewStructured", "Structured") : t("runplan.accordion.viewDsl", "DSL")}
+                </button>
+              ))}
+            </div>
+          )}
+          {view === "structured" && (
+            <>
+              {/* HRA-231: REST/OTHER/TODO's dedicated labeled state, in place
+                  of the empty Distance/Pace/Repetitions fields those day
+                  types would otherwise never fill. */}
+              {statePresentation && StateIcon && (
+                <div className="hra-text-secondary flex items-center gap-2 text-label">
+                  <StateIcon size={14} />
+                  {t(STATE_DAY_LABEL_KEYS[statePresentation][0], STATE_DAY_LABEL_KEYS[statePresentation][1])}
+                </div>
+              )}
+              {/* HRA-231: progression / CROSS/STRENGTH — not hidden (the raw
+                  DSL text is still reachable via the toggle above), just
+                  honestly marked as not yet representable here. */}
+              {unsupportedPresentation && (
+                <div className="hra-text-muted flex items-center gap-2 text-label">
+                  <SquareSlash size={14} />
+                  {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
+                </div>
+              )}
+              {/* HRA-229/HRA-234: editable once a segment-level serializer
+                  exists to regenerate day.dsl from a field edit — read-only
+                  (unchanged since HRA-229) when readOnlyDays. */}
+              {presentation && <ContinuousFields presentation={presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(0) : undefined} onNavigateToDsl={navigateToDsl} t={t} />}
+              {/* HRA-230/HRA-234: one grouped block for the whole interval,
+                  not a card per repetition — the primary row above, an
+                  indented recovery row directly below it only when the
+                  segment has an `r:` clause, visibly associated by shared
+                  containment + indent (no card-per-repetition duplication). */}
+              {intervalPresentation && (
+                <IntervalFields
+                  presentation={intervalPresentation} unknownTooltip={unknownTooltip}
+                  edit={editable ? intervalEditFor(0, intervalPresentation.recovery != null) : undefined} onNavigateToDsl={navigateToDsl} t={t}
+                />
+              )}
+              {/* HRA-232: a ;-joined multi-segment day — each segment gets its
+                  own labeled "Segment N" card, in source order, internally
+                  reusing the same Continuous/Interval fields above. A segment
+                  that's neither (progression/rest_block — no defined
+                  structured shape yet, same open decision
+                  unsupportedPresentation already flags) shows the same
+                  unsupported marker at its own slot, rather than silently
+                  disappearing from the ordered sequence. */}
+              {multiSegmentPresentation && (
+                <div className="flex flex-col gap-2">
+                  {multiSegmentPresentation.map(entry => {
+                    const segmentLabel = t("runplan.accordion.segmentLabel", `Segment ${entry.index}`, { n: entry.index });
+                    return (
+                    <div key={entry.index} className="hra-border-strong rounded-md p-2 flex flex-col gap-2" role="group" aria-label={segmentLabel}>
+                      <div className="hra-text-secondary text-label">
+                        {segmentLabel}
+                      </div>
+                      {entry.kind === "continuous" && (
+                        <ContinuousFields presentation={entry.presentation} unknownTooltip={unknownTooltip} edit={editable ? continuousEditFor(entry.index - 1) : undefined} onNavigateToDsl={navigateToDsl} t={t} />
+                      )}
+                      {entry.kind === "interval" && (
+                        <IntervalFields
+                          presentation={entry.presentation} unknownTooltip={unknownTooltip}
+                          edit={editable ? intervalEditFor(entry.index - 1, entry.presentation.recovery != null) : undefined} onNavigateToDsl={navigateToDsl} t={t}
+                        />
+                      )}
+                      {entry.kind === "unsupported" && (
+                        <div className="hra-text-muted flex items-center gap-2 text-label">
+                          <SquareSlash size={14} />
+                          {t("runplan.accordion.unsupportedLabel", "Unsupported in Structured view")}
+                        </div>
+                      )}
+                    </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
           {/* HRA-126: once approved, the dsl/note inputs simply don't render —
               same "hide the input, the title/tooltip already shows the value"
               pattern readOnlySectionWeek already uses for Section/Week above. */}
+          {!readOnlyDays && view === "dsl" && (
+            <label className="hra-text-secondary text-meta" >
+              {t("runplan.accordion.dslLabel", "Workout plan text (DSL)")}
+              <textarea
+                ref={dslTextareaRef}
+                className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}
+                value={day.dsl}
+                onChange={e => onEdit({ dsl: e.target.value })}
+                rows={2}
+              />
+            </label>
+          )}
           {!readOnlyDays && (
-            <>
-              <label className="hra-text-secondary text-meta" >
-                {t("runplan.accordion.dslLabel", "Workout (DSL)")}
-                <textarea
-                  className={[inputClass, "w-full mt-1 font-mono text-meta p-1.5"].filter(Boolean).join(" ")}
-                  value={day.dsl}
-                  onChange={e => onEdit({ dsl: e.target.value })}
-                  rows={2}
-                />
-              </label>
-              <label className="hra-text-secondary text-meta" >
-                {t("runplan.accordion.noteLabel", "Note")}
-                <input
-                  className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
-                  value={day.notes ?? ""}
-                  onChange={e => onEdit({ notes: e.target.value })}
-                  placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
-                />
-              </label>
-            </>
+            <label className="hra-text-secondary text-meta" >
+              {t("runplan.accordion.noteLabel", "Note")}
+              <input
+                className={[inputClass, "w-full mt-1 p-1.5"].filter(Boolean).join(" ")}
+                value={day.notes ?? ""}
+                onChange={e => onEdit({ notes: e.target.value })}
+                placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
+              />
+            </label>
           )}
           {day.needs_review && day.warnings.length > 0 && (
             <ul className="hra-warning-list hra-text-danger text-meta m-0">
@@ -581,7 +1053,9 @@ function TemplateDayRow({
 
 // Dispatches on day.date (HRA-125's own instance-vs-template signal) — kept
 // hook-free so each branch's component owns its own hooks unconditionally.
-function DayEditor(props: {
+// HRA-249: `highlighted` now goes to both branches — InstanceDayRow gained
+// the same just-edited-row treatment TemplateDayRow already had.
+function DayEditor({ offsetUnit, highlighted, ...props }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
   readOnlyDays: boolean;
@@ -591,14 +1065,16 @@ function DayEditor(props: {
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  offsetUnit: OffsetUnit;
+  highlighted: boolean;
 }) {
   return props.day.date != null
-    ? <InstanceDayRow {...props} date={props.day.date} />
-    : <TemplateDayRow {...props} />;
+    ? <InstanceDayRow {...props} date={props.day.date} highlighted={highlighted} />
+    : <TemplateDayRow {...props} offsetUnit={offsetUnit} highlighted={highlighted} />;
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportFit,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportFit, offsetUnit, highlightedRef,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -616,6 +1092,8 @@ function WeekEditor({
   // HRA-203: already bound to (section, week) by SectionEditor below — see
   // that prop's own doc comment on TrainingPlanAccordionProps.
   onExportFit?: () => void;
+  offsetUnit: OffsetUnit;
+  highlightedRef?: EditedRef;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -644,6 +1122,7 @@ function WeekEditor({
           />
         }
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
+        className={isWeekHighlighted(highlightedRef, sectionIndex, weekIndex) ? "hra-edited-row-highlight" : undefined}
       >
         <div className="flex flex-col gap-3">
           {!readOnlySectionWeek && (
@@ -665,6 +1144,8 @@ function WeekEditor({
               onWorkoutTypeEdit={onWorkoutTypeEdit ? workoutType => onWorkoutTypeEdit(dayIndex, workoutType) : undefined}
               isDayDirty={isDayDirty}
               onExportDayFit={onExportDayFit}
+              offsetUnit={offsetUnit}
+              highlighted={isDayHighlighted(highlightedRef, sectionIndex, weekIndex, dayIndex)}
             />
           ))}
         </div>
@@ -674,7 +1155,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit, highlightedRef,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -692,6 +1173,8 @@ function SectionEditor({
   onExportDayFit?: (day: DayView) => void;
   onExportSectionFit?: (section: SectionView) => void;
   onExportWeekFit?: (section: SectionView, week: WeekView) => void;
+  offsetUnit: OffsetUnit;
+  highlightedRef?: EditedRef;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
@@ -715,6 +1198,7 @@ function SectionEditor({
         />
       }
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
+      className={isSectionHighlighted(highlightedRef, sectionIndex) ? "hra-edited-row-highlight" : undefined}
     >
       <div className="flex flex-col gap-3">
         {isDefaultSection ? (
@@ -759,6 +1243,8 @@ function SectionEditor({
             isDayDirty={isDayDirty}
             onExportDayFit={onExportDayFit}
             onExportFit={onExportWeekFit ? () => onExportWeekFit(section, week) : undefined}
+            offsetUnit={offsetUnit}
+            highlightedRef={highlightedRef}
           />
         ))}
       </div>
@@ -767,7 +1253,7 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit = "s/km", highlightedRef,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -790,6 +1276,8 @@ export function TrainingPlanAccordion({
           onExportDayFit={onExportDayFit}
           onExportSectionFit={onExportSectionFit}
           onExportWeekFit={onExportWeekFit}
+          offsetUnit={offsetUnit}
+          highlightedRef={highlightedRef}
         />
       ))}
     </div>

@@ -22,6 +22,7 @@ import { ActivityRow } from "@/components/activity/ActivityRow";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
 import { SPORT_COLOR, type Activity, type SavedDateRange, type SportSummary } from "@/types/api";
 import { fmtPace, fmtKm, fmtMinSecRaw, fmtDate } from "@/utils/fmt";
+import { ALL_SENTINEL } from "@/utils/date";
 import { getUnitSystem, kmToMi, paceKmToMi, distanceUnitLabel, paceUnitLabel } from "@/utils/units";
 import { getResolvedTheme } from "@/utils/theme";
 import {
@@ -54,7 +55,7 @@ interface Props {
 // tick, so no manual positioning is needed for "starts from the horizontal
 // center of the bar."
 const GROUP_MODES: GroupMode[] = ["single", "week", "month"];
-const GROUP_LABEL: Record<GroupMode, string> = { single: "Single", week: "Week", month: "Month" };
+const GROUP_LABEL: Record<GroupMode, string> = { single: "By activity", week: "By week", month: "By month" };
 // Whether current and compare render as one overlapped chart (default) or
 // two separate ones, side by side — a per-tab toggle (TrendsBySport), only
 // shown while comparison is enabled.
@@ -621,7 +622,10 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // English would be a regression introduced by this Story, not an existing
   // gap. Named-range names aren't threaded this deep (savedRanges lives
   // several components up) — a plain date span is used instead.
-  const periodLabel = `${fmtDate(from)} – ${fmtDate(to)}`;
+  // "All available data" reads as an intentional range, not the useDateRange
+  // "All" preset's internal 2000-01-01 sentinel (HRA-256).
+  const fromLabel = from === ALL_SENTINEL ? t("dateRange.allAvailable", "All available data") : fmtDate(from);
+  const periodLabel = `${fromLabel} – ${fmtDate(to)}`;
   const comparePeriodLabel = `${fmtDate(compareFrom)} – ${fmtDate(compareTo)}`;
   const overlapTitlePeriod = compareEnabled && viewMode === "overlap"
     ? t("overview.mainGraphPeriodCompare", `${periodLabel} vs ${comparePeriodLabel}`, { current: periodLabel, compare: comparePeriodLabel })
@@ -970,7 +974,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
             <button key={v}
               className="hra-segment-item" data-active={viewMode === v}
               onClick={() => setViewMode(v)}>
-              {v === "overlap" ? t("overview.view.overlap", "Overlapping") : t("overview.view.distinct", "Distinct")}
+              {v === "overlap" ? t("overview.view.overlap", "Overlay") : t("overview.view.distinct", "Side by side")}
             </button>
           ))}
         </div>
@@ -1025,13 +1029,14 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   // The compare period's OWN totals — no delta (there's nothing further
   // back to compare a reference period against) — explicit feedback: "even
   // the second graph must have 'other metrics badges'."
+  const compareDistance = prevRun?.km != null ? splitUnit(fmtKm(prevRun.km * 1000)) : { main: "—", unit: undefined };
   const compareKpis = prevRun ? (
     <>
       <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
         value={prevRun.avgPace ? fmtPace(prevRun.avgPace) : "—"} unit={paceUnitLabel()}
         label={t("overview.stat.avgPace", "Avg pace")} />
       <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
-        value={splitUnit(fmtKm(prevRun.km * 1000)).main} unit={splitUnit(fmtKm(prevRun.km * 1000)).unit}
+        value={compareDistance.main} unit={compareDistance.unit}
         label={t("overview.stat.distance", "Distance")} />
       <GraphKpiCard icon={<RunnerGlyph pose="a" size={16} />} iconColor="var(--accent)"
         value={String(prevRun.sessions)}
@@ -1139,7 +1144,7 @@ function prevSportStats(prevActs: Activity[]) {
   const ascents = prevActs.map(a => a.ascent_m).filter((v): v is number => v != null);
   return {
     sessions: prevActs.length,
-    km:      prevActs.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0),
+    km:      prevActs.length ? prevActs.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0) : null,
     avgHr:   hrs.length ? hrs.reduce((s, v) => s + v, 0) / hrs.length : null,
     avgPace: paces.length ? paces.reduce((s, v) => s + v, 0) / paces.length : null,
     ascent:  ascents.length ? ascents.reduce((s, v) => s + v, 0) : null,
@@ -1195,7 +1200,15 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
     () => linkedRaceId != null ? api.garmin.activity(linkedRaceId) : Promise.resolve(null),
     [linkedRaceId],
   );
-  const linkedRaceActivity = linkedRaceQ.state.status === "success" ? linkedRaceQ.state.data : null;
+  // Renaming/retyping the linked race (ActivityRow's own picker, its
+  // expanded ActivityDetailBody, or the race popup below) returns the fresh
+  // Activity straight from the PUT — folded in here instead of a refetch so
+  // every place this same race is shown updates immediately, same reasoning
+  // as ActivitiesTab's updatedActivities. Reset whenever the linked race
+  // itself changes so a stale override never outlives it.
+  const [updatedRace, setUpdatedRace] = useState<Activity | null>(null);
+  useEffect(() => { setUpdatedRace(null); }, [linkedRaceId]);
+  const linkedRaceActivity = updatedRace ?? (linkedRaceQ.state.status === "success" ? linkedRaceQ.state.data : null);
 
   // Tightened from 20px (graph-first reorg, spec: "reduce unnecessary
   // vertical spacing around the filters so the main graph appears sooner").
@@ -1271,8 +1284,9 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
       expandIndicator={detailView}
       onClick={() => detailView === "accordion" ? setRaceExpanded(e => !e) : setRaceModalOpen(true)}
       onDelete={() => setRaceExpanded(false)}
+      onUpdate={setUpdatedRace}
       expandedContent={
-        <ActivityDetailBody activityId={linkedRaceActivity.id} onDelete={() => setRaceExpanded(false)} />
+        <ActivityDetailBody activityId={linkedRaceActivity.id} onDelete={() => setRaceExpanded(false)} onActivityUpdate={setUpdatedRace} />
       }
     />
   ) : null;
@@ -1322,21 +1336,18 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // nothing further back to compare a reference period against, same
   // reasoning as compareKpis) — explicit feedback: "data in the Other
   // metric of the second graph must be the data of the second graph."
-  const compareOtherKeyMetrics = hasPrevData ? (
+  const compareOtherKeyMetrics = (
     <div className="grid grid-cols-1 gap-2.5">
-      {prevActs ? (
-        <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
-      ) : null}
-      {prevRun?.avgHr ? (
-        <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${Math.round(prevRun.avgHr)} bpm`} accent="var(--accent-red)" />
-      ) : null}
-      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${(prevHours ?? 0).toFixed(1)} h`} />
-      {prevCalories ? (
-        <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
-          label={t("overview.stat.calories", "Calories")} value={`${Math.round(prevCalories).toLocaleString()} kcal`} />
-      ) : null}
+      <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")}
+        value={prevAvgDistance != null ? fmtKm(prevAvgDistance * 1000) : "—"} />
+      <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")}
+        value={prevRun?.avgHr != null ? `${Math.round(prevRun.avgHr)} bpm` : "—"} accent="var(--accent-red)" />
+      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")}
+        value={prevHours != null ? `${prevHours.toFixed(1)} h` : "—"} />
+      <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+        label={t("overview.stat.calories", "Calories")} value={prevCalories != null ? `${Math.round(prevCalories).toLocaleString()} kcal` : "—"} />
     </div>
-  ) : undefined;
+  );
 
   return (
     <>
@@ -1401,6 +1412,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
           activityId={linkedRaceActivity.id}
           onClose={() => setRaceModalOpen(false)}
           onDelete={() => setRaceModalOpen(false)}
+          onActivityUpdate={setUpdatedRace}
         />
       )}
     </>

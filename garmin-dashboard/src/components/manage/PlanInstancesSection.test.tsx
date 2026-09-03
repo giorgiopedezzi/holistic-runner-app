@@ -9,8 +9,9 @@
  * Every assertion targets observable behaviour (rendered text, button
  * enablement, API calls) — never internal state or a file location.
  *
- * Total test count: 17 — the baseline FE-4.2-FE-4.6 must hold
- * assertion-identical (Story AC).
+ * The FE-4.2-FE-4.6 assertion-identical baseline (Story AC, HRA-65/HRA-166)
+ * was satisfied and is settled history — later Stories (e.g. HRA-249) add
+ * their own tests here without preserving that specific count.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -94,7 +95,7 @@ function fakeDataTransfer() {
 }
 
 async function pickTemplate(name: string) {
-  fireEvent.click(fieldControl("Template"));
+  fireEvent.click(fieldControl("Plan template"));
   fireEvent.click(await screen.findByRole("option", { name }));
 }
 
@@ -123,14 +124,14 @@ describe("PlanInstancesSection — row expand/collapse", () => {
     installFetch(mountRoutes());
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "New instance" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
     await pickTemplate("5K Base");
     fireEvent.change(fieldControl("Name"), { target: { value: "Draft name" } });
 
     const newRowToggle = screen.getByText("Draft name").closest('[role="button"]')!;
     fireEvent.click(newRowToggle); // collapse — a "new" row is never dirty (fieldsLocked is false pre-creation)
 
-    fireEvent.click(await screen.findByRole("button", { name: "New instance" })); // reopen
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" })); // reopen
     expect(fieldControl("Name")).toHaveValue("");
   });
 });
@@ -252,7 +253,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     installFetch(mountRoutes({ "GET /api/v1/plan-instances": paginated([]) }));
     render(<PlanInstancesSection templates={[TEMPLATE, templateB]} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "New instance" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
     await pickTemplate("5K Base");
     fireEvent.change(fieldControl("Name"), { target: { value: "Something" } }); // hasEnteredData() -> true
 
@@ -261,13 +262,13 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     expect(await screen.findByText(title)).toBeInTheDocument();
     fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Cancel" }));
     expect(screen.queryByText(title)).not.toBeInTheDocument();
-    expect(fieldControl("Template")).toHaveTextContent("5K Base"); // switch was discarded
+    expect(fieldControl("Plan template")).toHaveTextContent("5K Base"); // switch was discarded
 
     await pickTemplate("10K Build");
     await screen.findByText(title);
     fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Switch template" }));
     await waitFor(() => expect(screen.queryByText(title)).not.toBeInTheDocument());
-    expect(fieldControl("Template")).toHaveTextContent("10K Build");
+    expect(fieldControl("Plan template")).toHaveTextContent("10K Build");
   });
 
   it("Regenerate discard-count: open, cancel, confirm", async () => {
@@ -283,7 +284,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "RG" })); // dirty the regenerate-bucket
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
-    const dslInputs = await screen.findAllByLabelText("Workout (DSL)");
+    const dslInputs = await screen.findAllByLabelText("Workout plan text (DSL)");
     fireEvent.change(dslInputs[0], { target: { value: "6km @ RG" } }); // 1 manual edit on/after the cutover
 
     fireEvent.click(screen.getByRole("button", { name: /Regenerate from/ }));
@@ -319,7 +320,22 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     await screen.findByText(title);
     fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Reset to previous values" }));
     await waitFor(() => expect(screen.queryByText(title)).not.toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument(); // row collapsed
+    // HRA-249: Restore no longer collapses the row — it re-populates from
+    // the actual persisted values (planInstance()'s own race_name: null).
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument(); // row stays expanded
+    await waitFor(() => expect(fieldControl("Race name")).toHaveValue(""));
+  });
+
+  it("Restore: disabled on a clean row, enabled once dirty", async () => {
+    const days = [day1(), day2()];
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+
+    expect(screen.getByRole("button", { name: "Reset to previous values" })).toBeDisabled();
+    fireEvent.change(fieldControl("Race name"), { target: { value: "Boston" } });
+    expect(screen.getByRole("button", { name: "Reset to previous values" })).toBeEnabled();
   });
 
   it("Workout-type change: open, cancel, confirm", async () => {
@@ -357,7 +373,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
 
-    const dslInputs = await screen.findAllByLabelText("Workout (DSL)");
+    const dslInputs = await screen.findAllByLabelText("Workout plan text (DSL)");
     const rowA = dslInputs[0].closest(".card")!;
     const rowB = dslInputs[1].closest(".card")!;
     const dt = fakeDataTransfer();
@@ -381,7 +397,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Swap" }));
     await waitFor(() => expect(screen.queryByText(title)).not.toBeInTheDocument());
 
-    const dslInputsAfter = screen.getAllByLabelText("Workout (DSL)");
+    const dslInputsAfter = screen.getAllByLabelText("Workout plan text (DSL)");
     expect(dslInputsAfter[0]).toHaveValue("3km @ 5:30/km");
     expect(dslInputsAfter[1]).toHaveValue("5km @ 5:30/km");
   });
@@ -441,7 +457,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
 });
 
 describe("PlanInstancesSection — happy path", () => {
-  it("instantiate → create instance → edit → save → approve (approval locks further edits)", async () => {
+  it("instantiate → create instance → edit → save → approve (editing an active plan warns but stays enabled)", async () => {
     let instancesList = [planInstance()];
     const created = { ...planInstance({ id: 20, name: "Marathon Block" }), days: [day1({ instance_id: 20 })] };
 
@@ -462,13 +478,13 @@ describe("PlanInstancesSection — happy path", () => {
     });
     render(<PlanInstancesSection templates={[TEMPLATE]} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "New instance" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
     await pickTemplate("5K Base");
     fireEvent.change(fieldControl("Name"), { target: { value: "Marathon Block" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create instance" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create plan from template" }));
 
     expect(await screen.findByRole("button", { name: "Save" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled();
 
     // Edit (Save-bucket dirty via Race name) then Save.
     fireEvent.change(fieldControl("Race name"), { target: { value: "Boston" } });
@@ -476,12 +492,20 @@ describe("PlanInstancesSection — happy path", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(fieldControl("Race name")).toHaveValue("Boston"));
 
-    // Approve — locks further edits.
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled());
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    // Activate — no longer locks anything; a persistent warning appears instead.
+    fireEvent.click(screen.getByRole("button", { name: "Activate" }));
+    await screen.findByText("This race plan is already active — you can still make changes here.");
+    expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled();
+    // Regenerate is unchanged/out of scope — still locked once approved.
     expect(screen.getByRole("button", { name: /Regenerate from/ })).toHaveAttribute("aria-disabled", "true");
-    expect(screen.queryByLabelText("Workout (DSL)")).not.toBeInTheDocument(); // day edits gone too
+
+    // Day editing stays available, and editing a day re-enables Save (not
+    // force-disabled by approval).
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+    const dslInput = await screen.findByLabelText("Workout plan text (DSL)");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled(); // nothing dirty yet
+    fireEvent.change(dslInput, { target: { value: "8km @ RG" } });
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 });
 
@@ -505,5 +529,58 @@ describe("PlanInstancesSection — List/Agenda view toggle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "List" }));
     expect(await screen.findByRole("button", { name: /Week 1/ })).toBeInTheDocument();
+  });
+});
+
+describe("PlanInstancesSection — just-edited-row highlight (HRA-249)", () => {
+  it("editing a day's DSL text highlights that day's row", async () => {
+    const days = [day1(), day2()];
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+
+    const dslInputs = await screen.findAllByLabelText("Workout plan text (DSL)");
+    const rowA = dslInputs[0].closest(".card")!;
+    const rowB = dslInputs[1].closest(".card")!;
+    expect(rowA).not.toHaveClass("hra-edited-row-highlight");
+
+    fireEvent.change(dslInputs[0], { target: { value: "8km @ RG" } });
+    expect(rowA).toHaveClass("hra-edited-row-highlight");
+    expect(rowB).not.toHaveClass("hra-edited-row-highlight");
+  });
+});
+
+describe("PlanInstancesSection — activation conflict (HRA-249)", () => {
+  it("a 409 overlap response shows a single-acknowledgement warning naming the conflicts, and doesn't set approved_at", async () => {
+    const days = [day1(), day2()];
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
+      "POST /api/v1/plan-instances/10/approve": () => json({
+        type: "about:blank", title: "Conflict", status: 409,
+        detail: 'Activating "My Plan" would overlap 1 already-active plan.',
+        overlaps: {
+          candidate: { id: 10, name: "My Plan", start_date: "2026-09-01", end_date: "2026-09-07" },
+          conflicts: [{ id: 5, name: "Other Plan", start_date: "2026-09-05", end_date: "2026-09-11", overlap_start: "2026-09-05", overlap_end: "2026-09-07" }],
+        },
+      }, 409),
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Activate" }));
+
+    const title = '"My Plan" overlaps 1 already-active plan(s):';
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    const modal = modalFor(title);
+    expect(within(modal).getByText(/Other Plan/)).toBeInTheDocument();
+    // Single acknowledgement — no separate Cancel action exists.
+    expect(within(modal).queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(modal).getByRole("button", { name: "OK" }));
+    expect(screen.queryByText(title)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled(); // never locked
   });
 });

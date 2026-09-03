@@ -10,6 +10,7 @@ export { SectionTitle } from "./SectionTitle";
 export { Empty } from "./Empty";
 export { RangeEmpty } from "./RangeEmpty";
 export { ErrorBanner } from "./ErrorBanner";
+export { WarningBanner } from "./WarningBanner";
 export { LoadingSpinner } from "./LoadingSpinner";
 export { StatusLine } from "./StatusLine";
 export { Pagination } from "./Pagination";

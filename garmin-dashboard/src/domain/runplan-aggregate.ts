@@ -389,6 +389,13 @@ export interface DayView {
   // HH:MM 24-hour or undefined/null (display default 08:00).
   id?: number;
   scheduled_time?: string | null;
+  // HRA-229: the day's raw parsed segments — only ever set on the template
+  // path (buildTemplateSectionView). Instance days carry ResolvedSegment,
+  // a different (already pace-resolved) shape out of this Story's scope, so
+  // buildInstanceSectionView leaves this undefined. Lets
+  // buildContinuousSegmentPresentation below detect the "exactly one
+  // continuous segment" case without threading a second parallel prop.
+  segments?: WorkoutSegment[];
 }
 
 // Local alias so this file doesn't need to import ParseWarning just for this one signature.
@@ -425,13 +432,190 @@ export function weekDateRange(week: WeekView): { start: string; end: string } | 
   return { start: dates.reduce((a, b) => (a < b ? a : b)), end: dates.reduce((a, b) => (a > b ? a : b)) };
 }
 
+// ── structured continuous-segment presentation (HRA-229) ───────────────────
+// A read-only view-model for a template day with EXACTLY one continuous
+// segment — the accordion renders this above the day's still-unchanged,
+// still-editable DSL text input, so a workout like "10km @ FL" shows as
+// labeled Distance/Duration + Pace fields instead of raw DSL punctuation.
+// Purely presentational: the underlying raw_dsl/target/intensity are never
+// modified, only reformatted for display.
+
+export interface ContinuousSegmentPresentation {
+  distanceOrDuration: string;
+  // HRA-231: flagged true when target.kind === "unknown" (a genuinely
+  // unrecognized token or the explicit "?" placeholder, per
+  // docs/runplan-dsl.md — the two are parsed identically) — the value shown
+  // is still the raw token as written, just marked as not truly
+  // representable in the Structured view rather than presented as a normal
+  // resolved value. Omitted (not `false`) in the ordinary case so existing
+  // `toEqual` fixtures asserting the un-flagged shape are unaffected.
+  distanceOrDurationUnknown?: true;
+  pace: string;
+  paceUnknown?: true;
+}
+
+// Splits a raw token like "30min" into its leading number and trailing unit
+// letters, reinserting the space the DSL's own compact grammar omits
+// ("30min" -> "30 min"). Falls back to the raw token unchanged when it
+// doesn't match this shape (never expected for a real duration Target, but
+// keeps this a total function rather than one that can throw on bad input).
+function insertSpaceBeforeUnit(raw: string): string {
+  const match = raw.match(/^(-?\d+(?:\.\d+)?)\s*([a-zA-Z'"/]+)$/);
+  return match ? `${match[1]} ${match[2]}` : raw;
+}
+
+// Distance/Duration normalization per the Story: spacing only for a
+// duration ("30min" -> "30 min", the DSL's own unit token is kept verbatim);
+// an m/km-authored distance is reformatted from its semantic distance_m so a
+// whole number of km always reads as km ("10km" -> "10 km", "8000m" ->
+// "8 km") rather than echoing whichever of those two the author happened to
+// type. A non-round meter value still resolves to km (2 decimal places,
+// trailing zeros trimmed) once it's >= 1km, since km is this app's own
+// default distance unit elsewhere (fmtDistance above); anything under 1km
+// stays in meters. A mile-authored distance is never folded into this — it
+// stays in mi, spacing-normalized only, same as duration: recomputing from
+// distance_m would silently convert every "Nmi" day's displayed unit to km.
+function formatDistanceOrDurationValue(target: Target): string {
+  if (target.kind === "duration") return insertSpaceBeforeUnit(target.raw);
+  if (target.kind === "unknown") return target.raw;
+  if (target.raw.endsWith("mi")) return insertSpaceBeforeUnit(target.raw);
+  const meters = target.distance_m;
+  if (meters % 1000 === 0) return `${meters / 1000} km`;
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2).replace(/\.?0+$/, "")} km`;
+  return `${meters} m`;
+}
+
+function continuousSegmentPresentation(segment: Extract<WorkoutSegment, { type: "continuous" }>): ContinuousSegmentPresentation {
+  return {
+    distanceOrDuration: formatDistanceOrDurationValue(segment.target),
+    distanceOrDurationUnknown: segment.target.kind === "unknown" ? true : undefined,
+    pace: segment.intensity.raw,
+    paceUnknown: segment.intensity.kind === "unknown" ? true : undefined,
+  };
+}
+
+export function buildContinuousSegmentPresentation(day: DayView): ContinuousSegmentPresentation | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
+  const [segment] = day.segments;
+  if (segment.type !== "continuous") return null;
+  return continuousSegmentPresentation(segment);
+}
+
+// ── structured interval-segment presentation (HRA-230) ──────────────────────
+// Extends the same contract to IntervalSegment: a primary row (Repetitions,
+// Distance/Duration, Pace) plus, only when the segment's own `r:` clause is
+// present, a subordinate recovery row (Recovery, Recovery pace). One grouped
+// block per day — never one card per repetition. Purely presentational, same
+// as buildContinuousSegmentPresentation above.
+
+export interface IntervalSegmentPresentation {
+  repetitions: string;
+  // HRA-231: true when reps is unspecified (null) — the "?" shown is the
+  // DSL's own placeholder, not a resolved value. Same omit-when-absent
+  // convention as the other *Unknown flags below.
+  repetitionsUnknown?: true;
+  distanceOrDuration: string;
+  distanceOrDurationUnknown?: true;
+  pace: string;
+  paceUnknown?: true;
+  recovery?: { recovery: string; recoveryUnknown?: true; recoveryPace?: string; recoveryPaceUnknown?: true };
+}
+
+function intervalSegmentPresentation(segment: Extract<WorkoutSegment, { type: "interval" }>): IntervalSegmentPresentation {
+  return {
+    repetitions: segment.reps == null ? "?" : String(segment.reps),
+    repetitionsUnknown: segment.reps == null ? true : undefined,
+    distanceOrDuration: formatDistanceOrDurationValue(segment.work_target),
+    distanceOrDurationUnknown: segment.work_target.kind === "unknown" ? true : undefined,
+    pace: segment.work_intensity.raw,
+    paceUnknown: segment.work_intensity.kind === "unknown" ? true : undefined,
+    recovery: segment.rest == null ? undefined : {
+      recovery: formatDistanceOrDurationValue(segment.rest.target),
+      recoveryUnknown: segment.rest.target.kind === "unknown" ? true : undefined,
+      recoveryPace: segment.rest.intensity?.raw,
+      recoveryPaceUnknown: segment.rest.intensity?.kind === "unknown" ? true : undefined,
+    },
+  };
+}
+
+export function buildIntervalSegmentPresentation(day: DayView): IntervalSegmentPresentation | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length !== 1) return null;
+  const [segment] = day.segments;
+  if (segment.type !== "interval") return null;
+  return intervalSegmentPresentation(segment);
+}
+
+// ── structured REST/OTHER/TODO presentation (HRA-231) ───────────────────────
+// REST/OTHER/TODO days carry no segments to show as Distance/Pace/
+// Repetitions — rendering those fields empty would read as an incomplete
+// workout. Each gets its own dedicated, honest labeled state instead.
+// Purely presentational, same contract as the two presentations above.
+
+export type StateDayKind = "rest" | "other" | "todo";
+
+export function buildStateDayPresentation(day: DayView): StateDayKind | null {
+  return day.workout_type === "rest" || day.workout_type === "other" || day.workout_type === "todo"
+    ? day.workout_type
+    : null;
+}
+
+// ── structured unsupported-portion presentation (HRA-231) ───────────────────
+// Neither ProgressionSegment (TARGET PROG A -> B) nor CROSS/STRENGTH days
+// have a defined structured shape yet (Epic HRA-228's "known open decision",
+// deferred) — this flags that so the Structured view says so honestly
+// instead of silently showing nothing beyond the still-editable raw DSL text
+// already rendered below it (never hidden or discarded). Day-level
+// granularity, not per-segment: a mixed day containing any progression
+// segment is flagged as a whole, since there is no per-segment card shape
+// for a multi-segment day in this Story's scope either —
+// buildContinuousSegmentPresentation/buildIntervalSegmentPresentation above
+// are themselves single-segment-only.
+
+export type UnsupportedReason = "progression" | "cross_strength";
+
+export function buildUnsupportedPresentation(day: DayView): UnsupportedReason | null {
+  if (day.workout_type === "cross" || day.workout_type === "strength") return "cross_strength";
+  if (day.workout_type === "run" && day.segments?.some(seg => seg.type === "progression")) return "progression";
+  return null;
+}
+
+// ── structured ordered multi-segment presentation (HRA-232) ────────────────
+// A `;`-joined day ("10km @ RG+20 ; 10km @ RG-5") carries more than one
+// WorkoutSegment in source order — each renders as its own labeled
+// "Segment N" card, reusing HRA-229's continuous / HRA-230's interval
+// presentation per segment rather than a single run-together DSL line. Only
+// engages for day.segments.length > 1 — the length===1 single-segment path
+// stays exactly as buildContinuousSegmentPresentation/
+// buildIntervalSegmentPresentation already render it (no card wrapper, no
+// "Segment 1" label), so this and those two builders are mutually exclusive
+// by construction, same convention buildUnsupportedPresentation already uses
+// relative to them. A segment that's neither continuous nor interval
+// (progression/rest_block — no defined structured shape yet, same open
+// decision buildUnsupportedPresentation already flags at the whole-day
+// level) surfaces as its own "unsupported" entry so segment order/count stay
+// honest instead of silently dropping that segment's slot.
+export type MultiSegmentEntry =
+  | { index: number; kind: "continuous"; presentation: ContinuousSegmentPresentation }
+  | { index: number; kind: "interval"; presentation: IntervalSegmentPresentation }
+  | { index: number; kind: "unsupported" };
+
+export function buildMultiSegmentPresentation(day: DayView): MultiSegmentEntry[] | null {
+  if (day.workout_type !== "run" || day.segments == null || day.segments.length <= 1) return null;
+  return day.segments.map((segment, i) => {
+    const index = i + 1;
+    if (segment.type === "continuous") return { index, kind: "continuous" as const, presentation: continuousSegmentPresentation(segment) };
+    if (segment.type === "interval") return { index, kind: "interval" as const, presentation: intervalSegmentPresentation(segment) };
+    return { index, kind: "unsupported" as const };
+  });
+}
+
 export function buildTemplateSectionView(section: Section, planPolicy: PacePolicy): SectionView {
   const weeks: WeekView[] = section.weeks.map(week => {
     const policy = getEffectivePacePolicy(planPolicy, section.pace_policy, week.pace_policy);
     const days: DayView[] = week.days.map(day => ({
       day: day.day, suffix: day.suffix, category: day.category, workout_type: day.workout_type,
       dsl: day.raw_dsl, notes: day.notes, needs_review: day.needs_review, warnings: day.warnings,
-      distance: computeTemplateDayDistance(day, policy),
+      distance: computeTemplateDayDistance(day, policy), segments: day.segments,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl, days,

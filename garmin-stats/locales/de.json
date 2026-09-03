@@ -18,6 +18,7 @@
   "dateRange.pickRace": "Rennen auswählen…",
   "dateRange.noneOption": "— keiner —",
   "dateRange.comparedTo": "Verglichen mit",
+  "dateRange.allAvailable": "Alle verfügbaren Daten",
   "overview.chartTooltip.pace": "Pace",
   "overview.chartTooltip.hr": "HF",
   "overview.legend.current": "Aktuell",

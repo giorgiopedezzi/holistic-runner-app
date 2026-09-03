@@ -11,7 +11,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import App from "./App";
-import { installFetch, paginated, json, type Routes } from "@/test/api-stub";
+import { installFetch, paginated, json, problem, type Routes } from "@/test/api-stub";
 import {
   activity, sportSummary, bodyMeasurement, settings, dateRange,
   deviceStatus, withingsStatus, stravaStatus,
@@ -38,6 +38,10 @@ function appRoutes(settingsBody = settings()): Routes {
     "GET /api/v1/body-measurements/count": { count: 1 },
     "GET /api/v1/activities/trash": paginated([]),
     "GET /api/v1/body-measurements/trash": paginated([]),
+    // HRA-248: "Your agenda" is now the default tab, so every mount fetches
+    // this on render — a benign "no active plan today" default, same
+    // reasoning as every other benign stub above.
+    "GET /api/v1/plan-instances/active": problem(404, "no active plan"),
   };
 }
 
@@ -48,17 +52,30 @@ afterEach(() => {
   // persists across tests sharing this jsdom window — reset it so a later
   // test doesn't inherit an earlier test's tab.
   window.history.replaceState(null, "", "/");
+  // The sidebar collapse toggle persists to localStorage (direct feedback,
+  // post-HRA-253) — reset it so a later test doesn't inherit an earlier
+  // test's collapsed state.
+  localStorage.removeItem("hra-sidebar-collapsed");
 });
 
 describe("App tab switching", () => {
-  it("mounts each of the five tabs when its nav button is clicked", async () => {
+  it("loads on the default 'Your agenda' tab, first in nav order, then mounts each other tab when clicked", async () => {
     installFetch(appRoutes());
     render(<App />);
 
-    // Overview is the default tab. Longer timeout than the default 1000ms —
-    // the graph-first layout (main graph + sidebar) now renders through a
-    // few more nested components before settling, confirmed correct via
-    // manual inspection, just slower to converge in this test environment.
+    // HRA-248 AC1 (still true post-HRA-253): no tab URL param -> "Your
+    // agenda" selected, first in the sidebar's Primary group.
+    const nav = screen.getByRole("navigation");
+    const navButtons = within(nav).getAllByRole("button");
+    expect(navButtons[0]).toHaveTextContent("Your agenda");
+    expect(navButtons[1]).toHaveTextContent("Training plans");
+    expect(await screen.findByText("There is no active plan today.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Overview & Trends" }));
+    // Longer timeout than the default 1000ms — the graph-first layout (main
+    // graph + sidebar) now renders through a few more nested components
+    // before settling, confirmed correct via manual inspection, just slower
+    // to converge in this test environment.
     await waitFor(() => expect(document.body).toHaveTextContent("Avg distance"), { timeout: 5000 });
 
     fireEvent.click(screen.getByRole("button", { name: "Activities" }));
@@ -73,6 +90,122 @@ describe("App tab switching", () => {
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
   });
+
+  it("renders exactly one nav landmark, grouped Primary/Review/Manage/utility, with the old horizontal header gone (HRA-253)", async () => {
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    // Exactly one nav landmark for the whole sidebar.
+    expect(screen.getAllByRole("navigation")).toHaveLength(1);
+    const nav = screen.getByRole("navigation");
+    const navButtons = within(nav).getAllByRole("button");
+    expect(navButtons.map(b => b.textContent)).toEqual([
+      "Your agenda", "Training plans",
+      "Overview & Trends", "Activities", "Body",
+      "Data & Sync",
+      "Settings", "Feedback",
+    ]);
+
+    // Review/Manage group headings are present and precede their items in
+    // document order (Primary has no heading, per scope).
+    expect(screen.getByText("Review")).toBeInTheDocument();
+    expect(screen.getByText("Manage")).toBeInTheDocument();
+
+    // The old horizontal header/nav bar no longer renders anywhere.
+    expect(container.querySelector(".hra-header")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-nav")).not.toBeInTheDocument();
+    expect(screen.queryByText("Garmin Stats")).not.toBeInTheDocument();
+    // Scoped to the sidebar specifically — SplashScreen (HRA-223 follow-up)
+    // also renders its own "Runs Free" brand lockup, and both are in the DOM
+    // simultaneously in this test environment (the splash never gets real
+    // track data to autoplay/self-dismiss here), so an unscoped query would
+    // match two elements.
+    const sidebar = container.querySelector(".hra-sidebar");
+    expect(sidebar).not.toBeNull();
+    expect(within(sidebar as HTMLElement).getByText("Runs Free")).toBeInTheDocument();
+
+    // Post-review feedback: the server-status dot was removed from the
+    // sidebar entirely (no role="status" indicator renders anywhere), and
+    // the language picker sits next to the brand instead of in a footer.
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-status-dot")).not.toBeInTheDocument();
+  });
+
+  it("collapses the sidebar to an icon-only rail on toggle, keeps each item's accessible name, and persists the choice across a remount", async () => {
+    installFetch(appRoutes());
+    const { container, unmount } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const sidebar = () => container.querySelector(".hra-sidebar");
+    expect(sidebar()).toHaveAttribute("data-collapsed", "false");
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    // A nav item's accessible name (from its visually-hidden label, not the
+    // aria-hidden icon) is unaffected by collapse — same button, same name.
+    const agendaButton = screen.getByRole("button", { name: "Your agenda" });
+
+    fireEvent.click(toggle);
+
+    expect(sidebar()).toHaveAttribute("data-collapsed", "true");
+    expect(agendaButton).toHaveAccessibleName("Your agenda");
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeInTheDocument();
+    expect(localStorage.getItem("hra-sidebar-collapsed")).toBe("1");
+
+    unmount();
+    installFetch(appRoutes());
+    const remounted = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    // Remounting (a fresh page load, in effect) reads the persisted choice.
+    expect(remounted.container.querySelector(".hra-sidebar")).toHaveAttribute("data-collapsed", "true");
+  });
+
+  it("marks exactly one sidebar item aria-current='page', matching the active tab, and updates it on click", async () => {
+    installFetch(appRoutes());
+    render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const nav = screen.getByRole("navigation");
+    const current = () => within(nav).getAllByRole("button").filter(b => b.getAttribute("aria-current") === "page");
+
+    expect(current()).toHaveLength(1);
+    expect(current()[0]).toHaveTextContent("Your agenda");
+
+    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
+    await screen.findByText("Not connected to Strava");
+
+    expect(current()).toHaveLength(1);
+    expect(current()[0]).toHaveTextContent("Data & Sync");
+  });
+
+  it("selects the matching sidebar item as current when a tab is opened directly via URL (?tab=body)", async () => {
+    installFetch(appRoutes());
+    window.history.replaceState(null, "", "/?tab=body");
+    render(<App />);
+    await screen.findByText(/Latest measurement/);
+
+    const nav = screen.getByRole("navigation");
+    const bodyButton = within(nav).getByRole("button", { name: "Body" });
+    expect(bodyButton).toHaveAttribute("aria-current", "page");
+  });
+
+  it("preserves existing from/to/compareFrom/compareTo/compareEnabled query params on a sidebar navigation click", async () => {
+    installFetch(appRoutes());
+    window.history.replaceState(null, "", "/?from=2026-07-01&to=2026-07-31&compareFrom=2026-06-01&compareTo=2026-06-30&compareEnabled=true");
+    render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
+    await screen.findByText("Not connected to Strava");
+
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get("tab")).toBe("manage");
+    expect(params.get("from")).toBe("2026-07-01");
+    expect(params.get("to")).toBe("2026-07-31");
+    expect(params.get("compareFrom")).toBe("2026-06-01");
+    expect(params.get("compareTo")).toBe("2026-06-30");
+    expect(params.get("compareEnabled")).toBe("true");
+  });
 });
 
 describe("unit-system propagation across tabs (load-bearing)", () => {
@@ -85,8 +218,11 @@ describe("unit-system propagation across tabs (load-bearing)", () => {
     });
     render(<App />);
 
-    // Overview (default) shows the running avg-pace unit label in metric.
-    // Longer timeout — see the same note above.
+    // HRA-248: "Your agenda", not Overview, is the default tab now — switch
+    // to Overview first to exercise the same propagation path as before.
+    fireEvent.click(await screen.findByRole("button", { name: "Overview & Trends" }));
+    // Overview shows the running avg-pace unit label in metric. Longer
+    // timeout — see the same note above.
     await waitFor(() => expect(document.body).toHaveTextContent("min/km"), { timeout: 5000 });
     expect(screen.queryByText("min/mi")).not.toBeInTheDocument();
 

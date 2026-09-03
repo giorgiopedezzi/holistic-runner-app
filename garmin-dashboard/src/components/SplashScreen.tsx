@@ -277,10 +277,20 @@ export function SplashScreen() {
 
   return (
     <div className="hra-splash-layer hra-splash-backdrop fixed inset-0 flex flex-col items-center justify-center gap-10 p-6">
+      {/* Brand lockup — upper-left, not glued to the corner (direct
+          feedback: the splash had no "Runs Free" identity on it). Static,
+          same not-translated role App.tsx's sidebar brand has — "Runs Free"
+          is the brand name, not copy, so it's a hardcoded literal rather
+          than routed through t() even though every other string on this
+          screen is. "Free" picks up the heart-rate red (see index.css) to
+          connect the mark to the runner animation beside it. */}
+      <div className="hra-splash-brand">
+        <p className="hra-splash-brand-title">Runs <span className="hra-splash-brand-accent">Free</span></p>
+      </div>
       <div className="hra-splash-copy text-display hra-text-primary text-center max-w-2xl">
-        <p>{t("splash.copy1", "Your running app.")}</p>
-        <p>{t("splash.copy2", "What you need. Just what you need, no noise.")}</p>
-        <p>{t("splash.copy3", "The data that matters, lit by your effort.")}</p>
+        <p>{t("splash.headline", "Your run, brought into focus.")}</p>
+        <p className="hra-splash-copy-subtagline">{t("splash.subtagline", "Only the data that matters.")}</p>
+        <p>{t("splash.copyPace", "Your pace.")}</p>
         <p className="hra-splash-copy-heart">{t("splash.copy4", "Your heart.")}</p>
         <p className="hra-splash-copy-you">{t("splash.copy5", "You.")}</p>
       </div>

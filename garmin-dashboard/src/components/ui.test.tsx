@@ -9,6 +9,7 @@ import { render, screen } from "@testing-library/react";
 import { RangeEmpty } from "./ui";
 import type { DateRange } from "@/types/api";
 import { fmtDate } from "@/utils/fmt";
+import { ALL_SENTINEL } from "@/utils/date";
 
 describe("RangeEmpty", () => {
   it("no data at all → prompts to sync", () => {
@@ -31,5 +32,14 @@ describe("RangeEmpty", () => {
         `Data available from ${fmtDate("2026-03-01")} to ${fmtDate("2026-08-04")}.`,
       ),
     ).toBeInTheDocument();
+  });
+
+  // HRA-256: the useDateRange "All" preset's internal 2000-01-01 sentinel
+  // must never render as a literal date.
+  it("selecting All reads as 'All available data', not the 2000-01-01 sentinel", () => {
+    const range: DateRange = { min_date: "2026-03-01", max_date: "2026-08-04" };
+    render(<RangeEmpty range={range} from={ALL_SENTINEL} to="2026-02-01" entityLabel="activities" />);
+    expect(screen.queryByText(/2000/)).not.toBeInTheDocument();
+    expect(screen.getByText(/All available data/)).toBeInTheDocument();
   });
 });

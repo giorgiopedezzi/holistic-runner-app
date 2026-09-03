@@ -69,7 +69,7 @@ export function FeedbackTab() {
     <Card className="mb-4">
       <div className="hra-block-title mb-1">{t("nav.feedback", "Feedback")}</div>
       <div className="hra-text-secondary text-meta mb-4">
-        {t("feedback.intro", "Tell us whether you'd pay for this app and what you'd want — every section below is optional, answer whichever ones you like.")}
+        {t("feedback.intro", "Tell us whether you'd pay for this app and what you'd want — at least one response below is required.")}
       </div>
 
       <div className="mb-5">

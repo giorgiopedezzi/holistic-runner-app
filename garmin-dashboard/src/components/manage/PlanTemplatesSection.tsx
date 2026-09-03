@@ -24,28 +24,45 @@
  * confirms — nothing is lost, just tucked away; only Restore (an actual
  * discard) does.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
-import { TrainingPlanAccordion } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
 import { recomposeDayLine, replaceSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
 import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
-import type { EventType, ParseWarning } from "@/types/runplan";
+import type { EventType, OffsetUnit, ParseWarning } from "@/types/runplan";
 import { useDemoMode } from "@/hooks/useDemoMode";
 // HRA-200: frontend-owned copy of docs/utils/template-generator-AI-prompt.txt
 // (the already-tested base prompt) — kept in sync manually, see that file's
 // own header for the sync-risk note.
 import aiPromptTemplate from "@/assets/template-generator-ai-prompt.txt?raw";
 
-interface EditorState { dslSource: string; sections: SectionView[] }
+interface EditorState { dslSource: string; sections: SectionView[]; offsetUnit: OffsetUnit }
 
-const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [] };
+const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [], offsetUnit: "s/km" };
+
+// HRA-238: default open/collapsed state for the three-stage Plan text ->
+// Conversion prompt -> Workout DSL authoring pipeline, computed once
+// whenever a row is opened (startCreate/startEdit/reopenDraft) — never
+// recomputed reactively as the user types, so opening a section by hand
+// is never fought by this logic. DSL presence wins over text presence
+// (an existing template's own case, since a loaded template never carries
+// stashed-only originalText/generatedPrompt — HRA-200 fields are never
+// persisted): the DSL section opens, text/prompt collapse but stay
+// reachable. Otherwise text presence decides, mirroring a fresh/in-progress
+// authoring session's own natural point of focus.
+interface PipelineExpansion { text: boolean; prompt: boolean; dsl: boolean }
+function computeDefaultExpansion(hasText: boolean, hasPrompt: boolean, hasDsl: boolean): PipelineExpansion {
+  if (hasDsl) return { text: false, prompt: false, dsl: true };
+  if (hasText) return { text: true, prompt: hasPrompt, dsl: false };
+  return { text: true, prompt: false, dsl: false };
+}
 
 // HRA-200: split+join, not String.replace(pattern, value) — replace() treats
 // "$" sequences in the replacement string specially (e.g. "$&", "$1"), which
@@ -193,6 +210,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [language, setLanguage] = useState("");
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
 
+  // HRA-238: independent open/collapsed state for the three pipeline
+  // sections (Plan text / Conversion prompt / Workout DSL) — NOT a
+  // single-expand accordion like the outer template row: the user may need
+  // to compare artifacts, so more than one section can be open at once.
+  // Defaults are (re)computed only when a row opens (computeDefaultExpansion
+  // below), never reactively as the user edits.
+  const [textExpanded, setTextExpanded] = useState(true);
+  const [promptExpanded, setPromptExpanded] = useState(false);
+  const [dslExpanded, setDslExpanded] = useState(false);
+
   // HRA-140: the active row's own "last saved/loaded" snapshot — what
   // isEditorDirty() below diffs the live fields against. `savedDslSource`
   // above already served this exact role for dslSource (canApprove already
@@ -212,7 +239,20 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // (closes) immediately.
   const [pendingRestoreConfirm, setPendingRestoreConfirm] = useState(false);
 
-  const [genLoading, setGenLoading] = useState(false);
+  // The exact line text most recently written into editor.dslSource by a
+  // structured Section/Week/Day edit (never by typing directly into the DSL
+  // textarea — that line is already visible under the user's own cursor) —
+  // used to momentarily highlight that one line in the DSL textarea, in
+  // sync with the row-title dirty highlight. Cleared on row switch, direct
+  // textarea edits, Save, and Restore so a stale highlight never survives
+  // past the state it described.
+  const [lastPatchedLine, setLastPatchedLine] = useState<string | null>(null);
+  // The Section/Week/Day that patch touched, structurally — same lifetime/
+  // clearing points as lastPatchedLine above, threaded to TrainingPlanAccordion
+  // so it can highlight that one row's own AccordionCard in sync with the DSL
+  // textarea's line highlight.
+  const [lastEditedRef, setLastEditedRef] = useState<EditedRef | null>(null);
+
   const [genError, setGenError] = useState<string | null>(null);
   const [patchError, setPatchError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -226,6 +266,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // there's actually anything new to preview, without re-triggering itself
   // off its own setEditor call (which doesn't change dslSource).
   const lastGeneratedRef = useRef<string | null>(null);
+  // Scroll-syncs the DSL highlight backdrop (renderDslTextarea) to the real
+  // textarea it sits under.
+  const dslBackdropRef = useRef<HTMLPreElement>(null);
 
   function resetEditorState() {
     setSavedDslSource(null); setName(""); setEvent("");
@@ -234,8 +277,24 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setBaselineName(""); setBaselineEvent(""); setBaselineDistanceValue("");
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     setOriginalText(""); setLanguage(""); setGeneratedPrompt(null);
+    setLastPatchedLine(null); setLastEditedRef(null);
+    // HRA-238: a reset row is always blank (no text, no prompt, no DSL) —
+    // the "new empty template" default: Plan text expanded, the other two
+    // collapsed but visible.
+    const exp = computeDefaultExpansion(false, false, false);
+    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
     lastGeneratedRef.current = null;
   }
+
+  // HRA-238 AC4: a DSL parse/preview error forces Workout DSL open
+  // regardless of whatever the row's other two sections are doing —
+  // "remains expanded... do not automatically open or alter Plan text and
+  // Conversion prompt." Reacts to genError itself (set by runGenerate's
+  // catch, including the debounced auto-regenerate path), not just the
+  // initial open, so a later edit that turns out invalid also re-exposes it.
+  useEffect(() => {
+    if (genError) setDslExpanded(true);
+  }, [genError]);
 
   // HRA-140: whether the currently-active row's live fields differ from its
   // own last-saved/loaded baseline — the single source of truth for both
@@ -248,6 +307,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       || distanceValue !== baselineDistanceValue
       // HRA-200: never persisted, so their "baseline" is always empty/unset.
       || originalText.trim() !== "" || language.trim() !== "" || generatedPrompt != null;
+  }
+
+  // Whether a given row (active or collapsed) currently has anything
+  // pending — the active row reads its live isEditorDirty(), a collapsed
+  // one reads whether it has a stashed draft. Drives both the row-title
+  // highlight (renderRowTitle/the "new" row title) and rowStatusHint below,
+  // so the two never disagree about which rows show as dirty.
+  function isRowDirty(key: RowKey): boolean {
+    return key === activeKey ? isEditorDirty() : drafts[String(key)] != null;
   }
 
   // Switches which unit the (already-typed) distance value displays as,
@@ -292,13 +360,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // substitute for the template's own saved value.
   async function runGenerate(dslSource: string, opts: { autoFillDistance?: boolean } = {}) {
     const autoFillDistance = opts.autoFillDistance ?? true;
-    setGenLoading(true); setGenError(null); setPatchError(null);
+    setGenError(null); setPatchError(null);
     try {
       const { plan, warnings } = await api.planTemplates.generate(dslSource);
       lastGeneratedRef.current = dslSource;
       setPlanWarnings(warnings);
       const sections = plan.sections.map(s => buildTemplateSectionView(s, plan.metadata.pace_policy));
-      setEditor({ dslSource, sections });
+      setEditor({ dslSource, sections, offsetUnit: plan.metadata.offset_unit });
       // Auto-fill the custom-event distance from the plan's own race day the
       // first time it generates with nothing typed yet — never overwrites a
       // value the user already entered. The DSL's own UNIT declaration is a
@@ -315,7 +383,6 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     } catch (e) {
       setGenError(e instanceof Error ? e.message : t("manage.planTemplates.generateFailed", "Failed to parse the DSL text"));
     }
-    setGenLoading(false);
   }
 
   async function startEdit(template: PlanTemplate) {
@@ -328,7 +395,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setDistanceValue(resolvedDistance); setBaselineDistanceValue(resolvedDistance);
     setName(template.name); setBaselineName(template.name);
     setSavedDslSource(template.dsl_source);
-    setEditor({ dslSource: template.dsl_source, sections: [] });
+    setEditor({ dslSource: template.dsl_source, sections: [], offsetUnit: "s/km" });
+    // HRA-238: an existing template's originalText/generatedPrompt are
+    // never persisted (HRA-200), so this is always the "template containing
+    // DSL" case — Workout DSL opens, Plan text/Conversion prompt collapse
+    // (but stay reachable).
+    const exp = computeDefaultExpansion(false, false, template.dsl_source.trim() !== "");
+    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
     await runGenerate(template.dsl_source, { autoFillDistance: false });
   }
 
@@ -339,9 +412,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // would read false the instant a genuinely-dirty draft reopens.
   async function reopenDraft(draft: Draft, template: PlanTemplate | undefined) {
     setGenError(null); setPatchError(null); setSaveError(null);
+    setLastPatchedLine(null); setLastEditedRef(null);
     setName(draft.name); setEvent(draft.event);
     setDistanceValue(draft.distanceValue); setDistanceUnit(draft.distanceUnit);
     setOriginalText(draft.originalText); setLanguage(draft.language); setGeneratedPrompt(draft.generatedPrompt);
+    // HRA-238: a stashed draft carries its own text/prompt/DSL state,
+    // unlike startEdit's always-blank text/prompt — recompute defaults from
+    // what this specific draft actually holds.
+    const exp = computeDefaultExpansion(draft.originalText.trim() !== "", draft.generatedPrompt != null, draft.dslSource.trim() !== "");
+    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
     if (template) {
       setSavedDslSource(template.dsl_source);
       setBaselineName(template.name);
@@ -397,8 +476,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   async function onFileUpload(file: File) {
     const text = await file.text();
-    setEditor({ dslSource: text, sections: [] });
+    setEditor({ dslSource: text, sections: [], offsetUnit: "s/km" });
     setPlanWarnings([]);
+    setLastPatchedLine(null); setLastEditedRef(null);
   }
 
   // HRA-200: fills the base AI-transcription prompt from the pasted plan
@@ -465,9 +545,11 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       }
       const result = replaceSpan(prev.dslSource, section.raw_dsl, newRawDsl);
       if (!result.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+      setLastPatchedLine(newRawDsl);
+      setLastEditedRef({ kind: "section", sectionIndex });
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, name: patch.name ?? section.name, notes: patch.notes ?? section.notes, raw_dsl: newRawDsl };
-      return { dslSource: result.source, sections };
+      return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -482,11 +564,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       }
       const result = replaceSpan(prev.dslSource, week.raw_dsl, newRawDsl);
       if (!result.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+      setLastPatchedLine(newRawDsl);
+      setLastEditedRef({ kind: "week", sectionIndex, weekIndex });
       const weeks = [...section.weeks];
       weeks[weekIndex] = { ...week, notes: patch.notes ?? week.notes, raw_dsl: newRawDsl };
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, weeks };
-      return { dslSource: result.source, sections };
+      return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -499,13 +583,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       const newLine = recomposeDayLine(day.dsl, patch);
       const result = replaceSpan(prev.dslSource, day.dsl, newLine);
       if (!result.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+      setLastPatchedLine(newLine);
+      setLastEditedRef({ kind: "day", sectionIndex, weekIndex, dayIndex });
       const days = [...week.days];
       days[dayIndex] = { ...day, dsl: newLine, notes: splitNote(newLine).note };
       const weeks = [...section.weeks];
       weeks[weekIndex] = { ...week, days };
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, weeks };
-      return { dslSource: result.source, sections };
+      return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -539,6 +625,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       setActiveKey(saved.id);
       setSavedDslSource(saved.dsl_source);
       setBaselineName(name); setBaselineEvent(event); setBaselineDistanceValue(distanceValue);
+      setLastPatchedLine(null); setLastEditedRef(null);
       await refreshTemplates();
       notify(t("manage.planTemplates.saveSucceeded", "Template saved."));
     } catch (e) {
@@ -553,19 +640,20 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     try {
       await api.planTemplates.approve(editingId);
       await refreshTemplates();
-      notify(t("manage.planTemplates.approveSucceeded", "Template approved."));
+      notify(t("manage.planTemplates.approveSucceeded", "Template activated."));
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : t("manage.planTemplates.approveFailed", "Failed to approve template"));
+      setSaveError(e instanceof Error ? e.message : t("manage.planTemplates.approveFailed", "Failed to activate template"));
     }
     setApproveLoading(false);
   }
 
-  // HRA-140 Ask #3: "Restore" (renamed from Cancel) discards the active
-  // row's unsaved edits and collapses it — since the list row itself only
-  // ever displays the real persisted `templates` data (never mutated by
-  // local typing), simply resetting local state + collapsing IS "reverting
-  // to the last-saved values"; there's nothing to re-populate. Gated on a
-  // confirm only when genuinely dirty.
+  // HRA-140 Ask #3: "Clear pending changes" discards the active row's
+  // unsaved edits and collapses it — since the list row itself only ever
+  // displays the real persisted `templates` data (never mutated by local
+  // typing), simply resetting local state + collapsing IS "reverting to the
+  // last-saved values"; there's nothing to re-populate. The button itself is
+  // disabled whenever the row is clean (nothing to clear), so this is only
+  // ever reached genuinely dirty — always gated on a confirm.
   function onRestoreClick() {
     if (isEditorDirty()) { setPendingRestoreConfirm(true); return; }
     doRestore();
@@ -595,14 +683,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     }
   }
 
-  // HRA-140 Ask #2/#4: a collapsed row's own status hint — a drafted (dirty
-  // but collapsed) row gets the warning icon; any other collapsed row gets
-  // the plain "Open to edit" hint (this reads correctly for a genuinely
-  // never-opened row, and equally correctly for a row that was opened,
-  // found clean, and collapsed again — both have nothing pending, so both
-  // just invite a click).
+  // HRA-140 Ask #2/#4: a row's own status hint — a dirty row (whether
+  // that's a stashed draft while collapsed, or the live editor while this
+  // row is the active/open one — isRowDirty covers both) gets the warning
+  // icon; a collapsed-and-clean row gets the plain "Open and edit" hint; an
+  // active-and-clean row gets nothing (already open, nothing pending — the
+  // hint would just be noise).
   function rowStatusHint(key: RowKey) {
-    if (drafts[String(key)]) {
+    if (isRowDirty(key)) {
       return (
         <span
           title={t("manage.planTemplates.unsavedChanges", "Unsaved changes")}
@@ -612,24 +700,113 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         </span>
       );
     }
+    if (key === activeKey) return null;
     return (
       <span className="hra-text-secondary text-meta italic" >
-        {t("manage.planTemplates.openToEditHint", "Open to edit")}
+        {t("manage.planTemplates.openToEditHint", "Open and edit")}
+      </span>
+    );
+  }
+
+  // HRA-238: short, derivable-only-from-existing-data status labels for
+  // each pipeline section's header. "Modified" (Conversion prompt) is
+  // deliberately not implemented, per the Story's own caveat — there is no
+  // stored baseline for generatedPrompt to diff against (unlike dslSource's
+  // savedDslSource), and adding one would be a new persistence model.
+  function planTextStateLabel(): string {
+    if (originalText.trim() === "") return t("manage.planTemplates.pipeline.stateNotProvided", "Not provided");
+    if (generatedPrompt != null) return t("manage.planTemplates.pipeline.statePromptGenerated", "Prompt generated");
+    return t("manage.planTemplates.pipeline.stateReady", "Ready");
+  }
+  function conversionPromptStateLabel(): string {
+    return generatedPrompt != null
+      ? t("manage.planTemplates.pipeline.stateGenerated", "Generated")
+      : t("manage.planTemplates.pipeline.stateNotGenerated", "Not generated");
+  }
+  function workoutDslStateLabel(): string {
+    if (editor.dslSource.trim() === "") return t("manage.planTemplates.pipeline.stateEmpty", "Empty");
+    if (!generated) return t("manage.planTemplates.pipeline.stateReadyToPreview", "Ready to preview");
+    if (genError || hasOutstandingWarnings(editor, planWarnings)) return t("manage.planTemplates.pipeline.stateNeedsReview", "Needs review");
+    return t("manage.planTemplates.pipeline.stateValid", "Valid");
+  }
+
+  // HRA-238: one pipeline section's header — the order+title baked into the
+  // translated header string itself (e.g. "1 · Plan text") on the left, a
+  // short status on the right; `AccordionCard` appends the ▲/▼ chevron and
+  // owns `aria-expanded`. Order/title/status/expanded-state are all real
+  // text or a real ARIA attribute — never color alone (accessibility
+  // requirement).
+  function pipelineSectionTitle(header: string, status: string) {
+    return (
+      <span className="flex items-center justify-between flex-1 min-w-0 gap-2">
+        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{header}</span>
+        <span className="hra-text-secondary text-meta shrink-0">{status}</span>
       </span>
     );
   }
 
   function renderRowTitle(tpl: PlanTemplate) {
+    const dirty = isRowDirty(tpl.id);
     return (
       <span className="flex items-center gap-2 flex-1 min-w-0">
-        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{tpl.name}</span>
+        <span className={`overflow-hidden text-ellipsis whitespace-nowrap ${dirty ? "hra-text-warning" : ""}`}>{tpl.name}</span>
         {tpl.event && <span className="hra-text-muted text-meta" >{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
         <Badge
-          label={tpl.approved_at ? t("manage.planTemplates.approved", "Approved") : t("manage.planTemplates.notApproved", "Not approved")}
+          label={tpl.approved_at ? t("manage.planTemplates.approved", "Activated") : t("manage.planTemplates.notApproved", "Not activated")}
           color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
         />
-        {activeKey !== tpl.id && rowStatusHint(tpl.id)}
+        {rowStatusHint(tpl.id)}
       </span>
+    );
+  }
+
+  function onDslTextareaChange(value: string) {
+    setEditor({ dslSource: value, sections: [], offsetUnit: "s/km" });
+    setLastPatchedLine(null); setLastEditedRef(null);
+  }
+
+  function onDslTextareaScroll(e: UIEvent<HTMLTextAreaElement>) {
+    if (dslBackdropRef.current) {
+      dslBackdropRef.current.scrollTop = e.currentTarget.scrollTop;
+      dslBackdropRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    }
+  }
+
+  // Renders the Workout DSL textarea plain when there's nothing to
+  // highlight, or layered over a backdrop rendering the same text with the
+  // most-recently-patched line marked, when lastPatchedLine still names a
+  // findable span in the current dslSource (a later unrelated edit could
+  // make it disappear — treated the same as "nothing to highlight"). The
+  // textarea's own text is fully transparent in that case (only its caret
+  // shows) so the backdrop's colored copy is what the user actually sees —
+  // the two share the same font/padding classes so they line up.
+  function renderDslTextarea() {
+    const offset = lastPatchedLine ? editor.dslSource.indexOf(lastPatchedLine) : -1;
+    if (!lastPatchedLine || offset === -1) {
+      return (
+        <textarea
+          className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
+          value={editor.dslSource}
+          onChange={e => onDslTextareaChange(e.target.value)}
+          rows={8}
+        />
+      );
+    }
+    const before = editor.dslSource.slice(0, offset);
+    const after = editor.dslSource.slice(offset + lastPatchedLine.length);
+    return (
+      <div className="hra-dsl-editor-wrap hra-border-strong hra-bg-card w-full mt-1">
+        <pre ref={dslBackdropRef} aria-hidden="true" className="hra-dsl-editor-backdrop hra-text-primary font-mono text-meta p-2">
+          {before}<mark>{lastPatchedLine}</mark>{after}
+        </pre>
+        <textarea
+          className="hra-dsl-editor-textarea font-mono text-meta p-2"
+          value={editor.dslSource}
+          onChange={e => onDslTextareaChange(e.target.value)}
+          onScroll={onDslTextareaScroll}
+          rows={8}
+        />
+      </div>
     );
   }
 
@@ -691,81 +868,125 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </label>
         </div>
 
-        {/* HRA-200: paste a messy real-world plan, generate a ready-to-copy
-            LLM prompt (built from the tested base prompt), run it externally,
-            then paste the returned DSL below into the DSL text field — this
-            app never calls an LLM API itself. */}
-        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
-          {t("manage.planTemplates.aiPrompt.originalTextLabel", "Original text")}
-          <textarea
-            className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 text-meta p-2"
-            value={originalText}
-            onChange={e => setOriginalText(e.target.value)}
-            placeholder={t("manage.planTemplates.aiPrompt.originalTextPlaceholder", "Paste the raw training plan text here (PDF/prose, any language)…")}
-            rows={4}
-          />
-        </label>
-
-        <div className="hra-plan-instance-section-gap flex items-start gap-2.5 flex-wrap">
-          <label className="hra-template-name-field hra-text-secondary text-meta">
-            {t("manage.planTemplates.aiPrompt.languageLabel", "Language (optional)")}
-            <input
-              className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
-              value={language}
-              onChange={e => setLanguage(e.target.value)}
-              placeholder={t("manage.planTemplates.aiPrompt.languagePlaceholder", "e.g. Italian")}
-            />
-          </label>
-          <button
-            className="hra-btn self-end"
-            onClick={onGeneratePrompt}
-            disabled={originalText.trim() === ""}
+        {/* HRA-238: Plan text -> Conversion prompt -> Workout DSL authoring
+            pipeline — three INDEPENDENTLY collapsible sections, not a
+            single-expand accordion (the user may need to compare artifacts,
+            so more than one can be open at once). The ordering communicates
+            the normal transformation flow without enforcing it — every
+            section opens directly at any time (AC2's direct-DSL path).
+            Default open/collapsed state is computed once when the row opens
+            (computeDefaultExpansion, called from startCreate/startEdit/
+            reopenDraft), never reactively as the user types. */}
+        <div className="hra-plan-instance-section-gap flex flex-col gap-2">
+          <AccordionCard
+            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.planTextHeader", "1 · Plan text"), planTextStateLabel())}
+            expanded={textExpanded} onToggle={() => setTextExpanded(v => !v)}
           >
-            {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
-          </button>
+            {/* HRA-200: paste a messy real-world plan, generate a
+                ready-to-copy LLM prompt (built from the tested base prompt),
+                run it externally, then paste the returned DSL into Workout
+                DSL below — this app never calls an LLM API itself. The
+                language field belongs here (it describes the source text),
+                per this Story's own explicit placement. */}
+            <div className="flex flex-col gap-2.5">
+              <p className="hra-text-secondary text-meta m-0">
+                {t("manage.planTemplates.pipeline.planTextDescription", "Paste the original training plan in any readable format or language.")}
+              </p>
+              <label className="hra-text-secondary text-meta block" >
+                {t("manage.planTemplates.aiPrompt.originalTextLabel", "Original text")}
+                <textarea
+                  className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 text-meta p-2"
+                  value={originalText}
+                  onChange={e => setOriginalText(e.target.value)}
+                  placeholder={t("manage.planTemplates.aiPrompt.originalTextPlaceholder", "Paste the raw training plan text here (PDF/prose, any language)…")}
+                  rows={4}
+                />
+              </label>
+
+              <div className="flex items-start gap-2.5 flex-wrap">
+                <label className="hra-template-name-field hra-text-secondary text-meta">
+                  {t("manage.planTemplates.aiPrompt.languageLabel", "Language (optional)")}
+                  <input
+                    className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 p-1.5"
+                    value={language}
+                    onChange={e => setLanguage(e.target.value)}
+                    placeholder={t("manage.planTemplates.aiPrompt.languagePlaceholder", "e.g. Italian")}
+                  />
+                </label>
+                <button
+                  className="hra-btn self-end"
+                  onClick={onGeneratePrompt}
+                  disabled={originalText.trim() === ""}
+                >
+                  {t("manage.planTemplates.aiPrompt.generateButton", "Generate full prompt")}
+                </button>
+              </div>
+            </div>
+          </AccordionCard>
+
+          <AccordionCard
+            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.conversionPromptHeader", "2 · Conversion prompt"), conversionPromptStateLabel())}
+            expanded={promptExpanded} onToggle={() => setPromptExpanded(v => !v)}
+          >
+            <div className="flex flex-col gap-2.5">
+              <p className="hra-text-secondary text-meta m-0">
+                {t("manage.planTemplates.pipeline.conversionPromptDescription", "Use this prompt with your preferred AI, then paste the resulting plan into Workout DSL.")}
+              </p>
+              <label className="hra-text-secondary text-meta block" >
+                {t("manage.planTemplates.aiPrompt.generatedLabel", "Generated prompt")}
+                <div className="flex items-start gap-2.5 mt-1">
+                  <textarea
+                    className="hra-border-strong hra-bg-card hra-text-primary w-full font-mono text-meta p-2"
+                    value={generatedPrompt ?? ""}
+                    readOnly
+                    placeholder={generatedPrompt == null ? t("manage.planTemplates.pipeline.conversionPromptEmpty", "Generate a prompt from the plan text, or paste an existing prompt here.") : undefined}
+                    rows={4}
+                  />
+                  <div className="flex flex-col gap-2.5 shrink-0">
+                    <button className="hra-btn" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
+                      {t("manage.planTemplates.aiPrompt.copyButton", "Copy prompt")}
+                    </button>
+                    <button className="hra-btn" onClick={onSaveAsPrompt} disabled={generatedPrompt == null}>
+                      {t("manage.planTemplates.aiPrompt.saveAsButton", "Save prompt as…")}
+                    </button>
+                  </div>
+                </div>
+              </label>
+            </div>
+          </AccordionCard>
+
+          <AccordionCard
+            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.workoutDslHeader", "3 · Workout DSL"), workoutDslStateLabel())}
+            expanded={dslExpanded} onToggle={() => setDslExpanded(v => !v)}
+          >
+            <div className="flex flex-col gap-2.5">
+              <p className="hra-text-secondary text-meta m-0">
+                {t("manage.planTemplates.pipeline.workoutDslDescription", "Source of truth for the structured plan.")}
+              </p>
+              <label className="hra-text-secondary text-meta block" >
+                {t("manage.planTemplates.dslSourceLabel", "Workout plan text")}
+                {renderDslTextarea()}
+              </label>
+              <div className="hra-row-wrap" >
+                <label className="hra-btn cursor-pointer" >
+                  {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
+                  <input
+                    type="file" accept=".txt,.csv" className="hidden"
+                    onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
+                  />
+                </label>
+              </div>
+              {genError && <ErrorBanner message={genError} />}
+            </div>
+          </AccordionCard>
         </div>
 
-        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
-          {t("manage.planTemplates.aiPrompt.generatedLabel", "Generated prompt")}
-          <div className="flex items-start gap-2.5 mt-1">
-            <textarea
-              className="hra-border-strong hra-bg-card hra-text-primary w-full font-mono text-meta p-2"
-              value={generatedPrompt ?? ""}
-              readOnly
-              rows={4}
-            />
-            <div className="flex flex-col gap-2.5 shrink-0">
-              <button className="hra-btn" onClick={onCopyPrompt} disabled={generatedPrompt == null}>
-                {t("manage.planTemplates.aiPrompt.copyButton", "Copy")}
-              </button>
-              <button className="hra-btn" onClick={onSaveAsPrompt} disabled={generatedPrompt == null}>
-                {t("manage.planTemplates.aiPrompt.saveAsButton", "Save as…")}
-              </button>
-            </div>
-          </div>
-        </label>
-
-        <label className="hra-plan-instance-section-gap hra-text-secondary text-meta block" >
-          {t("manage.planTemplates.dslSourceLabel", "DSL text")}
-          <textarea
-            className="hra-border-strong hra-bg-card hra-text-primary w-full mt-1 font-mono text-meta p-2"
-            value={editor.dslSource}
-            onChange={e => setEditor({ dslSource: e.target.value, sections: [] })}
-            rows={8}
-          />
-        </label>
-
+        {/* HRA-238 AC6: Save/Approve/Restore stay global template-lifecycle
+            actions, in one shared bar OUTSIDE the three-stage pipeline —
+            never presented as a fourth authoring step. Gating rules
+            (canSave/canApprove/onRestoreClick) are byte-identical to before
+            this Story. */}
         <div className="hra-plan-instance-section-gap hra-row-wrap" >
-          <label className="hra-btn cursor-pointer" >
-            {t("manage.planTemplates.uploadFile", "Upload .txt/.csv…")}
-            <input
-              type="file" accept=".txt,.csv" className="hidden"
-              onChange={e => { const file = e.target.files?.[0]; if (file) onFileUpload(file); e.target.value = ""; }}
-            />
-          </label>
-          <button className="hra-btn" onClick={() => runGenerate(editor.dslSource)} disabled={genLoading || editor.dslSource.trim() === ""}>
-            {genLoading ? t("manage.planTemplates.generating", "Parsing…") : t("manage.planTemplates.generateButton", "Generate / refresh preview")}
-          </button>
           <button className="hra-btn" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}>
             {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           </button>
@@ -773,14 +994,13 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading || demoMode}
             title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
           >
-            {approveLoading ? t("manage.planTemplates.approving", "Approving…") : t("manage.planTemplates.approveButton", "Approve")}
+            {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
           </button>
-          <button className="hra-btn" onClick={onRestoreClick}>
-            {t("common.restore", "Restore")}
+          <button className="hra-btn" onClick={onRestoreClick} disabled={!isEditorDirty()}>
+            {t("manage.planTemplates.clearPendingChangesButton", "Clear pending changes")}
           </button>
         </div>
 
-        {genError && <ErrorBanner message={genError} />}
         {patchError && <ErrorBanner message={patchError} />}
         {saveError && <ErrorBanner message={saveError} />}
 
@@ -797,6 +1017,8 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             onSectionEdit={onSectionEdit}
             onWeekEdit={onWeekEdit}
             onDayEdit={onDayEdit}
+            offsetUnit={editor.offsetUnit}
+            highlightedRef={lastEditedRef ?? undefined}
           />
         )}
 
@@ -811,7 +1033,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                   {t("common.cancel", "Cancel")}
                 </button>
                 <button className="hra-btn" data-variant="danger" onClick={doRestore}>
-                  {t("common.restore", "Restore")}
+                  {t("manage.planTemplates.clearPendingChangesButton", "Clear pending changes")}
                 </button>
               </div>
             </div>
@@ -827,7 +1049,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   return (
     <Card>
       <div className="flex items-center justify-between mb-1">
-        <div className="hra-block-title">{t("manage.planTemplates.title", "Training-plan templates")}</div>
+        <div className="hra-block-title">{t("manage.planTemplates.title", "Plan templates")}</div>
         <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1 px-2.5 text-meta cursor-pointer"  onClick={() => setShowHelp(true)}>
           {t("manage.planTemplates.howToUse", "How to use it")}
         </button>
@@ -846,8 +1068,8 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             <AccordionCard
               title={
                 <span className="flex items-center gap-2 flex-1 min-w-0">
-                  <span>{name || t("manage.planTemplates.createTitle", "New template")}</span>
-                  {activeKey !== "new" && rowStatusHint("new")}
+                  <span className={isRowDirty("new") ? "hra-text-warning" : ""}>{name || t("manage.planTemplates.createTitle", "New template")}</span>
+                  {rowStatusHint("new")}
                 </span>
               }
               expanded={activeKey === "new"}

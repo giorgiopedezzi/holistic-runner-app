@@ -9,6 +9,7 @@
  * into what's otherwise a single clickable row — clicking those controls
  * does NOT also toggle the row's own expand/collapse.
  */
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ActivityRow } from "./ActivityRow";
@@ -22,12 +23,12 @@ describe("ActivityRow", () => {
     installFetch({});
     render(
       <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
-        onClick={vi.fn()} onDelete={vi.fn()} />,
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
     );
 
     expect(screen.getByText("running")).toBeInTheDocument();
     expect(screen.getByText("10.00 km")).toBeInTheDocument();
-    expect(screen.getByText("via garmin")).toBeInTheDocument();
+    expect(screen.getByText("via Garmin")).toBeInTheDocument();
     expect(screen.getByText("♥ 152")).toBeInTheDocument();
   });
 
@@ -38,7 +39,7 @@ describe("ActivityRow", () => {
     });
     render(
       <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
-        onClick={vi.fn()} onDelete={onDelete} />,
+        onClick={vi.fn()} onDelete={onDelete} onUpdate={vi.fn()} />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove activity" }));
@@ -47,12 +48,41 @@ describe("ActivityRow", () => {
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
   });
 
+  it("renaming through the row's own picker updates the row's displayed name without a refetch", async () => {
+    const renamed = { ...activity(), activity_name: "Berlin Marathon" };
+    installFetch({
+      "GET /api/v1/activity-types": paginated([{ id: 1, name: "Race", min_distance_m: 0 }]),
+      [`PUT /api/v1/activities/${ID}/type`]: renamed,
+    });
+    // Real update loop (mirrors ActivityDetailBody/ClassificationCard.test.tsx):
+    // onUpdate re-renders with the fresh Activity a real caller (ActivitiesTab)
+    // would fold into its own list state, instead of the no-op this row used
+    // to hardcode internally.
+    function Harness() {
+      const [a, setA] = useState(activity());
+      return (
+        <ActivityRow activity={a} expanded={false} expandIndicator="accordion"
+          onClick={vi.fn()} onDelete={vi.fn()} onUpdate={setA} />
+      );
+    }
+    render(<Harness />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save & name" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Save & name" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Berlin Marathon"), { target: { value: "Berlin Marathon" } });
+    // Two "Save & name" elements once the popover's open: the trigger and its
+    // own submit button — the submit is the second one in DOM order.
+    fireEvent.click(screen.getAllByRole("button", { name: "Save & name" })[1]);
+
+    await waitFor(() => expect(screen.getByText("Berlin Marathon")).toBeInTheDocument());
+  });
+
   it("does not toggle expand/collapse when clicking Delete", () => {
     const onClick = vi.fn();
     installFetch({});
     render(
       <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
-        onClick={onClick} onDelete={vi.fn()} />,
+        onClick={onClick} onDelete={vi.fn()} onUpdate={vi.fn()} />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: "Remove activity" }));
@@ -67,7 +97,7 @@ describe("ActivityRow", () => {
     });
     render(
       <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
-        onClick={vi.fn()} onDelete={vi.fn()} />,
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove activity" })).toBeDisabled());

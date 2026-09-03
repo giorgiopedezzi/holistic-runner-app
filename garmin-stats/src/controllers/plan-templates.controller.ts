@@ -376,6 +376,23 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, instancesRepo.daysByDateAndWorkoutType(date, "run"));
   };
 
+  // GET /api/v1/plan-instances/active?date=YYYY-MM-DD (HRA-248) — "Your
+  // agenda"'s today-centered home view: the one APPROVED plan instance whose
+  // resolved days cover `date`, in the same response shape GET
+  // /api/v1/plan-instances/:id already uses (extends the
+  // daysByDateAndWorkoutType pattern, per the Story's own scope). 404 (not
+  // an empty 200) when no approved instance's days include the date —
+  // mirrors instanceById's own not-found treatment below, and is what lets
+  // the frontend tell "no active plan today" apart from a genuine fetch
+  // failure (never the same rendered state as a loading/error branch).
+  const activeForDate: Handler = (_req, res, url) => {
+    const date = url.searchParams.get("date");
+    if (!date || !ISO_DATE.test(date)) throw badRequest("date is required in YYYY-MM-DD format.");
+    const instanceId = instancesRepo.activeInstanceIdForDate(date);
+    if (instanceId == null) throw notFound(`No active plan instance for ${date}.`);
+    return send(res, { ...instancesRepo.instanceById(instanceId), days: instancesRepo.daysByInstance(instanceId) });
+  };
+
   const instanceById: Handler = (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
@@ -529,10 +546,12 @@ export function createPlanTemplatesController(ctx: AppContext) {
   }
 
   // PATCH /api/v1/plan-instances/:id/days/:dayId (HRA-149) — a single day's
-  // dsl/notes/scheduled_time, independently. Rejected outright on an already-
-  // approved instance (mirrors HRA-126's intended "editable only until
-  // approved" lock, which the earlier Story only enforced client-side). dsl,
-  // when supplied, is re-parsed+resolved against this day's own existing
+  // dsl/notes/scheduled_time, independently. HRA-249: no longer rejected on
+  // an already-approved instance — HRA-126's "editable only until approved"
+  // lock is replaced by a non-blocking frontend warning instead (editing an
+  // active plan is now allowed; only ACTIVATING a conflicting one is
+  // hard-blocked, by approveInstance's own overlap check above). dsl, when
+  // supplied, is re-parsed+resolved against this day's own existing
   // section/week/date scope and the template's effective PacePolicy — same
   // logic as the bulk days-replace path in patchInstance above, just for one
   // day instead of the whole set. Never touches or re-instantiates the
@@ -542,7 +561,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
     const instance = instancesRepo.instanceById(instanceId);
     if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
-    if (instance.approved_at) throw conflict("This instance is approved and its days can no longer be edited.");
     const day = instancesRepo.dayById(dayId);
     if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
 
@@ -815,11 +833,38 @@ export function createPlanTemplatesController(ctx: AppContext) {
   };
 
   // POST /api/v1/plan-instances/:id/approve — gate 2, symmetric with the
-  // template approve endpoint above.
+  // template approve endpoint above. HRA-249: before approving, block on any
+  // OTHER already-approved instance whose resolved date range overlaps this
+  // candidate's — two active plans silently competing for the same days is
+  // exactly what made "Your agenda" (HRA-248) ambiguous about which one to
+  // show. No override: a conflict always 409s, never sets approved_at. An
+  // instance with no resolved days (empty range) has nothing to overlap, so
+  // it always proceeds — same as the pre-existing behavior for such a row.
   const approveInstance: Handler = (_req, res, url) => {
     const id = parseIdForAction(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    if (!instancesRepo.instanceById(id)) throw notFound(`No plan instance with id ${id}.`);
+    const instance = instancesRepo.instanceById(id);
+    if (!instance) throw notFound(`No plan instance with id ${id}.`);
+
+    const range = instancesRepo.dateRangeForInstance(id);
+    if (range) {
+      const conflicts = instancesRepo.overlappingApproved(id, range.start_date, range.end_date);
+      if (conflicts.length > 0) {
+        throw conflict(
+          `Activating "${instance.name ?? `Plan Instance ${id}`}" would overlap ${conflicts.length} already-active plan${conflicts.length > 1 ? "s" : ""}.`,
+          {
+            overlaps: {
+              candidate: { id, name: instance.name, start_date: range.start_date, end_date: range.end_date },
+              conflicts: conflicts.map(c => ({
+                id: c.id, name: c.name, start_date: c.start_date, end_date: c.end_date,
+                overlap_start: c.start_date > range.start_date ? c.start_date : range.start_date,
+                overlap_end: c.end_date < range.end_date ? c.end_date : range.end_date,
+              })),
+            },
+          },
+        );
+      }
+    }
     return send(res, instancesRepo.approve(id));
   };
 
@@ -837,6 +882,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
   return {
     list, getById, generate, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
-    regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate,
+    regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
   };
 }

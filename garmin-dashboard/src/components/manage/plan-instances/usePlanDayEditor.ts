@@ -1,7 +1,7 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { TFunction } from "i18next";
 import { api } from "@/api/client";
-import { DAY_PREFIX_RE, type DayRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
+import { DAY_PREFIX_RE, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import {
   aggregateDayViews,
   computeResolvedDayDistance,
@@ -25,6 +25,12 @@ interface UsePlanDayEditorArgs {
   sections: SectionView[];
   setSections: Dispatch<SetStateAction<SectionView[]>> | ((value: SetStateAction<SectionView[]>) => void);
   t: TFunction;
+  // HRA-249: flags the just-edited day for TrainingPlanAccordion's
+  // hra-edited-row-highlight — mirrors PlanTemplatesSection.tsx's own
+  // setLastEditedRef on its structured Section/Week/Day edits. Optional so
+  // call sites that never wire the highlight (if any exist later) don't
+  // have to pass a no-op.
+  setHighlightedRef?: (ref: EditedRef | null) => void;
 }
 
 function recomputeTotals(
@@ -42,7 +48,7 @@ function recomputeTotals(
   return next;
 }
 
-export function usePlanDayEditor({ editingId, sections, setSections, t }: UsePlanDayEditorArgs) {
+export function usePlanDayEditor({ editingId, sections, setSections, t, setHighlightedRef }: UsePlanDayEditorArgs) {
   const sectionsRef = useRef(sections);
   const validateTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
@@ -126,6 +132,7 @@ export function usePlanDayEditor({ editingId, sections, setSections, t }: UsePla
     const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
     if (!day) return;
     const newLine = recomposeDayLine(day.dsl, patch);
+    setHighlightedRef?.({ kind: "day", sectionIndex, weekIndex, dayIndex });
 
     setSections(prev => {
       const next = [...prev];
