@@ -376,6 +376,23 @@ export function createPlanTemplatesController(ctx: AppContext) {
     return send(res, instancesRepo.daysByDateAndWorkoutType(date, "run"));
   };
 
+  // GET /api/v1/plan-instances/active?date=YYYY-MM-DD (HRA-248) — "Your
+  // agenda"'s today-centered home view: the one APPROVED plan instance whose
+  // resolved days cover `date`, in the same response shape GET
+  // /api/v1/plan-instances/:id already uses (extends the
+  // daysByDateAndWorkoutType pattern, per the Story's own scope). 404 (not
+  // an empty 200) when no approved instance's days include the date —
+  // mirrors instanceById's own not-found treatment below, and is what lets
+  // the frontend tell "no active plan today" apart from a genuine fetch
+  // failure (never the same rendered state as a loading/error branch).
+  const activeForDate: Handler = (_req, res, url) => {
+    const date = url.searchParams.get("date");
+    if (!date || !ISO_DATE.test(date)) throw badRequest("date is required in YYYY-MM-DD format.");
+    const instanceId = instancesRepo.activeInstanceIdForDate(date);
+    if (instanceId == null) throw notFound(`No active plan instance for ${date}.`);
+    return send(res, { ...instancesRepo.instanceById(instanceId), days: instancesRepo.daysByInstance(instanceId) });
+  };
+
   const instanceById: Handler = (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
@@ -837,6 +854,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
   return {
     list, getById, generate, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
-    regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate,
+    regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
   };
 }

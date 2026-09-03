@@ -260,6 +260,22 @@ export const api = {
       "/api/v1/plan-instances", "GET", templateId != null ? { limit: ALL, template_id: String(templateId) } : { limit: ALL },
     )).data,
     getById: (id: number) => request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`),
+    // GET /api/v1/plan-instances/active?date= (HRA-248) — "Your agenda"'s
+    // today-centered home view. The endpoint 404s when no APPROVED
+    // instance's resolved days cover `date` — translated to `null` here
+    // (not rethrown) so useQuery's "success" branch can distinguish "no
+    // active plan" (null) from a genuine fetch failure (still throws,
+    // reaching useQuery's own "error" branch), same "expected absence isn't
+    // an error" reasoning `PlanInstanceCalendar`'s own 404 paths don't need
+    // since they're id-addressed, not existence-queried.
+    active: async (date: string): Promise<PlanInstanceWithDays | null> => {
+      try {
+        return await request<PlanInstanceWithDays>("/api/v1/plan-instances/active", "GET", { date });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
     // PATCH /api/v1/plan-instances/:id (HRA-135, replacing the earlier PUT) —
     // every field optional, at least one required; each provided field
     // replaces its current value, omitted fields stay untouched. `days`, when

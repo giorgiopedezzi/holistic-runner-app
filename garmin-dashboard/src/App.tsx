@@ -11,6 +11,7 @@ import { SettingsProvider } from "@/hooks/useSettings";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { Select, ToastContainer } from "@/components/ui";
 import { fmtRaceLabel } from "@/utils/fmt";
+import { AgendaTab }    from "@/components/AgendaTab";
 import { OverviewTab }  from "@/components/OverviewTab";
 import { ActivitiesTab } from "@/components/ActivitiesTab";
 import { BodyTab }      from "@/components/BodyTab";
@@ -27,6 +28,7 @@ import { ErrorBanner }  from "@/components/ui";
 // pre-existing English literal, used as t()'s defaultValue so nothing flashes
 // a bare translation key before the backend bundle loads.
 const TABS = [
+  { id: "agenda",      labelKey: "nav.agenda",     fallback: "Your agenda"       },
   { id: "overview",    labelKey: "nav.overview",   fallback: "Overview & Trends" },
   { id: "activities",  labelKey: "nav.activities", fallback: "Activities"        },
   { id: "plans",       labelKey: "nav.trainingPlans", fallback: "Plans" },
@@ -87,11 +89,12 @@ function AppShell() {
   const appearance = useAppearance();
   const { t } = useTranslation();
   // Backed by the URL's `tab` param (HRA-193) so a refresh or a direct link
-  // lands on the same tab instead of bouncing back to Overview. An unknown
-  // or missing value falls back to Overview here (not inside useUrlState,
-  // which stays a generic string primitive with no knowledge of TabId).
-  const [rawTab, setTab] = useUrlState("tab", "overview");
-  const tab: TabId = TABS.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "overview";
+  // lands on the same tab instead of bouncing back to the default. An
+  // unknown or missing value falls back to "Your agenda" here (not inside
+  // useUrlState, which stays a generic string primitive with no knowledge
+  // of TabId) — HRA-248: the app's default landing tab, ahead of Overview.
+  const [rawTab, setTab] = useUrlState("tab", "agenda");
+  const tab: TabId = TABS.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "agenda";
   const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -204,6 +207,7 @@ function AppShell() {
           </div>
         )}
 
+        {tab === "agenda"     && <AgendaTab onNavigateToPlans={() => setTab("plans")} />}
         {tab === "overview"   && (
           <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
         )}

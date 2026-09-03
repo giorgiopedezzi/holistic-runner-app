@@ -654,6 +654,14 @@
         "responses": { "200": { "description": "Plan instances.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstance" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
+    "/api/v1/plan-instances/active": {
+      "get": {
+        "tags": ["plan-templates"], "summary": "Get the one approved plan instance whose resolved days cover a date (HRA-248)",
+        "description": "Feeds \"Your agenda\"'s today-centered home view. Extends the daysByDateAndWorkoutType pattern, scoped to approved_at IS NOT NULL and with no workout_type filter (a REST day is a real dated row too, HRA-124, and must resolve just as well as a workout day). 404 (not an empty 200) when no approved instance's resolved days include the date — lets the frontend tell \"no active plan today\" apart from a genuine fetch failure. Newest-instance-first if more than one approved instance's days cover the same date (overlap detection/activation blocking is a sibling Story, out of scope here).",
+        "parameters": [ { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } } ],
+        "responses": { "200": { "description": "The active instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
     "/api/v1/plan-instance-days": {
       "get": {
         "tags": ["plan-templates"], "summary": "Every run-type plan_instance_day matching a calendar date, across every instance (HRA-206)",

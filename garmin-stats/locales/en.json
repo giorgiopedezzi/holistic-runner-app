@@ -1,4 +1,5 @@
 {
+  "nav.agenda": "Your agenda",
   "nav.overview": "Overview & Trends",
   "nav.activities": "Activities",
   "activities.loading": "Loading activities…",
@@ -677,5 +678,10 @@
   "feedback.submit": "Submit",
   "feedback.submittingEllipsis": "Submitting…",
   "feedback.submitSuccess": "Thanks for the feedback!",
-  "feedback.submitFailed": "Failed to submit feedback"
+  "feedback.submitFailed": "Failed to submit feedback",
+  "agenda.loading": "Loading your agenda…",
+  "agenda.emptyLine1": "There is no active plan today.",
+  "agenda.emptyLine2": "Run free. Or rest. Be happy.",
+  "agenda.viewPlans": "View race plans",
+  "agenda.instanceLabel": "Today's plan: {{name}}"
 }

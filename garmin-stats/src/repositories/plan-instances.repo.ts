@@ -57,6 +57,21 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     WHERE pid.date = ? AND pid.workout_type = ?
     ORDER BY pi.created_at DESC
   `);
+  // HRA-248: "Your agenda"'s today-centered home view — the one APPROVED
+  // instance (approved_at IS NOT NULL) whose resolved days cover a given
+  // date. No workout_type filter, unlike findDaysByDateAndWorkoutTypeStmt
+  // above — a REST day is a real dated row too (HRA-124) and must resolve
+  // just as well as a workout day. Newest-instance-first on the (out of
+  // scope here, see the sibling overlap-detection Story) chance more than
+  // one approved instance's days cover the same date.
+  const findActiveInstanceIdForDateStmt = db.prepare(`
+    SELECT pi.id
+    FROM plan_instance_days pid
+    JOIN plan_instances pi ON pi.id = pid.instance_id
+    WHERE pid.date = ? AND pi.approved_at IS NOT NULL
+    ORDER BY pi.created_at DESC
+    LIMIT 1
+  `);
   const insertDay = db.prepare(`
     INSERT INTO plan_instance_days
       (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review)
@@ -123,6 +138,8 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       findDaysBySectionAndWeekStmt.all(instanceId, sectionName, weekNumber) as unknown as PlanInstanceDayRow[],
     daysByDateAndWorkoutType: (date: string, workoutType: string): PlanInstanceDayWithInstance[] =>
       findDaysByDateAndWorkoutTypeStmt.all(date, workoutType) as unknown as PlanInstanceDayWithInstance[],
+    activeInstanceIdForDate: (date: string): number | undefined =>
+      (findActiveInstanceIdForDateStmt.get(date) as { id: number } | undefined)?.id,
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
       const info = insertInstance.run({
         $template_id: i.template_id, $start_date: i.start_date,

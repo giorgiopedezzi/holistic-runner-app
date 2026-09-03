@@ -1,4 +1,5 @@
 {
+  "nav.agenda": "La tua agenda",
   "nav.overview": "Panoramica e tendenze",
   "nav.activities": "Attività",
   "activities.loading": "Caricamento attività…",
@@ -677,5 +678,10 @@
   "feedback.submit": "Invia",
   "feedback.submittingEllipsis": "Invio…",
   "feedback.submitSuccess": "Grazie per il feedback!",
-  "feedback.submitFailed": "Invio del feedback non riuscito"
+  "feedback.submitFailed": "Invio del feedback non riuscito",
+  "agenda.loading": "Caricamento della tua agenda…",
+  "agenda.emptyLine1": "Nessun piano attivo oggi.",
+  "agenda.emptyLine2": "Corri libero. Oppure riposa. Sii felice.",
+  "agenda.viewPlans": "Vedi i piani gara",
+  "agenda.instanceLabel": "Il piano di oggi: {{name}}"
 }

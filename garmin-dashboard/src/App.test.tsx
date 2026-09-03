@@ -11,7 +11,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import App from "./App";
-import { installFetch, paginated, json, type Routes } from "@/test/api-stub";
+import { installFetch, paginated, json, problem, type Routes } from "@/test/api-stub";
 import {
   activity, sportSummary, bodyMeasurement, settings, dateRange,
   deviceStatus, withingsStatus, stravaStatus,
@@ -38,6 +38,10 @@ function appRoutes(settingsBody = settings()): Routes {
     "GET /api/v1/body-measurements/count": { count: 1 },
     "GET /api/v1/activities/trash": paginated([]),
     "GET /api/v1/body-measurements/trash": paginated([]),
+    // HRA-248: "Your agenda" is now the default tab, so every mount fetches
+    // this on render — a benign "no active plan today" default, same
+    // reasoning as every other benign stub above.
+    "GET /api/v1/plan-instances/active": problem(404, "no active plan"),
   };
 }
 
@@ -51,14 +55,23 @@ afterEach(() => {
 });
 
 describe("App tab switching", () => {
-  it("mounts each of the five tabs when its nav button is clicked", async () => {
+  it("loads on the default 'Your agenda' tab, first in nav order, then mounts each other tab when clicked", async () => {
     installFetch(appRoutes());
     render(<App />);
 
-    // Overview is the default tab. Longer timeout than the default 1000ms —
-    // the graph-first layout (main graph + sidebar) now renders through a
-    // few more nested components before settling, confirmed correct via
-    // manual inspection, just slower to converge in this test environment.
+    // HRA-248 AC1: no tab URL param -> "Your agenda" selected, first in the
+    // primary nav, before "Overview & Trends".
+    const nav = screen.getByRole("navigation");
+    const navButtons = within(nav).getAllByRole("button");
+    expect(navButtons[0]).toHaveTextContent("Your agenda");
+    expect(navButtons[1]).toHaveTextContent("Overview & Trends");
+    expect(await screen.findByText("There is no active plan today.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Overview & Trends" }));
+    // Longer timeout than the default 1000ms — the graph-first layout (main
+    // graph + sidebar) now renders through a few more nested components
+    // before settling, confirmed correct via manual inspection, just slower
+    // to converge in this test environment.
     await waitFor(() => expect(document.body).toHaveTextContent("Avg distance"), { timeout: 5000 });
 
     fireEvent.click(screen.getByRole("button", { name: "Activities" }));
@@ -85,8 +98,11 @@ describe("unit-system propagation across tabs (load-bearing)", () => {
     });
     render(<App />);
 
-    // Overview (default) shows the running avg-pace unit label in metric.
-    // Longer timeout — see the same note above.
+    // HRA-248: "Your agenda", not Overview, is the default tab now — switch
+    // to Overview first to exercise the same propagation path as before.
+    fireEvent.click(await screen.findByRole("button", { name: "Overview & Trends" }));
+    // Overview shows the running avg-pace unit label in metric. Longer
+    // timeout — see the same note above.
     await waitFor(() => expect(document.body).toHaveTextContent("min/km"), { timeout: 5000 });
     expect(screen.queryByText("min/mi")).not.toBeInTheDocument();
 

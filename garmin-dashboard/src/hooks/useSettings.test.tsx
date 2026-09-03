@@ -11,7 +11,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import App from "@/App";
-import { installFetch, paginated, type Routes } from "@/test/api-stub";
+import { installFetch, paginated, problem, type Routes } from "@/test/api-stub";
 import {
   activity, sportSummary, bodyMeasurement, settings, dateRange,
   deviceStatus, withingsStatus, stravaStatus,
@@ -35,12 +35,21 @@ function appRoutes(): Routes {
     "GET /api/v1/body-measurements/count": { count: 1 },
     "GET /api/v1/activities/trash": paginated([]),
     "GET /api/v1/body-measurements/trash": paginated([]),
+    // HRA-248: "Your agenda" is now the default tab, so mounting App fetches
+    // this — a benign "no active plan today" default, same reasoning as
+    // every other benign stub above.
+    "GET /api/v1/plan-instances/active": problem(404, "no active plan"),
   };
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnitSystem("metric");
+  // HRA-193/HRA-248: tab state lives in the URL (history.replaceState),
+  // which persists across tests sharing this jsdom window — reset it so a
+  // later test doesn't inherit this test's tab (same reset App.test.tsx's
+  // own afterEach already applies).
+  window.history.replaceState(null, "", "/");
 });
 
 describe("settings — single fetch across the app (HRA-76)", () => {
@@ -48,6 +57,10 @@ describe("settings — single fetch across the app (HRA-76)", () => {
     const fetchMock = installFetch(appRoutes());
     render(<App />);
 
+    // HRA-248: "Your agenda", not Overview, is the default tab now — switch
+    // to Overview first so this test still exercises every tab in the same
+    // order as before.
+    fireEvent.click(await screen.findByRole("button", { name: "Overview & Trends" }));
     // Longer timeout than the default 1000ms — the graph-first layout (main
     // graph + sidebar) renders through a few more nested components before
     // settling; confirmed correct via manual inspection, just slower to

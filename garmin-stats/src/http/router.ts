@@ -86,6 +86,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/plan-templates")             return await planTemplates.list(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))    return await planTemplates.getById(req, res, url);
         if (route === "/api/v1/plan-instances")             return await planTemplates.listInstances(req, res, url);
+        if (route === "/api/v1/plan-instances/active")      return await planTemplates.activeForDate(req, res, url);
         if (route === "/api/v1/plan-instance-days")         return await planTemplates.daysByDate(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/fit$/.test(route)) return await planTemplates.dayFit(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/fit$/.test(route)) return await planTemplates.scopeFit(req, res, url);
