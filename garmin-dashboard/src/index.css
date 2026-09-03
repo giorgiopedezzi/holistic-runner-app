@@ -2004,6 +2004,10 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   font-weight: var(--text-heading--font-weight); font-size: var(--text-heading); letter-spacing: -0.02em; flex-shrink: 0; color: var(--text-primary);
 }
 .hra-sidebar[data-collapsed="true"] .hra-brand { display: none; }
+/* With the brand hidden, space-between above would still left-align the
+   lone remaining child (LanguagePicker's icon-only trigger) — center it
+   instead so it matches the centered nav-item icons below it. */
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-top { justify-content: center; }
 /* One <nav> landmark for the whole sidebar. flex: 1 lets it fill the
    remaining vertical space so .hra-sidebar-utility-group (Settings/Feedback)
    can pin itself to the nav's own bottom edge via margin-top: auto. */
