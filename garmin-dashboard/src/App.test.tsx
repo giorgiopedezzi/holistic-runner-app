@@ -117,13 +117,13 @@ describe("App tab switching", () => {
     expect(container.querySelector(".hra-nav")).not.toBeInTheDocument();
     expect(screen.queryByText("Garmin Stats")).not.toBeInTheDocument();
     // Scoped to the sidebar specifically — SplashScreen (HRA-223 follow-up)
-    // also renders its own "Runs Free" brand lockup, and both are in the DOM
+    // also renders its own "Dreams run free" brand lockup, and both are in the DOM
     // simultaneously in this test environment (the splash never gets real
     // track data to autoplay/self-dismiss here), so an unscoped query would
     // match two elements.
     const sidebar = container.querySelector(".hra-sidebar");
     expect(sidebar).not.toBeNull();
-    expect(within(sidebar as HTMLElement).getByText("Runs Free")).toBeInTheDocument();
+    expect(within(sidebar as HTMLElement).getByText((_, el) => el?.textContent === "Dreams run free")).toBeInTheDocument();
 
     // Post-review feedback: the server-status dot was removed from the
     // sidebar entirely (no role="status" indicator renders anywhere), and

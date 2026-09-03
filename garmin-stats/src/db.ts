@@ -345,6 +345,7 @@ export function initSchema(db: DatabaseSync): void {
       pricing_why_not_free_text     TEXT,
       feature_interest              TEXT,
       feature_interest_other_free_text TEXT,
+      app_type_choice               TEXT,
       created_at                    TEXT    DEFAULT (datetime('now'))
     );
 
@@ -573,6 +574,12 @@ export function initSchema(db: DatabaseSync): void {
   if (!planInstanceDayCols.some(c => c.name === "scheduled_time")) {
     db.exec("ALTER TABLE plan_instance_days ADD COLUMN scheduled_time TEXT");
   }
+
+  // Feedback app-type poll — added after the feedback table already existed.
+  const feedbackCols = db.prepare("PRAGMA table_info(feedback)").all() as { name: string }[];
+  if (!feedbackCols.some(c => c.name === "app_type_choice")) {
+    db.exec("ALTER TABLE feedback ADD COLUMN app_type_choice TEXT");
+  }
 }
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
@@ -656,6 +663,7 @@ export interface FeedbackRow {
   // Stored as a JSON-serialized string[] (see repositories/feedback.repo.ts).
   feature_interest: string | null;
   feature_interest_other_free_text: string | null;
+  app_type_choice: string | null;
   created_at: string;
 }
 

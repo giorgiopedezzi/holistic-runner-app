@@ -1,15 +1,16 @@
 /**
  * FeedbackTab.tsx (HRA-226)
- * One page, one form, one Submit — three independently-optional sections:
- * free-text feedback, a pricing poll, and a feature-interest poll. Anonymous
- * (no visitor identity captured), reachable even in DEMO_MODE (the backend
- * route is deliberately exempt from demoGuarded() — see http/router.ts).
+ * One page, one form, one Submit — four independently-optional sections:
+ * free-text feedback, a pricing poll, an app-type poll, and a feature-interest
+ * poll. Anonymous (no visitor identity captured), reachable even in
+ * DEMO_MODE (the backend route is deliberately exempt from demoGuarded() —
+ * see http/router.ts).
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, Checkbox, Label } from "@/components/ui";
-import type { PricingChoice, FeatureInterest } from "@/types/api";
+import type { PricingChoice, FeatureInterest, AppTypeChoice } from "@/types/api";
 import { notify } from "@/utils/toast";
 
 const PRICING_OPTIONS: { value: PricingChoice; labelKey: string; fallback: string }[] = [
@@ -19,9 +20,15 @@ const PRICING_OPTIONS: { value: PricingChoice; labelKey: string; fallback: strin
   { value: "15_plus",   labelKey: "feedback.pricing.15plus",   fallback: "$15+/mo (if coach features included)" },
 ];
 
+const APP_TYPE_OPTIONS: { value: AppTypeChoice; labelKey: string; fallback: string }[] = [
+  { value: "cloud",   labelKey: "feedback.appType.cloud",   fallback: "Cloud (web-hosted)" },
+  { value: "desktop", labelKey: "feedback.appType.desktop", fallback: "Certified desktop app" },
+];
+
 const FEATURE_OPTIONS: { value: FeatureInterest; labelKey: string; fallback: string }[] = [
   { value: "multi_user_coach", labelKey: "feedback.features.multiUserCoach", fallback: "Multi-user/coach mode" },
   { value: "shared_groups",    labelKey: "feedback.features.sharedGroups",   fallback: "Shared groups" },
+  { value: "curated_content_feed", labelKey: "feedback.features.curatedContentFeed", fallback: "A curated feed of recipes, exercises, and reviews, from sources you choose or search among highly reputable ones" },
 ];
 
 export function FeedbackTab() {
@@ -29,6 +36,7 @@ export function FeedbackTab() {
   const [freeText, setFreeText] = useState("");
   const [pricingChoice, setPricingChoice] = useState<PricingChoice | null>(null);
   const [pricingWhyNot, setPricingWhyNot] = useState("");
+  const [appTypeChoice, setAppTypeChoice] = useState<AppTypeChoice | null>(null);
   const [featureInterest, setFeatureInterest] = useState<FeatureInterest[]>([]);
   const [featureOther, setFeatureOther] = useState(false);
   const [featureOtherText, setFeatureOtherText] = useState("");
@@ -38,7 +46,7 @@ export function FeedbackTab() {
     setFeatureInterest(prev => checked ? [...prev, value] : prev.filter(v => v !== value));
   }
 
-  const hasAnything = freeText.trim().length > 0 || pricingChoice != null
+  const hasAnything = freeText.trim().length > 0 || pricingChoice != null || appTypeChoice != null
     || featureInterest.length > 0 || (featureOther && featureOtherText.trim().length > 0);
 
   async function handleSubmit() {
@@ -48,12 +56,14 @@ export function FeedbackTab() {
         free_text: freeText.trim() || undefined,
         pricing_choice: pricingChoice ?? undefined,
         pricing_why_not_free_text: pricingChoice === "free_only" ? (pricingWhyNot.trim() || undefined) : undefined,
+        app_type_choice: appTypeChoice ?? undefined,
         feature_interest: featureInterest.length > 0 ? featureInterest : undefined,
         feature_interest_other_free_text: featureOther ? (featureOtherText.trim() || undefined) : undefined,
       });
       setFreeText("");
       setPricingChoice(null);
       setPricingWhyNot("");
+      setAppTypeChoice(null);
       setFeatureInterest([]);
       setFeatureOther(false);
       setFeatureOtherText("");
@@ -108,6 +118,24 @@ export function FeedbackTab() {
             className="hra-border-strong hra-bg-card hra-text-primary w-full rounded-md p-2 mt-2 text-body"
           />
         )}
+      </div>
+
+      <div className="mb-5">
+        <Label className="mb-1.5">{t("feedback.appTypeLabel", "App type?")}</Label>
+        <div className="flex flex-col gap-2">
+          {APP_TYPE_OPTIONS.map(opt => (
+            <label key={opt.value} className="flex items-center gap-2 text-body cursor-pointer">
+              <input
+                type="radio"
+                name="app_type_choice"
+                value={opt.value}
+                checked={appTypeChoice === opt.value}
+                onChange={() => setAppTypeChoice(opt.value)}
+              />
+              {t(opt.labelKey, opt.fallback)}
+            </label>
+          ))}
+        </div>
       </div>
 
       <div className="mb-5">

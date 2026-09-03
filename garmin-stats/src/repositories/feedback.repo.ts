@@ -12,12 +12,13 @@ export interface NewFeedback {
   pricingWhyNotFreeText: string | null;
   featureInterest: string[] | null;
   featureInterestOtherFreeText: string | null;
+  appTypeChoice: string | null;
 }
 
 export function createFeedbackRepo(db: DatabaseSync) {
   const insert = db.prepare(`
-    INSERT INTO feedback (free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text)
-    VALUES ($free_text, $pricing_choice, $pricing_why_not_free_text, $feature_interest, $feature_interest_other_free_text)
+    INSERT INTO feedback (free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, app_type_choice)
+    VALUES ($free_text, $pricing_choice, $pricing_why_not_free_text, $feature_interest, $feature_interest_other_free_text, $app_type_choice)
   `);
   const findById = db.prepare("SELECT * FROM feedback WHERE id = ?");
 
@@ -29,6 +30,7 @@ export function createFeedbackRepo(db: DatabaseSync) {
         $pricing_why_not_free_text: f.pricingWhyNotFreeText,
         $feature_interest: f.featureInterest ? JSON.stringify(f.featureInterest) : null,
         $feature_interest_other_free_text: f.featureInterestOtherFreeText,
+        $app_type_choice: f.appTypeChoice,
       });
       return findById.get(Number(info.lastInsertRowid)) as unknown as FeedbackRow;
     },

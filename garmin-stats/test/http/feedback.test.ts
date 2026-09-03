@@ -73,13 +73,36 @@ test("POST /api/v1/feedback rejects an unrecognized feature_interest entry with 
   }
 });
 
-test("POST /api/v1/feedback accepts a full submission across all three sections and persists it", async () => {
+test("POST /api/v1/feedback rejects an unrecognized app_type_choice with 422", async () => {
+  const server = await startTestServer({ seed: false });
+  try {
+    const res = await server.api("/api/v1/feedback", json({ app_type_choice: "mobile" }));
+    assert.equal(res.status, 422, JSON.stringify(res.json));
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST /api/v1/feedback accepts each of the two defined app types", async () => {
+  const server = await startTestServer({ seed: false });
+  try {
+    for (const appType of ["cloud", "desktop"]) {
+      const res = await server.api("/api/v1/feedback", json({ app_type_choice: appType }));
+      assert.equal(res.status, 201, `${appType}: ${JSON.stringify(res.json)}`);
+    }
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST /api/v1/feedback accepts a full submission across all sections and persists it", async () => {
   const server = await startTestServer({ seed: false });
   try {
     const res = await server.api("/api/v1/feedback", json({
       free_text: "Great app.",
       pricing_choice: "free_only",
       pricing_why_not_free_text: "Student budget.",
+      app_type_choice: "cloud",
       feature_interest: ["multi_user_coach", "shared_groups"],
       feature_interest_other_free_text: "Team leaderboards",
     }));
