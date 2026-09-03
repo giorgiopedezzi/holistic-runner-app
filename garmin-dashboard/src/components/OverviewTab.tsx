@@ -1195,7 +1195,15 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
     () => linkedRaceId != null ? api.garmin.activity(linkedRaceId) : Promise.resolve(null),
     [linkedRaceId],
   );
-  const linkedRaceActivity = linkedRaceQ.state.status === "success" ? linkedRaceQ.state.data : null;
+  // Renaming/retyping the linked race (ActivityRow's own picker, its
+  // expanded ActivityDetailBody, or the race popup below) returns the fresh
+  // Activity straight from the PUT — folded in here instead of a refetch so
+  // every place this same race is shown updates immediately, same reasoning
+  // as ActivitiesTab's updatedActivities. Reset whenever the linked race
+  // itself changes so a stale override never outlives it.
+  const [updatedRace, setUpdatedRace] = useState<Activity | null>(null);
+  useEffect(() => { setUpdatedRace(null); }, [linkedRaceId]);
+  const linkedRaceActivity = updatedRace ?? (linkedRaceQ.state.status === "success" ? linkedRaceQ.state.data : null);
 
   // Tightened from 20px (graph-first reorg, spec: "reduce unnecessary
   // vertical spacing around the filters so the main graph appears sooner").
@@ -1271,8 +1279,9 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
       expandIndicator={detailView}
       onClick={() => detailView === "accordion" ? setRaceExpanded(e => !e) : setRaceModalOpen(true)}
       onDelete={() => setRaceExpanded(false)}
+      onUpdate={setUpdatedRace}
       expandedContent={
-        <ActivityDetailBody activityId={linkedRaceActivity.id} onDelete={() => setRaceExpanded(false)} />
+        <ActivityDetailBody activityId={linkedRaceActivity.id} onDelete={() => setRaceExpanded(false)} onActivityUpdate={setUpdatedRace} />
       }
     />
   ) : null;
@@ -1401,6 +1410,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
           activityId={linkedRaceActivity.id}
           onClose={() => setRaceModalOpen(false)}
           onDelete={() => setRaceModalOpen(false)}
+          onActivityUpdate={setUpdatedRace}
         />
       )}
     </>

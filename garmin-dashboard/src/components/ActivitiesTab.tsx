@@ -7,6 +7,7 @@ import { api } from "@/api/client";
 import { ErrorBanner, LoadingSpinner, Pagination, RangeEmpty } from "@/components/ui";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
 import { ActivityRow } from "@/components/activity/ActivityRow";
+import type { Activity } from "@/types/api";
 
 interface Props { from: string; to: string; }
 
@@ -42,6 +43,18 @@ export function ActivitiesTab({ from, to }: Props) {
     () => api.garmin.activitiesPage(from, to, perPage, (page - 1) * perPage),
     [from, to, page, perPage],
   );
+  // Renaming/retyping an activity (ActivityRow's own picker, or the expanded
+  // ActivityDetailBody underneath it) returns the fresh Activity straight
+  // from the PUT — folded in here instead of a full refetch so the row's own
+  // header updates immediately ("keep current data in sync, without the need
+  // to refresh"). Keyed by id and merged over the fetched page at render;
+  // reset whenever the page itself changes so a stale override never
+  // outlives the fetch it was patching.
+  const [updatedActivities, setUpdatedActivities] = useState<Record<number, Activity>>({});
+  useEffect(() => { setUpdatedActivities({}); }, [from, to, page, perPage]);
+  function applyActivityUpdate(a: Activity) {
+    setUpdatedActivities(prev => ({ ...prev, [a.id]: a }));
+  }
 
   // A new range (or a perPage change) invalidates the current page number,
   // but must not fire on initial mount. A boolean "isFirst" ref guard (the
@@ -95,7 +108,8 @@ export function ActivitiesTab({ from, to }: Props) {
     return <RangeEmpty range={range} from={from} to={to} entityLabel={t("common.entity.activities", "activities")} />;
   }
 
-  const pageItems = state.data.data; // already the server-sliced page
+  // already the server-sliced page, patched with any locally-applied renames/retypes
+  const pageItems = state.data.data.map(a => updatedActivities[a.id] ?? a);
 
   const pagination = (
     <Pagination
@@ -126,10 +140,12 @@ export function ActivitiesTab({ from, to }: Props) {
                 ? setExpandedId(expandedId === a.id ? null : a.id)
                 : setModalId(a.id)}
               onDelete={() => { setExpandedId(null); refetch(); }}
+              onUpdate={applyActivityUpdate}
               expandedContent={
                 <ActivityDetailBody
                   activityId={a.id}
                   onDelete={() => { setExpandedId(null); refetch(); }}
+                  onActivityUpdate={applyActivityUpdate}
                 />
               }
             />
@@ -144,6 +160,7 @@ export function ActivitiesTab({ from, to }: Props) {
           activityId={modalId}
           onClose={() => setModalId(null)}
           onDelete={() => refetch()}
+          onActivityUpdate={applyActivityUpdate}
         />
       )}
     </div>

@@ -59,6 +59,8 @@ export function DatePicker({ value, onChange, min, max, disabled }: DatePickerPr
           defaultMonth={selected}
           onSelect={d => { if (d) { onChange(toIso(d)); setOpen(false); } }}
           disabled={d => (minDate ? d < minDate : false) || (maxDate ? d > maxDate : false)}
+          minDate={minDate}
+          maxDate={maxDate}
         />
       </PopoverContent>
     </Popover>

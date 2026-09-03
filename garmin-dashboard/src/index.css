@@ -1575,8 +1575,36 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    it styled). */
 
 .hra-calendar { font-size: var(--text-label); color: var(--text-primary); }
-.hra-calendar .rdp-month_caption { display: flex; align-items: center; justify-content: center; padding: 4px 0 8px; font-weight: 500; }
-.hra-calendar .rdp-nav { display: flex; justify-content: space-between; }
+/* navLayout="around" (Calendar.tsx) puts the prev/next buttons directly
+   beside the caption inside .rdp-month itself, one row, instead of
+   DayPicker's legacy separate .rdp-nav row above it — so the flex row lives
+   on .rdp-month, and the caption between the two buttons just needs to fill
+   the remaining width so the dropdown pills land centered between them. */
+.hra-calendar .rdp-month { display: flex; align-items: center; gap: 4px; padding-bottom: 8px; }
+.hra-calendar .rdp-month_caption { flex: 1; display: flex; align-items: center; justify-content: center; font-weight: 500; }
+/* Month/year dropdown navigation (captionLayout="dropdown", Calendar.tsx).
+   react-day-picker v10's own Dropdown renders TWO overlapping children per
+   dropdown_root: the real <select> (rdp-dropdown) that takes the click/native
+   picker, and an aria-hidden span (rdp-caption_label, despite the name — this
+   is the Dropdown component's own label+chevron, not DayPicker's separate
+   whole-caption label) that's the only one meant to be seen. Shipping no
+   default rdp CSS (see Calendar.tsx's own comment) means neither half had
+   its half of that contract — the select rendered as a plain visible native
+   control AND the label rendered next to it, full-size, instead of styling
+   the invisible/visible pairing. */
+.hra-calendar .rdp-dropdowns { display: flex; align-items: center; gap: 4px; }
+.hra-calendar .rdp-dropdown_root { position: relative; display: inline-flex; align-items: center; }
+.hra-calendar .rdp-dropdown_root .rdp-dropdown {
+  position: absolute; inset: 0; width: 100%; opacity: 0; border: none; cursor: pointer;
+}
+.hra-calendar .rdp-dropdown_root .rdp-caption_label {
+  display: flex; align-items: center; gap: 2px;
+  font-size: var(--text-label); font-weight: 500; color: var(--text-primary);
+  background: var(--bg-surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm); padding: 2px 4px 2px 8px; pointer-events: none;
+}
+.hra-calendar .rdp-dropdown_root:hover .rdp-caption_label { background: var(--bg-card); }
+.hra-calendar .rdp-dropdown_root[data-disabled="true"] { opacity: 0.4; }
 .hra-calendar .rdp-button_previous,
 .hra-calendar .rdp-button_next {
   display: flex; align-items: center; justify-content: center;
@@ -1830,10 +1858,21 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    feedback: the splash had no "Runs Free" identity on it at all). Absolutely
    positioned so it sits apart from the centered copy/animation column below
    it rather than competing with it for the same flex flow; padded off both
-   edges ("not glued") rather than flush to the corner. */
-.hra-splash-brand { position: absolute; top: 32px; left: 32px; }
-.hra-splash-brand-title { font-size: var(--text-display); font-weight: 700; letter-spacing: -0.01em; color: var(--text-primary); margin: 0; }
-.hra-splash-brand-tagline { font-size: var(--text-heading); font-style: italic; color: var(--text-secondary); margin: 4px 0 0; }
+   edges ("not glued") rather than flush to the corner. Manrope ExtraBold
+   (index.html loads weight 800 only) instead of --font-sans — a deliberate
+   one-off face for this lockup specifically, not a site-wide type change; no
+   tagline underneath (direct feedback: it diluted the mark) — just the name,
+   given intentional presence through size/weight/color instead. */
+.hra-splash-brand { position: absolute; top: 30px; left: 30px; }
+.hra-splash-brand-title {
+  font-family: "Manrope", var(--font-sans);
+  font-weight: 800; font-size: 21px; letter-spacing: -0.3px;
+  color: #F5F7FA; margin: 0;
+}
+/* "Free" in the same red the heart-rate line/"Your heart." copy already use
+   (--data-hr) — ties the brand mark to the animation it's sitting next to,
+   rather than introducing a new one-off red. */
+.hra-splash-brand-accent { color: var(--data-hr); }
 /* Splash copy's entrance (HRA-223 amendment) — a single quiet fade + rise on
    mount, not a looping/attention-grabbing effect: the splash is on screen
    for the animation's own 10s run, so a "simple but nice" one-shot beat is
@@ -1847,6 +1886,10 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-splash-copy { animation: hra-splash-copy-in 0.7s ease-out both; }
 .hra-splash-copy p { margin: 0; }
 .hra-splash-copy p + p { margin-top: 0.3em; }
+/* Subtagline under the bold headline — deliberately a lighter, non-bold
+   weight in the body role (not text-display) so it reads as a supporting
+   line rather than a second headline. */
+.hra-splash-copy-subtagline { font-size: var(--text-body); font-weight: 400; color: var(--text-secondary); }
 /* The closing beat — "Your heart. You." — steps up in size and shifts to
    the same HR red used everywhere else in the app (--data-hr), each line
    a little bigger than the last, ending on "You." as the largest. */
@@ -1993,21 +2036,26 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 /* Top row: brand + language picker side by side (moved out of the old
    bottom footer per explicit feedback — the brand also reads a size up
    (--text-heading, same combo .hra-agenda-title already uses) for a bit more
-   visual presence than the previous --text-label-sized wordmark). Brand text
-   is purely decorative (not a functional control), so it can go straight to
-   display:none while collapsed — LanguagePicker handles its own icon-only
-   mode via its `compact` prop instead (its trigger stays a real interactive
-   element that still needs an accessible name, kept via aria-label). */
+   visual presence than the previous --text-label-sized wordmark). Same
+   Manrope ExtraBold / red-accent treatment as the splash screen's own "Runs
+   Free" lockup (SplashScreen.tsx's .hra-splash-brand-title) — color stays
+   the theme-aware --text-primary rather than the splash's hardcoded
+   #F5F7FA, since (unlike the splash's fixed dark backdrop) this sidebar is
+   real chrome that has to keep working under the light theme too.
+   Collapsed: App.tsx swaps the text to "RF" rather than hiding it — still
+   decorative/non-interactive (LanguagePicker's own trigger below it is the
+   real control, kept via aria-label) — and the row switches to a stacked
+   column since there isn't enough of the 64px rail's width left beside the
+   language icon to keep them side by side without crowding. */
 .hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
 .hra-brand {
   display: block;
-  font-weight: var(--text-heading--font-weight); font-size: var(--text-heading); letter-spacing: -0.02em; flex-shrink: 0; color: var(--text-primary);
+  font-family: "Manrope", var(--font-sans);
+  font-weight: 800; font-size: var(--text-heading); letter-spacing: -0.3px;
+  flex-shrink: 0; color: var(--text-primary);
 }
-.hra-sidebar[data-collapsed="true"] .hra-brand { display: none; }
-/* With the brand hidden, space-between above would still left-align the
-   lone remaining child (LanguagePicker's icon-only trigger) — center it
-   instead so it matches the centered nav-item icons below it. */
-.hra-sidebar[data-collapsed="true"] .hra-sidebar-top { justify-content: center; }
+.hra-brand-accent { color: var(--data-hr); }
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-top { flex-direction: column; justify-content: center; gap: 6px; }
 /* One <nav> landmark for the whole sidebar. flex: 1 lets it fill the
    remaining vertical space so .hra-sidebar-utility-group (Settings/Feedback)
    can pin itself to the nav's own bottom edge via margin-top: auto. */
