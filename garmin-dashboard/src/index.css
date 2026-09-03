@@ -1160,20 +1160,6 @@ body {
   display: flex; align-items: center; justify-content: center; font-size: var(--text-meta); font-weight: var(--text-data--font-weight); line-height: 1;
 }
 
-/* Background picker swatches (SettingsTab's BackgroundPicker) — reuse the
-   .hra-theme-swatch shell (border/selected/label/badge sizing) but NOT its
-   preview mechanism: Theme/Palette preview a fixed small enum of real
-   look-alikes via data-theme-preview/data-palette-preview (--preview-accent
-   above), whereas a background preset's color is a genuinely per-instance
-   runtime value (BUNDLED_BACKGROUNDS' own gradient string) with no such
-   enum — hence the --swatch-bg custom-property hook instead, and a plain
-   --accent selected/badge color here (no "preview a hypothetical theme"
-   need). */
-.hra-bg-swatch-preview { background: var(--swatch-bg, var(--bg-surface)); padding: 16px 10px; }
-.hra-bg-swatch[data-selected="true"] { border-color: var(--accent); }
-.hra-bg-swatch[data-selected="true"] .hra-theme-swatch-label { color: var(--accent); }
-.hra-bg-swatch .hra-theme-swatch-badge { background: var(--accent); }
-
 /* Chart hover-highlight (dashboard design-system rework, "hover flash
    effect" — but as a smooth highlight TRANSITION, never a literal flash).
    Two CSS-only overlay layers sit on top of the chart's plot area, each
