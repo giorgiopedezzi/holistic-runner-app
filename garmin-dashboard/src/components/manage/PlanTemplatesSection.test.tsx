@@ -139,7 +139,7 @@ describe("PlanTemplatesSection — direct DSL path (AC2)", () => {
     // Save also needs Name + Event type (unchanged, pre-existing rules) —
     // neither lives inside the pipeline, so filling them doesn't touch
     // Plan text or Conversion prompt either.
-    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Direct DSL plan" } });
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "Direct DSL plan" } });
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(await screen.findByRole("option", { name: "5k" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeEnabled());
@@ -291,7 +291,7 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     // off editor.dslSource (700ms), so just wait past that for it to settle.
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled(), { timeout: 2000 }); // no name yet
 
-    fireEvent.change(await screen.findByLabelText("Name"), { target: { value: "My Plan" } });
+    fireEvent.change(await screen.findByLabelText(/^Name/), { target: { value: "My Plan" } });
     // Event type is a custom Select (Radix), not a native <select> — pick it
     // via role. The not-ready `t()` stub in this harness renders each
     // option's raw EventType value ("5k"), not the real locale's "5K" —
