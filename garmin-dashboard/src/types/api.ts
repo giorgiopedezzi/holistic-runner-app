@@ -103,8 +103,10 @@ export interface SavedDateRange {
 // a parsed array (mirrors garmin-stats' FeedbackRow, the raw DB shape).
 export const PRICING_CHOICES = ["free_only", "3_5", "8_12", "15_plus"] as const;
 export type PricingChoice = typeof PRICING_CHOICES[number];
-export const FEATURE_INTERESTS = ["multi_user_coach", "shared_groups"] as const;
+export const FEATURE_INTERESTS = ["multi_user_coach", "shared_groups", "curated_content_feed"] as const;
 export type FeatureInterest = typeof FEATURE_INTERESTS[number];
+export const APP_TYPE_CHOICES = ["cloud", "desktop"] as const;
+export type AppTypeChoice = typeof APP_TYPE_CHOICES[number];
 
 export interface FeedbackSubmission {
   free_text?: string;
@@ -112,6 +114,7 @@ export interface FeedbackSubmission {
   pricing_why_not_free_text?: string;
   feature_interest?: FeatureInterest[];
   feature_interest_other_free_text?: string;
+  app_type_choice?: AppTypeChoice;
 }
 
 export interface FeedbackEntry {
@@ -121,6 +124,7 @@ export interface FeedbackEntry {
   pricing_why_not_free_text:          string | null;
   feature_interest:                   string | null;
   feature_interest_other_free_text:   string | null;
+  app_type_choice:                    AppTypeChoice | null;
   created_at:                         string;
 }
 

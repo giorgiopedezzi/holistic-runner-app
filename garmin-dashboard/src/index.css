@@ -1855,7 +1855,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    floating over visible content). */
 .hra-splash-backdrop { background: var(--bg); }
 /* Brand lockup, upper-left of the splash (HRA-223 follow-up, direct
-   feedback: the splash had no "Runs Free" identity on it at all). Absolutely
+   feedback: the splash had no "Dreams run free" identity on it at all). Absolutely
    positioned so it sits apart from the centered copy/animation column below
    it rather than competing with it for the same flex flow; padded off both
    edges ("not glued") rather than flush to the corner. Manrope ExtraBold
@@ -2034,28 +2034,43 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 }
 .hra-sidebar[data-collapsed="true"] { width: 64px; }
 /* Top row: brand + language picker side by side (moved out of the old
-   bottom footer per explicit feedback — the brand also reads a size up
-   (--text-heading, same combo .hra-agenda-title already uses) for a bit more
-   visual presence than the previous --text-label-sized wordmark). Same
-   Manrope ExtraBold / red-accent treatment as the splash screen's own "Runs
-   Free" lockup (SplashScreen.tsx's .hra-splash-brand-title) — color stays
-   the theme-aware --text-primary rather than the splash's hardcoded
-   #F5F7FA, since (unlike the splash's fixed dark backdrop) this sidebar is
-   real chrome that has to keep working under the light theme too.
-   Collapsed: App.tsx swaps the text to "RF" rather than hiding it — still
+   bottom footer per explicit feedback). Expanded brand reads at
+   --text-body — the original --text-heading size (same combo
+   .hra-agenda-title uses) was sized for the shorter "Runs Free" wordmark and
+   started crowding out the language picker once the brand became the
+   three-word "Dreams run free". Same Manrope ExtraBold / red-accent
+   treatment as the splash screen's own "Dreams run free" lockup
+   (SplashScreen.tsx's .hra-splash-brand-title) — color stays the
+   theme-aware --text-primary rather than the splash's hardcoded #F5F7FA,
+   since (unlike the splash's fixed dark backdrop) this sidebar is real
+   chrome that has to keep working under the light theme too.
+   Collapsed: App.tsx swaps the text to "DRF" rather than hiding it — still
    decorative/non-interactive (LanguagePicker's own trigger below it is the
-   real control, kept via aria-label) — and the row switches to a stacked
-   column since there isn't enough of the 64px rail's width left beside the
-   language icon to keep them side by side without crowding. */
+   real control, kept via aria-label), reads back up at --text-heading since
+   a 3-letter monogram has headroom the full wordmark doesn't, and the row
+   switches to a stacked column since there isn't enough of the 64px rail's
+   width left beside the language icon to keep them side by side without
+   crowding. */
 .hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
 .hra-brand {
   display: block;
   font-family: "Manrope", var(--font-sans);
-  font-weight: 800; font-size: var(--text-heading); letter-spacing: -0.3px;
-  flex-shrink: 0; color: var(--text-primary);
+  /* "Dreams run free" (3 words) no longer fits the 232px rail at the
+     original --text-heading size alongside the language picker without
+     crowding it out — sized down one step and allowed to wrap to two lines
+     (no white-space: nowrap) rather than force a single long line. */
+  font-weight: 800; font-size: var(--text-body); letter-spacing: -0.3px;
+  line-height: 1.15; min-width: 0; color: var(--text-primary);
 }
 .hra-brand-accent { color: var(--data-hr); }
+/* The language picker's trigger shares .hra-date-trigger with
+   DateRangeBar's fixed-128px pickers (see index.css's own comment on that
+   rule) — that width is sized for the longest date literal and has nothing
+   to do with the sidebar's flag+ISO-code control, so it gets its own
+   content-sized override here instead of fighting the brand for space. */
+.hra-sidebar-top .hra-date-trigger { width: auto; flex-shrink: 0; }
 .hra-sidebar[data-collapsed="true"] .hra-sidebar-top { flex-direction: column; justify-content: center; gap: 6px; }
+.hra-sidebar[data-collapsed="true"] .hra-brand { font-size: var(--text-heading); }
 /* One <nav> landmark for the whole sidebar. flex: 1 lets it fill the
    remaining vertical space so .hra-sidebar-utility-group (Settings/Feedback)
    can pin itself to the nav's own bottom edge via margin-top: auto. */

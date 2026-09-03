@@ -265,8 +265,9 @@
           "free_text": { "type": ["string", "null"] },
           "pricing_choice": { "type": ["string", "null"], "enum": ["free_only", "3_5", "8_12", "15_plus", null] },
           "pricing_why_not_free_text": { "type": ["string", "null"], "description": "Only meaningful (not required) when pricing_choice is free_only." },
-          "feature_interest": { "type": ["string", "null"], "description": "JSON-serialized array of multi_user_coach|shared_groups." },
+          "feature_interest": { "type": ["string", "null"], "description": "JSON-serialized array of multi_user_coach|shared_groups|curated_content_feed." },
           "feature_interest_other_free_text": { "type": ["string", "null"] },
+          "app_type_choice": { "type": ["string", "null"], "enum": ["cloud", "desktop", null] },
           "created_at": { "type": "string" }
         }
       },
@@ -601,8 +602,8 @@
     "/api/v1/feedback": {
       "post": {
         "tags": ["feedback"], "summary": "Submit anonymous visitor feedback (HRA-226)",
-        "description": "free_text, pricing_choice, pricing_why_not_free_text, feature_interest, and feature_interest_other_free_text are all independently optional, but the request is rejected 422 if every field is empty/absent. pricing_choice, when present, must be one of the four defined tiers. feature_interest, when present, is an array whose entries are each multi_user_coach or shared_groups. Deliberately NOT gated by DEMO_MODE — the one write route the demo guard must not block, since demo visitors are a primary source of submissions.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "free_text": { "type": "string" }, "pricing_choice": { "type": "string", "enum": ["free_only", "3_5", "8_12", "15_plus"] }, "pricing_why_not_free_text": { "type": "string" }, "feature_interest": { "type": "array", "items": { "type": "string", "enum": ["multi_user_coach", "shared_groups"] } }, "feature_interest_other_free_text": { "type": "string" } } } } } },
+        "description": "free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, and app_type_choice are all independently optional, but the request is rejected 422 if every field is empty/absent. pricing_choice, when present, must be one of the four defined tiers. feature_interest, when present, is an array whose entries are each multi_user_coach, shared_groups, or curated_content_feed. app_type_choice, when present, must be cloud or desktop. Deliberately NOT gated by DEMO_MODE — the one write route the demo guard must not block, since demo visitors are a primary source of submissions.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "free_text": { "type": "string" }, "pricing_choice": { "type": "string", "enum": ["free_only", "3_5", "8_12", "15_plus"] }, "pricing_why_not_free_text": { "type": "string" }, "feature_interest": { "type": "array", "items": { "type": "string", "enum": ["multi_user_coach", "shared_groups", "curated_content_feed"] } }, "feature_interest_other_free_text": { "type": "string" }, "app_type_choice": { "type": "string", "enum": ["cloud", "desktop"] } } } } } },
         "responses": { "201": { "description": "The created feedback row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FeedbackEntry" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },

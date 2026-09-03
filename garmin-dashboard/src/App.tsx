@@ -235,16 +235,16 @@ function AppShell() {
           sidebar). */}
       <aside className="hra-sidebar" data-collapsed={sidebarCollapsed}>
         <div className="hra-sidebar-top">
-          {/* "Runs Free" is the brand name, not translatable copy — same
+          {/* "Dreams run free" is the brand name, not translatable copy — same
               hardcoded-literal treatment as the splash screen's own lockup
-              (SplashScreen.tsx), including "Free"/"F" picking up the same
+              (SplashScreen.tsx), including "free"/"F" picking up the same
               heart-rate red via .hra-brand-accent. Collapsed rail swaps to
-              the "RF" monogram (still just this one span) rather than
+              the "DRF" monogram (still just this one span) rather than
               hiding the brand outright. */}
           <span className="hra-brand">
             {sidebarCollapsed
-              ? <>R<span className="hra-brand-accent">F</span></>
-              : <>Runs <span className="hra-brand-accent">Free</span></>}
+              ? <>DR<span className="hra-brand-accent">F</span></>
+              : <>Dreams run <span className="hra-brand-accent">free</span></>}
           </span>
           <LanguagePicker appearance={appearance} compact={sidebarCollapsed} />
         </div>
