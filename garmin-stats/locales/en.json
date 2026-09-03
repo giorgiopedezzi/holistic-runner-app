@@ -10,6 +10,8 @@
   "nav.mainNavigation": "Main navigation",
   "nav.groupReview": "Review",
   "nav.groupManage": "Manage",
+  "nav.collapseSidebar": "Collapse sidebar",
+  "nav.expandSidebar": "Expand sidebar",
   "common.entity.activities": "activities",
   "common.preset.7": "7d",
   "common.preset.30": "30d",

@@ -4,6 +4,7 @@ import "@/i18n";
 import {
   CalendarDays, ListTodo, TrendingUp, Activity as ActivityIcon,
   HeartPulse, RefreshCw, Settings as SettingsIcon, MessageSquare,
+  PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
@@ -59,6 +60,17 @@ const TABS_WITH_DATERANGE: TabId[] = ["overview", "activities", "body"];
 const RANGE_URL_KEYS = { from: "from", to: "to" };
 const COMPARE_URL_KEYS = { from: "compareFrom", to: "compareTo", enabled: "compareEnabled" };
 
+// A pure client-side layout preference (direct feedback) — no reason to sync
+// across devices or live in the backend settings table, unlike every other
+// appearance choice in this app (frontend rules: "this app deliberately
+// avoids localStorage" — the documented exception is an ephemeral,
+// tab-scoped flag with no reason to persist further, which this ALMOST is,
+// except a user who collapses the sidebar once plausibly wants that to
+// stick across future visits too, not just this tab — localStorage (not
+// sessionStorage, unlike SplashScreen's genuinely one-time flag) is the
+// reasonable choice for that specific need).
+const SIDEBAR_COLLAPSED_KEY = "hra-sidebar-collapsed";
+
 // SettingsProvider wraps AppShell (not the other way in-line) so every hook
 // below it — including useAppearance(), called inside AppShell's own body —
 // is a descendant of the provider and shares its one settings fetch.
@@ -106,6 +118,22 @@ function AppShell() {
   const [rawTab, setTab] = useUrlState("tab", "agenda");
   const tab: TabId = TABS.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "agenda";
   const [online, setOnline] = useState<boolean | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false; // storage unavailable (e.g. private mode) — starts expanded
+    }
+  });
+  function setSidebarCollapsed(next: boolean) {
+    setSidebarCollapsedState(next);
+    try {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+    } catch {
+      // storage unavailable — the toggle still works for this render, just
+      // won't be remembered next time.
+    }
+  }
 
   useEffect(() => {
     fetch("/api/v1/range")
@@ -155,6 +183,7 @@ function AppShell() {
   function renderNavItem(tabDef: TabDef) {
     const Icon = tabDef.icon;
     const isActive = tab === tabDef.id;
+    const label = t(tabDef.labelKey, tabDef.fallback);
     return (
       <button
         key={tabDef.id}
@@ -166,9 +195,14 @@ function AppShell() {
         aria-current={isActive ? "page" : undefined}
         data-active={tabDef.id === "manage" ? isActive : undefined}
         onClick={() => setTab(tabDef.id)}
+        title={sidebarCollapsed ? label : undefined}
       >
         <span className="hra-sidebar-item-icon" aria-hidden="true"><Icon size={16} /></span>
-        <span>{t(tabDef.labelKey, tabDef.fallback)}</span>
+        {/* Visually hidden (not display:none) while collapsed — .hra-sidebar-item-label,
+            index.css — so the label stays the item's one accessible name for
+            assistive tech even when icon-only; `title` above covers sighted
+            mouse users the same way. */}
+        <span className="hra-sidebar-item-label">{label}</span>
       </button>
     );
   }
@@ -186,17 +220,23 @@ function AppShell() {
       {/* ── sidebar (HRA-253) ───────────────────────────────────────────── */}
       {/* Persistent left shell, replacing the old horizontal header/nav —
           stays visible while the content column (below) scrolls
-          independently. Top row: brand + language picker, side by side. One
-          <nav> landmark holds every tab destination (Primary, then
-          Review/Manage under their own headings, then the Settings/Feedback
-          utility pair pinned to the nav's own bottom via
-          .hra-sidebar-utility-group's margin-top: auto). The server-status
-          dot was removed post-review (kept only the `online` state driving
-          the ErrorBanner in <main>, unrelated to the sidebar). */}
-      <aside className="hra-sidebar">
+          independently. Collapsible to an icon-only rail (direct feedback) —
+          data-collapsed drives every width/label-visibility rule in
+          index.css; sidebarCollapsed/setSidebarCollapsed above persists the
+          choice to localStorage. Top row: brand + language picker, side by
+          side (language picker goes icon-only too via its own `compact`
+          prop). One <nav> landmark holds every tab destination (Primary,
+          then Review/Manage under their own headings, then the
+          Settings/Feedback utility pair pinned to the nav's own bottom via
+          .hra-sidebar-utility-group's margin-top: auto). The collapse toggle
+          sits below <nav>, always icon-only in both states. The
+          server-status dot was removed post-review (kept only the `online`
+          state driving the ErrorBanner in <main>, unrelated to the
+          sidebar). */}
+      <aside className="hra-sidebar" data-collapsed={sidebarCollapsed}>
         <div className="hra-sidebar-top">
           <span className="hra-brand">Runs Free</span>
-          <LanguagePicker appearance={appearance} />
+          <LanguagePicker appearance={appearance} compact={sidebarCollapsed} />
         </div>
 
         <nav className="hra-sidebar-nav" aria-label={t("nav.mainNavigation", "Main navigation")}>
@@ -218,6 +258,16 @@ function AppShell() {
             {utilityTabs.map(renderNavItem)}
           </div>
         </nav>
+
+        <button
+          type="button"
+          className="hra-sidebar-collapse-toggle hra-nav-hover"
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          aria-label={sidebarCollapsed ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")}
+          title={sidebarCollapsed ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")}
+        >
+          {sidebarCollapsed ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}
+        </button>
       </aside>
 
       {/* ── content column ──────────────────────────────────────────────── */}

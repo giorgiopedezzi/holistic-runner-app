@@ -1945,7 +1945,15 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    the nav/utility content is expected to fit without scrolling at the
    supported desktop breakpoints. Same background/border/blur recipe the old
    .hra-header used, just applied to a vertical strip instead of a
-   horizontal bar. */
+   horizontal bar — background dropped to a near-transparent 5% (was 78%,
+   direct feedback: "data must cover the background", so only chrome — this
+   sidebar — lets a custom background image/the ambient glow show strongly
+   through; .card and every other data-bearing surface keep their own
+   existing opacity untouched). backdrop-filter's blur is kept at the same
+   strength so nav text stays legible over a busy photo even at 5% tint.
+   Collapsible to an icon-only rail (direct feedback) — [data-collapsed]
+   drives the width transition here and every label-visibility rule below;
+   App.tsx persists the choice to localStorage. */
 /* Overview & Trends' DateRangeBar + named-range rows + "SUMMARY ..." card
    stay pinned while the rest of the tab (Total/Running/By sport/trend
    charts) scrolls underneath — pins to --header-height (0 now that the
@@ -1965,24 +1973,32 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   flex-shrink: 0;
   height: 100vh;
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   gap: 20px;
   padding: 20px 12px;
   border-right: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 5%, transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  transition: width 0.2s ease;
 }
+.hra-sidebar[data-collapsed="true"] { width: 64px; }
 /* Top row: brand + language picker side by side (moved out of the old
    bottom footer per explicit feedback — the brand also reads a size up
    (--text-heading, same combo .hra-agenda-title already uses) for a bit more
-   visual presence than the previous --text-label-sized wordmark). */
+   visual presence than the previous --text-label-sized wordmark). Brand text
+   is purely decorative (not a functional control), so it can go straight to
+   display:none while collapsed — LanguagePicker handles its own icon-only
+   mode via its `compact` prop instead (its trigger stays a real interactive
+   element that still needs an accessible name, kept via aria-label). */
 .hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
 .hra-brand {
   display: block;
   font-weight: var(--text-heading--font-weight); font-size: var(--text-heading); letter-spacing: -0.02em; flex-shrink: 0; color: var(--text-primary);
 }
+.hra-sidebar[data-collapsed="true"] .hra-brand { display: none; }
 /* One <nav> landmark for the whole sidebar. flex: 1 lets it fill the
    remaining vertical space so .hra-sidebar-utility-group (Settings/Feedback)
    can pin itself to the nav's own bottom edge via margin-top: auto. */
@@ -1994,6 +2010,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.1em;
   padding: 0 12px; margin-bottom: 4px;
 }
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-group-heading { display: none; }
 .hra-sidebar-utility-group { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
 /* Restrained active state (no large pill treatment, per HRA-253 scope) —
    aria-current="page" is the one source of truth both assistive tech and
@@ -2012,6 +2029,25 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   font-weight: var(--text-data--font-weight);
 }
 .hra-sidebar-item-icon { display: inline-flex; flex-shrink: 0; }
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-item { justify-content: center; padding-left: 0; padding-right: 0; }
+/* Visually hidden while collapsed — NOT display:none, which would drop the
+   text from the accessibility tree and leave the button's one accessible
+   name empty (the icon stays aria-hidden either way). Standard sr-only
+   clip-and-collapse recipe; `title` on the button (App.tsx) covers sighted
+   mouse users the same way a visible label normally would. */
+.hra-sidebar[data-collapsed="true"] .hra-sidebar-item-label {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+/* Icon-only rail toggle, pinned as the sidebar's own last row (not inside
+   <nav> — it isn't a "navigate to a tab" action). Same visual language as a
+   nav item so it doesn't read as a different kind of control. */
+.hra-sidebar-collapse-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 7px 12px; border-radius: var(--radius-sm);
+  background: none; border: 1px solid transparent;
+  color: var(--text-muted); cursor: pointer;
+}
 
 /* Language picker (HRA-104) — sidebar top-row dropdown. Trigger reuses
    .hra-date-trigger's compact bordered-chip look; the list is a plain button

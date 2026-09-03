@@ -10,6 +10,8 @@
   "nav.mainNavigation": "Navigazione principale",
   "nav.groupReview": "Revisione",
   "nav.groupManage": "Gestione",
+  "nav.collapseSidebar": "Comprimi la barra laterale",
+  "nav.expandSidebar": "Espandi la barra laterale",
   "common.entity.activities": "attività",
   "common.preset.7": "7g",
   "common.preset.30": "30g",

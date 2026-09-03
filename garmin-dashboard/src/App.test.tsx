@@ -52,6 +52,10 @@ afterEach(() => {
   // persists across tests sharing this jsdom window — reset it so a later
   // test doesn't inherit an earlier test's tab.
   window.history.replaceState(null, "", "/");
+  // The sidebar collapse toggle persists to localStorage (direct feedback,
+  // post-HRA-253) — reset it so a later test doesn't inherit an earlier
+  // test's collapsed state.
+  localStorage.removeItem("hra-sidebar-collapsed");
 });
 
 describe("App tab switching", () => {
@@ -126,6 +130,34 @@ describe("App tab switching", () => {
     // the language picker sits next to the brand instead of in a footer.
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(container.querySelector(".hra-status-dot")).not.toBeInTheDocument();
+  });
+
+  it("collapses the sidebar to an icon-only rail on toggle, keeps each item's accessible name, and persists the choice across a remount", async () => {
+    installFetch(appRoutes());
+    const { container, unmount } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const sidebar = () => container.querySelector(".hra-sidebar");
+    expect(sidebar()).toHaveAttribute("data-collapsed", "false");
+    const toggle = screen.getByRole("button", { name: "Collapse sidebar" });
+    // A nav item's accessible name (from its visually-hidden label, not the
+    // aria-hidden icon) is unaffected by collapse — same button, same name.
+    const agendaButton = screen.getByRole("button", { name: "Your agenda" });
+
+    fireEvent.click(toggle);
+
+    expect(sidebar()).toHaveAttribute("data-collapsed", "true");
+    expect(agendaButton).toHaveAccessibleName("Your agenda");
+    expect(screen.getByRole("button", { name: "Expand sidebar" })).toBeInTheDocument();
+    expect(localStorage.getItem("hra-sidebar-collapsed")).toBe("1");
+
+    unmount();
+    installFetch(appRoutes());
+    const remounted = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    // Remounting (a fresh page load, in effect) reads the persisted choice.
+    expect(remounted.container.querySelector(".hra-sidebar")).toHaveAttribute("data-collapsed", "true");
   });
 
   it("marks exactly one sidebar item aria-current='page', matching the active tab, and updates it on click", async () => {
