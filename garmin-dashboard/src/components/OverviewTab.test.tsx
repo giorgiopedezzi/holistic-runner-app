@@ -8,8 +8,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { vi } from "vitest";
 import { OverviewTab } from "./OverviewTab";
-import { installFetch, json, problem, paginated } from "@/test/api-stub";
-import { sportSummary, dateRange, settings } from "@/test/fixtures";
+import { installFetch, json, problem, paginated, type StubRequest } from "@/test/api-stub";
+import { sportSummary, dateRange, settings, activity } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
 import type { DateRangeState } from "@/hooks/useDateRange";
 import type { CompareRangeState } from "@/hooks/useCompareRange";
@@ -67,5 +67,35 @@ describe("OverviewTab", () => {
     render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
 
     expect(await screen.findByText("summary blew up")).toBeInTheDocument();
+  });
+
+  // HRA-255: an empty compare period must never inherit or manufacture the
+  // current period's KPI values. The /api/v1/activities stub is routed by
+  // its `from` query param so the current and compare periods can return
+  // different activity lists — the current period has one running activity,
+  // the compare period has none.
+  it("shows dashes, never manufactured zero/current values, when the compare period has no activities", async () => {
+    installFetch({
+      "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
+      "GET /api/v1/range": dateRange(),
+      "GET /api/v1/activities": (req: StubRequest) =>
+        json(paginated(req.url.searchParams.get("from") === "2026-07-15" ? [activity()] : [])),
+      "GET /api/v1/settings": settings(),
+      "GET /api/v1/date-ranges": paginated([]),
+    });
+    render(<OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />);
+
+    await screen.findByText("Avg distance");
+
+    // Activities: 0 is shown (not hidden, not inherited from the current
+    // period's non-zero count).
+    expect(await screen.findByText("0")).toBeInTheDocument();
+    // Every derived compare-side KPI (avg pace, distance, avg distance,
+    // avg HR, time, calories) renders as "—", never 0, 0.00 km, 0.0 h, or NaN.
+    const dashes = await screen.findAllByText("—");
+    expect(dashes.length).toBeGreaterThanOrEqual(6);
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+    expect(screen.queryByText("0.00 km")).not.toBeInTheDocument();
+    expect(screen.queryByText("0.0 h")).not.toBeInTheDocument();
   });
 });

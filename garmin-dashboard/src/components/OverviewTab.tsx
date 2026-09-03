@@ -1025,13 +1025,14 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   // The compare period's OWN totals — no delta (there's nothing further
   // back to compare a reference period against) — explicit feedback: "even
   // the second graph must have 'other metrics badges'."
+  const compareDistance = prevRun?.km != null ? splitUnit(fmtKm(prevRun.km * 1000)) : { main: "—", unit: undefined };
   const compareKpis = prevRun ? (
     <>
       <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
         value={prevRun.avgPace ? fmtPace(prevRun.avgPace) : "—"} unit={paceUnitLabel()}
         label={t("overview.stat.avgPace", "Avg pace")} />
       <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
-        value={splitUnit(fmtKm(prevRun.km * 1000)).main} unit={splitUnit(fmtKm(prevRun.km * 1000)).unit}
+        value={compareDistance.main} unit={compareDistance.unit}
         label={t("overview.stat.distance", "Distance")} />
       <GraphKpiCard icon={<RunnerGlyph pose="a" size={16} />} iconColor="var(--accent)"
         value={String(prevRun.sessions)}
@@ -1139,7 +1140,7 @@ function prevSportStats(prevActs: Activity[]) {
   const ascents = prevActs.map(a => a.ascent_m).filter((v): v is number => v != null);
   return {
     sessions: prevActs.length,
-    km:      prevActs.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0),
+    km:      prevActs.length ? prevActs.reduce((s, a) => s + (a.distance_m ?? 0) / 1000, 0) : null,
     avgHr:   hrs.length ? hrs.reduce((s, v) => s + v, 0) / hrs.length : null,
     avgPace: paces.length ? paces.reduce((s, v) => s + v, 0) / paces.length : null,
     ascent:  ascents.length ? ascents.reduce((s, v) => s + v, 0) : null,
@@ -1331,21 +1332,18 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // nothing further back to compare a reference period against, same
   // reasoning as compareKpis) — explicit feedback: "data in the Other
   // metric of the second graph must be the data of the second graph."
-  const compareOtherKeyMetrics = hasPrevData ? (
+  const compareOtherKeyMetrics = (
     <div className="grid grid-cols-1 gap-2.5">
-      {prevActs ? (
-        <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((prevAvgDistance ?? 0) * 1000)} />
-      ) : null}
-      {prevRun?.avgHr ? (
-        <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${Math.round(prevRun.avgHr)} bpm`} accent="var(--accent-red)" />
-      ) : null}
-      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${(prevHours ?? 0).toFixed(1)} h`} />
-      {prevCalories ? (
-        <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
-          label={t("overview.stat.calories", "Calories")} value={`${Math.round(prevCalories).toLocaleString()} kcal`} />
-      ) : null}
+      <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")}
+        value={prevAvgDistance != null ? fmtKm(prevAvgDistance * 1000) : "—"} />
+      <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")}
+        value={prevRun?.avgHr != null ? `${Math.round(prevRun.avgHr)} bpm` : "—"} accent="var(--accent-red)" />
+      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")}
+        value={prevHours != null ? `${prevHours.toFixed(1)} h` : "—"} />
+      <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+        label={t("overview.stat.calories", "Calories")} value={prevCalories != null ? `${Math.round(prevCalories).toLocaleString()} kcal` : "—"} />
     </div>
-  ) : undefined;
+  );
 
   return (
     <>
