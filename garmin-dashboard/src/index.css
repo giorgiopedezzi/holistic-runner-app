@@ -2027,7 +2027,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   gap: 20px;
   padding: 20px 12px;
   border-right: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-  background: color-mix(in srgb, var(--bg-surface) 5%, transparent);
+  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   transition: width 0.2s ease;
