@@ -16,6 +16,9 @@ interface Props {
   onInstantiate: () => void;
   saveLoading: boolean;
   hasSections: boolean;
+  // HRA-249: still needed for the Regenerate hint below (Regenerate stays
+  // approval-gated, out of this Story's scope) — no longer used to
+  // force-disable Save/Approve.
   isApproved: boolean;
   saveEnabled: boolean;
   onSaveClick: () => void;
@@ -55,10 +58,15 @@ export function PlanInstanceEditorActions({
         </button>
       ) : (
         <>
-          <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || !hasSections || isApproved || !saveEnabled || demoMode} title={demoTitle}>
+          {/* HRA-249: no longer force-disabled by isApproved — editing an
+              already-active plan is allowed, with a persistent warning
+              instead of a lock (see PlanInstancesSection.tsx's
+              WarningBanner). Save still legitimately disables via
+              !saveEnabled when there's nothing dirty to save. */}
+          <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || !hasSections || !saveEnabled || demoMode} title={demoTitle}>
             {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           </button>
-          <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || isApproved || demoMode} title={demoTitle}>
+          <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || demoMode} title={demoTitle}>
             {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
           </button>
           {/* AC3/AC6: label + date picker + button as ONE real control — a
@@ -93,8 +101,11 @@ export function PlanInstanceEditorActions({
       {/* HRA-159: "Restore" renames to "Reset to previous values" here —
           a dedicated key, not a change to the shared common.restore
           key PlanTemplatesSection.tsx also uses, since this Story's ask
-          is scoped to the instance card only. */}
-      <button className="hra-btn" onClick={() => onRestoreClick(isDirty)}>
+          is scoped to the instance card only. HRA-249: disabled whenever
+          the active row has no unsaved changes (nothing to restore),
+          mirroring PlanTemplatesSection.tsx's own disabled={!isEditorDirty()}
+          gating. */}
+      <button className="hra-btn" onClick={() => onRestoreClick(isDirty)} disabled={!isDirty}>
         {t("manage.planInstances.resetButton", "Reset to previous values")}
       </button>
       {/* HRA-157: List/Agenda switch relocated here from its own row

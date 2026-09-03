@@ -121,7 +121,14 @@ export function selectDirtyState(
     day.date != null && baseline.persistedDsl[day.date] !== undefined && baseline.persistedDsl[day.date] !== day.dsl,
   )));
 
-  const saveBucketDirty = options.fieldsLocked && !options.isApproved && (
+  // HRA-249: no longer excludes an approved instance — Save/day-edit are no
+  // longer force-disabled once approved (only the top form fields stay
+  // locked, via fieldDisabled elsewhere), so a day edit on an approved
+  // instance must still be able to enable Save. instName/raceName/raceDate/
+  // raceUrl can never actually diverge from baseline while approved (those
+  // fields stay disabled), so anyDayDirty is the only term this drops the
+  // isApproved guard for in practice.
+  const saveBucketDirty = options.fieldsLocked && (
     state.instName.trim() !== baseline.instName ||
     state.raceName.trim() !== baseline.raceName ||
     state.raceDate !== baseline.raceDate ||

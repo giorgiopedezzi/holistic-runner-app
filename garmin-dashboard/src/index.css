@@ -1782,9 +1782,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border: none;
 }
 /* TrainingPlanAccordion's just-edited Section/Week/Day row (HRA-140
-   follow-up) — same accent-orange language as the DSL textarea's <mark>,
-   applied to AccordionCard's outer wrapper via its className prop. */
-.hra-edited-row-highlight > .hra-accordion-trigger {
+   follow-up, extended to the instance editor's own day rows by HRA-249) —
+   same accent-orange language as the DSL textarea's <mark>. Template rows
+   are AccordionCards (the highlight lands on their nested trigger via the
+   first selector); an instance day row is a plain .card div (InstanceDayRow
+   has no accordion), so the second selector applies the same look directly. */
+.hra-edited-row-highlight > .hra-accordion-trigger,
+.card.hra-edited-row-highlight {
   background: color-mix(in srgb, var(--accent-orange) 12%, transparent);
   border-left: 3px solid var(--accent-orange);
 }
@@ -1881,6 +1885,19 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-radius: var(--radius-md);
   padding: 14px 16px;
   color: var(--accent-red);
+  font-size: var(--text-label);
+}
+
+/* Persistent non-blocking notice (HRA-249 — e.g. editing an already-active
+   race plan) — same recipe as .hra-error-banner above, but the
+   accent-orange "warning" language already used elsewhere (e.g.
+   .hra-edited-row-highlight) instead of the red "error" one. */
+.hra-warning-banner {
+  background: color-mix(in srgb, var(--accent-orange) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-orange) 27%, transparent);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  color: var(--accent-orange);
   font-size: var(--text-label);
 }
 

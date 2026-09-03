@@ -107,6 +107,30 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   );
   const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
+  // HRA-249: the candidate's own resolved date range for the overlap check
+  // below — MIN/MAX over its days rather than a dedicated stored range,
+  // since plan_instance_days.date is already the source of truth. Text
+  // comparison on ISO YYYY-MM-DD strings sorts chronologically, so this
+  // (and overlappingApprovedStmt below) never needs a Date object and is
+  // immune to the timezone boundary defects a Date-based comparison risks.
+  const instanceDateRangeStmt = db.prepare(
+    "SELECT MIN(date) AS start_date, MAX(date) AS end_date FROM plan_instance_days WHERE instance_id = ?",
+  );
+  // HRA-249: every OTHER approved instance whose own [MIN(date), MAX(date)]
+  // range overlaps a given [start, end] inclusively — start/end-boundary,
+  // full containment either direction, and a shared boundary date all count
+  // (standard inclusive interval overlap: existing.end >= candidateStart AND
+  // existing.start <= candidateEnd). `pi.id != ?` excludes the candidate
+  // itself (re-activating/re-approving never conflicts with itself);
+  // `approved_at IS NOT NULL` excludes every not-yet-approved instance.
+  const overlappingApprovedStmt = db.prepare(`
+    SELECT pi.id, pi.name, MIN(pid.date) AS start_date, MAX(pid.date) AS end_date
+    FROM plan_instances pi
+    JOIN plan_instance_days pid ON pid.instance_id = pi.id
+    WHERE pi.approved_at IS NOT NULL AND pi.id != ?
+    GROUP BY pi.id
+    HAVING MAX(pid.date) >= ? AND MIN(pid.date) <= ?
+  `);
   const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
   // HRA-135: one statement per field, run conditionally in updateFields() —
   // same granular-primitive style as updateName/updateStartDateAndPaceOverrides
@@ -192,6 +216,12 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;
     },
+    dateRangeForInstance: (id: number): { start_date: string; end_date: string } | undefined => {
+      const row = instanceDateRangeStmt.get(id) as { start_date: string | null; end_date: string | null };
+      return row.start_date != null && row.end_date != null ? { start_date: row.start_date, end_date: row.end_date } : undefined;
+    },
+    overlappingApproved: (excludeId: number, startDate: string, endDate: string): { id: number; name: string | null; start_date: string; end_date: string }[] =>
+      overlappingApprovedStmt.all(excludeId, startDate, endDate) as unknown as { id: number; name: string | null; start_date: string; end_date: string }[],
     remove: (id: number) => { deleteInstanceStmt.run(id); },
   };
 }

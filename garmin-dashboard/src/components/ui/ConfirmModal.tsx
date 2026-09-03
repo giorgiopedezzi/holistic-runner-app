@@ -16,9 +16,15 @@ interface ConfirmModalProps {
   maxWidth?: number;
   onConfirm: () => void;
   onCancel: () => void;
+  // HRA-249: a single-acknowledgement notice (e.g. an activation-conflict
+  // warning) has nothing to cancel — there was never a second action to
+  // decline. Renders only the one button (confirmLabel), which calls
+  // onConfirm; onCancel is still required by the type (backdrop-click still
+  // needs somewhere to go) but never rendered as its own button.
+  singleAction?: boolean;
 }
 
-export function ConfirmModal({ open, title, confirmLabel, cancelLabel, variant = "default", maxWidth = 360, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ open, title, confirmLabel, cancelLabel, variant = "default", maxWidth = 360, onConfirm, onCancel, singleAction }: ConfirmModalProps) {
   const { t } = useTranslation();
   if (!open) return null;
   return (
@@ -32,10 +38,12 @@ export function ConfirmModal({ open, title, confirmLabel, cancelLabel, variant =
       >
         {title}
         <div className="hra-confirm-modal-actions">
-          <button type="button" className="hra-confirm-modal-cancel" onClick={onCancel} autoFocus>
-            {cancelLabel ?? t("common.cancel", "Cancel")}
-          </button>
-          <button type="button" className="hra-btn" data-variant={variant === "default" ? undefined : variant} onClick={onConfirm}>
+          {!singleAction && (
+            <button type="button" className="hra-confirm-modal-cancel" onClick={onCancel} autoFocus>
+              {cancelLabel ?? t("common.cancel", "Cancel")}
+            </button>
+          )}
+          <button type="button" className="hra-btn" data-variant={variant === "default" ? undefined : variant} onClick={onConfirm} autoFocus={singleAction}>
             {confirmLabel}
           </button>
         </div>

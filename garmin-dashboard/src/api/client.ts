@@ -22,11 +22,29 @@ const ALL = "100000";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
 
+// HRA-249: the structured conflict body on POST .../plan-instances/:id/approve's
+// 409 — every already-approved instance whose resolved date range overlaps the
+// candidate being activated, mirroring garmin-stats/src/http/problem.ts's
+// Problem.overlaps.
+export interface PlanInstanceOverlapConflict {
+  id: number;
+  name: string | null;
+  start_date: string;
+  end_date: string;
+  overlap_start: string;
+  overlap_end: string;
+}
+export interface PlanInstanceOverlaps {
+  candidate: { id: number; name: string | null; start_date: string; end_date: string };
+  conflicts: PlanInstanceOverlapConflict[];
+}
+
 // Error carrying the HTTP status (0 = the request never reached the server), so
 // callers can branch on it if they need to. Its message is already human — see
-// buildApiError. (HRA-43)
+// buildApiError. (HRA-43) `overlaps` is set only for a plan-instance activation
+// conflict (HRA-249) — every other caller leaves it undefined.
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string) {
+  constructor(public readonly status: number, message: string, public readonly overlaps?: PlanInstanceOverlaps) {
     super(message);
     this.name = "ApiError";
   }
@@ -60,9 +78,9 @@ async function buildApiError(res: Response, path: string): Promise<ApiError> {
       `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`,
       { status: res.status }));
   }
-  const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string } | null;
+  const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string; overlaps?: PlanInstanceOverlaps } | null;
   const message = problem?.detail ?? problem?.title ?? await translate("api.genericError", `API error ${res.status}: ${path}`, { status: res.status, path });
-  return new ApiError(res.status, message);
+  return new ApiError(res.status, message, problem?.overlaps);
 }
 
 async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {

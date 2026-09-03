@@ -49,7 +49,15 @@
           "status": { "type": "integer", "example": 404 },
           "detail": { "type": "string", "description": "Human explanation specific to this occurrence." },
           "instance": { "type": "string", "description": "The request path." },
-          "errors": { "type": "array", "items": { "type": "object", "properties": { "field": { "type": "string" }, "message": { "type": "string" } } } }
+          "errors": { "type": "array", "items": { "type": "object", "properties": { "field": { "type": "string" }, "message": { "type": "string" } } } },
+          "overlaps": {
+            "type": "object",
+            "description": "HRA-249: only on POST .../plan-instances/{id}/approve's 409 — the candidate instance and every already-approved instance whose resolved date range overlaps it.",
+            "properties": {
+              "candidate": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": ["string", "null"] }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" } } },
+              "conflicts": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": ["string", "null"] }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" }, "overlap_start": { "type": "string", "format": "date" }, "overlap_end": { "type": "string", "format": "date" } } } }
+            }
+          }
         },
         "required": ["type", "title", "status"]
       },
@@ -684,10 +692,10 @@
     "/api/v1/plan-instances/{id}/days/{dayId}": {
       "patch": {
         "tags": ["plan-templates"], "summary": "Partially update a single resolved day (HRA-149)",
-        "description": "A smaller, more honest write than PATCH .../plan-instances/{id}'s bulk days replace: one field's worth of edit on one already-existing day. Body is {dsl?, notes?, scheduled_time?}, all optional but at least one required (422 otherwise), each validated independently. dsl, when supplied, is re-parsed against this day's own existing section/week/date scope and the template's effective PacePolicy (merged with the instance's pace_overrides) and resolved the same way the bulk days-replace path does; rejected (422) if the fresh parse still needs review. notes overrides whatever the dsl parse itself produced for that field, when both are supplied together. scheduled_time must be HH:MM 24-hour, or null to clear back to the 08:00 display default. Rejected with 409 if the instance is already approved (mirrors HRA-126's intended lock rule for editing an approved instance). Never touches or re-instantiates the source template.",
+        "description": "A smaller, more honest write than PATCH .../plan-instances/{id}'s bulk days replace: one field's worth of edit on one already-existing day. Body is {dsl?, notes?, scheduled_time?}, all optional but at least one required (422 otherwise), each validated independently. dsl, when supplied, is re-parsed against this day's own existing section/week/date scope and the template's effective PacePolicy (merged with the instance's pace_overrides) and resolved the same way the bulk days-replace path does; rejected (422) if the fresh parse still needs review. notes overrides whatever the dsl parse itself produced for that field, when both are supplied together. scheduled_time must be HH:MM 24-hour, or null to clear back to the 08:00 display default. HRA-249: no longer rejected once the instance is approved — HRA-126's lock is a frontend-only warning now; only activating a conflicting instance is hard-blocked (see .../approve). Never touches or re-instantiates the source template.",
         "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "dsl": { "type": "string", "description": "Raw D-line text, same grammar as a template, e.g. \"D3 [interval]: 4x3000m @ RG-20 r:1km @ RG+10\"." }, "notes": { "type": ["string", "null"] }, "scheduled_time": { "type": ["string", "null"], "description": "HH:MM, 24-hour. null clears back to the 08:00 display default." } } } } } },
-        "responses": { "200": { "description": "The updated day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstanceDay" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+        "responses": { "200": { "description": "The updated day.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstanceDay" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}/validate": {
@@ -726,10 +734,10 @@
     },
     "/api/v1/plan-instances/{id}/approve": {
       "post": {
-        "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113)",
-        "description": "Same gate-2 semantics as the template approve endpoint.",
+        "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113; overlap-blocked HRA-249)",
+        "description": "Same gate-2 semantics as the template approve endpoint. HRA-249: before approving, the candidate's resolved date range (MIN/MAX over its plan_instance_days) is compared inclusively and date-only against every OTHER already-approved instance's own range. Any overlap (start/end boundary, full containment either direction, or a shared boundary date) 409s and never sets approved_at — the Problem body's `overlaps` field names the candidate and every conflicting instance, each with its own range and the overlap period. No override exists.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "responses": { "200": { "description": "The updated instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+        "responses": { "200": { "description": "The updated instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/plan-instances/{id}/regenerate": {

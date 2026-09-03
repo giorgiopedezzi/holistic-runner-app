@@ -4,6 +4,7 @@ import { ConfirmModal } from "@/components/ui";
 import { DAY_PREFIX_RE, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
 import { weekDateRange, type DayView, type SectionView } from "@/domain/runplan-aggregate";
 import { instanceDayDateLabel } from "@/utils/fmt";
+import type { PlanInstanceOverlaps } from "@/api/client";
 import type { WorkoutTypeChange } from "./usePlanDayEditor";
 
 export type PlanInstanceConfirmation =
@@ -15,6 +16,9 @@ export type PlanInstanceConfirmation =
   | { type: "day-swap"; a: DayRef; b: DayRef }
   | { type: "week-swap"; a: WeekRef; b: WeekRef }
   | { type: "delete"; instanceId: number }
+  // HRA-249: an activation-blocking overlap — single acknowledgement only,
+  // no "Activate anyway" override, so onConfirm/onCancel both just dismiss.
+  | { type: "activation-conflict"; overlaps: PlanInstanceOverlaps }
   | null;
 
 interface Props {
@@ -184,5 +188,41 @@ export function PlanInstanceConfirmations({ confirmation, sections, onConfirm, o
           onCancel={onCancel}
         />
       );
+
+    case "activation-conflict": {
+      const { candidate, conflicts } = confirmation.overlaps;
+      return (
+        <ConfirmModal
+          open
+          maxWidth={440}
+          title={
+            <>
+              <div className="hra-text-primary text-label font-semibold mb-2">
+                {t(
+                  "manage.planInstances.activationConflictTitle",
+                  `"${candidate.name}" overlaps ${conflicts.length} already-active plan(s):`,
+                  { candidate: candidate.name, count: conflicts.length },
+                )}
+              </div>
+              <ul className="hra-text-secondary text-meta leading-normal mb-4 pl-4">
+                {conflicts.map(c => (
+                  <li key={c.id}>
+                    {t(
+                      "manage.planInstances.activationConflictLine",
+                      `"${c.name}" (${instanceDayDateLabel(c.start_date)} → ${instanceDayDateLabel(c.end_date)}) — overlaps ${instanceDayDateLabel(c.overlap_start)} → ${instanceDayDateLabel(c.overlap_end)}`,
+                      { plan: c.name, start: instanceDayDateLabel(c.start_date), end: instanceDayDateLabel(c.end_date), overlapStart: instanceDayDateLabel(c.overlap_start), overlapEnd: instanceDayDateLabel(c.overlap_end) },
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          }
+          confirmLabel={t("manage.planInstances.activationConflictAck", "OK")}
+          singleAction
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+        />
+      );
+    }
   }
 }

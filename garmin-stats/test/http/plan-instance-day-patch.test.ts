@@ -139,7 +139,7 @@ test("PATCH .../days/:dayId rejects an empty body", async () => {
   }
 });
 
-test("PATCH .../days/:dayId is rejected once the instance is approved", async () => {
+test("PATCH .../days/:dayId still succeeds once the instance is approved (HRA-249: the edit lock is a frontend warning now)", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, dayId } = await setUp(server);
@@ -148,7 +148,8 @@ test("PATCH .../days/:dayId is rejected once the instance is approved", async ()
     assert.ok((approved.json as any).approved_at, "fixture must actually be approved before this assertion is meaningful");
 
     const res = await patchDay(server, instanceId, dayId, { scheduled_time: "06:30" });
-    assert.equal(res.status, 409, JSON.stringify(res.json));
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    assert.equal((res.json as any).scheduled_time, "06:30");
   } finally {
     await server.close();
   }

@@ -42,11 +42,13 @@ import type { OffsetUnit, ParseWarning, WorkoutSegment } from "@/types/runplan";
 export interface DayRef { sectionIndex: number; weekIndex: number; dayIndex: number }
 export interface WeekRef { sectionIndex: number; weekIndex: number }
 
-// HRA-140 follow-up: identifies whichever Section/Week/Day row a caller's
-// own most-recent structured edit touched — used purely to flag that one
-// row's AccordionCard (hra-edited-row-highlight, index.css), independent of
-// DayRef/WeekRef above (drag-and-drop refs, no "kind" discriminant since
-// each is only ever compared against its own kind).
+// HRA-140 follow-up (extended to the instance editor by HRA-249): identifies
+// whichever Section/Week/Day row a caller's own most-recent structured edit
+// touched — used purely to flag that one row (hra-edited-row-highlight,
+// index.css — a template row's AccordionCard, or an instance day row's plain
+// .card div), independent of DayRef/WeekRef above (drag-and-drop refs, no
+// "kind" discriminant since each is only ever compared against its own
+// kind).
 export type EditedRef =
   | { kind: "section"; sectionIndex: number }
   | ({ kind: "week" } & WeekRef)
@@ -77,12 +79,13 @@ interface TrainingPlanAccordionProps {
   // text instead of inputs. Day dsl/note stay editable regardless. Default
   // false (templates, HRA-117, remain fully editable at every level).
   readOnlySectionWeek?: boolean;
-  // HRA-126: independent of readOnlySectionWeek — when true, Day dsl/note
-  // also stop being editable (the dsl/note inputs simply don't render, same
-  // "hide the input, the title/tooltip already shows the value" pattern
-  // readOnlySectionWeek uses above). Set by the instance card once an
-  // instance's approved_at is set, locking the whole plan view. Default
-  // false (an unapproved instance, or any template, stays fully editable).
+  // HRA-126, no longer tied to approval by HRA-249: independent of
+  // readOnlySectionWeek — when true, Day dsl/note also stop being editable
+  // (the dsl/note inputs simply don't render, same "hide the input, the
+  // title/tooltip already shows the value" pattern readOnlySectionWeek uses
+  // above). The instance card no longer sets this from an instance's
+  // approved_at (editing an active plan is now allowed, with a persistent
+  // warning instead of a lock) — default false.
   readOnlyDays?: boolean;
   // HRA-127 follow-up: native HTML5 drag-and-drop, as an alternative UX to
   // the picker-based swap the instance card already offers — dragging one
@@ -149,10 +152,12 @@ interface TrainingPlanAccordionProps {
   // the DSL grammar's own default ("s/km").
   offsetUnit?: OffsetUnit;
   // HRA-140 follow-up: the Section/Week/Day the caller's own most-recent
-  // structured edit touched — highlights just that one row's AccordionCard,
-  // in sync with the raw DSL textarea's own last-patched-line highlight
-  // (PlanTemplatesSection.tsx). Optional: PlanInstancesSection never tracks
-  // this, so instance rows are never highlighted this way.
+  // structured edit touched — highlights just that one row (a template
+  // row's AccordionCard, in sync with the raw DSL textarea's own
+  // last-patched-line highlight in PlanTemplatesSection.tsx; an instance
+  // day row's plain .card div, HRA-249). Optional: only a day kind is
+  // reachable for an instance (readOnlySectionWeek keeps its Section/Week
+  // read-only), so PlanInstancesSection only ever sets that one.
   highlightedRef?: EditedRef;
 }
 
@@ -572,7 +577,7 @@ function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabe
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, highlighted,
 }: {
   day: DayView;
   date: string;
@@ -584,6 +589,7 @@ function InstanceDayRow({
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  highlighted?: boolean;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
@@ -625,7 +631,7 @@ function InstanceDayRow({
   return (
     <div
       {...drag.handlers}
-      className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
+      className={`card hra-text-primary${drag.isDragOver ? " hra-swap-drop-target" : ""}${highlighted ? " hra-edited-row-highlight" : ""}`}
       data-swappable={drag.swappable || undefined}
     >
       {/* Live follow-up (post-HRA-165): both rows are now ONE CSS Grid,
@@ -1047,9 +1053,8 @@ function TemplateDayRow({
 
 // Dispatches on day.date (HRA-125's own instance-vs-template signal) — kept
 // hook-free so each branch's component owns its own hooks unconditionally.
-// `highlighted` is destructured out (not part of `...props`) since only
-// TemplateDayRow accepts it — InstanceDayRow never does (see highlightedRef's
-// own doc comment: instance rows are never highlighted this way).
+// HRA-249: `highlighted` now goes to both branches — InstanceDayRow gained
+// the same just-edited-row treatment TemplateDayRow already had.
 function DayEditor({ offsetUnit, highlighted, ...props }: {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
@@ -1064,7 +1069,7 @@ function DayEditor({ offsetUnit, highlighted, ...props }: {
   highlighted: boolean;
 }) {
   return props.day.date != null
-    ? <InstanceDayRow {...props} date={props.day.date} />
+    ? <InstanceDayRow {...props} date={props.day.date} highlighted={highlighted} />
     : <TemplateDayRow {...props} offsetUnit={offsetUnit} highlighted={highlighted} />;
 }
 

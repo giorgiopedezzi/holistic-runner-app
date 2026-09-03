@@ -8,6 +8,19 @@
  * status conveys") — we don't host a docs site per error type; `title` +
  * `detail` carry the meaning. `errors[]` is optional field-level validation.
  */
+// One approved instance whose resolved date range overlaps the candidate
+// being activated (HRA-249) — carried on a 409 from POST
+// .../plan-instances/:id/approve so the frontend can name every conflict
+// without a second round trip.
+export interface PlanInstanceOverlap {
+  id: number;
+  name: string | null;
+  start_date: string;
+  end_date: string;
+  overlap_start: string;
+  overlap_end: string;
+}
+
 export interface Problem {
   type: string;
   title: string;
@@ -15,6 +28,10 @@ export interface Problem {
   detail?: string;
   instance?: string;
   errors?: { field: string; message: string }[];
+  overlaps?: {
+    candidate: { id: number; name: string | null; start_date: string; end_date: string };
+    conflicts: PlanInstanceOverlap[];
+  };
 }
 
 export class ApiProblem extends Error {
