@@ -113,6 +113,10 @@ describe("App tab switching", () => {
     expect(container.querySelector(".hra-nav")).not.toBeInTheDocument();
     expect(screen.queryByText("Garmin Stats")).not.toBeInTheDocument();
     expect(screen.getByText("Runs Free")).toBeInTheDocument();
+
+    // Server-status indicator exposes online/offline through an accessible
+    // name, not color alone (the dot itself stays purely decorative).
+    await waitFor(() => expect(screen.getByRole("status")).toHaveAccessibleName("Data service ready"));
   });
 
   it("marks exactly one sidebar item aria-current='page', matching the active tab, and updates it on click", async () => {
