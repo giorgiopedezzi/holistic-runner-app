@@ -677,6 +677,7 @@
   "manage.planInstances.activationConflictLine": "\"{{plan}}\" ({{start}} → {{end}}) — overlaps {{overlapStart}} → {{overlapEnd}}",
   "manage.planInstances.activationConflictAck": "OK",
   "nav.feedback": "Feedback",
+  "banner.feedbackPrompt": "Your anonymous ((feedback)) is my most valuable asset if you want this app to keep improving.",
   "feedback.intro": "Tell us whether you'd pay for this app and what you'd want — at least one response below is required.",
   "feedback.freeTextLabel": "General feedback",
   "feedback.freeTextPlaceholder": "What do you think of the app?",

@@ -22,10 +22,14 @@
   /* The `top` offset .hra-sticky-summary needs for its own sticky
      positioning. Was the old horizontal header's rendered height; HRA-253
      replaced that header with a sidebar, so the content column's own top
-     edge is now flush with its scroll container and this is 0 — kept as a
-     named value (rather than inlining `top: 0`) so a future header-like
-     element above <main> only needs to change this one place again. */
-  --header-height:  0px;
+     edge was flush with its scroll container and this was 0 — exactly the
+     "future header-like element above <main>" this comment anticipated:
+     the sticky feedback ribbon (App.tsx's FeedbackBanner) now occupies that
+     space again, so .hra-sticky-summary's own sticky content needs to clear
+     it rather than sit underneath it. Kept as a single named value (not
+     inlined into .hra-feedback-banner's own height) precisely so the two
+     stay in sync at one place. */
+  --header-height:  36px;
 
   /* Graphite — the primary/default palette (dashboard design-system
      rework). :root duplicates its values directly (not just a fallback) so
@@ -2015,6 +2019,34 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--section-gap);
 }
+
+/* Sticky feedback ribbon (direct feedback — "make sure people actually
+   notice the feedback page") — pinned to the top of the content column's
+   own scroll container (a sibling of <main>, not inside it), so it stays
+   visible while the tab content scrolls underneath. --header-height above
+   is this rule's own rendered height, kept in sync there for
+   .hra-sticky-summary's benefit. Hidden entirely on the Feedback tab itself
+   (App.tsx) rather than just disabling the link, since pointing at the page
+   you're already on is dead chrome, not a safety issue worth a disabled
+   state. */
+.hra-feedback-banner {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 8px 16px;
+  text-align: center;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.hra-feedback-banner-link {
+  background: none; border: none; padding: 0; margin: 0;
+  font: inherit; color: var(--accent); text-decoration: underline;
+  cursor: pointer;
+}
+.hra-feedback-banner-link:hover { color: var(--text-primary); }
 
 .hra-sidebar {
   width: 232px;
