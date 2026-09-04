@@ -1329,7 +1329,8 @@ body::before {
   animation: hra-atmosphere-shimmer 12s ease-in-out infinite;
 }
 :root[data-background="bundled"] body::before,
-:root[data-background="custom"]  body::before {
+:root[data-background="custom"]  body::before,
+:root[data-background="default"] body::before {
   animation: none;
 }
 
