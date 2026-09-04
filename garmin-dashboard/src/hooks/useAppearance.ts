@@ -7,6 +7,7 @@ import { setDateFormatSystem } from "@/utils/dateFormat";
 import { useSettings } from "@/hooks/useSettings";
 import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
 import i18next, { detectLanguageFromLocale } from "@/i18n";
+import defaultBackgroundUrl from "@/assets/marathon-background.png";
 
 // 'auto' resolves via the OS's prefers-color-scheme — the one appearance
 // signal a web page genuinely can read directly (unlike measurement system,
@@ -44,11 +45,17 @@ function resolvePalette(stored: StoredPalette, theme: Theme): Palette {
 // Re-introduces a per-user background image (reverses part of the 2026-08-16
 // correction pass, per explicit product feedback) — sets --bg-image (read by
 // index.css's body::before, falling back to the automatic ambient gradient
-// when unset) and a data-background attribute (switches off the gradient's
-// own shimmer animation for a real bundled/custom picture, see index.css).
-// "custom" wraps the streamed image URL in url(...); "bundled" uses the
-// preset's own CSS gradient value directly; "none" (or an unrecognized
-// bundled id) clears both so the default ambient glow shows through.
+// only if --bg-image is unset entirely) and a data-background attribute
+// (switches off the gradient's own shimmer animation for a real
+// bundled/custom/default picture, see index.css). "custom" wraps the
+// streamed image URL in url(...); "bundled" uses the preset's own CSS
+// gradient value directly. "none" — no deliberate choice ever made, or an
+// explicit "Remove background" — is NOT the same as "no --bg-image at all"
+// any more: it resolves to defaultBackgroundUrl (marathon-background.png,
+// a real shipped asset, not a per-instance upload under the gitignored
+// garmin-stats/backgrounds/ dir) so every fresh environment shows the same
+// picture without depending on a hand-set DB row. A deliberate "bundled" or
+// "custom" choice always overrides it.
 function applyBackground(settings: Settings) {
   const root = document.documentElement;
   if (settings.background_kind === "bundled" && settings.background_value) {
@@ -64,8 +71,8 @@ function applyBackground(settings: Settings) {
     root.setAttribute("data-background", "custom");
     return;
   }
-  root.style.removeProperty("--bg-image");
-  root.removeAttribute("data-background");
+  root.style.setProperty("--bg-image", `url("${defaultBackgroundUrl}")`);
+  root.setAttribute("data-background", "default");
 }
 
 // Applies theme + unit system straight to the document/module state — a
