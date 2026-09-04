@@ -71,6 +71,30 @@ const COMPARE_URL_KEYS = { from: "compareFrom", to: "compareTo", enabled: "compa
 // reasonable choice for that specific need).
 const SIDEBAR_COLLAPSED_KEY = "hra-sidebar-collapsed";
 
+// Sticky feedback ribbon, pinned above the content column's own scroll area
+// (direct feedback — "make sure people actually notice the feedback page").
+// The clickable word lives inside the translated sentence itself, not
+// bolted on before/after it, so its position stays natural in every
+// language: the default string carries a "((feedback))" marker translators
+// can move anywhere, and this splits on that marker to insert a real
+// <button> (never a translated whole sentence baked into two separate keys,
+// which would fight word order in languages that don't put the link where
+// English does).
+function FeedbackBanner({ onNavigate }: { onNavigate: () => void }) {
+  const { t } = useTranslation();
+  const raw = t("banner.feedbackPrompt", "Your anonymous ((feedback)) is my most valuable asset if you want this app to keep improving.");
+  const [before, linkWord, after] = raw.split(/\(\((.+?)\)\)/);
+  return (
+    <div className="hra-feedback-banner text-label">
+      {before}
+      <button type="button" className="hra-feedback-banner-link" onClick={onNavigate}>
+        {linkWord ?? t("nav.feedback", "Feedback")}
+      </button>
+      {after}
+    </div>
+  );
+}
+
 // SettingsProvider wraps AppShell (not the other way in-line) so every hook
 // below it — including useAppearance(), called inside AppShell's own body —
 // is a descendant of the provider and shares its one settings fetch.
@@ -282,6 +306,7 @@ function AppShell() {
 
       {/* ── content column ──────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
+        {tab !== "feedback" && <FeedbackBanner onNavigate={() => setTab("feedback")} />}
         <main className="hra-app-main flex-1">
 
           {online === false && (

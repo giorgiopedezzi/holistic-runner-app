@@ -10,12 +10,45 @@
  * on and demoDbBackupPath is configured.
  */
 import fs from "fs";
-import { closeDbForRestore, reopenDb, initSchema, type Db } from "../db.ts";
+import path from "path";
+import { closeDbForRestore, reopenDb, initSchema, type Db, type FeedbackRow } from "../db.ts";
 
 const DEFAULT_INTERVAL_MS = 2 * 60 * 60 * 1000; // two hours
 
+// Anonymous visitor feedback (HRA-226) accumulated on the live demo since the
+// last restore would otherwise be silently discarded the moment this
+// overwrites dbPath with the backup — the backup predates it entirely. Dumped
+// as a plain-text report into feedback.txt next to dbPath (NOT the backup —
+// this is a permanent, ever-growing archive, not restorable state) before
+// the destructive copy below. Always appended, never a fresh/dated file per
+// run, so every restore cycle's export lands in the same one file.
+function exportFeedbackReport(db: Db, dbPath: string): void {
+  const rows = db.prepare("SELECT * FROM feedback ORDER BY id").all() as unknown as FeedbackRow[];
+  if (rows.length === 0) return;
+
+  const lines: string[] = [];
+  lines.push(`=== Feedback export ${new Date().toISOString()} (${rows.length} row${rows.length === 1 ? "" : "s"}) ===`);
+  for (const row of rows) {
+    const featureInterest = row.feature_interest ? (JSON.parse(row.feature_interest) as string[]).join(", ") : "—";
+    lines.push("");
+    lines.push(`#${row.id} — ${row.created_at}`);
+    lines.push(`  Free text:              ${row.free_text ?? "—"}`);
+    lines.push(`  Pricing choice:         ${row.pricing_choice ?? "—"}`);
+    lines.push(`  Pricing why-not:        ${row.pricing_why_not_free_text ?? "—"}`);
+    lines.push(`  App type:               ${row.app_type_choice ?? "—"}`);
+    lines.push(`  Feature interest:       ${featureInterest}`);
+    lines.push(`  Feature interest other: ${row.feature_interest_other_free_text ?? "—"}`);
+  }
+  lines.push("");
+
+  const reportPath = path.join(path.dirname(dbPath), "feeedback.txt");
+  fs.appendFileSync(reportPath, lines.join("\n") + "\n");
+  console.log(`[demo-db-restore] Exported ${rows.length} feedback row(s) to ${reportPath}.`);
+}
+
 function runRestore(db: Db, dbPath: string, backupPath: string): void {
   console.log(`[demo-db-restore] Restoring ${dbPath} from backup ${backupPath}...`);
+  exportFeedbackReport(db, dbPath);
   closeDbForRestore();
   // Always drop the LIVE path's own sidecars first — they belong to the
   // connection just closed, and if left in place would get merged into
