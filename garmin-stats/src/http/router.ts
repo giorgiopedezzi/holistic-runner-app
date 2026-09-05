@@ -43,6 +43,11 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const demo = <T extends Handler>(h: T) => demoGuarded(ctx, h);
 
   return async (req, res) => {
+    // Hosted demo — keep it out of search/AI indexing until it's ready to be
+    // found. The dashboard has its own robots.txt/meta tag, but this API is
+    // reachable on its own port too.
+    res.setHeader("X-Robots-Tag", "noindex, nofollow, noai, noimageai");
+
     if (req.method === "OPTIONS") {
       res.writeHead(204, {
         "Access-Control-Allow-Origin": "*",

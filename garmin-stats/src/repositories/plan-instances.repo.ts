@@ -5,6 +5,7 @@
  * spanning both tables belong to services/plan-instances.service.ts, not here.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { prepareLive } from "../db.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
 const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, created_at FROM plan_instances";
@@ -18,29 +19,29 @@ export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
 export type PlanInstanceDayWithInstance = PlanInstanceDayRow & { instance_name: string | null };
 
 export function createPlanInstancesRepo(db: DatabaseSync) {
-  const findInstanceById = db.prepare(`SELECT ${INSTANCE_FIELDS} WHERE id = ?`);
+  const findInstanceById = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE id = ?`);
   // HRA-118: the instance card's list view — optionally scoped to one
   // template ("per-template instance list", the Story's own AC1 wording).
   // Separate prepared statements per shape (all vs. by-template) rather than
   // one query with a nullable bound param reused twice, matching this repo's
   // existing style of one statement per query shape.
-  const listAllStmt = db.prepare(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
-  const countAllStmt = db.prepare("SELECT COUNT(*) AS count FROM plan_instances");
-  const listByTemplateStmt = db.prepare(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
-  const countByTemplateStmt = db.prepare("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
-  const insertInstance = db.prepare(
+  const listAllStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
+  const countAllStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances");
+  const listByTemplateStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
+  const countByTemplateStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
+  const insertInstance = prepareLive(
     "INSERT INTO plan_instances (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date, race_url) VALUES ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date, $race_url)",
   );
-  const findDaysByInstance = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
-  const findDayByIdStmt = db.prepare(`SELECT ${DAY_FIELDS} WHERE id = ?`);
+  const findDaysByInstance = prepareLive(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
+  const findDayByIdStmt = prepareLive(`SELECT ${DAY_FIELDS} WHERE id = ?`);
   // HRA-203: the section/week .fit-zip export's own scoping queries — same
   // DAY_FIELDS projection and date/day ordering as findDaysByInstance above,
   // just narrowed by section_name (and, for the week variant, week_number
   // too). Two prepared statements rather than one with a nullable bound
   // param, matching this repo's existing "one statement per query shape"
   // style (see findDaysByDateAndWorkoutTypeStmt's own comment above).
-  const findDaysBySectionStmt = db.prepare(`SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? ORDER BY date ASC, day ASC`);
-  const findDaysBySectionAndWeekStmt = db.prepare(
+  const findDaysBySectionStmt = prepareLive(`SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? ORDER BY date ASC, day ASC`);
+  const findDaysBySectionAndWeekStmt = prepareLive(
     `SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? AND week_number = ? ORDER BY date ASC, day ASC`,
   );
   // HRA-206: every run-type plan_instance_day matching a calendar date,
@@ -48,7 +49,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // — joined with the owning instance's name so ActivityDetailBody's picker
   // can label each option without a second lookup per match. Newest-instance
   // first, matching this repo's other list queries' own default ordering.
-  const findDaysByDateAndWorkoutTypeStmt = db.prepare(`
+  const findDaysByDateAndWorkoutTypeStmt = prepareLive(`
     SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
            pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
            pid.scheduled_time, pi.name AS instance_name
@@ -64,7 +65,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // just as well as a workout day. Newest-instance-first on the (out of
   // scope here, see the sibling overlap-detection Story) chance more than
   // one approved instance's days cover the same date.
-  const findActiveInstanceIdForDateStmt = db.prepare(`
+  const findActiveInstanceIdForDateStmt = prepareLive(`
     SELECT pi.id
     FROM plan_instance_days pid
     JOIN plan_instances pi ON pi.id = pid.instance_id
@@ -72,25 +73,25 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     ORDER BY pi.created_at DESC
     LIMIT 1
   `);
-  const insertDay = db.prepare(`
+  const insertDay = prepareLive(`
     INSERT INTO plan_instance_days
       (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review)
     VALUES
       ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review)
   `);
-  const deleteDaysByInstanceStmt = db.prepare("DELETE FROM plan_instance_days WHERE instance_id = ?");
+  const deleteDaysByInstanceStmt = prepareLive("DELETE FROM plan_instance_days WHERE instance_id = ?");
   // HRA-149: PATCH /api/v1/plan-instances/:id/days/:dayId — a single day's
   // dsl-derived columns (re-parsed+resolved) vs. its independent notes/
   // scheduled_time overrides are separate statements, run conditionally by
   // the service, same "one statement per field" style as updateFields above.
-  const updateDayFromDslStmt = db.prepare(`
+  const updateDayFromDslStmt = prepareLive(`
     UPDATE plan_instance_days SET
       day = ?, suffix = ?, category = ?, workout_type = ?, segments = ?,
       activity_target = ?, activity_description = ?, notes = ?, needs_review = ?
     WHERE id = ?
   `);
-  const updateDayNotesStmt = db.prepare("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
-  const updateDayScheduledTimeStmt = db.prepare("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
+  const updateDayNotesStmt = prepareLive("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
+  const updateDayScheduledTimeStmt = prepareLive("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
   // HRA-155: replaces the earlier HRA-132 `deleteDaysFromDate` (a raw
   // `date >= fromDate` threshold) — that comparison silently broke whenever
   // `start_date` changed as part of the same regenerate call, since the OLD
@@ -102,18 +103,18 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // (re)inserted (services/plan-instances.service.ts's regenerateFrom) — so
   // that day's previous row, whatever date it happened to carry, is always
   // removed first, with no dependence on dates lining up across the change.
-  const deleteDayByIdentityStmt = db.prepare(
+  const deleteDayByIdentityStmt = prepareLive(
     "DELETE FROM plan_instance_days WHERE instance_id = ? AND section_name = ? AND week_number = ? AND day = ?",
   );
-  const clearApprovalStmt = db.prepare("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
-  const approveStmt = db.prepare("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
+  const clearApprovalStmt = prepareLive("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
+  const approveStmt = prepareLive("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
   // HRA-249: the candidate's own resolved date range for the overlap check
   // below — MIN/MAX over its days rather than a dedicated stored range,
   // since plan_instance_days.date is already the source of truth. Text
   // comparison on ISO YYYY-MM-DD strings sorts chronologically, so this
   // (and overlappingApprovedStmt below) never needs a Date object and is
   // immune to the timezone boundary defects a Date-based comparison risks.
-  const instanceDateRangeStmt = db.prepare(
+  const instanceDateRangeStmt = prepareLive(
     "SELECT MIN(date) AS start_date, MAX(date) AS end_date FROM plan_instance_days WHERE instance_id = ?",
   );
   // HRA-249: every OTHER approved instance whose own [MIN(date), MAX(date)]
@@ -123,7 +124,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // existing.start <= candidateEnd). `pi.id != ?` excludes the candidate
   // itself (re-activating/re-approving never conflicts with itself);
   // `approved_at IS NOT NULL` excludes every not-yet-approved instance.
-  const overlappingApprovedStmt = db.prepare(`
+  const overlappingApprovedStmt = prepareLive(`
     SELECT pi.id, pi.name, MIN(pid.date) AS start_date, MAX(pid.date) AS end_date
     FROM plan_instances pi
     JOIN plan_instance_days pid ON pid.instance_id = pi.id
@@ -131,20 +132,20 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     GROUP BY pi.id
     HAVING MAX(pid.date) >= ? AND MIN(pid.date) <= ?
   `);
-  const updateNameStmt = db.prepare("UPDATE plan_instances SET name = ? WHERE id = ?");
+  const updateNameStmt = prepareLive("UPDATE plan_instances SET name = ? WHERE id = ?");
   // HRA-135: one statement per field, run conditionally in updateFields() —
   // same granular-primitive style as updateName/updateStartDateAndPaceOverrides
   // above, so a PATCH that omits a field never touches its column.
-  const updateRaceNameStmt = db.prepare("UPDATE plan_instances SET race_name = ? WHERE id = ?");
-  const updateRaceDateStmt = db.prepare("UPDATE plan_instances SET race_date = ? WHERE id = ?");
-  const updateRaceUrlStmt = db.prepare("UPDATE plan_instances SET race_url = ? WHERE id = ?");
+  const updateRaceNameStmt = prepareLive("UPDATE plan_instances SET race_name = ? WHERE id = ?");
+  const updateRaceDateStmt = prepareLive("UPDATE plan_instances SET race_date = ? WHERE id = ?");
+  const updateRaceUrlStmt = prepareLive("UPDATE plan_instances SET race_url = ? WHERE id = ?");
   // HRA-132: written together — a regenerate always resolves both (falling
   // back to the instance's own current value for whichever the caller didn't
   // supply) before running instantiatePlan, so both columns stay consistent
   // with whatever was actually used to produce the regenerated days.
-  const updateStartDateAndPaceOverridesStmt = db.prepare("UPDATE plan_instances SET start_date = ?, pace_overrides = ? WHERE id = ?");
+  const updateStartDateAndPaceOverridesStmt = prepareLive("UPDATE plan_instances SET start_date = ?, pace_overrides = ? WHERE id = ?");
   // ON DELETE CASCADE (plan_instance_days.instance_id) removes the instance's days too.
-  const deleteInstanceStmt = db.prepare("DELETE FROM plan_instances WHERE id = ?");
+  const deleteInstanceStmt = prepareLive("DELETE FROM plan_instances WHERE id = ?");
 
   return {
     instanceById: (id: number): PlanInstanceRow | undefined => findInstanceById.get(id) as unknown as PlanInstanceRow | undefined,

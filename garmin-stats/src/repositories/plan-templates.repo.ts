@@ -4,6 +4,7 @@
  * that runs SQL for this domain (rest-api-standards §11).
  */
 import type { DatabaseSync } from "node:sqlite";
+import { prepareLive } from "../db.ts";
 import type { PlanTemplateRow } from "../db.ts";
 
 const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, approved_at, created_at FROM plan_templates";
@@ -11,14 +12,14 @@ const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, approved_at, cr
 export type PlanTemplateInput = Omit<PlanTemplateRow, "id" | "created_at" | "approved_at">;
 
 export function createPlanTemplatesRepo(db: DatabaseSync) {
-  const listAll   = db.prepare(`SELECT ${SELECT_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
-  const countAll  = db.prepare("SELECT COUNT(*) AS count FROM plan_templates");
-  const findById  = db.prepare(`SELECT ${SELECT_FIELDS} WHERE id = ?`);
-  const insert    = db.prepare("INSERT INTO plan_templates (name, dsl_source, parsed_plan, event) VALUES ($name, $dsl_source, $parsed_plan, $event)");
+  const listAll   = prepareLive(`SELECT ${SELECT_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
+  const countAll  = prepareLive("SELECT COUNT(*) AS count FROM plan_templates");
+  const findById  = prepareLive(`SELECT ${SELECT_FIELDS} WHERE id = ?`);
+  const insert    = prepareLive("INSERT INTO plan_templates (name, dsl_source, parsed_plan, event) VALUES ($name, $dsl_source, $parsed_plan, $event)");
   // approved_at is always cleared on update (HRA-113 gate 2: any edit revokes approval).
-  const update    = db.prepare("UPDATE plan_templates SET name = $name, dsl_source = $dsl_source, parsed_plan = $parsed_plan, event = $event, approved_at = NULL WHERE id = $id");
-  const deleteById = db.prepare("DELETE FROM plan_templates WHERE id = ?");
-  const approveStmt = db.prepare("UPDATE plan_templates SET approved_at = datetime('now') WHERE id = ?");
+  const update    = prepareLive("UPDATE plan_templates SET name = $name, dsl_source = $dsl_source, parsed_plan = $parsed_plan, event = $event, approved_at = NULL WHERE id = $id");
+  const deleteById = prepareLive("DELETE FROM plan_templates WHERE id = ?");
+  const approveStmt = prepareLive("UPDATE plan_templates SET approved_at = datetime('now') WHERE id = ?");
 
   return {
     listPage: (limit: number, offset: number): PlanTemplateRow[] => listAll.all(limit, offset) as unknown as PlanTemplateRow[],
