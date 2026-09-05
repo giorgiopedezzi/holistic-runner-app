@@ -4,6 +4,7 @@
  * no list/read route exists (out of scope for this Story).
  */
 import type { DatabaseSync } from "node:sqlite";
+import { prepareLive } from "../db.ts";
 import type { FeedbackRow } from "../db.ts";
 
 export interface NewFeedback {
@@ -16,11 +17,11 @@ export interface NewFeedback {
 }
 
 export function createFeedbackRepo(db: DatabaseSync) {
-  const insert = db.prepare(`
+  const insert = prepareLive(`
     INSERT INTO feedback (free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, app_type_choice)
     VALUES ($free_text, $pricing_choice, $pricing_why_not_free_text, $feature_interest, $feature_interest_other_free_text, $app_type_choice)
   `);
-  const findById = db.prepare("SELECT * FROM feedback WHERE id = ?");
+  const findById = prepareLive("SELECT * FROM feedback WHERE id = ?");
 
   return {
     create: (f: NewFeedback): FeedbackRow => {

@@ -6,28 +6,29 @@
  * (HRA-29) — behavior is identical.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { prepareLive } from "../db.ts";
 
 type NamedParams = Record<string, string | number | null>;
 
 export function createSettingsRepo(db: DatabaseSync) {
-  const settingsGet    = db.prepare("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette FROM settings WHERE id = 1");
+  const settingsGet    = prepareLive("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette FROM settings WHERE id = 1");
   // Two dedicated writes, one per Settings card (HRA-40): the Outlier-detection
   // card (three values) and the Overview & Trends card (min_trend_group_size).
   // Each replaces only its own sub-resource — no combined write.
-  const outliersUpdate   = db.prepare("UPDATE settings SET outlier_speed_delta_per_sec = $outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec = $outlier_cadence_delta_per_sec, outlier_min_speed_kmh = $outlier_min_speed_kmh, updated_at = datetime('now') WHERE id = 1");
-  const thresholdsUpdate = db.prepare("UPDATE settings SET min_trend_group_size = $min_trend_group_size, updated_at = datetime('now') WHERE id = 1");
-  const themeUpdate      = db.prepare("UPDATE settings SET theme = $theme, updated_at = datetime('now') WHERE id = 1");
-  const backgroundUpdate = db.prepare("UPDATE settings SET background_kind = $background_kind, background_value = $background_value, updated_at = datetime('now') WHERE id = 1");
-  const unitsUpdate      = db.prepare("UPDATE settings SET unit_system = $unit_system, updated_at = datetime('now') WHERE id = 1");
-  const detailViewUpdate = db.prepare("UPDATE settings SET activity_detail_view = $activity_detail_view, updated_at = datetime('now') WHERE id = 1");
-  const accentUpdate     = db.prepare("UPDATE settings SET accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
-  const dateFormatUpdate = db.prepare("UPDATE settings SET date_format = $date_format, updated_at = datetime('now') WHERE id = 1");
-  const languageUpdate   = db.prepare("UPDATE settings SET language = $language, updated_at = datetime('now') WHERE id = 1");
+  const outliersUpdate   = prepareLive("UPDATE settings SET outlier_speed_delta_per_sec = $outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec = $outlier_cadence_delta_per_sec, outlier_min_speed_kmh = $outlier_min_speed_kmh, updated_at = datetime('now') WHERE id = 1");
+  const thresholdsUpdate = prepareLive("UPDATE settings SET min_trend_group_size = $min_trend_group_size, updated_at = datetime('now') WHERE id = 1");
+  const themeUpdate      = prepareLive("UPDATE settings SET theme = $theme, updated_at = datetime('now') WHERE id = 1");
+  const backgroundUpdate = prepareLive("UPDATE settings SET background_kind = $background_kind, background_value = $background_value, updated_at = datetime('now') WHERE id = 1");
+  const unitsUpdate      = prepareLive("UPDATE settings SET unit_system = $unit_system, updated_at = datetime('now') WHERE id = 1");
+  const detailViewUpdate = prepareLive("UPDATE settings SET activity_detail_view = $activity_detail_view, updated_at = datetime('now') WHERE id = 1");
+  const accentUpdate     = prepareLive("UPDATE settings SET accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
+  const dateFormatUpdate = prepareLive("UPDATE settings SET date_format = $date_format, updated_at = datetime('now') WHERE id = 1");
+  const languageUpdate   = prepareLive("UPDATE settings SET language = $language, updated_at = datetime('now') WHERE id = 1");
   // Writes palette AND accent_color together — palette is the only input a
   // user can set (accent has no independent picker any more), and the
   // controller derives the paired accent_color value, so both columns always
   // move in lockstep (see db.ts's accent_color/palette column comments).
-  const paletteUpdate    = db.prepare("UPDATE settings SET palette = $palette, accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
+  const paletteUpdate    = prepareLive("UPDATE settings SET palette = $palette, accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
 
   return {
     get:              () => settingsGet.get(),

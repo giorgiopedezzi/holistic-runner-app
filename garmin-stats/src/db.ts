@@ -1,4 +1,4 @@
-import { DatabaseSync, type SQLInputValue } from "node:sqlite";
+import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
 import path from "path";
 import { loadConfig, getArg } from "./config.ts";
 
@@ -24,6 +24,13 @@ export type SQLParams = Record<string, SQLInputValue>;
 // reference: their `db` is the same Proxy object, forwarding to whatever
 // `liveTarget` currently is.
 let liveTarget: DatabaseSync | undefined;
+
+// Bumped by reopenDb() below — the signal prepareLive()'s statement wrappers
+// use to know their cached StatementSync (compiled against the PREVIOUS
+// liveTarget, now closed by closeDbForRestore()) is stale and must be
+// recompiled against the new one, rather than reused and throwing "statement
+// has been finalized".
+let generation = 0;
 
 function openConnection(): DatabaseSync {
   const conn = new DatabaseSync(DB_PATH);
@@ -65,6 +72,36 @@ export function closeDbForRestore(): void {
 // version of the app expects.
 export function reopenDb(): void {
   liveTarget = openConnection();
+  generation++;
+}
+
+// Repositories call this once at construction time (e.g. `db.prepare(sql)` ->
+// `prepareLive(sql)`) to get a statement handle that survives a demo-db
+// restore. A plain `db.prepare(sql)` result is a real StatementSync tied
+// forever to whichever connection was live at prepare time — makeLiveProxy's
+// swap only helps calls made through `db` itself, not statements it already
+// handed out. This wraps the same lazy-rebind idea at the statement level:
+// each call checks `generation` and recompiles against the current
+// liveTarget when it's changed, instead of using a StatementSync belonging to
+// a connection that closeDbForRestore() already closed.
+export function prepareLive(sql: string): StatementSync {
+  let stmt: StatementSync | undefined;
+  let stmtGeneration = -1;
+  function current(): StatementSync {
+    if (!liveTarget) throw new Error("Database connection is not open (mid-restore?).");
+    if (!stmt || stmtGeneration !== generation) {
+      stmt = liveTarget.prepare(sql);
+      stmtGeneration = generation;
+    }
+    return stmt;
+  }
+  return new Proxy({}, {
+    get(_t, prop) {
+      const target = current();
+      const value = (target as unknown as Record<PropertyKey, unknown>)[prop];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as StatementSync;
 }
 
 export function initSchema(db: DatabaseSync): void {

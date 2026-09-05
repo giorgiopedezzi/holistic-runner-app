@@ -6,6 +6,7 @@
  * display fields without a second round trip.
  */
 import type { DatabaseSync } from "node:sqlite";
+import { prepareLive } from "../db.ts";
 import type { DateRangeRow } from "../db.ts";
 
 const SELECT_FIELDS = `
@@ -17,13 +18,13 @@ const SELECT_FIELDS = `
 `;
 
 export function createDateRangesRepo(db: DatabaseSync) {
-  const listAll    = db.prepare(`SELECT ${SELECT_FIELDS} ORDER BY dr.created_at DESC LIMIT ? OFFSET ?`);
-  const countAll    = db.prepare("SELECT COUNT(*) AS count FROM date_ranges");
-  const findByName  = db.prepare(`SELECT ${SELECT_FIELDS} WHERE dr.name = ?`);
-  const findById    = db.prepare(`SELECT ${SELECT_FIELDS} WHERE dr.id = ?`);
-  const insert      = db.prepare("INSERT INTO date_ranges (name, from_date, to_date, activity_id) VALUES ($name, $from_date, $to_date, $activity_id)");
-  const update      = db.prepare("UPDATE date_ranges SET name = $name, from_date = $from_date, to_date = $to_date, activity_id = $activity_id WHERE id = $id");
-  const deleteById  = db.prepare("DELETE FROM date_ranges WHERE id = ?");
+  const listAll    = prepareLive(`SELECT ${SELECT_FIELDS} ORDER BY dr.created_at DESC LIMIT ? OFFSET ?`);
+  const countAll    = prepareLive("SELECT COUNT(*) AS count FROM date_ranges");
+  const findByName  = prepareLive(`SELECT ${SELECT_FIELDS} WHERE dr.name = ?`);
+  const findById    = prepareLive(`SELECT ${SELECT_FIELDS} WHERE dr.id = ?`);
+  const insert      = prepareLive("INSERT INTO date_ranges (name, from_date, to_date, activity_id) VALUES ($name, $from_date, $to_date, $activity_id)");
+  const update      = prepareLive("UPDATE date_ranges SET name = $name, from_date = $from_date, to_date = $to_date, activity_id = $activity_id WHERE id = $id");
+  const deleteById  = prepareLive("DELETE FROM date_ranges WHERE id = ?");
 
   return {
     listPage: (limit: number, offset: number): DateRangeRow[] => listAll.all(limit, offset) as unknown as DateRangeRow[],
