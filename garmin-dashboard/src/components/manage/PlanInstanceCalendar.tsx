@@ -42,7 +42,7 @@ import "shadcn-big-calendar/styles";
 // dimming siblings mid-drag) are hand-copied into index.css's own
 // .hra-agenda-calendar block instead, the same "vendor visuals, scoped
 // locally" pattern every other rbc-* override in that file already follows.
-import { format, parse, startOfWeek, getDay } from "date-fns";
+import { format, parse, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
   AlertTriangle, ChevronLeft, ChevronRight, CircleHelp, Clock3, Footprints, Gauge, Info, Route,
@@ -752,18 +752,41 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   // browsing the calendar to a month outside the plan's own date range is
   // an existing, unrelated blank-cells behavior this Story doesn't change.
   const plannedDateKeys = useMemo(() => new Set(events.map(e => toDateKey(e.start))), [events]);
+
+  const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
+  // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
+  // useUrlState) so a refresh keeps the last-picked Month/Week view.
+  const [rawView, setRawView] = useUrlState("planCalendarView", "week");
+  const view: CalendarView = CALENDAR_VIEWS.includes(rawView as CalendarView) ? (rawView as CalendarView) : "week";
+  const setView = (next: CalendarView) => setRawView(next);
+
+  // HRA-262: actual-recorded-activity matching, client-side, no new API.
+  // Fetched once per plan (the range is the plan's own first→last resolved
+  // day, not the currently visible month/week) so switching Month/Week or
+  // navigating within the plan's own span never needs a fresh fetch;
+  // browsing the calendar to a month outside the plan's own date range is
+  // an existing, unrelated blank-cells behavior this Story doesn't change.
+  // HRA-263: with no plan days at all (AgendaTab now renders this calendar
+  // unconditionally, sections === []), there's no plan-derived span to fetch
+  // against — fall back to the currently visible Month/Week window instead,
+  // re-fetching on navigation, so a runner with no active plan still sees
+  // their real recorded activities.
   const activityRange = useMemo(() => {
-    if (events.length === 0) return null;
-    let min = events[0].start, max = events[0].start;
-    for (const e of events) {
-      if (e.start < min) min = e.start;
-      if (e.start > max) max = e.start;
+    if (events.length > 0) {
+      let min = events[0].start, max = events[0].start;
+      for (const e of events) {
+        if (e.start < min) min = e.start;
+        if (e.start > max) max = e.start;
+      }
+      return { from: toDateKey(min), to: toDateKey(max) };
     }
-    return { from: toDateKey(min), to: toDateKey(max) };
-  }, [events]);
+    const rangeStart = view === "week" ? startOfWeek(date) : startOfMonth(date);
+    const rangeEnd = view === "week" ? endOfWeek(date) : endOfMonth(date);
+    return { from: toDateKey(rangeStart), to: toDateKey(rangeEnd) };
+  }, [events, view, date]);
   const { state: activitiesState } = useQuery(
-    () => (activityRange != null ? api.garmin.activities(activityRange.from, activityRange.to) : Promise.resolve([])),
-    [activityRange?.from, activityRange?.to],
+    () => api.garmin.activities(activityRange.from, activityRange.to),
+    [activityRange.from, activityRange.to],
   );
   const activitiesByDateKey = useMemo(
     () => (activitiesState.status === "success" ? buildActivitiesByDateKey(activitiesState.data) : new Map<string, Activity>()),
@@ -778,13 +801,6 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     () => [...events, ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
     [events, activitiesByDateKey, plannedDateKeys],
   );
-
-  const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
-  // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
-  // useUrlState) so a refresh keeps the last-picked Month/Week view.
-  const [rawView, setRawView] = useUrlState("planCalendarView", "week");
-  const view: CalendarView = CALENDAR_VIEWS.includes(rawView as CalendarView) ? (rawView as CalendarView) : "week";
-  const setView = (next: CalendarView) => setRawView(next);
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
   // computed once per instance load (i.e. whenever `sections`/`events`

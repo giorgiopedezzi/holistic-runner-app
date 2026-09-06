@@ -2195,15 +2195,6 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 24px 24px 48px;
 }
 .hra-app-main > .hra-section-title:first-child { margin-top: 0; }
-/* AgendaTab's "no active plan" empty state (direct feedback: center it in
-   the screen rather than reading as a stray top-of-page line). 72px
-   approximates .hra-app-main's own top+bottom padding (24+48 above), so the
-   centering is against the visible content area's height, not the raw
-   viewport (which would ignore that padding and sit slightly low). Scoped to
-   this one call site, not Empty.tsx itself — every other <Empty/> usage
-   (an in-card/in-table "no data" line) stays exactly where it renders in the
-   surrounding flow. */
-.hra-agenda-empty-center { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 72px); }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }
 .hra-section-gap-top { margin-top: var(--section-gap); }
