@@ -118,8 +118,8 @@ export function PlanInstancesSection({ templates }: Props) {
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
   // Backed by the URL's `planViewMode` param (HRA-195, reusing HRA-193's
   // useUrlState) so a refresh keeps the last-picked list/agenda view.
-  const [rawViewMode, setRawViewMode] = useUrlState("planViewMode", "list");
-  const viewMode: "list" | "agenda" = rawViewMode === "agenda" ? "agenda" : "list";
+  const [rawViewMode, setRawViewMode] = useUrlState("planViewMode", "agenda");
+  const viewMode: "list" | "agenda" = rawViewMode === "list" ? "list" : "agenda";
   const setViewMode = (mode: "list" | "agenda") => setRawViewMode(mode);
   const [editError, setEditError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);

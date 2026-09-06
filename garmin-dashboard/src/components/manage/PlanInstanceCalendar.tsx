@@ -656,8 +656,8 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
   // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
   // useUrlState) so a refresh keeps the last-picked Month/Week view.
-  const [rawView, setRawView] = useUrlState("planCalendarView", "month");
-  const view: CalendarView = CALENDAR_VIEWS.includes(rawView as CalendarView) ? (rawView as CalendarView) : "month";
+  const [rawView, setRawView] = useUrlState("planCalendarView", "week");
+  const view: CalendarView = CALENDAR_VIEWS.includes(rawView as CalendarView) ? (rawView as CalendarView) : "week";
   const setView = (next: CalendarView) => setRawView(next);
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
