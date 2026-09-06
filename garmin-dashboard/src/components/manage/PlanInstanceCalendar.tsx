@@ -26,7 +26,10 @@
  */
 import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useUrlState } from "@/hooks/useUrlState";
+import { useQuery } from "@/hooks/useQuery";
 import { useTranslation } from "react-i18next";
+import { api } from "@/api/client";
+import type { Activity } from "@/types/api";
 import { ShadcnBigCalendar, dateFnsLocalizer, withDragAndDrop } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
 // HRA-190: the addon's own "react-big-calendar/lib/addons/dragAndDrop/styles.css"
@@ -42,7 +45,7 @@ import "shadcn-big-calendar/styles";
 import { format, parse, startOfWeek, getDay } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
-  AlertTriangle, ChevronLeft, ChevronRight, CircleHelp, Clock3, Gauge, Info, Route,
+  AlertTriangle, ChevronLeft, ChevronRight, CircleHelp, Clock3, Footprints, Gauge, Info, Route,
 } from "lucide-react";
 import { DAY_PREFIX_RE, useDragSwap } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
@@ -109,16 +112,25 @@ interface CalendarEvent {
   // isTimedWorkoutType below); every other day is timed so Week view can
   // place its card in the hourly grid at the day's scheduled_time.
   allDay: boolean;
-  workoutType: WorkoutType;
-  trainingLoadCategory: TrainingLoadCategory;
-  needsReview: boolean;
-  metrics: ResolvedDayMetrics;
+  // HRA-262: absent only for a synthetic isActualOnly event (a recorded
+  // activity with no resolved plan day on that date) — every plan-derived
+  // event from eventsFromSections below still sets all four together, same
+  // as before this Story.
+  workoutType?: WorkoutType;
+  trainingLoadCategory?: TrainingLoadCategory;
+  needsReview?: boolean;
+  metrics?: ResolvedDayMetrics;
   // HRA-151: the day's own backend id (what the per-day PATCH addresses,
   // HRA-149) and its persisted scheduled_time — both only ever set once a
   // day is a real plan_instance_days row, same as DayView's own id/
   // scheduled_time (HRA-150) this is threaded from.
   dayId?: number;
   scheduledTime?: string | null;
+  // HRA-262: true only for a synthesized entry standing in for a recorded
+  // activity that has no plan day on this date at all — see
+  // actualOnlyEventsFromActivities below. Every other (plan-derived) field
+  // above is meaningless/absent on such an entry.
+  isActualOnly?: boolean;
 }
 
 function parseLocalDate(dateISO: string): Date {
@@ -148,8 +160,10 @@ function toDateKey(date: Date): string {
 // (HRA-156) — same "nothing to schedule" reasoning as TODO. Shared by the
 // Month date-header chip (HRA-151) and Week view's timed-vs-allDay split
 // (HRA-189, below) so both stay in lockstep.
-function isTimedWorkoutType(workoutType: WorkoutType): boolean {
-  return workoutType !== "rest" && workoutType !== "todo" && workoutType !== "other";
+// HRA-262: accepts undefined too — an isActualOnly event has no workoutType
+// at all, and is never "scheduled" in the sense this function means.
+function isTimedWorkoutType(workoutType: WorkoutType | undefined): boolean {
+  return workoutType != null && workoutType !== "rest" && workoutType !== "todo" && workoutType !== "other";
 }
 function dayHasScheduledWorkout(event: CalendarEvent | undefined): boolean {
   return event != null && isTimedWorkoutType(event.workoutType);
@@ -233,6 +247,38 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
   return events;
 }
 
+// HRA-262: most-recently-started activity per date_only — sport-agnostic,
+// exact-date match only per the Story's own confirmed matching rule.
+// "Most recently-started" compares activity_date (a full timestamp), not
+// id/array order.
+function buildActivitiesByDateKey(activities: Activity[]): Map<string, Activity> {
+  const map = new Map<string, Activity>();
+  for (const activity of activities) {
+    const existing = map.get(activity.date_only);
+    if (existing == null || new Date(activity.activity_date) > new Date(existing.activity_date)) {
+      map.set(activity.date_only, activity);
+    }
+  }
+  return map;
+}
+
+// HRA-262: a date with a recorded activity but no resolved plan day gets no
+// CalendarEvent at all from eventsFromSections above (it only ever iterates
+// the plan's own days) — react-big-calendar only ever renders through
+// components.event for entries actually in the events array, so such a date
+// needs its own synthetic, plan-free entry for anything to show up there.
+function actualOnlyEventsFromActivities(
+  activitiesByDateKey: Map<string, Activity>, plannedDateKeys: Set<string>,
+): CalendarEvent[] {
+  const result: CalendarEvent[] = [];
+  for (const [dateKey, activity] of activitiesByDateKey) {
+    if (plannedDateKeys.has(dateKey)) continue;
+    const date = parseLocalDate(dateKey);
+    result.push({ title: activity.sport ?? "Activity", start: date, end: date, allDay: true, isActualOnly: true });
+  }
+  return result;
+}
+
 // `todo` isn't a real classification category (HRA-147 folds it into
 // Easy/Recovery for the tercile math, but a not-yet-planned day showing an
 // "Easy/Recovery" badge would misinform a runner) — the compact row keeps
@@ -291,7 +337,24 @@ interface AgendaSummary { workouts: number; runs: number; rest: number; distance
 // already established). Gated on `!readOnlyDays` (Ask #3); every day type
 // (including REST/TODO) is draggable, matching the List view's own
 // unconditional per-row wiring — day swap was never workout-only there.
-function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }: {
+// HRA-262: minimal, sport-agnostic "there's a recording on this date" badge
+// — reused on every DayCellEvent branch (a plan day matched to an actual
+// recording) so the "both" case never needs its own bespoke rendering.
+function ActualActivityBadge({ activity }: { activity: Activity | undefined }) {
+  const { t } = useTranslation();
+  if (activity == null) return null;
+  const summary = activity.distance_m != null ? formatDistanceM(activity.distance_m) : activity.sport ?? "";
+  return (
+    <span
+      title={t("manage.planInstances.actualActivityTooltip", `Recorded activity: ${summary}`, { value: summary })}
+      className="hra-text-secondary inline-flex items-center shrink-0"
+    >
+      <Footprints size={12} />
+    </span>
+  );
+}
+
+function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, activitiesByDateKey }: {
   event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean; onDaySwap?: (a: number, b: number) => void;
   // HRA-190: true in Week view, where DnDCalendar's own EventWrapper owns
   // pointer-drag detection for this event's DOM node. Native draggable=true
@@ -299,10 +362,31 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }:
   // browser-native drag suspends the mousemove events the addon tracks — so
   // this card must render with no native drag handlers at all while it's on.
   dragViaAddon?: boolean;
+  // HRA-262: date_only-keyed recorded-activity lookup, shared by every cell
+  // in this calendar instance — see PlanInstanceCalendar's own activitiesByDateKey.
+  activitiesByDateKey: Map<string, Activity>;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(event.dayId, readOnlyDays || dragViaAddon ? undefined : onDaySwap);
   const dragProps = { ...drag.handlers, style: drag.swappable ? { cursor: "grab" as const } : undefined };
+  const matchedActivity = activitiesByDateKey.get(toDateKey(event.start));
+
+  // HRA-262: a synthetic entry standing in for a recorded activity with no
+  // plan day at all on this date — none of the plan-derived branches below
+  // apply (no workoutType/metrics to read), so this returns first, before
+  // the plan-specific rendering starts.
+  if (event.isActualOnly) {
+    const summary = matchedActivity?.distance_m != null ? formatDistanceM(matchedActivity.distance_m) : "";
+    return (
+      <span
+        className="hra-agenda-rest-row"
+        title={t("manage.planInstances.actualActivityTooltip", `Recorded activity: ${summary}`, { value: summary })}
+      >
+        <Footprints size={13} />
+        {t("manage.planInstances.actualActivityOnlyLabel", "Recorded activity")}
+      </span>
+    );
+  }
 
   if (event.workoutType === "todo") {
     const [key, fallback] = TODO_LABEL_KEY;
@@ -310,6 +394,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }:
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <CircleHelp size={13} />
         {t(key, fallback)}
+        <ActualActivityBadge activity={matchedActivity} />
       </span>
     );
   }
@@ -319,12 +404,13 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }:
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <Info size={13} />
         {t(key, fallback)}
+        <ActualActivityBadge activity={matchedActivity} />
       </span>
     );
   }
 
-  const Icon = CATEGORY_ICONS[event.trainingLoadCategory];
-  const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory];
+  const Icon = CATEGORY_ICONS[event.trainingLoadCategory!];
+  const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory!];
   const categoryLabel = t(key, fallback);
 
   if (event.workoutType === "rest") {
@@ -332,11 +418,16 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }:
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <Icon size={13} />
         {categoryLabel}
+        <ActualActivityBadge activity={matchedActivity} />
       </span>
     );
   }
 
-  const { metrics } = event;
+  // Non-null: guaranteed set together with trainingLoadCategory for every
+  // event that reaches this point (see eventsFromSections's own guard) —
+  // only the isActualOnly/todo/other/rest branches above lack it, and all
+  // of them already returned.
+  const metrics = event.metrics!;
   const hasDistance = metrics.totalDistanceM > 0 && scaling.visibleMaxDistanceM > 0;
   const hasDuration = metrics.totalDurationSec > 0 && scaling.instanceMaxDurationSec > 0;
   const hasIntensity = metrics.maxSpeedKmh != null && scaling.instanceMaxSpeedKmh != null && scaling.instanceMaxSpeedKmh > 0;
@@ -350,7 +441,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }:
 
   return (
     <span
-      className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? ""}${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
+      className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory!] ?? ""}${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
       {...dragProps}
     >
       <span className="hra-agenda-event-main-row flex items-center gap-1 min-w-0 w-full" >
@@ -370,6 +461,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon }:
             <AlertTriangle size={12} />
           </span>
         )}
+        <ActualActivityBadge activity={matchedActivity} />
       </span>
 
       {(hasDistance || hasDuration || hasIntensity) && (
@@ -653,6 +745,40 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     for (const e of events) map.set(toDateKey(e.start), e);
     return map;
   }, [events]);
+  // HRA-262: actual-recorded-activity matching, client-side, no new API.
+  // Fetched once per plan (the range is the plan's own first→last resolved
+  // day, not the currently visible month/week) so switching Month/Week or
+  // navigating within the plan's own span never needs a fresh fetch;
+  // browsing the calendar to a month outside the plan's own date range is
+  // an existing, unrelated blank-cells behavior this Story doesn't change.
+  const plannedDateKeys = useMemo(() => new Set(events.map(e => toDateKey(e.start))), [events]);
+  const activityRange = useMemo(() => {
+    if (events.length === 0) return null;
+    let min = events[0].start, max = events[0].start;
+    for (const e of events) {
+      if (e.start < min) min = e.start;
+      if (e.start > max) max = e.start;
+    }
+    return { from: toDateKey(min), to: toDateKey(max) };
+  }, [events]);
+  const { state: activitiesState } = useQuery(
+    () => (activityRange != null ? api.garmin.activities(activityRange.from, activityRange.to) : Promise.resolve([])),
+    [activityRange?.from, activityRange?.to],
+  );
+  const activitiesByDateKey = useMemo(
+    () => (activitiesState.status === "success" ? buildActivitiesByDateKey(activitiesState.data) : new Map<string, Activity>()),
+    [activitiesState],
+  );
+  // The vendor only ever renders through components.event for entries
+  // actually in the events array — plan days get theirs from events above,
+  // a plan-free recorded-activity date needs its own synthetic entry mixed
+  // in alongside them, calendar-rendering only, never fed into the
+  // plan-only scaling/summary math below.
+  const calendarEvents = useMemo(
+    () => [...events, ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
+    [events, activitiesByDateKey, plannedDateKeys],
+  );
+
   const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
   // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
   // useUrlState) so a refresh keeps the last-picked Month/Week view.
@@ -662,17 +788,19 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
   // computed once per instance load (i.e. whenever `sections`/`events`
-  // changes), not per visible window.
+  // changes), not per visible window. `events` here is always plan-derived
+  // (eventsFromSections' own metrics != null guard) — never mixed with the
+  // isActualOnly synthetic entries above, so `metrics!` is safe.
   const instanceSpeedRange = useMemo(() => {
-    const maxSpeeds = events.map(e => e.metrics.maxSpeedKmh).filter((v): v is number => v != null);
-    const minSpeeds = events.map(e => e.metrics.minSpeedKmh).filter((v): v is number => v != null);
+    const maxSpeeds = events.map(e => e.metrics!.maxSpeedKmh).filter((v): v is number => v != null);
+    const minSpeeds = events.map(e => e.metrics!.minSpeedKmh).filter((v): v is number => v != null);
     return {
       instanceMaxSpeedKmh: maxSpeeds.length > 0 ? Math.max(...maxSpeeds) : null,
       instanceMinSpeedKmh: minSpeeds.length > 0 ? Math.min(...minSpeeds) : null,
     };
   }, [events]);
   const instanceMaxDurationSec = useMemo(
-    () => events.reduce((max, e) => Math.max(max, e.metrics.totalDurationSec), 0),
+    () => events.reduce((max, e) => Math.max(max, e.metrics!.totalDurationSec), 0),
     [events],
   );
 
@@ -684,7 +812,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     [events, date],
   );
   const visibleMaxDistanceM = useMemo(
-    () => visibleEvents.reduce((max, e) => Math.max(max, e.metrics.totalDistanceM), 0),
+    () => visibleEvents.reduce((max, e) => Math.max(max, e.metrics!.totalDistanceM), 0),
     [visibleEvents],
   );
   const summary = useMemo<AgendaSummary>(() => {
@@ -693,7 +821,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
       if (e.workoutType === "rest") rest++;
       else if (e.workoutType !== "todo" && e.workoutType !== "other") workouts++;
       if (e.workoutType === "run") runs++;
-      distanceM += e.metrics.totalDistanceM;
+      distanceM += e.metrics!.totalDistanceM;
     }
     return { workouts, runs, rest, distanceM };
   }, [visibleEvents]);
@@ -709,9 +837,12 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   // time this component re-renders.
   const EventComponent = useMemo(
     () => (props: { event: CalendarEvent }) => (
-      <DayCellEvent {...props} scaling={scaling} readOnlyDays={readOnlyDays} onDaySwap={onDaySwap} dragViaAddon={view === "week"} />
+      <DayCellEvent
+        {...props} scaling={scaling} readOnlyDays={readOnlyDays} onDaySwap={onDaySwap} dragViaAddon={view === "week"}
+        activitiesByDateKey={activitiesByDateKey}
+      />
     ),
-    [scaling, readOnlyDays, onDaySwap, view],
+    [scaling, readOnlyDays, onDaySwap, view, activitiesByDateKey],
   );
   const ToolbarComponent = useMemo(
     () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => (
@@ -774,11 +905,14 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     if (targetEvent?.dayId == null) return;
     onDaySwap(event.dayId, targetEvent.dayId);
   }
-  const draggableAccessor = () => !readOnlyDays;
+  // HRA-262: an isActualOnly entry has no dayId — there is no plan day to
+  // drag/swap, and handleEventDrop already no-ops on dayId == null, so the
+  // Week-view addon shouldn't even offer to pick it up.
+  const draggableAccessor = (event: CalendarEvent) => !readOnlyDays && event.dayId != null;
 
   const calendarProps = {
     localizer,
-    events,
+    events: calendarEvents,
     startAccessor: "start" as const,
     endAccessor: "end" as const,
     views: [...CALENDAR_VIEWS],

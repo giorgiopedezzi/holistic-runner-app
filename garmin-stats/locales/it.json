@@ -582,6 +582,8 @@
   "manage.planInstances.categoryReferenceTrigger": "Cosa significano i colori dell'agenda?",
   "manage.planInstances.categoryReferenceTitle": "Categorie di carico di allenamento",
   "manage.planInstances.needsReviewTooltip": "Da rivedere",
+  "manage.planInstances.actualActivityTooltip": "Attività registrata: {{value}}",
+  "manage.planInstances.actualActivityOnlyLabel": "Attività registrata",
   "manage.planInstances.scheduledTimeLabel": "Orario previsto",
   "manage.planInstances.distanceTooltip": "Distanza: {{value}}",
   "manage.planInstances.maxSpeedTooltip": "Velocità massima: {{value}}",
