@@ -2089,6 +2089,41 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   transition: width 0.2s ease;
 }
 .hra-sidebar[data-collapsed="true"] { width: 64px; }
+/* HRA-267: third state — fully hidden (phone tier's default). At the
+   desktop/tablet tiers this never fires (their manual toggle only ever
+   flips "false"/"true"); kept as a general in-flow fallback regardless. */
+.hra-sidebar[data-collapsed="hidden"] { width: 0; padding-left: 0; padding-right: 0; border-right: none; }
+/* Phone tier: the sidebar becomes an off-canvas overlay drawer instead of
+   an in-flow column, so it never pushes <main> or adds page-level
+   horizontal scroll (AC5) — `position: fixed` removes it from the flex
+   row's own width calculation regardless of the `width` above. "hidden"
+   slides it fully off-screen; "false" (open) slides it back in as a drawer
+   above <main>, above the dedicated backdrop below. */
+.hra-sidebar[data-tier="phone"] {
+  position: fixed; inset: 0 auto 0 0; z-index: 50; width: 232px;
+  transition: transform 0.2s ease;
+  box-shadow: 4px 0 24px color-mix(in srgb, black 25%, transparent);
+}
+.hra-sidebar[data-tier="phone"][data-collapsed="hidden"] { transform: translateX(-100%); }
+.hra-sidebar[data-tier="phone"][data-collapsed="false"] { transform: translateX(0); }
+/* Dims and blocks interaction with <main> while the phone drawer is open;
+   dismisses the drawer on outside-tap (AC3). */
+.hra-sidebar-backdrop {
+  position: fixed; inset: 0; z-index: 45;
+  background: color-mix(in srgb, black 45%, transparent);
+}
+/* Fixed opener, shown only while the phone drawer is hidden (App.tsx gates
+   this on viewportTier/sidebarMode, not a media query, since the toggle
+   behavior itself is already tier-aware in JS). */
+.hra-sidebar-hamburger {
+  position: fixed; top: 12px; left: 12px; z-index: 46;
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 90%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  color: var(--text-primary); cursor: pointer;
+}
 /* Top row: brand + language picker side by side (moved out of the old
    bottom footer per explicit feedback). Expanded brand reads at
    --text-body — the original --text-heading size (same combo
