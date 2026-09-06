@@ -215,6 +215,16 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
     void onScheduledTimeEdit(ref.sectionIndex, ref.weekIndex, ref.dayIndex, scheduledTime);
   }
 
+  // HRA-265: PlanInstanceCalendar's DayEditModal only knows the clicked day's
+  // own backend id (same "no section/week/day index of its own" reasoning as
+  // onScheduledTimeEditByDayId/onDayDragSwapByDayId above) — resolves it to
+  // the {sectionIndex, weekIndex, dayIndex} onDayEdit already keys by.
+  function onDayEditByDayId(dayId: number, patch: { dsl?: string; notes?: string }) {
+    const ref = findDayIndicesById(dayId);
+    if (!ref) return;
+    onDayEdit(ref.sectionIndex, ref.weekIndex, ref.dayIndex, patch);
+  }
+
   function applyWorkoutTypeChange(change: WorkoutTypeChange) {
     const { sectionIndex, weekIndex, dayIndex, workoutType } = change;
     const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
@@ -371,6 +381,7 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
 
   return {
     onDayEdit,
+    onDayEditByDayId,
     onScheduledTimeEdit,
     onScheduledTimeEditByDayId,
     applyWorkoutTypeChange,

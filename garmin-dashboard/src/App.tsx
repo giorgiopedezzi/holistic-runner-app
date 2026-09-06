@@ -141,6 +141,17 @@ function AppShell() {
   // of TabId) — HRA-248: the app's default landing tab, ahead of Overview.
   const [rawTab, setTab] = useUrlState("tab", "agenda");
   const tab: TabId = TABS.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "agenda";
+  // HRA-265: writes the same `activityId` URL param ActivitiesTab.tsx's own
+  // useUrlState call reads on mount — this instance never reads its own
+  // `value` back (ActivitiesTab, freshly mounted on the tab switch below, is
+  // the one source of truth for it), only ever writes, same "independent
+  // call sites merge into the one live query string" pattern useUrlState's
+  // own doc comment describes (HRA-193).
+  const [, setActivityIdParam] = useUrlState("activityId", "");
+  function navigateToActivity(activityId: number) {
+    setActivityIdParam(String(activityId));
+    setTab("activities");
+  }
   const [online, setOnline] = useState<boolean | null>(null);
   const [sidebarCollapsed, setSidebarCollapsedState] = useState(() => {
     try {
@@ -326,12 +337,14 @@ function AppShell() {
             </div>
           )}
 
-          {tab === "agenda"     && <AgendaTab onNavigateToPlans={() => setTab("plans")} />}
+          {tab === "agenda"     && (
+            <AgendaTab onNavigateToPlans={() => setTab("plans")} onNavigateToActivity={navigateToActivity} />
+          )}
           {tab === "overview"   && (
             <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
           )}
           {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
-          {tab === "plans"      && <PlansTab />}
+          {tab === "plans"      && <PlansTab onNavigateToActivity={navigateToActivity} />}
           {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
           {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
           {tab === "settings"   && <SettingsTab appearance={appearance} />}

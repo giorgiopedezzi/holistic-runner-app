@@ -51,7 +51,8 @@ import { DAY_PREFIX_RE, useDragSwap } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
 import { fmtElapsedClock } from "@/domain/activity-chart";
 import { fmtBpm, fmtPace } from "@/utils/fmt";
-import type { SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
+import type { DayView, SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
+import { DayEditModal } from "@/components/manage/DayEditModal";
 import type { WorkoutType } from "@/types/runplan";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, paceUnitLabel, speedUnitLabel } from "@/utils/units";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
@@ -857,9 +858,24 @@ interface Props {
   // agenda" passes today's Date so a runner lands on the right week/month
   // without navigating there first.
   initialDate?: Date;
+  // HRA-265: clicking a planned-only day (no matched activity) opens
+  // DayEditModal; its onEdit calls this the same way InstanceDayRow's own
+  // inline dsl/notes inputs already call onDayEdit — local-only until the
+  // instance's own Save button persists it. Omitted at the read-only Agenda
+  // tab call site (AgendaTab.tsx), where the modal still opens but renders
+  // its fields as read-only text (readOnlyDays below), same as
+  // InstanceDayRow's own rule.
+  onDayEdit?: (dayId: number, patch: { dsl?: string; notes?: string }) => void;
+  // HRA-265: clicking a day with a recorded activity (with or without a
+  // plan) switches to the Activities tab with that activity opened —
+  // threaded down from App.tsx, mirroring AgendaTab's existing
+  // onNavigateToPlans callback pattern.
+  onNavigateToActivity?: (activityId: number) => void;
 }
 
-export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate }: Props) {
+export function PlanInstanceCalendar({
+  sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
+}: Props) {
   const events = useMemo(() => eventsFromSections(sections), [sections]);
   // HRA-151: AgendaDateHeader gets one calendar Date per render (react-big-
   // calendar's own dateHeader contract) with no direct link back to "this
@@ -876,6 +892,21 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   // browsing the calendar to a month outside the plan's own date range is
   // an existing, unrelated blank-cells behavior this Story doesn't change.
   const plannedDateKeys = useMemo(() => new Set(events.map(e => toDateKey(e.start))), [events]);
+  // HRA-265: the full DayView (dsl/notes text) behind a clicked planned-only
+  // day — CalendarEvent above only carries a display-ready, already-stripped
+  // title, not the raw day.dsl DayEditModal needs to reconstruct edits from.
+  const dayViewsById = useMemo(() => {
+    const map = new Map<number, DayView>();
+    for (const section of sections) {
+      for (const week of section.weeks) {
+        for (const day of week.days) {
+          if (day.id != null) map.set(day.id, day);
+        }
+      }
+    }
+    return map;
+  }, [sections]);
+  const [editingDayId, setEditingDayId] = useState<number | null>(null);
 
   const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
   // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
@@ -1050,7 +1081,28 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
   // Week-view addon shouldn't even offer to pick it up.
   const draggableAccessor = (event: CalendarEvent) => !readOnlyDays && event.dayId != null;
 
+  // HRA-265: `onSelectEvent` is react-big-calendar's own click-an-event
+  // callback (Month cards, Week's all-day row, and Week's timed slots all
+  // route through it identically — EventCell.js/TimeGridEvent.js's plain
+  // onClick) — reused here rather than hand-rolling click detection on
+  // DayCellEvent/WeekRowCard's own DOM nodes, since the vendor (and, in Week
+  // view, its own drag addon) already disambiguates a real click from a drag
+  // gesture internally: AC4 ("the new click handler doesn't fire on a drag
+  // gesture") falls out of this for free, on both views, the same way
+  // HRA-152 reused useDragSwap instead of a second swap implementation.
+  function handleSelectEvent(event: CalendarEvent) {
+    const matchedActivity = activitiesByDateKey.get(toDateKey(event.start));
+    if (matchedActivity != null) {
+      onNavigateToActivity?.(matchedActivity.id);
+      return;
+    }
+    if (event.dayId != null) setEditingDayId(event.dayId);
+    // Otherwise: an empty day (no plan day, no recorded activity) — no-op.
+  }
+  const editingDay = editingDayId != null ? dayViewsById.get(editingDayId) : undefined;
+
   const calendarProps = {
+    onSelectEvent: handleSelectEvent,
     localizer,
     events: calendarEvents,
     startAccessor: "start" as const,
@@ -1080,6 +1132,14 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
         />
       ) : (
         <ShadcnBigCalendar {...calendarProps} />
+      )}
+      {editingDay && (
+        <DayEditModal
+          day={editingDay}
+          readOnlyDays={readOnlyDays}
+          onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
+          onClose={() => setEditingDayId(null)}
+        />
       )}
     </div>
   );

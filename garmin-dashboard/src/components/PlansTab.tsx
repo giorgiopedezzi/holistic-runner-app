@@ -17,7 +17,13 @@ import type { PlanTemplate } from "@/types/api";
 import { PlanTemplatesSection } from "@/components/manage/PlanTemplatesSection";
 import { PlanInstancesSection } from "@/components/manage/PlanInstancesSection";
 
-export function PlansTab() {
+interface Props {
+  // HRA-265: threaded from App.tsx, mirroring AgendaTab's existing
+  // onNavigateToPlans callback — see PlanInstanceCalendar.tsx's own prop.
+  onNavigateToActivity: (activityId: number) => void;
+}
+
+export function PlansTab({ onNavigateToActivity }: Props) {
   const { t } = useTranslation();
 
   // Lifted here (not owned by PlanTemplatesSection) so saving a template is
@@ -39,7 +45,7 @@ export function PlansTab() {
       <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
 
       <SectionTitle>{t("manage.planInstancesSectionTitle", "Race plans")}</SectionTitle>
-      <PlanInstancesSection templates={templates} />
+      <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} />
     </>
   );
 }

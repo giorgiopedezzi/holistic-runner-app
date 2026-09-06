@@ -34,7 +34,7 @@ function activeRoutes(overrides: Routes = {}): Routes {
 describe("AgendaTab — loading/error", () => {
   it("shows an error banner, never the empty-state copy, on a genuine fetch failure", async () => {
     installFetch(activeRoutes({ "GET /api/v1/plan-instances/active": problem(500, "boom") }));
-    render(<AgendaTab onNavigateToPlans={() => {}} />);
+    render(<AgendaTab onNavigateToPlans={() => {}} onNavigateToActivity={() => {}} />);
 
     expect(await screen.findByText("boom")).toBeInTheDocument();
     expect(screen.queryByText("There is no active plan today.")).not.toBeInTheDocument();
@@ -45,7 +45,7 @@ describe("AgendaTab — no active plan", () => {
   it("renders the empty-state copy, a working 'View race plans' action, and the calendar itself (HRA-263)", async () => {
     installFetch(activeRoutes({ "GET /api/v1/activities": paginated([]) }));
     const onNavigateToPlans = vi.fn();
-    const { container } = render(<AgendaTab onNavigateToPlans={onNavigateToPlans} />);
+    const { container } = render(<AgendaTab onNavigateToPlans={onNavigateToPlans} onNavigateToActivity={() => {}} />);
 
     expect(await screen.findByText("There is no active plan today.")).toBeInTheDocument();
     expect(screen.getByText("Run free. Or rest. Be happy.")).toBeInTheDocument();
@@ -60,7 +60,7 @@ describe("AgendaTab — no active plan", () => {
     installFetch(activeRoutes({
       "GET /api/v1/activities": paginated([activity({ date_only: TODAY, sport: "running", distance_m: 5000 })]),
     }));
-    render(<AgendaTab onNavigateToPlans={() => {}} />);
+    render(<AgendaTab onNavigateToPlans={() => {}} onNavigateToActivity={() => {}} />);
 
     // A runner with no active plan but a real activity today: the "nothing at
     // all today" copy must NOT show, since today isn't actually empty.
@@ -80,7 +80,7 @@ describe("AgendaTab — an active plan covers today", () => {
       days: [planInstanceDay({ date: TODAY, day: 1, workout_type: "run" })],
     };
     installFetch(activeRoutes({ "GET /api/v1/plan-instances/active": instance }));
-    const { container } = render(<AgendaTab onNavigateToPlans={() => {}} />);
+    const { container } = render(<AgendaTab onNavigateToPlans={() => {}} onNavigateToActivity={() => {}} />);
 
     expect(await screen.findByText(/Boston Build/)).toBeInTheDocument();
     await waitFor(() => expect(container.querySelector(".hra-agenda-calendar")).toBeInTheDocument());
@@ -100,7 +100,7 @@ describe("AgendaTab — an active plan covers today", () => {
       })],
     };
     installFetch(activeRoutes({ "GET /api/v1/plan-instances/active": instance }));
-    const { container } = render(<AgendaTab onNavigateToPlans={() => {}} />);
+    const { container } = render(<AgendaTab onNavigateToPlans={() => {}} onNavigateToActivity={() => {}} />);
 
     await waitFor(() => {
       const summary = container.querySelector(".hra-agenda-summary");

@@ -7,7 +7,7 @@
  * itself and applies identically at both of its call sites.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PlanInstanceCalendar } from "./PlanInstanceCalendar";
 import { installFetch, paginated } from "@/test/api-stub";
 import { activity } from "@/test/fixtures";
@@ -43,13 +43,13 @@ function sections(): SectionView[] {
           day: 1, workout_type: "run", dsl: "D1: 5km @ RG", needs_review: false, warnings: [],
           distance: { meters: 5000, approximate: false }, date: "2026-09-01",
           metrics: { totalDistanceM: 5000, minSpeedKmh: 10, maxSpeedKmh: 12, totalDurationSec: 1800 },
-          trainingLoadCategory: "easy_recovery",
+          trainingLoadCategory: "easy_recovery", id: 501,
         },
         {
           day: 3, workout_type: "rest", dsl: "D3: REST", needs_review: false, warnings: [],
           distance: { meters: 0, approximate: false }, date: "2026-09-03",
           metrics: { totalDistanceM: 0, minSpeedKmh: null, maxSpeedKmh: null, totalDurationSec: 0 },
-          trainingLoadCategory: "rest",
+          trainingLoadCategory: "rest", id: 503,
         },
       ],
     }],
@@ -151,5 +151,77 @@ describe("PlanInstanceCalendar — Week view row card (HRA-264)", () => {
 
     await waitFor(() => expect(screen.getByText("Feeling great today")).toBeInTheDocument());
     expect(screen.queryByText("Easy/Recovery")).not.toBeInTheDocument();
+  });
+});
+
+// HRA-265: click-to-open a non-empty agenda day — Month view (this file's
+// own beforeAll forces it), same as every describe block above except the
+// dedicated Week-view one.
+describe("PlanInstanceCalendar — click-to-open (HRA-265)", () => {
+  it("clicking a planned-only day opens the edit modal pre-filled with its DSL, and typing calls onDayEdit", async () => {
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    const onDayEdit = vi.fn();
+    render(
+      <PlanInstanceCalendar
+        sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} onDayEdit={onDayEdit}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("5km @ RG")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("5km @ RG"));
+
+    const textarea = await screen.findByDisplayValue("5km @ RG");
+    fireEvent.change(textarea, { target: { value: "10km @ RG" } });
+    expect(onDayEdit).toHaveBeenCalledWith(501, { dsl: "D1: 10km @ RG" });
+
+    fireEvent.click(screen.getByLabelText("Close"));
+    expect(screen.queryByLabelText("Close")).not.toBeInTheDocument();
+  });
+
+  it("clicking a planned-only day on the read-only Agenda tab opens a read-only view, with no editable fields", async () => {
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("5km @ RG")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("5km @ RG"));
+
+    await waitFor(() => expect(screen.getByLabelText("Close")).toBeInTheDocument());
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("clicking a day with a recorded activity (no plan) calls onNavigateToActivity with that activity's id", async () => {
+    installFetch({ "GET /api/v1/activities": paginated([activity({ id: 42, date_only: "2026-09-02", distance_m: 3000 })]) });
+    const onNavigateToActivity = vi.fn();
+    render(
+      <PlanInstanceCalendar
+        sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop}
+        onNavigateToActivity={onNavigateToActivity}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Recorded activity")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Recorded activity"));
+
+    expect(onNavigateToActivity).toHaveBeenCalledWith(42);
+    expect(screen.queryByLabelText("Close")).not.toBeInTheDocument();
+  });
+
+  it("clicking a day with both a plan and a recorded activity navigates to the activity, not the edit modal", async () => {
+    installFetch({ "GET /api/v1/activities": paginated([activity({ id: 7, date_only: "2026-09-01", distance_m: 8000 })]) });
+    const onDayEdit = vi.fn();
+    const onNavigateToActivity = vi.fn();
+    render(
+      <PlanInstanceCalendar
+        sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop}
+        onDayEdit={onDayEdit} onNavigateToActivity={onNavigateToActivity}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("5km @ RG")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("5km @ RG"));
+
+    expect(onNavigateToActivity).toHaveBeenCalledWith(7);
+    expect(onDayEdit).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText("Close")).not.toBeInTheDocument();
   });
 });

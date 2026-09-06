@@ -34,9 +34,12 @@ function noop() {}
 
 interface Props {
   onNavigateToPlans: () => void;
+  // HRA-265: threaded from App.tsx — see PlanInstanceCalendar.tsx's own prop
+  // of the same name.
+  onNavigateToActivity: (activityId: number) => void;
 }
 
-export function AgendaTab({ onNavigateToPlans }: Props) {
+export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const { t } = useTranslation();
   const date = isoToday();
   const { state } = useQuery(() => api.planInstances.active(date), [date]);
@@ -90,6 +93,7 @@ export function AgendaTab({ onNavigateToPlans }: Props) {
         onScheduledTimeEdit={noop}
         onDaySwap={noop}
         initialDate={new Date()}
+        onNavigateToActivity={onNavigateToActivity}
       />
     </>
   );
