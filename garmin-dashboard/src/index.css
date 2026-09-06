@@ -2252,6 +2252,12 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   margin: 0 auto;
   padding: 24px 24px 48px;
 }
+/* HRA-268: phone tier (same <768px cutoff App.tsx's ViewportTier uses for
+   the sidebar) — the fixed 24px side gutter eats a disproportionate share
+   of a 375px screen, so it scales down here. */
+@media (max-width: 767px) {
+  .hra-app-main { padding: 16px 12px 32px; }
+}
 .hra-app-main > .hra-section-title:first-child { margin-top: 0; }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }
