@@ -752,6 +752,29 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   justify-content: flex-start;
 }
 
+/* ── Week view row-based day card (HRA-264) ─────────────────────────────────
+   Replaces the gauge-ring `.hra-agenda-event-card` treatment above, for Week
+   view only — Month's own card/gauge CSS above is untouched, since this
+   class only ever renders from WeekRowCard (PlanInstanceCalendar.tsx), which
+   only mounts when `view === "week"`. Up to 4 stacked rows; none of them (or
+   their own children) use a fixed pixel width — `overflow-wrap: anywhere`
+   plus the parent `.rbc-event`'s own fluid, in-flow width (see the Week
+   view time-grid card block above) is what lets a narrow (mobile) column
+   wrap/stack instead of overflowing, per frontend.md's token/Tailwind
+   rules. */
+.hra-agenda-rowcard {
+  display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;
+  width: 100%; padding: 4px 6px 5px; border-radius: var(--radius-sm); border: 1px solid transparent;
+}
+.hra-agenda-rowcard-row1 {
+  font-size: var(--text-meta); font-weight: 500; color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.hra-agenda-rowcard-row2 { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.hra-agenda-rowcard-dsl { display: flex; flex-direction: column; gap: 1px; }
+.hra-agenda-rowcard-dsl-line { font-size: var(--text-meta); color: var(--text-secondary); overflow-wrap: anywhere; }
+.hra-agenda-rowcard-row4 { font-size: var(--text-meta); color: var(--text-secondary); overflow-wrap: anywhere; }
+
 /* ── Week view drag-and-drop (HRA-190) ──────────────────────────────────────
    Hand-copied from the vendor's own dragAndDrop addon stylesheet rather than
    imported directly — see PlanInstanceCalendar.tsx's own import comment for

@@ -66,7 +66,10 @@ describe("AgendaTab — no active plan", () => {
     // all today" copy must NOT show, since today isn't actually empty.
     await screen.findByText("There is no active plan today.");
     expect(screen.queryByText("Run free. Or rest. Be happy.")).not.toBeInTheDocument();
-    expect(await screen.findByText("Recorded activity")).toBeInTheDocument();
+    // AgendaTab's calendar defaults to Week view — HRA-264's row card shows
+    // an actual-only day's own activity type here ("running"), not Month's
+    // "Recorded activity" compact-row text (see PlanInstanceCalendar.test.tsx).
+    expect(await screen.findByText("running")).toBeInTheDocument();
   });
 });
 

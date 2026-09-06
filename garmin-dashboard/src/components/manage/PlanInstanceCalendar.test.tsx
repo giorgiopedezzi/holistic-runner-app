@@ -87,12 +87,69 @@ describe("PlanInstanceCalendar — actual-workout indicators (HRA-262)", () => {
     expect(screen.queryByTitle(/Recorded activity/)).not.toBeInTheDocument();
   });
 
-  it("also shows the actual-only indicator in Week view (same DayCellEvent renderer)", async () => {
+  // HRA-264: Week view now renders its own row-based card (WeekRowCard),
+  // not Month's compact "Recorded activity" row — an actual-only day's Row 1
+  // shows the activity's own type instead (this Story's proposed default for
+  // its own flagged Risk: "what row 1 shows with no plan at all").
+  it("shows the activity's own type as Row 1 for an actual-only day in Week view (HRA-264)", async () => {
     window.history.replaceState({}, "", "/?planCalendarView=week");
     installFetch({ "GET /api/v1/activities": paginated([activity({ date_only: "2026-09-02", distance_m: 3000 })]) });
     render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
 
-    await waitFor(() => expect(screen.getByText("Recorded activity")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText("running")).toBeInTheDocument());
+    expect(screen.queryByText("Recorded activity")).not.toBeInTheDocument();
     window.history.replaceState({}, "", "/?planCalendarView=month");
+  });
+});
+
+// HRA-264: Week view's row-based day card — Month view is untouched (still
+// covered by every test above, all of which force month via the file's own
+// beforeAll). Each test here switches to Week view explicitly and restores
+// month afterwards, same pattern the last test above already established.
+describe("PlanInstanceCalendar — Week view row card (HRA-264)", () => {
+  afterEach(() => window.history.replaceState({}, "", "/?planCalendarView=month"));
+
+  it("a day with a plan and no actual: category label + DSL text + plan icon, no runner glyph or metrics row", async () => {
+    window.history.replaceState({}, "", "/?planCalendarView=week");
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("Easy/Recovery")).toBeInTheDocument());
+    expect(screen.getByText("5km @ RG")).toBeInTheDocument();
+    expect(screen.queryByTitle(/Recorded activity/)).not.toBeInTheDocument();
+  });
+
+  it("a day with an actual and no plan: activity's own type + distance/pace/HR, no DSL or plan icon", async () => {
+    window.history.replaceState({}, "", "/?planCalendarView=week");
+    installFetch({
+      "GET /api/v1/activities": paginated([activity({ date_only: "2026-09-02", distance_m: 3000, avg_pace_minkm: 5, avg_hr: 150 })]),
+    });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("running")).toBeInTheDocument());
+    expect(screen.getByText("3.0 km · 5:00 min/km · 150 bpm")).toBeInTheDocument();
+  });
+
+  it("a day with both a plan and an actual: plan icon, runner glyph, DSL, and metrics row all present", async () => {
+    window.history.replaceState({}, "", "/?planCalendarView=week");
+    installFetch({
+      "GET /api/v1/activities": paginated([activity({ date_only: "2026-09-01", distance_m: 5200, avg_pace_minkm: 5.1, avg_hr: 148 })]),
+    });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("5km @ RG")).toBeInTheDocument());
+    expect(screen.getByTitle("Recorded activity: 5.2 km")).toBeInTheDocument();
+    expect(screen.getByText("5.2 km · 5:06 min/km · 148 bpm")).toBeInTheDocument();
+  });
+
+  it("a day's own note takes Row 1 precedence over its training-load category label", async () => {
+    window.history.replaceState({}, "", "/?planCalendarView=week");
+    const withNote = sections();
+    withNote[0].weeks[0].days[0].notes = "Feeling great today";
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    render(<PlanInstanceCalendar sections={withNote} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("Feeling great today")).toBeInTheDocument());
+    expect(screen.queryByText("Easy/Recovery")).not.toBeInTheDocument();
   });
 });

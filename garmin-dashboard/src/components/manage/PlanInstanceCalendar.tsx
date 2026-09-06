@@ -50,9 +50,10 @@ import {
 import { DAY_PREFIX_RE, useDragSwap } from "@/components/TrainingPlanAccordion";
 import { speedRampColor } from "@/components/activity/shared";
 import { fmtElapsedClock } from "@/domain/activity-chart";
+import { fmtBpm, fmtPace } from "@/utils/fmt";
 import type { SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
 import type { WorkoutType } from "@/types/runplan";
-import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, speedUnitLabel } from "@/utils/units";
+import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, paceUnitLabel, speedUnitLabel } from "@/utils/units";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 import {
   CATEGORY_CARD_CLASS, CATEGORY_CRITERIA_KEYS, CATEGORY_ICONS, CATEGORY_LABEL_KEYS, CATEGORY_ORDER,
@@ -131,6 +132,10 @@ interface CalendarEvent {
   // actualOnlyEventsFromActivities below. Every other (plan-derived) field
   // above is meaningless/absent on such an entry.
   isActualOnly?: boolean;
+  // HRA-264: the day's own free-text note (DayView.notes) — Week view's row
+  // card shows this as its Row 1 label when present, ahead of the
+  // training-load category fallback every other event type uses.
+  notes?: string;
 }
 
 function parseLocalDate(dateISO: string): Date {
@@ -239,7 +244,7 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
         events.push({
           title, start, end, allDay: !timed, workoutType: day.workout_type,
           trainingLoadCategory: day.trainingLoadCategory, needsReview: day.needs_review, metrics: day.metrics,
-          dayId: day.id, scheduledTime: day.scheduled_time,
+          dayId: day.id, scheduledTime: day.scheduled_time, notes: day.notes,
         });
       }
     }
@@ -354,7 +359,16 @@ function ActualActivityBadge({ activity }: { activity: Activity | undefined }) {
   );
 }
 
-function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, activitiesByDateKey }: {
+// HRA-264: factored out of DayCellEvent's own inline object literal so
+// WeekRowCard's dragProps prop can be typed as `ReturnType<typeof
+// dayCardDragProps>` (the precise inferred shape) rather than a hand-rolled
+// approximation — Month's own JSX spread below is unchanged, just reads from
+// this shared helper now instead of constructing the literal itself.
+function dayCardDragProps<THandlers extends object>(drag: { handlers: THandlers; swappable: boolean }) {
+  return { ...drag.handlers, style: drag.swappable ? { cursor: "grab" as const } : undefined };
+}
+
+function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, weekView, activitiesByDateKey }: {
   event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean; onDaySwap?: (a: number, b: number) => void;
   // HRA-190: true in Week view, where DnDCalendar's own EventWrapper owns
   // pointer-drag detection for this event's DOM node. Native draggable=true
@@ -362,14 +376,28 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, a
   // browser-native drag suspends the mousemove events the addon tracks — so
   // this card must render with no native drag handlers at all while it's on.
   dragViaAddon?: boolean;
+  // HRA-264: true only in Week view — switches this cell to the row-based
+  // card below (WeekRowCard) instead of every branch beneath it, which stays
+  // Month-only (view "visually unchanged" per this Story's own AC).
+  weekView?: boolean;
   // HRA-262: date_only-keyed recorded-activity lookup, shared by every cell
   // in this calendar instance — see PlanInstanceCalendar's own activitiesByDateKey.
   activitiesByDateKey: Map<string, Activity>;
 }) {
   const { t } = useTranslation();
   const drag = useDragSwap(event.dayId, readOnlyDays || dragViaAddon ? undefined : onDaySwap);
-  const dragProps = { ...drag.handlers, style: drag.swappable ? { cursor: "grab" as const } : undefined };
+  const dragProps = dayCardDragProps(drag);
   const matchedActivity = activitiesByDateKey.get(toDateKey(event.start));
+
+  if (weekView) {
+    return (
+      <WeekRowCard
+        event={event} matchedActivity={matchedActivity}
+        dragProps={event.isActualOnly ? undefined : dragProps}
+        isDragOver={drag.isDragOver}
+      />
+    );
+  }
 
   // HRA-262: a synthetic entry standing in for a recorded activity with no
   // plan day at all on this date — none of the plan-derived branches below
@@ -493,6 +521,102 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, a
             </span>
           )}
         </span>
+      )}
+    </span>
+  );
+}
+
+// HRA-264: Week view's row-based day card — replaces the gauge-ring branches
+// above (Month only, unchanged) with up to 4 stacked rows surfacing planned
+// vs. actual side by side; every event type funnels through here in Week
+// view (isActualOnly/todo/other/rest included), each simply showing fewer of
+// the 4 rows rather than DayCellEvent's own separate per-type Month branches.
+// Row 1: the day's note if present, else its training-load category label
+// (todo/other keep their own dedicated non-category label, same as Month).
+// Row 2: the category icon (only for a real workout — run/cross/strength,
+// via isTimedWorkoutType, same "nothing to schedule" gate Month/the date-
+// header chip already use) on the left, ActualActivityBadge's runner glyph
+// on the right (only when a recorded activity matched this date).
+// Row 3: the DSL text, only for a real workout — reuses splitDslSegments'
+// existing per-segment line breakdown. A trailing "# note" segment is
+// stripped when Row 1 already shows that note, so it isn't shown twice —
+// mirrors TrainingPlanAccordion.tsx's InstanceDayRow, which strips the same
+// trailing note from its own DSL display for the identical reason (its own
+// Notes input already shows it).
+// Row 4: distance / avg pace / avg heart rate from the matched Activity,
+// only when one is matched — values are self-explanatory via their own unit
+// suffixes, so no separate label needed (same convention AgendaToolbar's own
+// summary line already uses).
+function WeekRowCard({ event, matchedActivity, dragProps, isDragOver }: {
+  event: CalendarEvent;
+  matchedActivity: Activity | undefined;
+  // Undefined for an isActualOnly card — no dayId, nothing to drag/swap.
+  dragProps?: ReturnType<typeof dayCardDragProps>;
+  isDragOver: boolean;
+}) {
+  const { t } = useTranslation();
+  const hasPlan = !event.isActualOnly;
+  const isRealWorkout = hasPlan && isTimedWorkoutType(event.workoutType);
+  const hasActual = matchedActivity != null;
+
+  let categoryLabel = "";
+  if (event.trainingLoadCategory) {
+    const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory];
+    categoryLabel = t(key, fallback);
+  }
+  const cardClass = hasPlan && event.trainingLoadCategory ? (CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? "") : "";
+
+  let rowOneLabel: string;
+  if (!hasPlan) {
+    // HRA-262's own synthetic title for an actual-only entry: activity.sport
+    // ?? "Activity" — proposed default for "what row 1 shows with no plan at
+    // all" (the Story's own flagged Risk; no explicit override was given).
+    rowOneLabel = event.title;
+  } else if (event.notes) {
+    rowOneLabel = event.notes;
+  } else if (event.workoutType === "todo") {
+    const [key, fallback] = TODO_LABEL_KEY;
+    rowOneLabel = t(key, fallback);
+  } else if (event.workoutType === "other") {
+    const [key, fallback] = OTHER_LABEL_KEY;
+    rowOneLabel = t(key, fallback);
+  } else {
+    rowOneLabel = categoryLabel;
+  }
+
+  const PlanIcon = isRealWorkout && event.trainingLoadCategory ? CATEGORY_ICONS[event.trainingLoadCategory] : null;
+  const dslLines = isRealWorkout
+    ? splitDslSegments(event.title).filter(line => !(event.notes && line.startsWith("#")))
+    : [];
+
+  const metricParts: string[] = [];
+  if (matchedActivity?.distance_m != null) metricParts.push(formatDistanceM(matchedActivity.distance_m));
+  if (matchedActivity?.avg_pace_minkm != null) metricParts.push(`${fmtPace(matchedActivity.avg_pace_minkm)} ${paceUnitLabel()}`);
+  if (matchedActivity?.avg_hr != null) metricParts.push(fmtBpm(matchedActivity.avg_hr));
+
+  return (
+    <span
+      className={`hra-agenda-rowcard ${cardClass}${isDragOver ? " hra-swap-drop-target" : ""}`}
+      {...dragProps}
+    >
+      <span className="hra-agenda-rowcard-row1">{rowOneLabel}</span>
+      {(PlanIcon || hasActual) && (
+        <span className="hra-agenda-rowcard-row2">
+          {PlanIcon ? (
+            <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+              <PlanIcon size={13} />
+            </span>
+          ) : <span />}
+          <ActualActivityBadge activity={matchedActivity} />
+        </span>
+      )}
+      {dslLines.length > 0 && (
+        <span className="hra-agenda-rowcard-dsl">
+          {dslLines.map((line, i) => <span key={i} className="hra-agenda-rowcard-dsl-line">{line}</span>)}
+        </span>
+      )}
+      {metricParts.length > 0 && (
+        <span className="hra-agenda-rowcard-row4">{metricParts.join(" · ")}</span>
       )}
     </span>
   );
@@ -855,7 +979,7 @@ export function PlanInstanceCalendar({ sections, readOnlyDays, onScheduledTimeEd
     () => (props: { event: CalendarEvent }) => (
       <DayCellEvent
         {...props} scaling={scaling} readOnlyDays={readOnlyDays} onDaySwap={onDaySwap} dragViaAddon={view === "week"}
-        activitiesByDateKey={activitiesByDateKey}
+        weekView={view === "week"} activitiesByDateKey={activitiesByDateKey}
       />
     ),
     [scaling, readOnlyDays, onDaySwap, view, activitiesByDateKey],
