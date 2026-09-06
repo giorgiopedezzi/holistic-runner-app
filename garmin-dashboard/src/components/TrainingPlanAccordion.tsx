@@ -461,7 +461,10 @@ function IntervalFields({ presentation, unknownTooltip, edit, onNavigateToDsl, t
 }) {
   return (
     <div className="hra-border-strong rounded-md p-2 flex flex-col gap-2" role="group" aria-label={t("runplan.accordion.intervalGroupLabel", "Interval")}>
-      <div className="flex gap-4">
+      {/* HRA-269: flex-wrap — 3 fields (Repetitions/Distance-Duration/Pace)
+          side by side don't fit a 375px-wide accordion panel; wrapping lets
+          them stack to 2 lines instead of overflowing horizontally. */}
+      <div className="flex flex-wrap gap-4">
         <div className="flex flex-col">
           <span className="hra-text-secondary text-label">{t("runplan.accordion.repetitionsLabel", "Repetitions")}</span>
           {edit ? (
@@ -538,7 +541,11 @@ function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabe
   onExportFit?: () => void; exportFitLabel?: string; t: Translate;
 }) {
   return (
-    <div className="flex items-center justify-between flex-1 gap-2.5 min-w-0">
+    // HRA-269: flex-wrap so a long compactTotals summary (right side, shrink-0)
+    // drops to its own row on a phone-width screen instead of squeezing the
+    // ellipsis-truncated label (left side) down to a sliver — at 375px the two
+    // together routinely don't fit on one line.
+    <div className="flex items-center justify-between flex-1 flex-wrap gap-2.5 min-w-0">
       <span className="overflow-hidden text-ellipsis whitespace-nowrap">{label}</span>
       <span className="hra-text-secondary flex items-center gap-2 text-meta font-normal shrink-0" >
         {onExportFit && (

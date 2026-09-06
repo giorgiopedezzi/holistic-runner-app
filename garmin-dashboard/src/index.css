@@ -502,12 +502,16 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 .hra-agenda-calendar .rbc-today { background-color: transparent; }
 
 /* Custom toolbar (replaces react-big-calendar's own via `components.toolbar`) */
-.hra-agenda-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 2px 14px; }
+/* HRA-269: flex-wrap so the title/summary block and the Month/Week+nav
+   controls stack onto their own rows instead of squeezing/overlapping each
+   other at phone widths (375px) — same reasoning as TitleRow's own wrap
+   fix in TrainingPlanAccordion.tsx. */
+.hra-agenda-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 2px 2px 14px; }
 .hra-agenda-title { font-size: var(--text-heading); font-weight: var(--text-heading--font-weight); margin: 0 0 3px; color: var(--text-primary); }
-.hra-agenda-summary { font-size: var(--text-meta); color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 6px; }
+.hra-agenda-summary { font-size: var(--text-meta); color: var(--text-secondary); margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .hra-agenda-summary .val { font-family: var(--font-mono); color: var(--text-primary); font-weight: 500; }
 .hra-agenda-summary .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); flex: none; }
-.hra-agenda-controls { display: flex; align-items: center; gap: 10px; }
+.hra-agenda-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .hra-agenda-nav { display: flex; align-items: center; gap: 4px; }
 /* The calendar vendor stylesheet can win the color cascade for nested
    toolbar buttons. Pin the navigation icon stroke to the app foreground. */
