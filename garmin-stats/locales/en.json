@@ -553,6 +553,7 @@
   "manage.planInstances.viewList": "List",
   "manage.planInstances.viewAgenda": "Agenda",
   "manage.planInstances.calendarToday": "Today",
+  "manage.planInstances.calendarWeekLabel": "Week {{week}}",
   "manage.planInstances.calendarPrevious": "Previous",
   "manage.planInstances.calendarNext": "Next",
   "manage.planInstances.calendarMonth": "Month",

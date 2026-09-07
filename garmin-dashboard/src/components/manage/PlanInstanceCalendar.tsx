@@ -45,6 +45,7 @@ import "shadcn-big-calendar/styles";
 // locally" pattern every other rbc-* override in that file already follows.
 import {
   format, parse, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getDay, addWeeks, addMonths, eachDayOfInterval,
+  getWeek,
 } from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
@@ -797,11 +798,18 @@ export function CategoryLegend() {
 // title + accordion-equivalent summary line, chevron nav, Month/Week toggle
 // now actually switches `view` (was visually present but inert until this
 // Story).
-function AgendaToolbar({ label, onNavigate, summary, view, onView }: {
+function AgendaToolbar({ label, onNavigate, summary, view, onView, date }: {
   label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void; summary: AgendaSummary;
-  view: CalendarView; onView: (view: CalendarView) => void;
+  view: CalendarView; onView: (view: CalendarView) => void; date: Date;
 }) {
   const { t } = useTranslation();
+  // HRA-agenda-nav-label: the nav button used to always read "Today" — a
+  // static label that made no sense once you'd navigated away from the
+  // current period, since it no longer told you what you were looking at.
+  // Show the period itself instead (short month name, or "Week N").
+  const periodLabel = view === "week"
+    ? t("manage.planInstances.calendarWeekLabel", `Week ${getWeek(date)}`, { week: getWeek(date) })
+    : format(date, "MMM");
   return (
     <div className="hra-agenda-toolbar">
       <div>
@@ -829,8 +837,11 @@ function AgendaToolbar({ label, onNavigate, summary, view, onView }: {
           <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("PREV")} aria-label={t("manage.planInstances.calendarPrevious", "Previous")}>
             <ChevronLeft size={15} />
           </button>
-          <button type="button" className="hra-btn" data-variant="outline" onClick={() => onNavigate("TODAY")}>
-            {t("manage.planInstances.calendarToday", "Today")}
+          <button
+            type="button" className="hra-btn" data-variant="outline" onClick={() => onNavigate("TODAY")}
+            aria-label={t("manage.planInstances.calendarToday", "Today")}
+          >
+            {periodLabel}
           </button>
           <button type="button" className="hra-icon-button hra-btn" data-variant="outline" onClick={() => onNavigate("NEXT")} aria-label={t("manage.planInstances.calendarNext", "Next")}>
             <ChevronRight size={15} />
@@ -1197,9 +1208,9 @@ export function PlanInstanceCalendar({
   );
   const ToolbarComponent = useMemo(
     () => (props: { label: ReactNode; onNavigate: (action: "PREV" | "NEXT" | "TODAY") => void }) => (
-      <AgendaToolbar {...props} summary={summary} view={view} onView={setView} />
+      <AgendaToolbar {...props} summary={summary} view={view} onView={setView} date={date} />
     ),
-    [summary, view],
+    [summary, view, date],
   );
   // Fix (follow-up to HRA-165): DateHeaderComponent used to be re-memoized
   // whenever eventsByDateKey/onScheduledTimeEdit changed — which is EVERY
@@ -1323,7 +1334,7 @@ export function PlanInstanceCalendar({
     return (
       <div className="hra-agenda-ribbon-root">
         <AgendaToolbar
-          label={ribbonLabel} onNavigate={navigateRibbon} summary={summary} view={view} onView={setView}
+          label={ribbonLabel} onNavigate={navigateRibbon} summary={summary} view={view} onView={setView} date={date}
         />
         <AgendaDayRibbon
           rangeStart={ribbonRange.start}
