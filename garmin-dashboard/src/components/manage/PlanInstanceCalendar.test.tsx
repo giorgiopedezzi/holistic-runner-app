@@ -225,3 +225,101 @@ describe("PlanInstanceCalendar — click-to-open (HRA-265)", () => {
     expect(screen.queryByLabelText("Close")).not.toBeInTheDocument();
   });
 });
+
+// ── Phone tier: the day-by-day ribbon ─────────────────────────────────────
+// The month/week grid is replaced outright below 768px (useIsPhone) by a
+// scrollable one-row-per-day list. Every test here stubs matchMedia to report
+// a phone-width match; the file's own afterEach (vi.unstubAllGlobals) puts it
+// back, so the desktop-grid tests above are unaffected.
+function stubPhoneViewport() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("max-width: 767px"),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
+describe("PlanInstanceCalendar — phone-tier day ribbon", () => {
+  it("renders one row per day of the visible month instead of the calendar grid", async () => {
+    stubPhoneViewport();
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    const { container } = render(
+      <PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Training days")).toBeInTheDocument());
+    // The grid itself is gone, not merely restyled.
+    expect(container.querySelector(".hra-agenda-calendar")).not.toBeInTheDocument();
+    // September 2026 — every day, including the ones the plan says nothing
+    // about, so the scroll keeps a continuous date rhythm.
+    expect(container.querySelectorAll(".hra-agenda-ribbon-day")).toHaveLength(30);
+  });
+
+  it("shows a planned day as raw text: its category label and one line per DSL segment", async () => {
+    stubPhoneViewport();
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("Easy/Recovery")).toBeInTheDocument());
+    expect(screen.getByText("5km @ RG")).toBeInTheDocument();
+    // The rest day reads as its category label and carries no DSL at all.
+    expect(screen.getByText("Rest")).toBeInTheDocument();
+  });
+
+  it("shows what was actually recorded under what was planned", async () => {
+    stubPhoneViewport();
+    installFetch({
+      "GET /api/v1/activities": paginated([activity({ date_only: "2026-09-01", distance_m: 5200, avg_pace_minkm: 5.1, avg_hr: 148 })]),
+    });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+
+    await waitFor(() => expect(screen.getByText("5.2 km · 5:06 min/km · 148 bpm")).toBeInTheDocument());
+  });
+
+  it("marks today's row, so the list can open on the day the runner actually asked about", async () => {
+    stubPhoneViewport();
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    const { container } = render(
+      <PlanInstanceCalendar
+        sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} initialDate={new Date()}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByLabelText("Training days")).toBeInTheDocument());
+    expect(container.querySelectorAll('.hra-agenda-ribbon-day[data-today="true"]')).toHaveLength(1);
+  });
+
+  it("tapping a day with a recorded activity opens that activity, same as a grid cell click", async () => {
+    stubPhoneViewport();
+    installFetch({ "GET /api/v1/activities": paginated([activity({ id: 42, date_only: "2026-09-02", distance_m: 3000 })]) });
+    const onNavigateToActivity = vi.fn();
+    render(
+      <PlanInstanceCalendar
+        sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop}
+        onNavigateToActivity={onNavigateToActivity}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("Recorded activity")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Recorded activity"));
+    expect(onNavigateToActivity).toHaveBeenCalledWith(42);
+  });
+
+  it("keeps the Month/Week toggle and the Today action working without the vendor toolbar", async () => {
+    stubPhoneViewport();
+    installFetch({ "GET /api/v1/activities": paginated([]) });
+    const { container } = render(
+      <PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />,
+    );
+
+    await waitFor(() => expect(screen.getByText("September 2026")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    await waitFor(() => expect(container.querySelectorAll(".hra-agenda-ribbon-day")).toHaveLength(7));
+    window.history.replaceState({}, "", "/?planCalendarView=month");
+  });
+});

@@ -707,5 +707,6 @@
   "agenda.emptyLine1": "Nessun piano attivo oggi.",
   "agenda.emptyLine2": "Corri libero. Oppure riposa. Sii felice.",
   "agenda.viewPlans": "Vedi i piani gara",
-  "agenda.instanceLabel": "Il piano di oggi: {{name}}"
+  "agenda.instanceLabel": "Il piano di oggi: {{name}}",
+  "manage.planInstances.ribbonLabel": "Giorni di allenamento"
 }

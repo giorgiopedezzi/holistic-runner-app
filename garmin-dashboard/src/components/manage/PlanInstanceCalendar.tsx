@@ -24,8 +24,9 @@
  * cross AND strength both fold into the single Cross training category, per
  * HRA-147's own design) and adds the in-app criteria-reference popover.
  */
-import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useUrlState } from "@/hooks/useUrlState";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { useQuery } from "@/hooks/useQuery";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
@@ -42,7 +43,9 @@ import "shadcn-big-calendar/styles";
 // dimming siblings mid-drag) are hand-copied into index.css's own
 // .hra-agenda-calendar block instead, the same "vendor visuals, scoped
 // locally" pattern every other rbc-* override in that file already follows.
-import { format, parse, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getDay } from "date-fns";
+import {
+  format, parse, startOfWeek, endOfWeek, startOfMonth, endOfMonth, getDay, addWeeks, addMonths, eachDayOfInterval,
+} from "date-fns";
 import { enUS } from "date-fns/locale";
 import {
   AlertTriangle, ChevronLeft, ChevronRight, CircleHelp, Clock3, Footprints, Gauge, Info, Route,
@@ -839,6 +842,183 @@ function AgendaToolbar({ label, onNavigate, summary, view, onView }: {
   );
 }
 
+// ── Phone tier: the day-by-day ribbon ─────────────────────────────────────
+// A seven-column grid cannot survive 375px — each day cell gets ~45px, which
+// is narrower than a single DSL segment ("10x1000m @ RG"), so every cell
+// truncates to nothing and the calendar degrades into coloured swatches with
+// no information left in them. The phone view is therefore not a smaller
+// calendar: it's the same events in a different presentation — a scrollable
+// log, one row per day, read top to bottom the way a paper training log is.
+//
+// Text over boxes, deliberately. The DSL already IS the sport's own
+// shorthand, so it wants to be read as text, not decoded out of a card; at
+// this width a card's padding and border cost more than they carry. The only
+// colour is a short tick in the date margin holding the day's training-load
+// category, which keeps the plan's hard/easy rhythm visible while scrolling
+// without spending a box on it.
+//
+// Same events, same click behaviour, same scheduled-time editor as the grid —
+// nothing here is a second source of truth.
+function RibbonDay({ date, event, activity, readOnlyDays, onScheduledTimeEdit, onSelect, todayRef }: {
+  date: Date;
+  event: CalendarEvent | undefined;
+  activity: Activity | undefined;
+  readOnlyDays: boolean;
+  onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
+  onSelect: (event: CalendarEvent) => void;
+  // Set on today's row only, so the list can open scrolled to it.
+  todayRef?: React.Ref<HTMLLIElement>;
+}) {
+  const { t } = useTranslation();
+  const isToday = isSameCalendarDay(date, new Date());
+  const hasPlan = event != null && !event.isActualOnly;
+  const isRealWorkout = hasPlan && isTimedWorkoutType(event.workoutType);
+
+  let categoryLabel = "";
+  if (event?.trainingLoadCategory) {
+    const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory];
+    categoryLabel = t(key, fallback);
+  }
+
+  // Same label precedence Week view's own row card uses (WeekRowCard above):
+  // the day's note first when it has one, then its dedicated todo/other
+  // label, then the training-load category.
+  let label = "";
+  if (event == null) label = "";
+  else if (!hasPlan) label = t("manage.planInstances.actualActivityOnlyLabel", "Recorded activity");
+  else if (event.notes) label = event.notes;
+  else if (event.workoutType === "todo") label = t(TODO_LABEL_KEY[0], TODO_LABEL_KEY[1]);
+  else if (event.workoutType === "other") label = t(OTHER_LABEL_KEY[0], OTHER_LABEL_KEY[1]);
+  else label = categoryLabel;
+
+  const Icon = hasPlan && event.trainingLoadCategory ? CATEGORY_ICONS[event.trainingLoadCategory] : null;
+  // A trailing "# note" is dropped when the label above is already that note
+  // — same double-display fix WeekRowCard and InstanceDayRow both apply.
+  const dslLines = isRealWorkout
+    ? splitDslSegments(event.title).filter(line => !(event.notes && line.startsWith("#")))
+    : [];
+
+  const metricParts: string[] = [];
+  if (activity?.distance_m != null) metricParts.push(formatDistanceM(activity.distance_m));
+  if (activity?.avg_pace_minkm != null) metricParts.push(`${fmtPace(activity.avg_pace_minkm)} ${paceUnitLabel()}`);
+  if (activity?.avg_hr != null) metricParts.push(fmtBpm(activity.avg_hr));
+
+  const showsTime = dayHasScheduledWorkout(event);
+  const scheduledTime = event?.scheduledTime ?? "08:00";
+  // Empty day: still rendered, so the scroll keeps a continuous date rhythm
+  // and a gap in the plan reads as a gap rather than as a missing row.
+  const body = event == null ? (
+    <span className="hra-agenda-ribbon-empty" aria-hidden="true">—</span>
+  ) : (
+    <>
+      <span className="hra-agenda-ribbon-label">
+        {Icon && (
+          <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+            <Icon size={13} />
+          </span>
+        )}
+        <span className="hra-agenda-ribbon-label-text">{label}</span>
+        {event.needsReview && (
+          <span title={t("manage.planInstances.needsReviewTooltip", "Needs review")} className="hra-text-warning inline-flex items-center shrink-0">
+            <AlertTriangle size={12} />
+          </span>
+        )}
+      </span>
+      {dslLines.length > 0 && (
+        <span className="hra-agenda-ribbon-dsl">
+          {dslLines.map((line, i) => <span key={i} className="hra-agenda-ribbon-dsl-line">{line}</span>)}
+        </span>
+      )}
+      {metricParts.length > 0 && (
+        <span className="hra-agenda-ribbon-actual">
+          <Footprints size={12} />
+          {metricParts.join(" · ")}
+        </span>
+      )}
+    </>
+  );
+
+  return (
+    <li
+      ref={todayRef}
+      className={`hra-agenda-ribbon-day ${hasPlan && event.trainingLoadCategory ? CATEGORY_CARD_CLASS[event.trainingLoadCategory] ?? "" : ""}`}
+      data-today={isToday}
+      data-planned={isRealWorkout}
+    >
+      <span className="hra-agenda-ribbon-date">
+        <span className="hra-agenda-ribbon-dow">{format(date, "EEE")}</span>
+        <span className="hra-agenda-ribbon-num">{format(date, "d")}</span>
+      </span>
+      {/* The whole day is one tap target when there's something to open —
+          handleSelectEvent decides between the recorded activity and the plan
+          day, exactly as it does for a grid cell click. A day with neither
+          renders the same layout as a plain, non-interactive element rather
+          than a dead button. */}
+      {event != null ? (
+        <button type="button" className="hra-agenda-ribbon-body" onClick={() => onSelect(event)}>
+          {body}
+        </button>
+      ) : (
+        <span className="hra-agenda-ribbon-body">{body}</span>
+      )}
+      {/* A sibling of the tap target, never nested inside it — a popover
+          trigger inside a button is invalid, and phone width is exactly
+          where an accidental double-activation is easiest to trigger. */}
+      <span className="hra-agenda-ribbon-time">
+        {showsTime && (
+          readOnlyDays || event?.dayId == null
+            ? <span className="hra-agenda-date-time-chip">{scheduledTime}</span>
+            : <AgendaScheduledTimeEditor dayId={event.dayId} scheduledTime={scheduledTime} onScheduledTimeEdit={onScheduledTimeEdit} />
+        )}
+      </span>
+    </li>
+  );
+}
+
+function AgendaDayRibbon({ rangeStart, rangeEnd, eventsByDateKey, activitiesByDateKey, readOnlyDays, onScheduledTimeEdit, onSelect }: {
+  rangeStart: Date;
+  rangeEnd: Date;
+  eventsByDateKey: Map<string, CalendarEvent>;
+  activitiesByDateKey: Map<string, Activity>;
+  readOnlyDays: boolean;
+  onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
+  onSelect: (event: CalendarEvent) => void;
+}) {
+  const { t } = useTranslation();
+  const days = useMemo(() => eachDayOfInterval({ start: rangeStart, end: rangeEnd }), [rangeStart, rangeEnd]);
+  const todayKey = toDateKey(new Date());
+
+  // Land on today rather than on the 1st of the month — "what am I running
+  // today" is the question this screen exists to answer, and on a phone the
+  // answer would otherwise be three weeks down the scroll. Page-level scroll
+  // (no nested scroller) so the browser's own chrome still collapses as you
+  // read; `center` keeps the days either side of today visible for context.
+  const todayRowRef = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    todayRowRef.current?.scrollIntoView({ block: "center" });
+  }, [rangeStart, rangeEnd]);
+
+  return (
+    <ol className="hra-agenda-ribbon" aria-label={t("manage.planInstances.ribbonLabel", "Training days")}>
+      {days.map(day => {
+        const key = toDateKey(day);
+        return (
+          <RibbonDay
+            key={key}
+            date={day}
+            event={eventsByDateKey.get(key)}
+            activity={activitiesByDateKey.get(key)}
+            readOnlyDays={readOnlyDays}
+            onScheduledTimeEdit={onScheduledTimeEdit}
+            onSelect={onSelect}
+            todayRef={key === todayKey ? todayRowRef : undefined}
+          />
+        );
+      })}
+    </ol>
+  );
+}
+
 interface Props {
   sections: SectionView[];
   // HRA-151: same "locked once approved" rule every other day-level edit in
@@ -1100,6 +1280,64 @@ export function PlanInstanceCalendar({
     // Otherwise: an empty day (no plan day, no recorded activity) — no-op.
   }
   const editingDay = editingDayId != null ? dayViewsById.get(editingDayId) : undefined;
+  const dayEditModal = editingDay && (
+    <DayEditModal
+      day={editingDay}
+      readOnlyDays={readOnlyDays}
+      onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
+      onClose={() => setEditingDayId(null)}
+    />
+  );
+
+  // Phone tier: the ribbon (see AgendaDayRibbon above) replaces the grid
+  // entirely. It reads the same `view`/`date` state the grid does — including
+  // the URL-backed Month/Week choice — so switching between a phone and a
+  // desktop on the same plan lands on the same window, and the toolbar keeps
+  // working identically. The grid's own toolbar is supplied by
+  // react-big-calendar's `components.toolbar`; here it's rendered directly,
+  // which is why the range label and PREV/NEXT/TODAY are computed below
+  // rather than taken from the vendor.
+  const ribbonRange = useMemo(() => ({
+    start: view === "week" ? startOfWeek(date) : startOfMonth(date),
+    end: view === "week" ? endOfWeek(date) : endOfMonth(date),
+  }), [view, date]);
+  const ribbonLabel = view === "week"
+    ? `${format(ribbonRange.start, "d MMM")} – ${format(ribbonRange.end, "d MMM yyyy")}`
+    : format(date, "MMMM yyyy");
+  function navigateRibbon(action: "PREV" | "NEXT" | "TODAY") {
+    if (action === "TODAY") { setDate(new Date()); return; }
+    const step = action === "PREV" ? -1 : 1;
+    setDate(prev => (view === "week" ? addWeeks(prev, step) : addMonths(prev, step)));
+  }
+  // Plan days plus the synthetic recorded-activity-only entries, keyed by
+  // date — the grid gets the same union as a flat `events` array; the ribbon
+  // looks days up one at a time, so it needs it keyed.
+  const ribbonEventsByDateKey = useMemo(() => {
+    const map = new Map<string, CalendarEvent>();
+    for (const e of calendarEvents) map.set(toDateKey(e.start), e);
+    return map;
+  }, [calendarEvents]);
+
+  const isPhone = useIsPhone();
+  if (isPhone) {
+    return (
+      <div className="hra-agenda-ribbon-root">
+        <AgendaToolbar
+          label={ribbonLabel} onNavigate={navigateRibbon} summary={summary} view={view} onView={setView}
+        />
+        <AgendaDayRibbon
+          rangeStart={ribbonRange.start}
+          rangeEnd={ribbonRange.end}
+          eventsByDateKey={ribbonEventsByDateKey}
+          activitiesByDateKey={activitiesByDateKey}
+          readOnlyDays={readOnlyDays}
+          onScheduledTimeEdit={onScheduledTimeEdit}
+          onSelect={handleSelectEvent}
+        />
+        {dayEditModal}
+      </div>
+    );
+  }
 
   const calendarProps = {
     onSelectEvent: handleSelectEvent,
@@ -1133,14 +1371,7 @@ export function PlanInstanceCalendar({
       ) : (
         <ShadcnBigCalendar {...calendarProps} />
       )}
-      {editingDay && (
-        <DayEditModal
-          day={editingDay}
-          readOnlyDays={readOnlyDays}
-          onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
-          onClose={() => setEditingDayId(null)}
-        />
-      )}
+      {dayEditModal}
     </div>
   );
 }

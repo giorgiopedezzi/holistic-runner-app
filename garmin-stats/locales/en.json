@@ -707,5 +707,6 @@
   "agenda.emptyLine1": "There is no active plan today.",
   "agenda.emptyLine2": "Run free. Or rest. Be happy.",
   "agenda.viewPlans": "View race plans",
-  "agenda.instanceLabel": "Today's plan: {{name}}"
+  "agenda.instanceLabel": "Today's plan: {{name}}",
+  "manage.planInstances.ribbonLabel": "Training days"
 }

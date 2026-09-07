@@ -13,6 +13,7 @@ import { RunnerReadout, type RunnerReadoutHandle } from "@/components/activity/R
 import { MainOverlayChart } from "@/components/activity/OverlayCharts";
 import { fmtKm, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel } from "@/utils/units";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { LoadingSpinner, ChartCard, GraphKpiCard, splitUnit } from "@/components/ui";
 
 // HRA-223: the reference training session the splash replays — 2026-08-24,
@@ -54,6 +55,19 @@ function rowColor(row: ChartRow): string {
 // components/activity/shared.ts).
 export function SplashScreen() {
   const { t } = useTranslation();
+  // Mobile: the splash is a statement, not a dashboard. At phone width the
+  // full composition (brand + 5 lines of display copy + a carded chart with
+  // three KPI boxes, a 116px runner row and a 220px two-axis plot) is well
+  // over 800px tall against a ~667px screen, and the layer centers its
+  // overflow — so both ends were clipped off with no way to scroll to them.
+  // The phone branch below keeps the parts that carry the moment (copy,
+  // terrain, runner, live readout) and drops the parts that only work at
+  // desktop width: the card chrome, the KPI boxes (a raw text line instead)
+  // and the chart itself, whose 84px of reserved axis gutters left ~200px of
+  // usable plot at 375px. See index.css's own splash phone block for the
+  // matching layout rules — this flag only decides WHAT renders; how it's
+  // arranged stays in CSS.
+  const isPhone = useIsPhone();
   // sessionStorage, not the backend `settings` table every other persisted
   // preference in this app uses (.claude/rules/frontend.md): this flag is
   // ephemeral, tab-scoped "have I shown this once" state with no reason to
@@ -124,12 +138,19 @@ export function SplashScreen() {
     return () => ro.disconnect();
   }, []);
 
+  // The gutters the runner's x-mapping has to leave clear. On desktop they
+  // are the chart's own reserved axis widths, so the runner stays in lockstep
+  // with the plot underneath it. On phone there is no plot and no axes, so
+  // only the plain margins remain and the run spans the full screen width
+  // instead of leaving 84px of empty gutter either side.
+  const leftInset = isPhone ? MARGIN_LEFT : MARGIN_LEFT + AXIS_WIDTH;
+  const rightInset = isPhone ? MARGIN_RIGHT : MARGIN_RIGHT + RIGHT_AXES_WIDTH;
+
   const terrainXs = useMemo(() => {
     if (plotWidth === 0 || chartData.length === 0) return [];
     const domainMin = chartData[0].x, domainMax = chartData[chartData.length - 1].x;
-    return chartData.map(row =>
-      xToPixel(row.x, domainMin, domainMax, plotWidth, MARGIN_LEFT + AXIS_WIDTH, MARGIN_RIGHT + RIGHT_AXES_WIDTH));
-  }, [plotWidth, chartData]);
+    return chartData.map(row => xToPixel(row.x, domainMin, domainMax, plotWidth, leftInset, rightInset));
+  }, [plotWidth, chartData, leftInset, rightInset]);
 
   const runnerReady = plotWidth !== 0 && chartData.length > 0;
   const runnerIconRef = useRef<RunnerIconHandle>(null);
@@ -156,6 +177,19 @@ export function SplashScreen() {
   const distanceKm = activity ? splitUnit(fmtKm(activity.distance_m)) : null;
   const speedPaceKpi = activity
     ? { value: fmtSpeed(activity.avg_speed_ms), unit: speedUnitLabel(), label: t("activity.metric.speedLabel", "Speed") }
+    : null;
+  // Phone: the same three numbers as one raw, unboxed line above the runner
+  // ("12.3 km · 11.2 km/h · 148 bpm"). Three GraphKpiCards side by side wrap
+  // to two rows at 375px and read as chrome around a screen that has no other
+  // chrome left on it — the numbers are what matter here, not their frames.
+  // Values come from the same formatters the badges use, so the two paths
+  // can't disagree.
+  const summaryLine = distanceKm && speedPaceKpi
+    ? [
+      `${distanceKm.main} ${distanceKm.unit}`,
+      `${speedPaceKpi.value} ${speedPaceKpi.unit}`,
+      ...(activity?.avg_hr != null ? [`${activity.avg_hr} bpm`] : []),
+    ].join(" · ")
     : null;
 
   // Same "light effect" ActivityChartSection's own autoplay drives (see that
@@ -184,8 +218,8 @@ export function SplashScreen() {
   // ActivityChartSection's own playCtxRef uses — so a plotWidth change
   // mid-play (e.g. a window resize) doesn't leave the loop reading stale
   // geometry, and doesn't need to restart the RAF loop to pick it up.
-  const playCtxRef = useRef({ chartData, rowDynamics, plotWidth });
-  useEffect(() => { playCtxRef.current = { chartData, rowDynamics, plotWidth }; });
+  const playCtxRef = useRef({ chartData, rowDynamics, plotWidth, leftInset, rightInset });
+  useEffect(() => { playCtxRef.current = { chartData, rowDynamics, plotWidth, leftInset, rightInset }; });
 
   const rafRef = useRef<number | null>(null);
   const clockRef = useRef(0);
@@ -205,9 +239,9 @@ export function SplashScreen() {
     startedRef.current = true;
 
     function pixelX(x: number): number {
-      const { chartData: data, plotWidth: w } = playCtxRef.current;
+      const { chartData: data, plotWidth: w, leftInset: left, rightInset: right } = playCtxRef.current;
       const domainMin = data[0]?.x ?? 0, domainMax = data[data.length - 1]?.x ?? 0;
-      return xToPixel(x, domainMin, domainMax, w, MARGIN_LEFT + AXIS_WIDTH, MARGIN_RIGHT + RIGHT_AXES_WIDTH);
+      return xToPixel(x, domainMin, domainMax, w, left, right);
     }
     function showRow(row: ChartRow, idx: number, dwelling: boolean) {
       const cx = pixelX(row.x);
@@ -275,6 +309,52 @@ export function SplashScreen() {
 
   if (dismissed) return null;
 
+  // Terrain + glyph + live readout — identical on both tiers, so the runner
+  // animation itself has exactly one implementation; only what surrounds it
+  // (card, KPI boxes, chart, hover overlays) differs below.
+  const runnerStage = (
+    <>
+      <div className="hra-runner-row relative mb-1" style={{ "--runner-row-height": `${RUNNER_ROW_HEIGHT}px` } as CSSProperties}>
+        {runnerReady ? (
+          <>
+            <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
+            <RunnerIcon ref={runnerIconRef} />
+          </>
+        ) : (
+          <LoadingSpinner compact label={t("activity.chart.preparingRunner", "Preparing the runner…")} />
+        )}
+      </div>
+      {/* Non-interactive: no onMouseMove/onMouseLeave handler does
+          anything (no-ops below) — the splash has no hover, no
+          Play/Stop, no metric/axis toggles, only the Skip button. The
+          hover-dim/hover-glow overlay still lights up, but it's driven
+          by the autoplay's own cx (setHoverHighlight in showRow above),
+          the same "light effect" ActivityChartSection's real autoplay
+          drives — not by mouse events here. */}
+      <div ref={plotRef} className="hra-splash-plot relative pointer-events-none">
+        <RunnerReadout ref={runnerReadoutRef} xMode="distance" metrics={SPLASH_METRICS} speedMode="speed" pauseHr={pauseHrAt} />
+        {/* Phone drops the plot entirely (see isPhone above), and with it the
+            two overlays, which only ever existed to light up the chart under
+            the runner — over an axis-less, plot-less column they'd dim
+            nothing. */}
+        {!isPhone && runnerReady && (
+          <MainOverlayChart
+            chartData={chartData} displayTrack={track ?? []} xTicks={xTicks} xMode="distance"
+            speedDomain={speedDomain} speedMode="speed" activeMetrics={["heart_rate"]} effectiveActive={SPLASH_METRICS}
+            rightMargin={rightMargin} plannedOverlay={null}
+            onMouseMove={() => {}} onMouseLeave={() => {}}
+          />
+        )}
+        {!isPhone && (
+          <>
+            <div ref={hoverDimRef} className="hra-chart-hover-dim" data-active="false" />
+            <div ref={hoverGlowRef} className="hra-chart-hover-glow" data-active="false" />
+          </>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className="hra-splash-layer hra-splash-backdrop fixed inset-0 flex flex-col items-center justify-center gap-10 p-6">
       {/* Brand lockup — upper-left, not glued to the corner (direct
@@ -294,52 +374,34 @@ export function SplashScreen() {
         <p className="hra-splash-copy-heart">{t("splash.copy4", "Your heart.")}</p>
         <p className="hra-splash-copy-you">{t("splash.copy5", "You.")}</p>
       </div>
-      <div className="w-full max-w-2xl">
-        <ChartCard
-          subHeader={distanceKm && speedPaceKpi && (
-            <div className="hra-row-wrap gap-2 justify-end">
-              <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
-                value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
-              <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
-                value={speedPaceKpi.value} unit={speedPaceKpi.unit} label={speedPaceKpi.label} />
-              {activity?.avg_hr != null && (
-                <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(activity.avg_hr)} />} iconColor={hrRunnerColor(activity.avg_hr)}
-                  valueColor={hrRunnerColor(activity.avg_hr)} value={`${activity.avg_hr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
-              )}
-            </div>
-          )}
-        >
-          <div className="hra-runner-row relative mb-1" style={{ "--runner-row-height": `${RUNNER_ROW_HEIGHT}px` } as CSSProperties}>
-            {runnerReady ? (
-              <>
-                <RunnerTerrain dynamics={rowDynamics} xs={terrainXs} height={RUNNER_ROW_HEIGHT} />
-                <RunnerIcon ref={runnerIconRef} />
-              </>
-            ) : (
-              <LoadingSpinner compact label={t("activity.chart.preparingRunner", "Preparing the runner…")} />
+      {/* Desktop keeps the carded chart the splash was designed around;
+          phone keeps only the runner and a raw summary line (see isPhone
+          above). Same `runnerStage` in both — the animation is never
+          duplicated, only re-framed. */}
+      <div className="hra-splash-stage w-full max-w-2xl">
+        {isPhone ? (
+          <>
+            {summaryLine && <p className="hra-splash-summary">{summaryLine}</p>}
+            {runnerStage}
+          </>
+        ) : (
+          <ChartCard
+            subHeader={distanceKm && speedPaceKpi && (
+              <div className="hra-row-wrap gap-2 justify-end">
+                <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
+                  value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
+                <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
+                  value={speedPaceKpi.value} unit={speedPaceKpi.unit} label={speedPaceKpi.label} />
+                {activity?.avg_hr != null && (
+                  <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(activity.avg_hr)} />} iconColor={hrRunnerColor(activity.avg_hr)}
+                    valueColor={hrRunnerColor(activity.avg_hr)} value={`${activity.avg_hr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
+                )}
+              </div>
             )}
-          </div>
-          {/* Non-interactive: no onMouseMove/onMouseLeave handler does
-              anything (no-ops below) — the splash has no hover, no
-              Play/Stop, no metric/axis toggles, only the Skip button. The
-              hover-dim/hover-glow overlay still lights up, but it's driven
-              by the autoplay's own cx (setHoverHighlight in showRow above),
-              the same "light effect" ActivityChartSection's real autoplay
-              drives — not by mouse events here. */}
-          <div ref={plotRef} className="relative pointer-events-none">
-            <RunnerReadout ref={runnerReadoutRef} xMode="distance" metrics={SPLASH_METRICS} speedMode="speed" pauseHr={pauseHrAt} />
-            {runnerReady && (
-              <MainOverlayChart
-                chartData={chartData} displayTrack={track ?? []} xTicks={xTicks} xMode="distance"
-                speedDomain={speedDomain} speedMode="speed" activeMetrics={["heart_rate"]} effectiveActive={SPLASH_METRICS}
-                rightMargin={rightMargin} plannedOverlay={null}
-                onMouseMove={() => {}} onMouseLeave={() => {}}
-              />
-            )}
-            <div ref={hoverDimRef} className="hra-chart-hover-dim" data-active="false" />
-            <div ref={hoverGlowRef} className="hra-chart-hover-glow" data-active="false" />
-          </div>
-        </ChartCard>
+          >
+            {runnerStage}
+          </ChartCard>
+        )}
       </div>
       <button type="button" className="hra-btn" data-variant="outline" onClick={handleDismiss}>
         {t("splash.skip", "Skip")}
