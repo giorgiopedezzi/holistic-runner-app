@@ -6,7 +6,7 @@
  * whole tab (behaviour-level — it never reaches into a sub-component).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { ManageTab } from "./ManageTab";
 import { installFetch, paginated, type Routes } from "@/test/api-stub";
 import { deviceStatus, withingsStatus, stravaStatus } from "@/test/fixtures";
@@ -28,6 +28,21 @@ function mountRoutes(overrides: Routes = {}): Routes {
   };
 }
 
+// Same stubViewport pattern SplashScreen.test.tsx already uses for the
+// PHONE_MAX_WIDTH_PX (767px) query useIsPhone.ts reads.
+function stubViewport(phone: boolean) {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: phone && query.includes("max-width: 767px"),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ManageTab — Strava OAuth section", () => {
@@ -47,5 +62,44 @@ describe("ManageTab — Strava OAuth section", () => {
 
     expect(await screen.findByText(/^Connected/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Re-login" })).toBeInTheDocument();
+  });
+});
+
+describe("ManageTab — phone grouping (HRA-278)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("groups the 7 sections into 4 collapsed subviews at phone width, keeping sync and delete apart", async () => {
+    stubViewport(true);
+    installFetch(mountRoutes());
+    render(<ManageTab savedRanges={[]} />);
+
+    // The 4 group headers are reachable immediately; their content is not
+    // mounted until expanded (AccordionCard only renders children when open).
+    expect(screen.getByRole("button", { name: /Sync sources/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Saved ranges/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Classify/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Local data & Trash/ })).toBeInTheDocument();
+    expect(screen.queryByText("Delete — local database only")).not.toBeInTheDocument();
+
+    // Expanding "Local data & Trash" reveals both Delete and Trash — but
+    // never pulls in the Sync group's own content.
+    fireEvent.click(screen.getByRole("button", { name: /Local data & Trash/ }));
+    expect(await screen.findByText("Delete — local database only")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Trash" })).toBeInTheDocument();
+    expect(screen.queryByText("Not connected to Strava")).not.toBeInTheDocument();
+  });
+
+  it("renders the flat, ungrouped desktop layout unchanged above phone width", async () => {
+    stubViewport(false);
+    installFetch(mountRoutes());
+    render(<ManageTab savedRanges={[]} />);
+
+    // No group headers — every section's own heading is reachable directly,
+    // exactly as before this Story.
+    expect(screen.queryByRole("button", { name: /Sync sources/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Local data & Trash/ })).not.toBeInTheDocument();
+    expect(screen.getByText("Delete — local database only")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Trash" })).toBeInTheDocument();
+    expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
   });
 });
