@@ -72,6 +72,7 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
         placeholder={t("activity.typePicker.typePlaceholder", "Type")}
         triggerWidth={selectWidth}
         triggerHeight={height}
+        ariaLabel={t("activity.typePicker.typeSelectLabel", "Activity type")}
       />
       <Popover open={open} onOpenChange={o => {
         setOpen(o);

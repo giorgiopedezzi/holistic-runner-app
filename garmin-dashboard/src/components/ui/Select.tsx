@@ -20,6 +20,11 @@ interface SelectProps {
   // template picker, which must actually lock once an instance exists, not
   // just look inert).
   disabled?: boolean;
+  // HRA-280: optional explicit accessible name — without it, the trigger's
+  // announced name is whatever `SelectPrimitive.Value` currently renders
+  // (the placeholder, or the selected option's own label), which doesn't say
+  // what the control IS for a screen-reader user once a value is selected.
+  ariaLabel?: string;
 }
 
 // shadcn-style Select (HRA-98) on top of Radix — value/onValueChange mirror
@@ -27,7 +32,7 @@ interface SelectProps {
 // their own state and side effects (what fetch a change triggers) unchanged.
 // :hover/[data-highlighted]/[data-state] pseudo-states need a real class
 // (same reason ui.tsx's Card uses .card:hover — see index.css).
-export function Select({ value, onValueChange, options, placeholder, triggerClassName, triggerWidth, triggerHeight, disabled }: SelectProps) {
+export function Select({ value, onValueChange, options, placeholder, triggerClassName, triggerWidth, triggerHeight, disabled, ariaLabel }: SelectProps) {
   // The selected option's label, for the trigger's native `title` — lets a
   // truncated (ellipsized) trigger still show the full text on hover, same
   // as each open-list item below.
@@ -46,6 +51,7 @@ export function Select({ value, onValueChange, options, placeholder, triggerClas
         data-runtime-width={triggerWidth != null ? "true" : undefined}
         data-runtime-height={triggerHeight != null ? "true" : undefined}
         title={selectedLabel}
+        aria-label={ariaLabel}
       >
         <span className="hra-select-value">
           <SelectPrimitive.Value placeholder={placeholder} />

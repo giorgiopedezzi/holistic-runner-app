@@ -8,6 +8,12 @@
  * calls onDelete, and — the one real risk of folding interactive controls
  * into what's otherwise a single clickable row — clicking those controls
  * does NOT also toggle the row's own expand/collapse.
+ *
+ * HRA-280 adds explicit accessibility-tree coverage for the restructuring
+ * that replaced the row's own role="button"+stopPropagation pattern (which
+ * nested a real <select>/buttons inside a clickable ancestor) with a
+ * genuine <button> for the "open detail" action and a non-nested sibling
+ * actions area.
  */
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -102,5 +108,58 @@ describe("ActivityRow", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove activity" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "Save & name" })).toBeDisabled();
+  });
+
+  it("nests no interactive control inside another interactive/clickable ancestor (HRA-280 AC1)", async () => {
+    installFetch({ "GET /api/v1/activity-types": paginated([{ id: 1, name: "Race", min_distance_m: 0 }]) });
+    const { container } = render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    // Every interactive control in the row (the type select, the
+    // Save/Rename trigger, Delete) must have no button/role="button"/select
+    // ancestor other than the top-level, non-interactive row container.
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
+    const interactiveControls = [
+      screen.getByRole("combobox"),
+      screen.getByRole("button", { name: "Save & name" }),
+      screen.getByRole("button", { name: "Remove activity" }),
+    ];
+    for (const control of interactiveControls) {
+      let node = control.parentElement;
+      while (node && node !== container) {
+        expect(node.tagName.toLowerCase()).not.toBe("button");
+        expect(node.getAttribute("role")).not.toBe("button");
+        node = node.parentElement;
+      }
+    }
+  });
+
+  it("makes the type select, Save/Rename, and Delete each independently focusable with a distinct accessible name, alongside the row's own open-detail button (HRA-280 AC2)", async () => {
+    installFetch({ "GET /api/v1/activity-types": paginated([{ id: 1, name: "Race", min_distance_m: 0 }]) });
+    render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
+    const openDetail = screen.getByRole("button", { name: /running/ });
+    const typeSelect = screen.getByRole("combobox");
+    const saveRename = screen.getByRole("button", { name: "Save & name" });
+    const remove = screen.getByRole("button", { name: "Remove activity" });
+
+    const accessibleNames = [
+      openDetail.getAttribute("aria-label") ?? openDetail.textContent,
+      typeSelect.getAttribute("aria-label"),
+      saveRename.textContent,
+      remove.textContent,
+    ];
+    expect(new Set(accessibleNames).size).toBe(4);
+
+    for (const control of [openDetail, typeSelect, saveRename, remove]) {
+      (control as HTMLElement).focus();
+      expect(control).toHaveFocus();
+    }
   });
 });

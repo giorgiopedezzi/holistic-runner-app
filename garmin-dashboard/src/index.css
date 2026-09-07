@@ -1839,7 +1839,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-accordion-panel { padding: 18px; }
 
 .hra-badge {
-  display: inline-block; padding: 2px 9px; border-radius: 20px;
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 20px;
   color: var(--badge-color); background: color-mix(in srgb, var(--badge-color) 13%, transparent);
   font-size: var(--text-meta); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
 }

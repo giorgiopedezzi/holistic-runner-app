@@ -65,11 +65,15 @@ describe("ActivitiesTab", () => {
       render(<ActivitiesTab from="2026-07-15" to="2026-08-14" />);
       await screen.findByText(fmtDate("2026-08-01"));
 
+      // HRA-280: the row div itself is no longer the clickable element (that
+      // would nest the row's real <select>/buttons inside another clickable
+      // ancestor) — the "open detail" action is its own <button>, the row's
+      // first child.
       const row = document.querySelector('[data-expanded="false"]')!;
-      fireEvent.click(row);
+      fireEvent.click(row.querySelector("button")!);
       expect(new URLSearchParams(window.location.search).get("activityId")).toBe(String(ID));
 
-      fireEvent.click(document.querySelector('[data-expanded="true"]')!);
+      fireEvent.click(document.querySelector('[data-expanded="true"]')!.querySelector("button")!);
       // useUrlState.set("") writes the param as an empty string rather than
       // removing it, matching the hook's documented merge-not-overwrite behavior.
       expect(new URLSearchParams(window.location.search).get("activityId")).toBe("");

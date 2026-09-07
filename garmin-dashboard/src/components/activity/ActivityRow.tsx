@@ -1,14 +1,30 @@
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Trash2 } from "lucide-react";
+import { Trash2, Footprints, Bike, PersonStanding, WavesHorizontal, Mountain, Dumbbell, Activity as ActivityIcon, type LucideIcon } from "lucide-react";
 import { api } from "@/api/client";
-import { Badge } from "@/components/ui";
+import { Badge, HelpDisclosure } from "@/components/ui";
 import { SPORT_COLOR, type Activity } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtPace, fmtDuration, fmtKm, fmtDate, fmtSource } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { ActivityTypePicker } from "./ActivityTypePicker";
+
+// Compact per-sport glyph (HRA-280, "compact type icon + accessible short
+// name") — purely decorative next to the Badge's own text label, which
+// remains the accessible name; keyed the same way SPORT_COLOR is (a
+// superset of the `Sport` union — `fitness_equipment` is a real backend
+// value the stricter FE type doesn't list, see SPORT_COLOR's own comment).
+// `other` also serves as the fallback for any future/unmapped sport value.
+const SPORT_ICON: Record<string, LucideIcon> = {
+  running: Footprints,
+  walking: PersonStanding,
+  cycling: Bike,
+  swimming: WavesHorizontal,
+  hiking: Mountain,
+  fitness_equipment: Dumbbell,
+  other: ActivityIcon,
+};
 
 // Fixed sizing for the type picker + Save/Rename + Delete cluster (dashboard
 // design-system rework: "keep them at a fixed width... same height" — sized
@@ -73,10 +89,24 @@ interface ActivityRowProps {
 // taller. Column 2 (42fr): the type picker + Save/Rename + Delete — the one
 // interactive cluster. Column 3 (16fr): duration/HR/pace, right-aligned,
 // untouched, still last.
+//
+// HRA-280 — the outer grid is now a plain, non-interactive container. It
+// used to be a `role="button"` div that also CONTAINED column 2's real
+// interactive controls (a <select>, buttons), with stopPropagation on
+// column 2 papering over the resulting nested-interactive-control
+// accessibility violation (a listbox/button living inside another
+// button/clickable ancestor is invalid and confuses assistive tech
+// regardless of the click behavior working out visually). Column 1 is now
+// itself a real `<button>` — the row's one "open detail" action — so
+// column 2 is a genuine, non-nested sibling area instead of a
+// propagation-gated pocket inside a bigger clickable region; no
+// stopPropagation is needed any more since there's no ancestor onClick left
+// to escape.
 export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, onDelete, onUpdate, expandedContent }: ActivityRowProps) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
   const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
+  const SportIcon = SPORT_ICON[a.sport ?? "other"] ?? ActivityIcon;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -96,25 +126,24 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
 
   return (
     <div>
-      {/* A plain div, not a <button> — column 2 below holds real interactive
-          controls (a <select>, buttons), and a button can't contain nested
-          interactive elements. role="button"+tabIndex+onKeyDown restore the
-          same click/keyboard-activate behavior the previous <button> gave
-          for free. onClick here only fires for clicks OUTSIDE column 2,
-          which stops its own propagation. */}
       <div
-        className="hra-activity-row card hra-text-primary grid items-center gap-3 py-3 px-3.5 text-label cursor-pointer"
+        className="hra-activity-row card hra-text-primary grid items-center gap-3 py-3 px-3.5 text-label"
         data-expanded={expanded}
-        role="button"
-        tabIndex={0}
-        onClick={onClick}
-        onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); } }}
       >
-        {/* Column 1 (40%) — read-only info at a glance. minWidth:0 lets a
-            long activity_name wrap within this column's own fixed width
-            instead of forcing the column itself wider. */}
-        <div className="hra-row-wrap gap-3 min-w-0">
-          <Badge label={a.sport ?? "other"} color={color} />
+        {/* Column 1 (40%) — the row's one "open detail" action, real
+            <button> semantics (independently focusable/activatable, no
+            role/tabIndex/onKeyDown hand-rolling needed). Its accessible name
+            comes from its own text content (sport/date/name/distance/via),
+            which already differs row to row — no separate aria-label
+            needed. minWidth:0 lets a long activity_name wrap within this
+            column's own fixed width instead of forcing the column wider. */}
+        <button
+          type="button"
+          className="hra-row-wrap gap-3 min-w-0 w-full text-left bg-transparent border-0 p-0 cursor-pointer"
+          onClick={onClick}
+          aria-expanded={expandIndicator === "accordion" ? expanded : undefined}
+        >
+          <Badge label={a.sport ?? "other"} color={color} icon={<SportIcon size={12} aria-hidden="true" />} />
           <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
           {a.activity_name && (
             // Ellipsized, not wrapped — a long race name now truncates
@@ -132,18 +161,14 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
           {a.source && (
             <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(a.source)}`, { source: fmtSource(a.source) })}</span>
           )}
-        </div>
+        </button>
 
         {/* Column 2 (44%) — the type picker + Save/Rename + Delete, the
-            row's one interactive cluster. stopPropagation on both click AND
-            keydown — otherwise a click on the type picker's select/save or
-            the Delete button would ALSO fire the row's own expand/collapse
-            onClick above, and (the keydown case) typing a space into the
-            rename popover's name input would bubble up to the row's own
-            onKeyDown, which treats " " as an activate key: it called
-            preventDefault() (eating the space character) and toggled the
-            row's expand/collapse on every space typed. */}
-        <div className="hra-row-wrap gap-2 min-w-0" onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()}>
+            row's one interactive cluster. A genuine sibling of column 1's
+            button now, not nested inside any clickable ancestor, so it
+            needs no stopPropagation to keep its own clicks/keydowns from
+            also triggering the row's open-detail action. */}
+        <div className="hra-row-wrap gap-2 min-w-0">
           <ActivityTypePicker activity={a} onUpdate={onUpdate}
             selectWidth={TYPE_SELECT_WIDTH} actionWidth={ACTION_BUTTON_WIDTH} height={ACTION_CONTROL_HEIGHT} />
           {!confirmDelete ? (
@@ -179,12 +204,17 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
           {error && <span className="hra-text-danger text-meta">{error}</span>}
         </div>
 
-        {/* Column 3 (15%) — duration/HR/pace, untouched, still right-aligned. */}
+        {/* Column 3 (15%) — duration/HR/pace, untouched, still right-aligned.
+            Plain, non-interactive text; the actual "open detail" control is
+            column 1's button. The trailing glyph is a decorative expand/
+            open-in-modal status marker, not its own control — its state is
+            already exposed to assistive tech via column 1's aria-expanded,
+            so it's aria-hidden here to avoid announcing a redundant symbol. */}
         <div className="hra-row-wrap gap-3 justify-end min-w-0">
           <span className="hra-text-secondary text-label">{fmtDuration(a.duration_sec)}</span>
           {a.avg_hr         && <span className="hra-text-danger text-label">♥ {a.avg_hr}</span>}
           {a.avg_pace_minkm && <span className="hra-text-muted text-label">{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
-          <span className="hra-text-muted text-meta">{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
+          <span className="hra-text-muted text-meta" aria-hidden="true">{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
         </div>
       </div>
       {expanded && expandedContent && (
@@ -193,5 +223,34 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
         </div>
       )}
     </div>
+  );
+}
+
+// HRA-280 — the icon/color mapping's own explanation, once per list of
+// ActivityRows rather than repeated on every row's Badge (which already
+// carries its own text label, so the legend isn't the ONLY place color has
+// a text alternative — it's the one place the full set is spelled out
+// together). Mounted once by the caller (ActivitiesTab), not by ActivityRow
+// itself, since a legend belongs to the list, not to each row in it.
+export function ActivitySportLegend() {
+  const { t } = useTranslation();
+  const theme = getResolvedTheme();
+  return (
+    <HelpDisclosure
+      label={t("activity.legend.trigger", "Workout type legend")}
+      heading={t("activity.legend.heading", "Workout types")}
+    >
+      <ul className="flex flex-col gap-1.5">
+        {Object.keys(SPORT_ICON).map(sport => {
+          const LegendIcon = SPORT_ICON[sport];
+          const legendColor = SPORT_COLOR[theme][sport] ?? "#888";
+          return (
+            <li key={sport}>
+              <Badge label={sport} color={legendColor} icon={<LegendIcon size={12} aria-hidden="true" />} />
+            </li>
+          );
+        })}
+      </ul>
+    </HelpDisclosure>
   );
 }

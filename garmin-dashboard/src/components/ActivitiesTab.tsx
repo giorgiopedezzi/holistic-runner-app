@@ -6,7 +6,7 @@ import { useUrlState } from "@/hooks/useUrlState";
 import { api } from "@/api/client";
 import { ErrorBanner, LoadingSpinner, Pagination, RangeEmpty } from "@/components/ui";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
-import { ActivityRow } from "@/components/activity/ActivityRow";
+import { ActivityRow, ActivitySportLegend } from "@/components/activity/ActivityRow";
 import type { Activity } from "@/types/api";
 
 interface Props { from: string; to: string; }
@@ -140,6 +140,10 @@ export function ActivitiesTab({ from, to }: Props) {
   return (
     <div>
       {pagination}
+
+      <div className="flex justify-end">
+        <ActivitySportLegend />
+      </div>
 
       <div className="hra-activity-list grid gap-1.5">
         {pageItems.map(a => {
