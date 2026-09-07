@@ -7,7 +7,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
-import { Card, ErrorBanner, WarningBanner } from "@/components/ui";
+import { Card, ErrorBanner, WarningBanner, AccordionCard } from "@/components/ui";
+import { useIsPhone } from "@/hooks/useIsPhone";
+import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 import { TrainingPlanAccordion, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
@@ -76,6 +78,20 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
   // lastEditedRef, extended here since the instance editor previously never
   // set one (readOnlyDays used to be tied to approval instead).
   const [highlightedRef, setHighlightedRef] = useState<EditedRef | null>(null);
+
+  // HRA-281: phone-width only stages Identity/Pacing/Weeks as independent
+  // AccordionCards (progressive disclosure) — desktop keeps rendering the
+  // exact same flat content it always has (AC4), see renderEditorFields()
+  // below. Reset to this default whenever a different row opens (onToggleRow),
+  // same "always resets on open" treatment PlanTemplatesSection.tsx gives its
+  // own viewMode.
+  const isPhone = useIsPhone();
+  const [identityExpanded, setIdentityExpanded] = useState(true);
+  const [pacingExpanded, setPacingExpanded] = useState(false);
+  const [weeksExpanded, setWeeksExpanded] = useState(false);
+  function resetSectionExpansion() {
+    setIdentityExpanded(true); setPacingExpanded(false); setWeeksExpanded(false);
+  }
 
   const editor = usePlanInstanceEditorState();
   const {
@@ -467,6 +483,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
     }
     stashCurrentIfDirty(dirtyNow);
     setActiveKey(key);
+    resetSectionExpansion();
     const draft = drafts[String(key)];
     if (draft) {
       restoreDraft(draft);
@@ -832,149 +849,226 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
   // at all (same hasEnteredData the template-switch confirm already uses).
   const restoreDirty = fieldsLocked ? isDirty : hasEnteredData(editor.state);
 
+  // HRA-281: extends PlanTemplatesSection.tsx's own beforeunload dirty-guard
+  // (currently template-only) to race-plan-instance editing — same formula
+  // shape (a stashed draft on any collapsed row, or the active row's own
+  // live dirty state), same "warn before a refresh/tab close discards
+  // unsaved edits" reasoning. Also registered with useUnsavedGuard so an
+  // in-app navigation (sidebar tab switch, language switch) gets the same
+  // protection a native browser close/refresh already has.
+  const hasUnsavedInstanceWork = Object.keys(drafts).length > 0 || (activeKey != null && restoreDirty);
+  const { setGuard } = useUnsavedGuard();
+  useEffect(() => {
+    setGuard(() => hasUnsavedInstanceWork);
+    return () => setGuard(null);
+  }, [hasUnsavedInstanceWork, setGuard]);
+  useEffect(() => {
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      if (hasUnsavedInstanceWork) {
+        e.preventDefault();
+        e.returnValue = "";
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedInstanceWork]);
+
   // HRA-141: everything that used to render as the whole `mode === "plan"`
   // screen (minus the outer Card/title-badge header, which the accordion's
   // own row title now covers) — shared by every row's AccordionCard, only
   // ever actually rendered for whichever one is expanded (each call site
   // gates on `activeKey === key` before calling this).
+  // HRA-281: split into three named fragments — Identity (who/when),
+  // Pacing (the anchor resolution grid), Weeks (actions + the actual
+  // schedule) — so phone width can stage them as independent AccordionCards
+  // (progressive disclosure, reusing PlanTemplatesSection.tsx's own
+  // pipeline-accordion pattern) while desktop concatenates them in the exact
+  // same order as before (AC4: desktop layout unchanged). Error/warning
+  // banners stay OUTSIDE every accordion, always visible on both — an
+  // instantiate/save failure must never be silently hidden inside a
+  // collapsed mobile section.
+  const identityContent = (
+    <PlanInstanceFormFields
+      templates={templates}
+      templateId={templateId}
+      onTemplateSelectChange={onTemplateSelectChange}
+      fieldsLocked={fieldsLocked}
+      instName={instName}
+      setInstName={setInstName}
+      raceName={raceName}
+      setRaceName={setRaceName}
+      raceDate={raceDate}
+      onRaceDateChange={onRaceDateChange}
+      raceUrl={raceUrl}
+      setRaceUrl={setRaceUrl}
+      fieldDisabled={fieldDisabled}
+      formEnabled={formEnabled}
+      startDate={startDate}
+      onStartDateChange={onStartDateChange}
+      daysBeforeRace={daysBeforeRace}
+      onDaysBeforeRaceChange={onDaysBeforeRaceChange}
+      restDayLabel={restDayLabel}
+      setRestDayLabel={setRestDayLabel}
+      showWeek1AnchorWarning={showWeek1AnchorWarning}
+      racePaceAnchor={racePaceAnchor}
+      onRacePaceAnchorChange={onRacePaceAnchorChange}
+      templateAnchors={templateAnchors}
+      paceMode={paceMode}
+      setPaceMode={setPaceMode}
+      hasRacePaceAnchor={hasRacePaceAnchor}
+      goalTimeDisplayValue={goalTimeDisplayValue}
+      onGoalTimeInput={onGoalTimeInput}
+      equivalentGoalTimeSec={equivalentGoalTimeSec}
+      showDistanceOverride={showDistanceOverride}
+      distanceM={distanceM}
+      setDistanceM={setDistanceM}
+    />
+  );
+
+  const pacingContent = (
+    <PlanInstanceAnchorTable
+      templateAnchors={templateAnchors}
+      anchorRows={anchorRows}
+      resolution={resolution}
+      racePaceAnchor={racePaceAnchor}
+      paceMode={paceMode}
+      derivedPaceSecPerKm={derivedPaceSecPerKm}
+      fieldDisabled={fieldDisabled}
+      unresolvedAnchors={unresolvedAnchors}
+      formEnabled={formEnabled}
+      setAnchorAbsolute={setAnchorAbsolute}
+      setAnchorRelativeTo={setAnchorRelativeTo}
+      setAnchorSign={setAnchorSign}
+      setAnchorSeconds={setAnchorSeconds}
+      clearAnchorRow={clearAnchorRow}
+    />
+  );
+
+  const statusBanners = (
+    <>
+      {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
+      {fieldsLocked && editError && <ErrorBanner message={editError} />}
+      {/* HRA-249: replaces the old hard lock on Save/day-edit/Approve —
+          editing an already-active plan is now allowed, this just says so. */}
+      {fieldsLocked && isApproved && (
+        <WarningBanner message={t("manage.planInstances.approvedEditWarning", "This race plan is already active — you can still make changes here.")} />
+      )}
+    </>
+  );
+
+  const weeksContent = (
+    <>
+      <PlanInstanceEditorActions
+        fieldsLocked={fieldsLocked}
+        instantiateLoading={instantiateLoading}
+        canInstantiate={canInstantiate}
+        onInstantiate={onInstantiate}
+        saveLoading={saveLoading}
+        hasSections={sections.length > 0}
+        isApproved={isApproved}
+        saveEnabled={saveEnabled}
+        onSaveClick={onSaveClick}
+        approveLoading={approveLoading}
+        editingId={editingId}
+        onApprove={onApprove}
+        regenerateLoading={regenerateLoading}
+        regenerateDisabled={regenerateDisabled}
+        regenerateBucketDirty={regenerateBucketDirty}
+        onRegenerateClick={onRegenerateClick}
+        effectiveFrom={effectiveFrom}
+        setEffectiveFrom={setEffectiveFrom}
+        minEffectiveFrom={minEffectiveFrom}
+        isDirty={restoreDirty}
+        onRestoreClick={onRestoreClick}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+      />
+
+      {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
+          buttons) is hidden — superseded by drag-and-drop swap in both List
+          (TrainingPlanAccordion's useDragSwap) and Agenda (PlanInstanceCalendar's
+          DayCellEvent drag handling). The underlying swap logic below (state,
+          swapDaysByRef/swapWeeksByRef, onSwapDays/onSwapWeeks) is kept — drag-and-drop
+          still calls into it. */}
+
+      {sections.length > 0 && (
+        <>
+          {/* HRA-157: the List/Agenda switch's old spot now holds the
+              always-visible workout-type legend instead — rendered once,
+              outside the viewMode branch below, so it stays mounted
+              (same node, same content) across List/Agenda toggling rather
+              than remounting. */}
+          <div className="hra-plan-instance-section-gap">
+            <CategoryLegend />
+          </div>
+          {viewMode === "list" ? (
+            <TrainingPlanAccordion
+              ownerName={instName || t("manage.planTemplates.untitled", "Untitled plan")}
+              sections={sections}
+              onSectionEdit={() => {}}
+              onWeekEdit={() => {}}
+              onDayEdit={onDayEdit}
+              readOnlySectionWeek
+              // HRA-249: no longer tied to approval — editing an active
+              // plan is allowed (WarningBanner above says so instead).
+              readOnlyDays={false}
+              onDaySwap={onDayDragSwap}
+              onWeekSwap={onWeekDragSwap}
+              onScheduledTimeEdit={onScheduledTimeEdit}
+              onWorkoutTypeEdit={onWorkoutTypeEdit}
+              isDayDirty={day => day.date != null && persistedDsl[day.date] !== undefined && persistedDsl[day.date] !== day.dsl}
+              onExportDayFit={onExportDayFit}
+              onExportSectionFit={onExportSectionFit}
+              onExportWeekFit={onExportWeekFit}
+              highlightedRef={highlightedRef ?? undefined}
+            />
+          ) : (
+            <PlanInstanceCalendar
+              sections={sections} readOnlyDays={false}
+              onScheduledTimeEdit={onScheduledTimeEditByDayId} onDaySwap={onDayDragSwapByDayId}
+              onDayEdit={onDayEditByDayId} onNavigateToActivity={onNavigateToActivity}
+            />
+          )}
+        </>
+      )}
+    </>
+  );
+
   function renderEditorFields() {
+    if (!isPhone) {
+      return (
+        <>
+          {identityContent}
+          {pacingContent}
+          {statusBanners}
+          {weeksContent}
+        </>
+      );
+    }
     return (
       <>
-        <PlanInstanceFormFields
-          templates={templates}
-          templateId={templateId}
-          onTemplateSelectChange={onTemplateSelectChange}
-          fieldsLocked={fieldsLocked}
-          instName={instName}
-          setInstName={setInstName}
-          raceName={raceName}
-          setRaceName={setRaceName}
-          raceDate={raceDate}
-          onRaceDateChange={onRaceDateChange}
-          raceUrl={raceUrl}
-          setRaceUrl={setRaceUrl}
-          fieldDisabled={fieldDisabled}
-          formEnabled={formEnabled}
-          startDate={startDate}
-          onStartDateChange={onStartDateChange}
-          daysBeforeRace={daysBeforeRace}
-          onDaysBeforeRaceChange={onDaysBeforeRaceChange}
-          restDayLabel={restDayLabel}
-          setRestDayLabel={setRestDayLabel}
-          showWeek1AnchorWarning={showWeek1AnchorWarning}
-          racePaceAnchor={racePaceAnchor}
-          onRacePaceAnchorChange={onRacePaceAnchorChange}
-          templateAnchors={templateAnchors}
-          paceMode={paceMode}
-          setPaceMode={setPaceMode}
-          hasRacePaceAnchor={hasRacePaceAnchor}
-          goalTimeDisplayValue={goalTimeDisplayValue}
-          onGoalTimeInput={onGoalTimeInput}
-          equivalentGoalTimeSec={equivalentGoalTimeSec}
-          showDistanceOverride={showDistanceOverride}
-          distanceM={distanceM}
-          setDistanceM={setDistanceM}
-        />
-
-        <PlanInstanceAnchorTable
-          templateAnchors={templateAnchors}
-          anchorRows={anchorRows}
-          resolution={resolution}
-          racePaceAnchor={racePaceAnchor}
-          paceMode={paceMode}
-          derivedPaceSecPerKm={derivedPaceSecPerKm}
-          fieldDisabled={fieldDisabled}
-          unresolvedAnchors={unresolvedAnchors}
-          formEnabled={formEnabled}
-          setAnchorAbsolute={setAnchorAbsolute}
-          setAnchorRelativeTo={setAnchorRelativeTo}
-          setAnchorSign={setAnchorSign}
-          setAnchorSeconds={setAnchorSeconds}
-          clearAnchorRow={clearAnchorRow}
-        />
-
-        {!fieldsLocked && instantiateError && <ErrorBanner message={instantiateError} />}
-        {fieldsLocked && editError && <ErrorBanner message={editError} />}
-        {/* HRA-249: replaces the old hard lock on Save/day-edit/Approve —
-            editing an already-active plan is now allowed, this just says so. */}
-        {fieldsLocked && isApproved && (
-          <WarningBanner message={t("manage.planInstances.approvedEditWarning", "This race plan is already active — you can still make changes here.")} />
-        )}
-
-        <PlanInstanceEditorActions
-          fieldsLocked={fieldsLocked}
-          instantiateLoading={instantiateLoading}
-          canInstantiate={canInstantiate}
-          onInstantiate={onInstantiate}
-          saveLoading={saveLoading}
-          hasSections={sections.length > 0}
-          isApproved={isApproved}
-          saveEnabled={saveEnabled}
-          onSaveClick={onSaveClick}
-          approveLoading={approveLoading}
-          editingId={editingId}
-          onApprove={onApprove}
-          regenerateLoading={regenerateLoading}
-          regenerateDisabled={regenerateDisabled}
-          regenerateBucketDirty={regenerateBucketDirty}
-          onRegenerateClick={onRegenerateClick}
-          effectiveFrom={effectiveFrom}
-          setEffectiveFrom={setEffectiveFrom}
-          minEffectiveFrom={minEffectiveFrom}
-          isDirty={restoreDirty}
-          onRestoreClick={onRestoreClick}
-          viewMode={viewMode}
-          setViewMode={setViewMode}
-        />
-
-        {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
-            buttons) is hidden — superseded by drag-and-drop swap in both List
-            (TrainingPlanAccordion's useDragSwap) and Agenda (PlanInstanceCalendar's
-            DayCellEvent drag handling). The underlying swap logic below (state,
-            swapDaysByRef/swapWeeksByRef, onSwapDays/onSwapWeeks) is kept — drag-and-drop
-            still calls into it. */}
-
-        {sections.length > 0 && (
-          <>
-            {/* HRA-157: the List/Agenda switch's old spot now holds the
-                always-visible workout-type legend instead — rendered once,
-                outside the viewMode branch below, so it stays mounted
-                (same node, same content) across List/Agenda toggling rather
-                than remounting. */}
-            <div className="hra-plan-instance-section-gap">
-              <CategoryLegend />
-            </div>
-            {viewMode === "list" ? (
-              <TrainingPlanAccordion
-                ownerName={instName || t("manage.planTemplates.untitled", "Untitled plan")}
-                sections={sections}
-                onSectionEdit={() => {}}
-                onWeekEdit={() => {}}
-                onDayEdit={onDayEdit}
-                readOnlySectionWeek
-                // HRA-249: no longer tied to approval — editing an active
-                // plan is allowed (WarningBanner above says so instead).
-                readOnlyDays={false}
-                onDaySwap={onDayDragSwap}
-                onWeekSwap={onWeekDragSwap}
-                onScheduledTimeEdit={onScheduledTimeEdit}
-                onWorkoutTypeEdit={onWorkoutTypeEdit}
-                isDayDirty={day => day.date != null && persistedDsl[day.date] !== undefined && persistedDsl[day.date] !== day.dsl}
-                onExportDayFit={onExportDayFit}
-                onExportSectionFit={onExportSectionFit}
-                onExportWeekFit={onExportWeekFit}
-                highlightedRef={highlightedRef ?? undefined}
-              />
-            ) : (
-              <PlanInstanceCalendar
-                sections={sections} readOnlyDays={false}
-                onScheduledTimeEdit={onScheduledTimeEditByDayId} onDaySwap={onDayDragSwapByDayId}
-                onDayEdit={onDayEditByDayId} onNavigateToActivity={onNavigateToActivity}
-              />
-            )}
-          </>
-        )}
-
+        <AccordionCard
+          title={t("manage.planInstances.stageIdentity", "Identity")}
+          expanded={identityExpanded}
+          onToggle={() => setIdentityExpanded(v => !v)}
+        >
+          {identityContent}
+        </AccordionCard>
+        <AccordionCard
+          title={t("manage.planInstances.stagePacing", "Pacing")}
+          expanded={pacingExpanded}
+          onToggle={() => setPacingExpanded(v => !v)}
+        >
+          {pacingContent}
+        </AccordionCard>
+        {statusBanners}
+        <AccordionCard
+          title={t("manage.planInstances.stageWeeks", "Weeks")}
+          expanded={weeksExpanded}
+          onToggle={() => setWeeksExpanded(v => !v)}
+        >
+          {weeksContent}
+        </AccordionCard>
       </>
     );
   }

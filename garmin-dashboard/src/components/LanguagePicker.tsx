@@ -24,7 +24,17 @@ const LANGUAGE_META: Record<Language, { label: string }> = {
   ja: { label: "ja" },
 };
 
-export function LanguagePicker({ appearance, compact }: { appearance: AppearanceApi; compact?: boolean }) {
+interface Props {
+  appearance: AppearanceApi;
+  compact?: boolean;
+  // HRA-281: gates the actual language switch behind the same unsaved-work
+  // confirmation an in-app tab switch goes through (useUnsavedGuard) —
+  // optional so this component keeps working standalone (e.g. in tests) with
+  // no guarding at all.
+  guardChange?: (action: () => void) => void;
+}
+
+export function LanguagePicker({ appearance, compact, guardChange }: Props) {
   const { t } = useTranslation();
   // Falls back to the browser-detected default while settings haven't
   // resolved yet (appearance.resolvedLanguage is null on cold load) — same
@@ -56,7 +66,10 @@ export function LanguagePicker({ appearance, compact }: { appearance: Appearance
                 key={code}
                 className="hra-lang-item"
                 data-selected={selected}
-                onClick={() => { appearance.setLanguage?.(code); setOpen(false); }}
+                onClick={() => {
+                  const run = () => { appearance.setLanguage?.(code); setOpen(false); };
+                  if (guardChange) guardChange(run); else run();
+                }}
               >
                 <FlagIcon code={code} />
                 <span>{opt.label}</span>

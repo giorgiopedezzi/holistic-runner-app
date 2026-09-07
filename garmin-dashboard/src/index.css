@@ -1682,6 +1682,25 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    always parenthesized in the copy itself, never restyled per call site. */
 .hra-anchor-tag { font-size: var(--text-meta); color: var(--text-muted); font-style: italic; margin-left: 6px; }
 
+/* HRA-281 AC1: phone-width per-anchor fieldset (PlanInstanceAnchorTable.tsx's
+   own isPhone branch — this class only ever renders below 768px, so no
+   media query gate is needed here, unlike most `.hra-*` mobile classes). */
+.hra-anchor-mobile-card { padding: 10px 12px; }
+.hra-anchor-mobile-card .hra-anchor-name { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-weight: 600; color: var(--text-primary); }
+
+/* HRA-281 AC3: every FIT-generation control (the instance day date-badge —
+   HRA-202 — and the Section/Week "Generate fit" icon button — HRA-203, both
+   in TrainingPlanAccordion.tsx) must be a real >=44x44 CSS px touch target at
+   375px; both are icon-sized on desktop by design, so this only widens them
+   below the phone breakpoint (AC4: desktop unchanged). */
+@media (max-width: 767px) {
+  .hra-day-date-badge, .hra-fit-export-btn {
+    min-width: 44px;
+    min-height: 44px;
+    justify-content: center;
+  }
+}
+
 /* Scoped height unification for the New Instance form (manage/
    PlanInstancesSection.tsx) — every editable control type (text/number
    input, Select trigger, DatePicker trigger, segmented switch) shares

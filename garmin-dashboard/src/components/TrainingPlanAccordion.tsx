@@ -551,7 +551,7 @@ function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabe
         {onExportFit && (
           <button
             type="button"
-            className="inline-flex items-center bg-transparent border-0 p-0 cursor-pointer"
+            className="hra-fit-export-btn inline-flex items-center bg-transparent border-0 p-0 cursor-pointer"
             onClick={e => { e.stopPropagation(); onExportFit(); }}
             // AccordionCard's trigger toggles on Enter/Space via its own
             // onKeyDown (it's a role="button" div, not a real <button> — see
