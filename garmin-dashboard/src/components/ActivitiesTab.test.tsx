@@ -30,6 +30,9 @@ describe("ActivitiesTab", () => {
     expect(screen.getByText("10.00 km")).toBeInTheDocument();
     // Pagination renders above and below the list, so the total appears twice.
     expect(screen.getAllByText(/1 total/).length).toBeGreaterThan(0);
+    // HRA-280 AC3: the workout-type legend is mounted once per list, not
+    // once per row.
+    expect(screen.getAllByRole("button", { name: "Workout type legend" })).toHaveLength(1);
   });
 
   it("shows the range-empty message when the page is empty", async () => {

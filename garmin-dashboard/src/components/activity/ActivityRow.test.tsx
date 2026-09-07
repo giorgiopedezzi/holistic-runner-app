@@ -18,7 +18,7 @@
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ActivityRow } from "./ActivityRow";
+import { ActivityRow, ActivitySportLegend } from "./ActivityRow";
 import { installFetch, paginated } from "@/test/api-stub";
 import { activity, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
 
@@ -160,6 +160,23 @@ describe("ActivityRow", () => {
     for (const control of [openDetail, typeSelect, saveRename, remove]) {
       (control as HTMLElement).focus();
       expect(control).toHaveFocus();
+    }
+  });
+});
+
+describe("ActivitySportLegend", () => {
+  it("gives every workout-type color a visible text alternative, not just the swatch (HRA-280 AC3)", () => {
+    render(<ActivitySportLegend />);
+
+    const trigger = screen.getByRole("button", { name: "Workout type legend" });
+    expect(screen.queryByText("running")).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+
+    // Every sport SPORT_COLOR/SPORT_ICON define gets its own entry, each
+    // still a Badge (color pill + real text), not a bare colored dot.
+    for (const sport of ["running", "walking", "cycling", "swimming", "hiking", "fitness_equipment", "other"]) {
+      expect(screen.getByText(sport)).toBeInTheDocument();
     }
   });
 });
