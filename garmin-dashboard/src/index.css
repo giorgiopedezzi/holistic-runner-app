@@ -2329,6 +2329,16 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 
 /* HRA-180 analytics layout, finite states, and runtime bridges. */
 .hra-activity-modal { max-width: 680px; max-height: 90vh; }
+/* HRA-271: at the phone tier, the outer backdrop + this dialog's own
+   Tailwind p-6 (24px) padding on both sides ate ~96px of a 375px viewport
+   before any content — scaled down so the header row (badge/date/type
+   picker/delete/× close, see ActivityDetailBody.tsx's flex-wrap fix below)
+   has enough width to lay out without its × close control landing off the
+   visible dialog. */
+@media (max-width: 767px) {
+  .hra-modal-backdrop { padding: 12px; }
+  .hra-activity-modal { padding: 16px; }
+}
 .hra-activity-type-action {
   width: var(--activity-action-width, auto);
   height: var(--activity-action-height, auto);
@@ -2338,6 +2348,17 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-radius: 16px;
 }
 .hra-activity-row[data-expanded="true"] { border-radius: 16px 16px 0 0; }
+/* HRA-271: at 375px, this row's fr-proportioned columns squeeze column 2
+   (the type picker + fixed-width Delete button, see .hra-activity-row-action
+   below) to well under its own content's fixed pixel widths — a fixed-width
+   child can't shrink to fit a narrower flex line the way wrapping content
+   can, so it overflowed the row/card horizontally. Stacking to one column
+   gives each cluster the row's full width, which comfortably fits (or, via
+   the existing .hra-row-wrap flex-wrap on each cluster, wraps within) that
+   width instead. */
+@media (max-width: 767px) {
+  .hra-activity-row { grid-template-columns: 1fr; }
+}
 .hra-activity-row-action { width: 177px; height: 30px; }
 .hra-metric-toggle {
   --dyn-border: var(--border-strong);
@@ -2368,6 +2389,24 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   grid-template-columns: auto 1fr auto;
   padding-left: var(--chart-controls-left);
   padding-right: var(--chart-controls-right);
+}
+/* HRA-271: both rows above are CSS grids (not flex), so their `auto`/`1fr`
+   tracks size to content and don't wrap onto new lines the way a flex-wrap
+   row does — at 375px the three side-by-side groups (view-mode switches /
+   pause+outlier controls / metric toggles, and separately Play-Stop /
+   planned-workout controls / KPI badges) don't fit and force real
+   page-level horizontal scroll. Stacking both to one column at the phone
+   tier gives each group the row's full width; each group's own
+   .hra-row-wrap already wraps its individual controls within that width.
+   The actual chart plot (ResponsiveContainer, OverlayCharts.tsx) already
+   shrinks to its container at any width and needs no change here — see
+   docs/frontend.md's "chart must never shrink or widen" note, which is
+   about the axis-width RESERVATION staying constant, not the container. */
+@media (max-width: 767px) {
+  .hra-activity-chart-selectors,
+  .hra-activity-chart-controls {
+    grid-template-columns: 1fr;
+  }
 }
 .hra-runner-row { height: var(--runner-row-height); }
 .hra-activity-chart-placeholder { height: var(--activity-chart-placeholder-height); }

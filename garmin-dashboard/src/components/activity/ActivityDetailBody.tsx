@@ -257,7 +257,12 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
             summary already showed). Left untouched for the popup, which has
             no ActivityRow wrapping it to show this instead. */}
         {onClose && (
-        <div className="flex items-center gap-3 mb-5">
+        // HRA-271: no flex-wrap here overflowed the modal at 375px (badge +
+        // date + via-source + the type picker + Delete + the × close button
+        // is too much for one line at phone width) and could push × past
+        // the visible dialog. flex-wrap lets it break onto multiple lines
+        // instead — nothing here has a fixed pixel width that can't wrap.
+        <div className="flex items-center gap-3 mb-5 flex-wrap">
           {activity && (
             <Badge label={activity.sport ?? "other"} color={SPORT_COLOR[getResolvedTheme()][activity.sport ?? "other"] ?? "#888"} />
           )}
