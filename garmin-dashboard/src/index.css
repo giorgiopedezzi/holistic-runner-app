@@ -1111,6 +1111,18 @@ body {
   overflow: hidden;
   border: 1px solid var(--segment-color, var(--border-strong));
 }
+/* HRA-273: SettingsTab's DateFormatPicker has 4 pills, each labeled with its
+   own example date ("Numeric (UK) · 23/03/2026") — real content width
+   measured 793px at 375px viewport, clipped by the app shell's overflow-
+   hidden layer to 372px, so the 3rd/4th pills were unreachable (not just
+   visually clipped — the ancestor blocking them isn't itself the scrollable
+   one, so there was no scrollbar path to them either). Every other
+   .hra-segment call site (Units, Activity details, chart Speed/Pace, etc.)
+   already fits at 375px and is unaffected — wrapping only engages once a
+   segment's own content already doesn't fit its line. */
+@media (max-width: 767px) {
+  .hra-segment { flex-wrap: wrap; }
+}
 .hra-segment-item {
   font-family: inherit;
   font-size: var(--text-label);
