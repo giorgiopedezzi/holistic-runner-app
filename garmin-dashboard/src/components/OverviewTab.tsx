@@ -654,11 +654,11 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
     // (explicit feedback, carried over from when these lived in a separate
     // row) even though they've moved up to share this one with the pills.
     <div className="hra-overview-controls-row flex justify-between items-center flex-wrap gap-2" style={{ "--overview-header-right": `${HEADER_EXTRA_RIGHT}px` } as CSSProperties}>
-      <div className="hra-row-inline gap-2">
+      <div className="hra-row-inline gap-2 flex-wrap">
         {alignToggle}
         {headerControls}
       </div>
-      {kpis && <div className="flex gap-2 shrink-0">{kpis}</div>}
+      {kpis && <div className="flex gap-2 flex-wrap min-w-0">{kpis}</div>}
     </div>
   ) : undefined;
   // Row 2 (subHeader) for the CURRENT/overlap chart: the "graph legend" —
@@ -681,7 +681,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   const compareBadgesRow = primary && (subHeader || compareKpis) ? (
     <div className="hra-overview-controls-row flex justify-between items-center flex-wrap gap-2" style={{ "--overview-header-right": `${HEADER_EXTRA_RIGHT}px` } as CSSProperties}>
       {subHeader}
-      {compareKpis && <div className="flex gap-2 shrink-0">{compareKpis}</div>}
+      {compareKpis && <div className="flex gap-2 flex-wrap min-w-0">{compareKpis}</div>}
     </div>
   ) : undefined;
 
@@ -967,7 +967,7 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   // into running's own card header (below), the page's one primary graph,
   // since that's the only chart these controls visually belong beside now.
   const modeControls = (
-    <div className="hra-row gap-2">
+    <div className="hra-row gap-2 flex-wrap">
       {compareEnabled && (
         <div className="hra-segment">
           {(["overlap", "distinct"] as const).map(v => (

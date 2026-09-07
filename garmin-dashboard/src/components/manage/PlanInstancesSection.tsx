@@ -56,9 +56,13 @@ type RowKey = number | "new";
 
 interface Props {
   templates: PlanTemplate[] | null;
+  // HRA-265: threaded from App.tsx through PlansTab.tsx, mirroring
+  // AgendaTab's existing onNavigateToPlans callback — see
+  // PlanInstanceCalendar.tsx's own prop of the same name.
+  onNavigateToActivity: (activityId: number) => void;
 }
 
-export function PlanInstancesSection({ templates }: Props) {
+export function PlanInstancesSection({ templates, onNavigateToActivity }: Props) {
   const { t } = useTranslation();
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -118,8 +122,8 @@ export function PlanInstancesSection({ templates }: Props) {
   const [instantiateError, setInstantiateError] = useState<string | null>(null);
   // Backed by the URL's `planViewMode` param (HRA-195, reusing HRA-193's
   // useUrlState) so a refresh keeps the last-picked list/agenda view.
-  const [rawViewMode, setRawViewMode] = useUrlState("planViewMode", "list");
-  const viewMode: "list" | "agenda" = rawViewMode === "agenda" ? "agenda" : "list";
+  const [rawViewMode, setRawViewMode] = useUrlState("planViewMode", "agenda");
+  const viewMode: "list" | "agenda" = rawViewMode === "list" ? "list" : "agenda";
   const setViewMode = (mode: "list" | "agenda") => setRawViewMode(mode);
   const [editError, setEditError] = useState<string | null>(null);
   const [saveLoading, setSaveLoading] = useState(false);
@@ -564,6 +568,7 @@ export function PlanInstancesSection({ templates }: Props) {
   }
 
   const onDayEdit = dayEditor.onDayEdit;
+  const onDayEditByDayId = dayEditor.onDayEditByDayId;
   const onScheduledTimeEdit = dayEditor.onScheduledTimeEdit;
   const onScheduledTimeEditByDayId = dayEditor.onScheduledTimeEditByDayId;
 
@@ -964,6 +969,7 @@ export function PlanInstancesSection({ templates }: Props) {
               <PlanInstanceCalendar
                 sections={sections} readOnlyDays={false}
                 onScheduledTimeEdit={onScheduledTimeEditByDayId} onDaySwap={onDayDragSwapByDayId}
+                onDayEdit={onDayEditByDayId} onNavigateToActivity={onNavigateToActivity}
               />
             )}
           </>

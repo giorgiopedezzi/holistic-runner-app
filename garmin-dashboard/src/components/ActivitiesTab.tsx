@@ -86,6 +86,20 @@ export function ActivitiesTab({ from, to }: Props) {
       setExpandedIdParam("");
     }
   }, [from, to, setExpandedIdParam]);
+  // HRA-265: an external navigation (e.g. clicking a recorded day in the
+  // Agenda/Plans calendar) sets the `activityId` URL param and switches to
+  // this tab — `isExpanded` below already opens the right row for granted
+  // when detailView is "accordion", but the "modal" setting has its own,
+  // URL-independent modalId state (unlike expandedId) that this open a modal
+  // for the SAME param needs syncing into. Keyed on [detailView, expandedIdParam]
+  // (not a mount-only effect) since `detailView` itself only resolves once
+  // useSettings()'s fetch completes, arriving after this component's first
+  // render.
+  useEffect(() => {
+    if (detailView === "modal" && expandedIdParam !== "") {
+      setModalId(Number(expandedIdParam));
+    }
+  }, [detailView, expandedIdParam]);
 
   const total = state.status === "success" ? state.data.page.total : 0;
   const totalPages = Math.max(1, Math.ceil(total / perPage));

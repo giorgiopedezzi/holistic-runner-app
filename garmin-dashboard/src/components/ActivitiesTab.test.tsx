@@ -88,6 +88,20 @@ describe("ActivitiesTab", () => {
       expect(document.querySelector('[data-expanded="true"]')).toBeInTheDocument();
     });
 
+    it("opens the popup modal (not the accordion) from an existing activityId URL param when activity_detail_view is 'modal' (HRA-265)", async () => {
+      window.history.replaceState(null, "", `/?activityId=${ID}`);
+      installFetch({
+        "GET /api/v1/activities": paginated([activity()], 1),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/settings": settings({ activity_detail_view: "modal" }),
+      });
+      render(<ActivitiesTab from="2026-07-15" to="2026-08-14" />);
+      await screen.findByText(fmtDate("2026-08-01"));
+
+      await waitFor(() => expect(document.querySelector(".hra-activity-modal")).toBeInTheDocument());
+      expect(document.querySelector('[data-expanded="true"]')).not.toBeInTheDocument();
+    });
+
     it("does not wipe a URL-hydrated expanded row on initial mount, but clears it on a later range change", async () => {
       window.history.replaceState(null, "", `/?activityId=${ID}`);
       installFetch({

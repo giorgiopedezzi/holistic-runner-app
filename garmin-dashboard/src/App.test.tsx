@@ -45,6 +45,17 @@ function appRoutes(settingsBody = settings()): Routes {
   };
 }
 
+// HRA-267: the sidebar's viewport tier is read from window.innerWidth at
+// mount (desktop >=1024, tablet 768-1023, phone <768) and re-resolved on a
+// "resize" event — jsdom doesn't lay pages out, so this is how tests drive
+// each tier deterministically. jsdom's own default innerWidth (1024) is
+// exactly the desktop threshold, which is why every pre-existing test above
+// keeps passing unmodified.
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", { value: width, configurable: true, writable: true });
+  fireEvent(window, new Event("resize"));
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnitSystem("metric");
@@ -56,6 +67,9 @@ afterEach(() => {
   // post-HRA-253) — reset it so a later test doesn't inherit an earlier
   // test's collapsed state.
   localStorage.removeItem("hra-sidebar-collapsed");
+  // HRA-267: restore jsdom's own default viewport so a test that changed it
+  // doesn't leak a non-desktop tier into the next test's initial mount.
+  Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true, writable: true });
 });
 
 describe("App tab switching", () => {
@@ -205,6 +219,86 @@ describe("App tab switching", () => {
     expect(params.get("compareFrom")).toBe("2026-06-01");
     expect(params.get("compareTo")).toBe("2026-06-30");
     expect(params.get("compareEnabled")).toBe("true");
+  });
+});
+
+describe("responsive 3-state sidebar (HRA-267)", () => {
+  it("AC1: at >=1024px the sidebar is open by default", async () => {
+    setViewportWidth(1280);
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    expect(container.querySelector(".hra-sidebar")).toHaveAttribute("data-collapsed", "false");
+  });
+
+  it("AC2: at 768-1023px the sidebar defaults to icon-only, ignoring a persisted desktop 'open' choice", async () => {
+    // Desktop's own persisted key explicitly says "not collapsed" (open) —
+    // the tablet default must not read it (Story scope: no manual "open"
+    // persistence carried over from desktop).
+    localStorage.setItem("hra-sidebar-collapsed", "0");
+    setViewportWidth(900);
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const sidebar = container.querySelector(".hra-sidebar");
+    expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    expect(sidebar).toHaveAttribute("data-tier", "tablet");
+  });
+
+  it("AC3: at <768px the sidebar is hidden by default, opens via the hamburger as an overlay, and closes on outside-tap or nav pick", async () => {
+    setViewportWidth(500);
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const sidebar = () => container.querySelector(".hra-sidebar");
+    expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+    expect(sidebar()).toHaveAttribute("data-tier", "phone");
+    // No icon-only rail toggle at the phone tier.
+    expect(screen.queryByRole("button", { name: "Collapse sidebar" })).not.toBeInTheDocument();
+
+    const hamburger = screen.getByRole("button", { name: "Open navigation" });
+    fireEvent.click(hamburger);
+    expect(sidebar()).toHaveAttribute("data-collapsed", "false");
+    const backdrop = container.querySelector(".hra-sidebar-backdrop");
+    expect(backdrop).not.toBeNull();
+
+    // Outside-tap (the backdrop) closes it again.
+    fireEvent.click(backdrop as Element);
+    expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+
+    // Picking a nav item closes it too.
+    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+    expect(sidebar()).toHaveAttribute("data-collapsed", "false");
+    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
+    await screen.findByText("Not connected to Strava");
+    expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+  });
+
+  it("AC4: crossing a tier boundary re-resolves to the new tier's default, discarding a manual choice made in the old tier", async () => {
+    setViewportWidth(1280);
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+    const sidebar = () => container.querySelector(".hra-sidebar");
+
+    // Manually collapse on desktop.
+    fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    expect(sidebar()).toHaveAttribute("data-collapsed", "true");
+
+    // Rotating down to phone width must not leave it obscuring content —
+    // it re-resolves to phone's own hidden default, not desktop's icon choice.
+    setViewportWidth(500);
+    expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+    expect(sidebar()).toHaveAttribute("data-tier", "phone");
+
+    // Crossing back up to desktop re-resolves from the persisted desktop
+    // choice (still collapsed), not phone's hidden state.
+    setViewportWidth(1280);
+    expect(sidebar()).toHaveAttribute("data-collapsed", "true");
+    expect(sidebar()).toHaveAttribute("data-tier", "desktop");
   });
 });
 

@@ -502,12 +502,16 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 .hra-agenda-calendar .rbc-today { background-color: transparent; }
 
 /* Custom toolbar (replaces react-big-calendar's own via `components.toolbar`) */
-.hra-agenda-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 2px 2px 14px; }
+/* HRA-269: flex-wrap so the title/summary block and the Month/Week+nav
+   controls stack onto their own rows instead of squeezing/overlapping each
+   other at phone widths (375px) — same reasoning as TitleRow's own wrap
+   fix in TrainingPlanAccordion.tsx. */
+.hra-agenda-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 2px 2px 14px; }
 .hra-agenda-title { font-size: var(--text-heading); font-weight: var(--text-heading--font-weight); margin: 0 0 3px; color: var(--text-primary); }
-.hra-agenda-summary { font-size: var(--text-meta); color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 6px; }
+.hra-agenda-summary { font-size: var(--text-meta); color: var(--text-secondary); margin: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .hra-agenda-summary .val { font-family: var(--font-mono); color: var(--text-primary); font-weight: 500; }
 .hra-agenda-summary .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--text-muted); flex: none; }
-.hra-agenda-controls { display: flex; align-items: center; gap: 10px; }
+.hra-agenda-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
 .hra-agenda-nav { display: flex; align-items: center; gap: 4px; }
 /* The calendar vendor stylesheet can win the color cascade for nested
    toolbar buttons. Pin the navigation icon stroke to the app foreground. */
@@ -751,6 +755,29 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 .hra-agenda-calendar .rbc-day-slot .hra-agenda-event-card:hover .hra-agenda-gauges {
   justify-content: flex-start;
 }
+
+/* ── Week view row-based day card (HRA-264) ─────────────────────────────────
+   Replaces the gauge-ring `.hra-agenda-event-card` treatment above, for Week
+   view only — Month's own card/gauge CSS above is untouched, since this
+   class only ever renders from WeekRowCard (PlanInstanceCalendar.tsx), which
+   only mounts when `view === "week"`. Up to 4 stacked rows; none of them (or
+   their own children) use a fixed pixel width — `overflow-wrap: anywhere`
+   plus the parent `.rbc-event`'s own fluid, in-flow width (see the Week
+   view time-grid card block above) is what lets a narrow (mobile) column
+   wrap/stack instead of overflowing, per frontend.md's token/Tailwind
+   rules. */
+.hra-agenda-rowcard {
+  display: flex; flex-direction: column; gap: 4px; box-sizing: border-box;
+  width: 100%; padding: 4px 6px 5px; border-radius: var(--radius-sm); border: 1px solid transparent;
+}
+.hra-agenda-rowcard-row1 {
+  font-size: var(--text-meta); font-weight: 500; color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+.hra-agenda-rowcard-row2 { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.hra-agenda-rowcard-dsl { display: flex; flex-direction: column; gap: 1px; }
+.hra-agenda-rowcard-dsl-line { font-size: var(--text-meta); color: var(--text-secondary); overflow-wrap: anywhere; }
+.hra-agenda-rowcard-row4 { font-size: var(--text-meta); color: var(--text-secondary); overflow-wrap: anywhere; }
 
 /* ── Week view drag-and-drop (HRA-190) ──────────────────────────────────────
    Hand-copied from the vendor's own dragAndDrop addon stylesheet rather than
@@ -1083,6 +1110,18 @@ body {
   border-radius: 999px;
   overflow: hidden;
   border: 1px solid var(--segment-color, var(--border-strong));
+}
+/* HRA-273: SettingsTab's DateFormatPicker has 4 pills, each labeled with its
+   own example date ("Numeric (UK) · 23/03/2026") — real content width
+   measured 793px at 375px viewport, clipped by the app shell's overflow-
+   hidden layer to 372px, so the 3rd/4th pills were unreachable (not just
+   visually clipped — the ancestor blocking them isn't itself the scrollable
+   one, so there was no scrollbar path to them either). Every other
+   .hra-segment call site (Units, Activity details, chart Speed/Pace, etc.)
+   already fits at 375px and is unaffected — wrapping only engages once a
+   segment's own content already doesn't fit its line. */
+@media (max-width: 767px) {
+  .hra-segment { flex-wrap: wrap; }
 }
 .hra-segment-item {
   font-family: inherit;
@@ -1770,6 +1809,14 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-row-wrap      { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .hra-control-row   { display: flex; align-items: center; flex-wrap: wrap; }
 .hra-row-between   { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+/* HRA-270: at a narrow width, .hra-row-between's default flex-shrink:1 let a
+   long title squeeze its sibling .hra-segment control (BodyTab's per-metric
+   Chart/Table switch) below its own content width — since .hra-segment
+   clips overflow to keep its capsule shape, the shrunk segment silently cut
+   off the "Tabella" label instead of the title (which can safely wrap) ever
+   giving up the room. Title text absorbs the squeeze now; the switch never
+   shrinks below what its own labels need. */
+.hra-row-between .hra-segment { flex-shrink: 0; }
 .hra-col           { display: flex; flex-direction: column; align-items: flex-start; }
 .hra-chip-row      { display: flex; flex-wrap: wrap; }
 /* The bolded heading text atop a Manage-tab card ("Delete data range",
@@ -2066,6 +2113,41 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   transition: width 0.2s ease;
 }
 .hra-sidebar[data-collapsed="true"] { width: 64px; }
+/* HRA-267: third state — fully hidden (phone tier's default). At the
+   desktop/tablet tiers this never fires (their manual toggle only ever
+   flips "false"/"true"); kept as a general in-flow fallback regardless. */
+.hra-sidebar[data-collapsed="hidden"] { width: 0; padding-left: 0; padding-right: 0; border-right: none; }
+/* Phone tier: the sidebar becomes an off-canvas overlay drawer instead of
+   an in-flow column, so it never pushes <main> or adds page-level
+   horizontal scroll (AC5) — `position: fixed` removes it from the flex
+   row's own width calculation regardless of the `width` above. "hidden"
+   slides it fully off-screen; "false" (open) slides it back in as a drawer
+   above <main>, above the dedicated backdrop below. */
+.hra-sidebar[data-tier="phone"] {
+  position: fixed; inset: 0 auto 0 0; z-index: 50; width: 232px;
+  transition: transform 0.2s ease;
+  box-shadow: 4px 0 24px color-mix(in srgb, black 25%, transparent);
+}
+.hra-sidebar[data-tier="phone"][data-collapsed="hidden"] { transform: translateX(-100%); }
+.hra-sidebar[data-tier="phone"][data-collapsed="false"] { transform: translateX(0); }
+/* Dims and blocks interaction with <main> while the phone drawer is open;
+   dismisses the drawer on outside-tap (AC3). */
+.hra-sidebar-backdrop {
+  position: fixed; inset: 0; z-index: 45;
+  background: color-mix(in srgb, black 45%, transparent);
+}
+/* Fixed opener, shown only while the phone drawer is hidden (App.tsx gates
+   this on viewportTier/sidebarMode, not a media query, since the toggle
+   behavior itself is already tier-aware in JS). */
+.hra-sidebar-hamburger {
+  position: fixed; top: 12px; left: 12px; z-index: 46;
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-surface) 90%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  color: var(--text-primary); cursor: pointer;
+}
 /* Top row: brand + language picker side by side (moved out of the old
    bottom footer per explicit feedback). Expanded brand reads at
    --text-body — the original --text-heading size (same combo
@@ -2194,16 +2276,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   margin: 0 auto;
   padding: 24px 24px 48px;
 }
+/* HRA-268: phone tier (same <768px cutoff App.tsx's ViewportTier uses for
+   the sidebar) — the fixed 24px side gutter eats a disproportionate share
+   of a 375px screen, so it scales down here. */
+@media (max-width: 767px) {
+  .hra-app-main { padding: 16px 12px 32px; }
+}
 .hra-app-main > .hra-section-title:first-child { margin-top: 0; }
-/* AgendaTab's "no active plan" empty state (direct feedback: center it in
-   the screen rather than reading as a stray top-of-page line). 72px
-   approximates .hra-app-main's own top+bottom padding (24+48 above), so the
-   centering is against the visible content area's height, not the raw
-   viewport (which would ignore that padding and sit slightly low). Scoped to
-   this one call site, not Empty.tsx itself — every other <Empty/> usage
-   (an in-card/in-table "no data" line) stays exactly where it renders in the
-   surrounding flow. */
-.hra-agenda-empty-center { display: flex; align-items: center; justify-content: center; min-height: calc(100vh - 72px); }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }
 .hra-section-gap-top { margin-top: var(--section-gap); }
@@ -2239,12 +2318,31 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-date-range-row { display: flex; gap: 8px; align-items: center; width: 100%; margin-bottom: 12px; }
 .hra-date-range-name { flex: 2 1 120px; min-width: 0; font-size: var(--text-label); padding: 6px 8px; border-radius: 6px; }
 .hra-date-range-action { flex: 0 0 auto; width: 100px; }
+/* HRA-272: this row has no flex-wrap of its own — the name field/two
+   DatePickers/race Select can shrink (each already has a flexible
+   basis/min-width: 0, see the rules above), but a DatePicker's own
+   `.hra-date-trigger` is a fixed ~128px, so the row's real minimum width
+   is well past 375px and forced page-level horizontal scroll. Wrapping at
+   the phone tier lets each control land on its own line instead. */
+@media (max-width: 767px) {
+  .hra-date-range-row { flex-wrap: wrap; }
+}
 .hra-chip-action { padding: 3px 10px; }
 .hra-control-action { padding: 5px 14px; }
 .hra-list-row { padding: 3px 0; }
 .hra-icon-action { border-radius: var(--radius-sm); padding: 2px 5px; }
 .hra-instance-identity-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .hra-instance-timing-grid { grid-template-columns: 160px 160px 220px; }
+/* HRA-272: identity's 5 equal-fr columns and timing's fixed 160/160/220px
+   columns (540px total) both clip their field values well before 375px —
+   stacking to one column at the phone tier gives each field its own full-
+   width row, same pattern .hra-activity-row's own HRA-271 fix uses. */
+@media (max-width: 767px) {
+  .hra-instance-identity-grid,
+  .hra-instance-timing-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .hra-goal-time-input { width: 90px; }
 .hra-tight-action { border-radius: 5px; padding: 5px 10px; }
 .hra-resolution-hint { color: var(--text-muted); }
@@ -2262,6 +2360,16 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 
 /* HRA-180 analytics layout, finite states, and runtime bridges. */
 .hra-activity-modal { max-width: 680px; max-height: 90vh; }
+/* HRA-271: at the phone tier, the outer backdrop + this dialog's own
+   Tailwind p-6 (24px) padding on both sides ate ~96px of a 375px viewport
+   before any content — scaled down so the header row (badge/date/type
+   picker/delete/× close, see ActivityDetailBody.tsx's flex-wrap fix below)
+   has enough width to lay out without its × close control landing off the
+   visible dialog. */
+@media (max-width: 767px) {
+  .hra-modal-backdrop { padding: 12px; }
+  .hra-activity-modal { padding: 16px; }
+}
 .hra-activity-type-action {
   width: var(--activity-action-width, auto);
   height: var(--activity-action-height, auto);
@@ -2271,6 +2379,17 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-radius: 16px;
 }
 .hra-activity-row[data-expanded="true"] { border-radius: 16px 16px 0 0; }
+/* HRA-271: at 375px, this row's fr-proportioned columns squeeze column 2
+   (the type picker + fixed-width Delete button, see .hra-activity-row-action
+   below) to well under its own content's fixed pixel widths — a fixed-width
+   child can't shrink to fit a narrower flex line the way wrapping content
+   can, so it overflowed the row/card horizontally. Stacking to one column
+   gives each cluster the row's full width, which comfortably fits (or, via
+   the existing .hra-row-wrap flex-wrap on each cluster, wraps within) that
+   width instead. */
+@media (max-width: 767px) {
+  .hra-activity-row { grid-template-columns: 1fr; }
+}
 .hra-activity-row-action { width: 177px; height: 30px; }
 .hra-metric-toggle {
   --dyn-border: var(--border-strong);
@@ -2301,6 +2420,24 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   grid-template-columns: auto 1fr auto;
   padding-left: var(--chart-controls-left);
   padding-right: var(--chart-controls-right);
+}
+/* HRA-271: both rows above are CSS grids (not flex), so their `auto`/`1fr`
+   tracks size to content and don't wrap onto new lines the way a flex-wrap
+   row does — at 375px the three side-by-side groups (view-mode switches /
+   pause+outlier controls / metric toggles, and separately Play-Stop /
+   planned-workout controls / KPI badges) don't fit and force real
+   page-level horizontal scroll. Stacking both to one column at the phone
+   tier gives each group the row's full width; each group's own
+   .hra-row-wrap already wraps its individual controls within that width.
+   The actual chart plot (ResponsiveContainer, OverlayCharts.tsx) already
+   shrinks to its container at any width and needs no change here — see
+   docs/frontend.md's "chart must never shrink or widen" note, which is
+   about the axis-width RESERVATION staying constant, not the container. */
+@media (max-width: 767px) {
+  .hra-activity-chart-selectors,
+  .hra-activity-chart-controls {
+    grid-template-columns: 1fr;
+  }
 }
 .hra-runner-row { height: var(--runner-row-height); }
 .hra-activity-chart-placeholder { height: var(--activity-chart-placeholder-height); }
