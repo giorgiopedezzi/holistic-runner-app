@@ -836,6 +836,123 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
   font-size: var(--text-meta); color: var(--cat-color, var(--text-secondary));
   white-space: nowrap;
 }
+/* Eight legend items wrap to four rows at 375px, pushing today's workout
+   below the fold on the one screen whose whole job is showing it. One
+   swipeable line instead: the legend stays available without outranking the
+   thing it annotates. */
+@media (max-width: 767px) {
+  .hra-workout-legend {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 2px;
+  }
+  .hra-workout-legend::-webkit-scrollbar { display: none; }
+}
+
+/* ── Agenda ribbon, phone tier (PlanInstanceCalendar's AgendaDayRibbon) ────
+   One row per day, read top to bottom. The structure encodes the content:
+   a fixed date margin on the left (so every date lands on the same optical
+   line while the body beside it varies from one word to five), a hairline
+   separating margin from body, and a short category tick riding that
+   hairline — the only colour in the list, which makes the plan's hard/easy
+   rhythm legible while scrolling without drawing a single box.
+
+   Lives OUTSIDE .hra-agenda-calendar deliberately: that element scopes its
+   own shadcn-vocabulary --accent/--border/--card (bare "H S% L%" triplets
+   for the vendor's CSS) which shadow the app's real tokens for everything
+   nested inside it — a trap this file has already had to document twice. */
+/* No height of its own, unlike the grid's fixed 560px box: the ribbon scrolls
+   with the page rather than inside a nested scroller, so the browser's own
+   chrome still collapses as you read down the month and there's no scroll
+   trap to fight with a thumb. */
+.hra-agenda-ribbon-root { width: 100%; }
+.hra-agenda-ribbon { list-style: none; margin: 0; padding: 0; }
+/* Two classes, not one, so this reliably outranks the .hra-agenda-cat-*
+   class sharing the element: those are reused here purely for their
+   --cat-color hook, while their card tint and border belong to the desktop
+   grid's cards and have no place in a text-first list. Specificity rather
+   than source order, so a later edit to either block can't silently
+   reintroduce the tint. */
+.hra-agenda-ribbon .hra-agenda-ribbon-day {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 0;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+.hra-agenda-ribbon .hra-agenda-ribbon-day:first-child { border-top: none; }
+/* Date margin — mono, right-aligned against the hairline, so the day numbers
+   form a single column the eye can run down. */
+.hra-agenda-ribbon-date {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+  padding-right: 9px; border-right: 1px solid var(--border);
+  font-family: var(--font-mono); line-height: 1.15;
+}
+.hra-agenda-ribbon-dow {
+  font-size: var(--text-meta); color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.hra-agenda-ribbon-num { font-size: var(--text-data); color: var(--text-secondary); }
+/* The tick: the day's training-load category, as a segment of the margin's
+   own hairline rather than a separate mark — a planned session thickens and
+   colours the rule beside its date. Rest/todo/other carry no --cat-color and
+   so keep the plain hairline, which is the correct signal: nothing to run. */
+.hra-agenda-ribbon-day[data-planned="true"] .hra-agenda-ribbon-date {
+  border-right-width: 2px;
+  border-right-color: var(--cat-color, var(--border-strong));
+}
+/* Today: the one row that gets full-strength type and the app's own
+   today-green, the same colour the desktop grid's day-number circle uses, so
+   the two views mark "today" with one vocabulary. */
+.hra-agenda-ribbon-day[data-today="true"] .hra-agenda-ribbon-num {
+  color: var(--accent-green); font-weight: 600;
+}
+.hra-agenda-ribbon-day[data-today="true"] .hra-agenda-ribbon-dow { color: var(--accent-green); }
+.hra-agenda-ribbon-day[data-today="true"] .hra-agenda-ribbon-label-text { color: var(--text-primary); }
+/* The tap target. A button, but styled as running text — the row is
+   interactive without announcing itself as a control, which is what makes
+   the list read as a log rather than a menu. */
+.hra-agenda-ribbon-body {
+  display: flex; flex-direction: column; gap: 3px;
+  min-width: 0; width: 100%;
+  padding: 0; border: none; background: none;
+  font-family: inherit; text-align: left; color: inherit;
+  /* Comfortable thumb target even on a one-line REST day. */
+  min-height: 34px;
+}
+button.hra-agenda-ribbon-body { cursor: pointer; }
+button.hra-agenda-ribbon-body:active { opacity: 0.6; }
+.hra-agenda-ribbon-label {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: var(--text-label); color: var(--text-secondary);
+}
+.hra-agenda-ribbon-label-text { overflow-wrap: anywhere; }
+/* The DSL is the sport's own notation — mono, one segment per line, the same
+   breakdown splitDslSegments gives the grid's cards. */
+.hra-agenda-ribbon-dsl { display: flex; flex-direction: column; gap: 1px; }
+.hra-agenda-ribbon-dsl-line {
+  font-family: var(--font-mono); font-size: var(--text-meta);
+  color: var(--text-primary); overflow-wrap: anywhere;
+}
+/* What actually happened, under what was planned. */
+.hra-agenda-ribbon-actual {
+  display: flex; align-items: center; gap: 5px;
+  font-size: var(--text-meta); color: var(--text-secondary); overflow-wrap: anywhere;
+}
+.hra-agenda-ribbon-empty { color: var(--text-muted); font-size: var(--text-meta); }
+.hra-agenda-ribbon-time { padding-top: 1px; }
+
+/* Toolbar above the ribbon: at 375px the title block and the
+   view-toggle/nav/info cluster can't share a line, so they stack, and the
+   controls spread across the full width instead of bunching left. */
+@media (max-width: 767px) {
+  .hra-agenda-toolbar { gap: 10px; padding-bottom: 10px; }
+  .hra-agenda-controls { width: 100%; justify-content: space-between; }
+}
 
 html, body, #root { height: 100%; }
 
@@ -1916,10 +2033,15 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    tagline underneath (direct feedback: it diluted the mark) — just the name,
    given intentional presence through size/weight/color instead. */
 .hra-splash-brand { position: absolute; top: 30px; left: 30px; }
+/* Was a hardcoded #F5F7FA — near-white, so on the light palettes (--bg
+   #F7F9FB) the brand mark was invisible against its own backdrop. The token
+   is the same near-white on every dark palette, so the dark-theme look is
+   unchanged; light themes now get a readable mark instead of a blank
+   corner. */
 .hra-splash-brand-title {
   font-family: "Manrope", var(--font-sans);
   font-weight: 800; font-size: 21px; letter-spacing: -0.3px;
-  color: #F5F7FA; margin: 0;
+  color: var(--text-primary); margin: 0;
 }
 /* "Free" in the same red the heart-rate line/"Your heart." copy already use
    (--data-hr) — ties the brand mark to the animation it's sitting next to,
@@ -1935,7 +2057,11 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   from { opacity: 0; transform: translateY(10px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-.hra-splash-copy { animation: hra-splash-copy-in 0.7s ease-out both; }
+/* --splash-display is the copy block's own display size, one hop away from
+   the --text-display token, so the closing beat below can step up from it
+   and the phone block can shrink the whole ladder by changing one value
+   instead of three. */
+.hra-splash-copy { animation: hra-splash-copy-in 0.7s ease-out both; --splash-display: var(--text-display); }
 .hra-splash-copy p { margin: 0; }
 .hra-splash-copy p + p { margin-top: 0.3em; }
 /* Subtagline under the bold headline — deliberately a lighter, non-bold
@@ -1945,10 +2071,64 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 /* The closing beat — "Your heart. You." — steps up in size and shifts to
    the same HR red used everywhere else in the app (--data-hr), each line
    a little bigger than the last, ending on "You." as the largest. */
-.hra-splash-copy-heart { color: var(--data-hr); font-size: calc(var(--text-display) * 1.15); }
-.hra-splash-copy-you { color: var(--data-hr); font-size: calc(var(--text-display) * 1.5); font-weight: 700; }
+.hra-splash-copy-heart { color: var(--data-hr); font-size: calc(var(--splash-display) * 1.15); }
+.hra-splash-copy-you { color: var(--data-hr); font-size: calc(var(--splash-display) * 1.5); font-weight: 700; }
 @media (prefers-reduced-motion: reduce) {
   .hra-splash-copy { animation: none; }
+}
+
+/* ── Splash, phone tier ────────────────────────────────────────────────────
+   The desktop composition stacks to ~840px against a ~667px screen, and the
+   layer centers its overflow — so the brand ran off the top and the Skip
+   button off the bottom, with no scroll path to either (fixed + centered
+   flex clips both ends). Three changes fix that, in order of what they buy:
+
+   1. Top-align and allow scrolling. Even on the shortest phone in landscape,
+      nothing can now be unreachable — the centered flow was the actual
+      "can't see the screen" mechanism, not any single oversized child.
+   2. Pull the brand into the flow. Absolute top-left over a 375px column
+      overlapped the copy it was meant to sit apart from; at this width there
+      is no "apart from" to sit in, so it becomes the first line of the page.
+   3. Shrink the ladder, not the beat. One --splash-display change scales the
+      headline and the "Your heart. / You." escalation together, so the copy
+      keeps its shape at ~86% size instead of losing its last line.
+
+   SplashScreen.tsx's own isPhone branch drops the card, the KPI boxes and
+   the chart at this same 767px cutoff (see useIsPhone.ts) — this block only
+   arranges what survives. */
+@media (max-width: 767px) {
+  .hra-splash-layer.hra-splash-backdrop {
+    justify-content: flex-start;
+    gap: 22px;
+    padding: 18px 16px 24px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .hra-splash-brand { position: static; align-self: flex-start; }
+  .hra-splash-layer .hra-splash-copy {
+    --splash-display: calc(var(--text-display) * 0.86);
+    font-size: var(--splash-display);
+  }
+  /* The three KPI numbers as one unboxed line (SplashScreen.tsx's
+     summaryLine) — mono so the digits align with the live readout's own
+     tabular figures directly beneath the runner. */
+  .hra-splash-summary {
+    margin: 0 0 10px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: var(--text-meta);
+    color: var(--text-secondary);
+  }
+  /* With no chart under it, the plot wrapper collapses to the readout's own
+     height — and .hra-runner-values' `bottom: 36px` would then float the
+     readout up over the terrain. Put it back in normal flow, centered, so it
+     reads as a caption under the runner instead. */
+  .hra-splash-plot .hra-runner-values {
+    position: static;
+    transform: none;
+    justify-content: center;
+    padding-top: 6px;
+  }
 }
 /* Delete-section Card — a subtle red border tinting the whole card as
    "this section is destructive," was a raw #e24b4a33 hex-alpha literal. */
