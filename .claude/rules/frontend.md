@@ -32,6 +32,7 @@ paths:
 - Direct Recharts/SVG presentation props and runtime CSS-variable bridges are exceptions only when recorded in `garmin-dashboard/scripts/style-exceptions.json` with a stable file/symbol/category signature, exact count, and rationale. Never key an exception by line number.
 - Run `npm run style:check` from `garmin-dashboard/` after styling changes. It rejects static JSX styles, literal component typography, runtime-generated Tailwind utility names, arbitrary values, unlisted direct exceptions, count drift, and stale ledger entries.
 - **No moving UI:** when a conditionally displayed field joins a row, stable siblings must not visibly shift/resize. Give stable siblings fixed sizing; the conditional field should extend or wrap the row instead of redistributing existing siblings.
+- **Container budget (HRA-276):** give a value card chrome (`.card`) only when it offers real interaction or groups multiple related controls; a plain read-only fact uses `.hra-fact-row` (typography + a divider between stacked rows) instead — do not wrap every value in a card by default.
 
 ## React behavior — load-bearing
 

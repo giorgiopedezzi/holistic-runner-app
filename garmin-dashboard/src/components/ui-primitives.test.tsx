@@ -1,11 +1,12 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import {
   AccordionCard,
   Badge,
   Card,
   Checkbox,
   ConfirmModal,
+  HelpDisclosure,
   ProgressBar,
   Select,
 } from "./ui";
@@ -117,5 +118,47 @@ describe("shared UI primitive contracts", () => {
     expect(screen.getByText("Running")).toHaveStyle({ "--badge-color": "#abcdef" });
     const bar = container.querySelector(".hra-progress-bar");
     expect(bar).toHaveStyle({ "--progress-color": "#fedcba", "--progress-width": "25%" });
+  });
+
+  it("HelpDisclosure: opens via click, closes on Escape or an outside tap, and returns focus to the trigger", async () => {
+    render(
+      <>
+        <HelpDisclosure label="Help with pace zones" heading="Pace zones">
+          Zones are derived from your recent race pace.
+        </HelpDisclosure>
+        <button>Outside</button>
+      </>,
+    );
+    const trigger = screen.getByRole("button", { name: "Help with pace zones" });
+    expect(trigger).toHaveClass("hra-help-trigger");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Pace zones")).not.toBeInTheDocument();
+
+    // Open via click.
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("Pace zones")).toBeInTheDocument();
+    expect(screen.getByText(/derived from your recent race pace/)).toBeInTheDocument();
+
+    // Close via Escape — focus returns to the trigger. Radix's focus-return
+    // fires from a MutationObserver microtask on unmount, not synchronously
+    // within the keydown handler, so the assertion needs a tick.
+    fireEvent.keyDown(screen.getByText("Pace zones"), { key: "Escape" });
+    expect(screen.queryByText("Pace zones")).not.toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(trigger).toHaveFocus();
+
+    // Reopen, then close via an outside tap — Radix defers this dismissal to
+    // the next real "click" after the pointerdown, and only attaches its
+    // outside-pointerdown listener on the next tick after mount.
+    fireEvent.click(trigger);
+    expect(screen.getByText("Pace zones")).toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    const outside = screen.getByRole("button", { name: "Outside" });
+    fireEvent.pointerDown(outside);
+    fireEvent.click(outside);
+    expect(screen.queryByText("Pace zones")).not.toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(trigger).toHaveFocus();
   });
 });

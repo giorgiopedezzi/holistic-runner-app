@@ -1554,6 +1554,30 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 8px; z-index: 50;
 }
 
+/* HelpDisclosure trigger (HRA-276) — fixed 44x44 CSS px tap target,
+   independent of the CircleHelp icon's own 18px size, per the AC's
+   minimum-touch-target requirement. */
+.hra-help-trigger {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: transparent; color: var(--text-secondary);
+  border: none; border-radius: 50%; cursor: pointer;
+  transition: color 0.15s, background-color 0.15s;
+}
+.hra-help-trigger:hover,
+.hra-help-trigger[data-state="open"] {
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Container-budget rule (HRA-276 scope note, Epic HRA-275): a value gets
+   card chrome (`.card`) only when it offers real interaction or groups
+   multiple related controls; a plain read-only fact uses `.hra-fact-row`
+   instead — typography only, with a divider between stacked rows, no card
+   background/border. Reusable classes only; Stories 4-6 apply the rule to
+   specific tabs. */
+.hra-fact-row { padding: 8px 0; }
+.hra-fact-row + .hra-fact-row { border-top: 1px solid var(--border); }
+
 .hra-select-trigger {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
   font-family: inherit; font-size: var(--text-label);
