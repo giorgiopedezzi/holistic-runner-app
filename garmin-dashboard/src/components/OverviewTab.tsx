@@ -1393,7 +1393,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
                   <span className="hra-text-primary flex-1 font-medium">
                     {fmtKm(s.total_km * 1000)}
                   </span>
-                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", `${s.total_activities} sessions`, { count: s.total_activities })}</span>
+                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", s.total_activities === 1 ? "1 session" : `${s.total_activities} sessions`, { count: s.total_activities })}</span>
                   {s.avg_hr && (
                     <span className="hra-text-danger text-label">♥ {s.avg_hr}</span>
                   )}

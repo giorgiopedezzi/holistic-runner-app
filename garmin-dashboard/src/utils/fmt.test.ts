@@ -48,6 +48,10 @@ describe("fmtPace", () => {
     expect(fmtPace(null)).toBe("—");
     expect(fmtPace(31)).toBe("—");
   });
+  it("rolls a 60-second rounding into the next minute, never renders M:60 (HRA-277)", () => {
+    setUnitSystem("metric");
+    expect(fmtPace(4.999)).toBe("5:00"); // round(0.999*60)=60 — the bug this Story fixes
+  });
 });
 
 describe("fmtWeight / fmtElevation / fmtSpeed", () => {
