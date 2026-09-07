@@ -1578,6 +1578,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-fact-row { padding: 8px 0; }
 .hra-fact-row + .hra-fact-row { border-top: 1px solid var(--border); }
 
+/* Stat's `layout="row"` shape (HRA-279) — typographic KPI compression on
+   phone widths: label left, value/unit + delta right, on one line. The
+   values group never wraps (label is the one side allowed to give up
+   width) so a value/unit/delta triple can't split across lines. */
+.hra-fact-row-stat { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.hra-fact-row-stat-label {
+  display: flex; align-items: center; gap: 6px; min-width: 0;
+  font-size: var(--text-label); font-weight: var(--text-label--font-weight); color: var(--text-secondary);
+}
+.hra-fact-row-stat-values { display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; white-space: nowrap; }
+.hra-fact-row-stat .hra-stat-delta { margin-top: 0; }
+
 .hra-select-trigger {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
   font-family: inherit; font-size: var(--text-label);

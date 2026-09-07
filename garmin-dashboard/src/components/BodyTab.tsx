@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import { useQuery } from "@/hooks/useQuery";
 import { useUrlState } from "@/hooks/useUrlState";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { api } from "@/api/client";
 import {
   ChartCard, chartGrid, chartTick, chartTooltipStyle, chartBarRadius, chartGradientDef,
@@ -132,6 +133,7 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
 
 export function BodyTab({ from, to }: Props) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
   // "All available data" reads as an intentional range, not the useDateRange
   // "All" preset's internal 2000-01-01 sentinel (HRA-256).
   const fromLabel = from === ALL_SENTINEL ? t("dateRange.allAvailable", "All available data") : from;
@@ -190,19 +192,29 @@ export function BodyTab({ from, to }: Props) {
   return (
     <>
       <SectionTitle>{t("body.latestMeasurementTitle", `Latest measurement — ${fmtDate(latest.date_only)}`, { date: fmtDate(latest.date_only) })}</SectionTitle>
-      <StatGrid>
-        <Stat label={t("body.stat.weight", "Weight")} value={fmtWeight(latest.weight_kg)} accent="var(--data-weight)" />
-        {latest.fat_ratio      && <Stat label={t("body.stat.bodyFat", "Body fat")} value={fmtPercent(latest.fat_ratio)} />}
-        {latest.muscle_mass_kg && <Stat label={t("body.stat.muscleMass", "Muscle mass")} value={fmtWeight(latest.muscle_mass_kg)} accent="var(--accent-green)" />}
-        {latest.bmi            && <Stat label={t("body.stat.bmi", "BMI")} value={latest.bmi.toFixed(1)} />}
-        {weightDelta !== null  && (
-          <Stat
-            label={t("body.stat.changeInPeriod", "Change in period")}
-            value={`${weightDelta > 0 ? "+" : ""}${(getUnitSystem() === "imperial" ? kgToLb(weightDelta) : weightDelta).toFixed(1)} ${weightUnitLabel()}`}
-            accent={weightDelta <= 0 ? "var(--accent-green)" : "var(--accent-red)"}
-          />
-        )}
-      </StatGrid>
+      {(() => {
+        // Container-budget compression on phone widths (HRA-279): the same
+        // bordered StatGrid on desktop becomes a typographic fact-row list
+        // — no per-value card chrome — per .claude/rules/frontend.md.
+        const statLayout = isPhone ? "row" : "card";
+        const kpiStats = (
+          <>
+            <Stat layout={statLayout} label={t("body.stat.weight", "Weight")} value={fmtWeight(latest.weight_kg)} accent="var(--data-weight)" />
+            {latest.fat_ratio      && <Stat layout={statLayout} label={t("body.stat.bodyFat", "Body fat")} value={fmtPercent(latest.fat_ratio)} />}
+            {latest.muscle_mass_kg && <Stat layout={statLayout} label={t("body.stat.muscleMass", "Muscle mass")} value={fmtWeight(latest.muscle_mass_kg)} accent="var(--accent-green)" />}
+            {latest.bmi            && <Stat layout={statLayout} label={t("body.stat.bmi", "BMI")} value={latest.bmi.toFixed(1)} />}
+            {weightDelta !== null  && (
+              <Stat
+                layout={statLayout}
+                label={t("body.stat.changeInPeriod", "Change in period")}
+                value={`${weightDelta > 0 ? "+" : ""}${(getUnitSystem() === "imperial" ? kgToLb(weightDelta) : weightDelta).toFixed(1)} ${weightUnitLabel()}`}
+                accent={weightDelta <= 0 ? "var(--accent-green)" : "var(--accent-red)"}
+              />
+            )}
+          </>
+        );
+        return isPhone ? <div>{kpiStats}</div> : <StatGrid>{kpiStats}</StatGrid>;
+      })()}
 
       <SectionTitle>{t("body.metricsSectionTitle", `Body metrics — ${fromLabel} to ${to}`, { from: fromLabel, to })}</SectionTitle>
 

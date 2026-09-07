@@ -21,6 +21,11 @@ interface StatProps {
   // nothing to compare against).
   deltaText?: string;
   deltaPositive?: boolean;
+  // "card" (default) is the bordered mini-card grid shape (StatGrid, Card
+  // chrome). "row" is the container-budget alternative (.claude/rules/frontend.md,
+  // HRA-276) for a plain read-only fact on phone widths — no card chrome, a
+  // typographic label/value row instead (HRA-279).
+  layout?: "card" | "row";
 }
 
 // Splits a formatted "68.36 km" into a value/unit pair so the unit can render
@@ -36,8 +41,33 @@ export function splitUnit(value: string | number): { main: string; unit?: string
   return { main: m[1], unit: m[2] };
 }
 
-export function Stat({ label, value, sub, accent, tooltip, icon, deltaText, deltaPositive }: StatProps) {
+export function Stat({ label, value, sub, accent, tooltip, icon, deltaText, deltaPositive, layout = "card" }: StatProps) {
   const { main, unit } = splitUnit(value);
+  const kpiStyle = accent ? ({ "--kpi-color": accent } as CSSProperties) : undefined;
+  const deltaClass = deltaPositive == null ? "hra-stat-delta" : deltaPositive ? "hra-stat-delta hra-stat-delta-up" : "hra-stat-delta hra-stat-delta-down";
+  const deltaContent = deltaText && <>{deltaPositive != null && (deltaPositive ? "↗ " : "↘ ")}{deltaText}</>;
+
+  if (layout === "row") {
+    // Container-budget row (HRA-279): label left, value/unit + delta right,
+    // no card chrome — the value/delta group never wraps mid-number so a
+    // narrow phone width can't split "4.6" from "kg" or the delta arrow.
+    return (
+      <div className="hra-fact-row hra-fact-row-stat">
+        <span className="hra-fact-row-stat-label">
+          {icon && <span className="hra-stat-icon" aria-hidden="true">{icon}</span>}
+          {label}
+        </span>
+        <span className="hra-fact-row-stat-values">
+          <span className="hra-kpi-value hra-kpi-value--sm" style={kpiStyle}>
+            {main}
+            {unit && <span className="hra-kpi-unit hra-kpi-unit--sm"> {unit}</span>}
+          </span>
+          {deltaContent && <span className={deltaClass}>{deltaContent}</span>}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <Card className="hra-lift" tooltip={tooltip}>
       <Label className="hra-stat-label">
@@ -48,16 +78,12 @@ export function Stat({ label, value, sub, accent, tooltip, icon, deltaText, delt
           threaded through as a --kpi-color custom-property hook rather than a
           style={{color}} — the actual color rule lives in .hra-kpi-value
           (index.css), see CLAUDE.md's "styles live in index.css". */}
-      <div className="hra-kpi-value" style={accent ? ({ "--kpi-color": accent } as CSSProperties) : undefined}>
+      <div className="hra-kpi-value" style={kpiStyle}>
         {main}
         {unit && <span className="hra-kpi-unit"> {unit}</span>}
       </div>
       {sub && <div className="hra-kpi-sub">{sub}</div>}
-      {deltaText && (
-        <div className={deltaPositive == null ? "hra-stat-delta" : deltaPositive ? "hra-stat-delta hra-stat-delta-up" : "hra-stat-delta hra-stat-delta-down"}>
-          {deltaPositive != null && (deltaPositive ? "↗ " : "↘ ")}{deltaText}
-        </div>
-      )}
+      {deltaContent && <div className={deltaClass}>{deltaContent}</div>}
     </Card>
   );
 }

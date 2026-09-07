@@ -668,6 +668,18 @@
       ],
       "count": 1,
       "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
+      "file": "src/components/ui/Stat.tsx",
+      "symbol": "Stat",
+      "category": "custom-property-style",
+      "element": "span",
+      "attribute": "style",
+      "properties": [
+        "--kpi-color"
+      ],
+      "count": 1,
+      "rationale": "The layout=\"row\" container-budget variant (HRA-279) renders the same accent hook on a <span> instead of a <div>; the class owns the visual rule."
     }
   ]
 }
