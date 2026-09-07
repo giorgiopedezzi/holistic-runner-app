@@ -468,6 +468,54 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
     expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: REST", "D2: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n"));
   });
+
+  it("Prev/Next flatten across sections — steps through every week in the template, not just one section's own", async () => {
+    const MULTI_DSL = [
+      "SECTION \"Base\" WEEKS 1-2", "WEEK 1", "D1: 5km @ RG", "WEEK 2", "D1: 6km @ RG",
+      "SECTION \"Peak\" WEEKS 3", "WEEK 3", "D1: 8km @ RG",
+    ].join("\n");
+    installFetch({
+      "POST /api/v1/plan-templates/generate": json({
+        plan: {
+          metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+          sections: [
+            {
+              name: "Base", week_spec: "1-2", raw_dsl: "SECTION \"Base\" WEEKS 1-2", pace_policy: {},
+              weeks: [
+                { number: 1, raw_dsl: "WEEK 1", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 5km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }] }] },
+                { number: 2, raw_dsl: "WEEK 2", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 6km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 6000, raw: "6km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "6km @ RG" }] }] },
+              ],
+            },
+            {
+              name: "Peak", week_spec: "3", raw_dsl: "SECTION \"Peak\" WEEKS 3", pace_policy: {},
+              weeks: [{ number: 3, raw_dsl: "WEEK 3", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 8km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 8000, raw: "8km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "8km @ RG" }] }] }],
+            },
+          ],
+        },
+        warnings: [],
+      }),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: MULTI_DSL } });
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+
+    expect(screen.getByText("Base — Week 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled(); // first week overall
+
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    expect(screen.getByText("Base — Week 2")).toBeInTheDocument();
+
+    // Crosses the section boundary — still just "Next", no per-section reset.
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    expect(screen.getByText("Peak — Week 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled(); // last week overall
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    expect(screen.getByText("Base — Week 2")).toBeInTheDocument();
+  });
 });
 
 describe("PlanTemplatesSection — English/Italian label parity for the new pipeline keys", () => {
