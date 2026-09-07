@@ -2506,6 +2506,11 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-compare-range[data-enabled="false"] { opacity: 0.4; pointer-events: none; }
 .hra-preview-pill { padding: 5px 14px; }
 .hra-plan-day-grid { grid-template-columns: auto minmax(0, 1fr) auto; }
+/* HRA-283: the template Week view's 7-day grid — a fixed min-width so the
+   7 columns stay legible (scrolling horizontally inside their own container)
+   instead of squeezing illegibly narrow on a small viewport; no phone-width
+   layout was specified for this Story. */
+.hra-week-view-grid { min-width: 770px; }
 [data-swappable="true"] { cursor: grab; }
 .hra-warning-list { padding-left: 18px; }
 .hra-classification-method { flex: 1 1 240px; }

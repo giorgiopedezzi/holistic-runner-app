@@ -772,9 +772,7 @@ function InstanceDayRow({
 // are never called on the InstanceDayRow branch — calling both branches'
 // hooks unconditionally in one component, then early-returning, would
 // violate the rules of hooks.
-function TemplateDayRow({
-  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit, highlighted,
-}: {
+export interface TemplateDayRowProps {
   day: DayView;
   onEdit: (patch: { dsl?: string; notes?: string }) => void;
   readOnlyDays: boolean;
@@ -782,9 +780,20 @@ function TemplateDayRow({
   onDaySwap?: (a: DayRef, b: DayRef) => void;
   offsetUnit: OffsetUnit;
   highlighted: boolean;
-}) {
+  // HRA-283: the Week view mounts this component fresh the instant an
+  // undeclared slot gets materialized into a real day (a different JSX
+  // subtree than the placeholder it replaces) — this lets that first mount
+  // open pre-expanded, satisfying "expanding it to edit" as one interaction
+  // rather than a materialize-then-a-second-click. Every other caller omits
+  // it (defaults to collapsed, unchanged from before this Story).
+  defaultExpanded?: boolean;
+}
+
+export function TemplateDayRow({
+  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit, highlighted, defaultExpanded,
+}: TemplateDayRowProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded ?? false);
   // HRA-233: per-day Structured/DSL selector, default Structured — replaces
   // the DSL textarea's old always-visible presence. Local component state
   // (not persisted/lifted) is safe here because the actual edit buffer lives

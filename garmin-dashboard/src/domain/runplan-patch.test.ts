@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  findSectionSpan, findWeekSpan, recomposeDayLine, replaceSegmentInDayLine, replaceSpan, replaceWithinSpan,
+  buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, recomposeDayLine, replaceSegmentInDayLine, replaceSpan, replaceWithinSpan,
   serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
 } from "./runplan-patch";
 
@@ -91,6 +91,82 @@ describe("swapDayContent (HRA-127)", () => {
   });
   it("leaves both lines unchanged when either doesn't match the D-line grammar", () => {
     expect(swapDayContent("not a day line", "D2: REST")).toEqual(["not a day line", "D2: REST"]);
+  });
+});
+
+describe("buildRestDayLine (HRA-283)", () => {
+  it("builds a bare D<n>: REST line, no suffix/tag", () => {
+    expect(buildRestDayLine(5)).toBe("D5: REST");
+  });
+});
+
+describe("insertDayLine (HRA-283)", () => {
+  const dslSource = [
+    `SECTION "Base" WEEKS 1-2`,
+    "WEEK 1",
+    "D1: 5km @ RG",
+    "D3: 4x1000m @ RG-20",
+    "WEEK 2",
+    "D1: 6km @ RG",
+  ].join("\n");
+  const sections = [{
+    raw_dsl: `SECTION "Base" WEEKS 1-2`,
+    weeks: [
+      { raw_dsl: "WEEK 1", days: [{ dsl: "D1: 5km @ RG" }, { dsl: "D3: 4x1000m @ RG-20" }] },
+      { raw_dsl: "WEEK 2", days: [{ dsl: "D1: 6km @ RG" }] },
+    ],
+  }];
+
+  it("inserts between two declared days, in ascending D-number position", () => {
+    const weekSpan = findWeekSpan(dslSource, sections, 0, 0)!;
+    const result = insertDayLine(dslSource, weekSpan, "WEEK 1", [{ day: 1, raw_dsl: "D1: 5km @ RG" }, { day: 3, raw_dsl: "D3: 4x1000m @ RG-20" }], 2, "D2: REST");
+    expect(result).toEqual({
+      ok: true,
+      source: [
+        `SECTION "Base" WEEKS 1-2`, "WEEK 1", "D1: 5km @ RG", "D2: REST", "D3: 4x1000m @ RG-20", "WEEK 2", "D1: 6km @ RG",
+      ].join("\n"),
+    });
+  });
+
+  it("inserts right after the WEEK header when the new D-number is smaller than every declared day", () => {
+    const weekSpan = findWeekSpan(dslSource, sections, 0, 0)!;
+    const result = insertDayLine(dslSource, weekSpan, "WEEK 1", [{ day: 1, raw_dsl: "D1: 5km @ RG" }, { day: 3, raw_dsl: "D3: 4x1000m @ RG-20" }], 0, "D0: REST");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.source.split("\n").slice(1, 3)).toEqual(["WEEK 1", "D0: REST"]);
+  });
+
+  it("appends after the last declared day when the new D-number is the largest", () => {
+    const weekSpan = findWeekSpan(dslSource, sections, 0, 0)!;
+    const result = insertDayLine(dslSource, weekSpan, "WEEK 1", [{ day: 1, raw_dsl: "D1: 5km @ RG" }, { day: 3, raw_dsl: "D3: 4x1000m @ RG-20" }], 7, "D7: REST");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.source).toContain("D3: 4x1000m @ RG-20\nD7: REST\nWEEK 2");
+  });
+
+  it("only touches the targeted week — an identical day line in another week is untouched", () => {
+    const dup = [
+      `SECTION "Base" WEEKS 1-2`, "WEEK 1", "D1: 6km @ RG", "WEEK 2", "D1: 6km @ RG",
+    ].join("\n");
+    const dupSections = [{
+      raw_dsl: `SECTION "Base" WEEKS 1-2`,
+      weeks: [
+        { raw_dsl: "WEEK 1", days: [{ dsl: "D1: 6km @ RG" }] },
+        { raw_dsl: "WEEK 2", days: [{ dsl: "D1: 6km @ RG" }] },
+      ],
+    }];
+    const weekSpan = findWeekSpan(dup, dupSections, 0, 1)!;
+    const result = insertDayLine(dup, weekSpan, "WEEK 2", [{ day: 1, raw_dsl: "D1: 6km @ RG" }], 3, "D3: REST");
+    expect(result).toEqual({
+      ok: true,
+      source: [`SECTION "Base" WEEKS 1-2`, "WEEK 1", "D1: 6km @ RG", "WEEK 2", "D1: 6km @ RG", "D3: REST"].join("\n"),
+    });
+  });
+
+  it("fails rather than guessing when the anchor line can't be found in the span", () => {
+    const weekSpan = findWeekSpan(dslSource, sections, 0, 0)!;
+    const result = insertDayLine(dslSource, weekSpan, "WEEK 1", [{ day: 1, raw_dsl: "D1: STALE" }], 2, "D2: REST");
+    expect(result).toEqual({ ok: false, reason: "not-found" });
   });
 });
 

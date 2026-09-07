@@ -432,6 +432,19 @@ export function weekDateRange(week: WeekView): { start: string; end: string } | 
   return { start: dates.reduce((a, b) => (a < b ? a : b)), end: dates.reduce((a, b) => (a > b ? a : b)) };
 }
 
+// HRA-283: the Week view's own "one flat list of weeks, spanning every
+// section" — Prev/Next steps through this list rather than being scoped to
+// one section, per the Story's explicit "flattened across the whole
+// template" requirement. Section/week boundaries stay addressable via the
+// returned indices (every other callback in this file already keys by
+// sectionIndex/weekIndex, so the Week view reuses that same addressing
+// scheme rather than inventing a new one).
+export interface FlatWeekRef { sectionIndex: number; weekIndex: number }
+
+export function flattenWeeks(sections: SectionView[]): FlatWeekRef[] {
+  return sections.flatMap((section, sectionIndex) => section.weeks.map((_, weekIndex) => ({ sectionIndex, weekIndex })));
+}
+
 // ── structured continuous-segment presentation (HRA-229) ───────────────────
 // A read-only view-model for a template day with EXACTLY one continuous
 // segment — the accordion renders this above the day's still-unchanged,

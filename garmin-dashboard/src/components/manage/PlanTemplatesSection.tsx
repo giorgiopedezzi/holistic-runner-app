@@ -29,10 +29,14 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
-import { TrainingPlanAccordion, type EditedRef } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
-import { buildTemplateSectionView, type SectionView } from "@/domain/runplan-aggregate";
-import { findSectionSpan, findWeekSpan, recomposeDayLine, replaceSpan, replaceWithinSpan, serializeSectionHeader, serializeWeekHeader, splitNote } from "@/domain/runplan-patch";
+import { PlanTemplateWeekView } from "@/components/manage/PlanTemplateWeekView";
+import { aggregateDayViews, buildTemplateSectionView, type DayView, type SectionView } from "@/domain/runplan-aggregate";
+import {
+  buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, recomposeDayLine, replaceSpan, replaceWithinSpan,
+  serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
+} from "@/domain/runplan-patch";
 import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
@@ -199,6 +203,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // state, since the two could never legitimately disagree.
   const [activeKey, setActiveKey] = useState<RowKey | null>(null);
   const editingId = typeof activeKey === "number" ? activeKey : null;
+
+  // HRA-283: the per-template editor's List/Week toggle — mirrors
+  // PlanInstancesSection's own List/Agenda toggle. A display preference, not
+  // edited data, so it's plain local state (not part of Draft/dirty-tracking)
+  // and always resets to List whenever a row opens (onToggleRow below).
+  const [viewMode, setViewMode] = useState<"list" | "week">("list");
 
   const [showHelp, setShowHelp] = useState(false);
   const [savedDslSource, setSavedDslSource] = useState<string | null>(null);
@@ -483,6 +493,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     }
     stashCurrentIfDirty();
     setActiveKey(key);
+    setViewMode("list");
     const draft = drafts[String(key)];
     if (draft) {
       const template = key === "new" ? undefined : templates?.find(tpl => tpl.id === key);
@@ -634,6 +645,114 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       const sections = [...prev.sections];
       sections[sectionIndex] = { ...section, weeks };
       return { dslSource: result.source, sections, offsetUnit: prev.offsetUnit };
+    });
+  }
+
+  // HRA-283: the Week view's own drag-and-drop day swap — templates never
+  // had one before this Story (the List view stays exactly as it was, per
+  // the Story's own explicit scope). Reuses swapDayContent verbatim (no new
+  // swap logic), then content-anchor-patches both touched D-lines the same
+  // way onSectionEdit/onWeekEdit/onDayEdit above already patch a single one —
+  // recomputing each span fresh from the just-updated source, since a
+  // header's own text (what findWeekSpan anchors on) is untouched by a day
+  // line's own length changing.
+  function onWeekViewDaySwap(a: DayRef, b: DayRef) {
+    setPatchError(null);
+    setEditor(prev => {
+      const dayA = prev.sections[a.sectionIndex]?.weeks[a.weekIndex]?.days[a.dayIndex];
+      const dayB = prev.sections[b.sectionIndex]?.weeks[b.weekIndex]?.days[b.dayIndex];
+      if (!dayA || !dayB) return prev;
+      const [newA, newB] = swapDayContent(dayA.dsl, dayB.dsl);
+
+      const spanA = findWeekSpan(prev.dslSource, prev.sections, a.sectionIndex, a.weekIndex);
+      const rA = replaceWithinSpan(prev.dslSource, spanA, dayA.dsl, newA);
+      if (!rA.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+      const spanB = findWeekSpan(rA.source, prev.sections, b.sectionIndex, b.weekIndex);
+      const rB = replaceWithinSpan(rA.source, spanB, dayB.dsl, newB);
+      if (!rB.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+
+      const sections = prev.sections.map(s => ({ ...s, weeks: s.weeks.map(w => ({ ...w, days: [...w.days] })) }));
+      sections[a.sectionIndex].weeks[a.weekIndex].days[a.dayIndex] = { ...dayB, dsl: newA, notes: splitNote(newA).note, day: dayA.day, suffix: dayA.suffix, category: dayA.category };
+      sections[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = { ...dayA, dsl: newB, notes: splitNote(newB).note, day: dayB.day, suffix: dayB.suffix, category: dayB.category };
+      sections[a.sectionIndex].weeks[a.weekIndex].totals = aggregateDayViews(sections[a.sectionIndex].weeks[a.weekIndex].days);
+      sections[a.sectionIndex].totals = aggregateDayViews(sections[a.sectionIndex].weeks.flatMap(w => w.days));
+      if (b.sectionIndex !== a.sectionIndex) sections[b.sectionIndex].totals = aggregateDayViews(sections[b.sectionIndex].weeks.flatMap(w => w.days));
+      if (b.sectionIndex !== a.sectionIndex || b.weekIndex !== a.weekIndex) {
+        sections[b.sectionIndex].weeks[b.weekIndex].totals = aggregateDayViews(sections[b.sectionIndex].weeks[b.weekIndex].days);
+      }
+      setLastPatchedLine(newB);
+      setLastEditedRef({ kind: "day", sectionIndex: b.sectionIndex, weekIndex: b.weekIndex, dayIndex: b.dayIndex });
+      return { dslSource: rB.source, sections, offsetUnit: prev.offsetUnit };
+    });
+  }
+
+  // HRA-283: materializes an undeclared D-number into a real `D<n>: REST`
+  // line — the Week view's own first-interaction rule (AC5). `swapWith`,
+  // when supplied (a drop landing on this slot, not a plain click-to-open),
+  // folds the usual swapDayContent exchange into the SAME update: the
+  // dragged day's content moves onto the newly-real day, and REST is left
+  // behind at the drag's own origin — no separate "move" primitive, this is
+  // exactly what exchanging content with a REST day already produces.
+  function onMaterializeDay(sectionIndex: number, weekIndex: number, dayNumber: number, swapWith?: DayRef) {
+    setPatchError(null);
+    setEditor(prev => {
+      const section = prev.sections[sectionIndex];
+      const week = section.weeks[weekIndex];
+      if (week.days.some(d => d.day === dayNumber)) return prev; // already declared — nothing to do
+      const weekSpan = findWeekSpan(prev.dslSource, prev.sections, sectionIndex, weekIndex);
+      if (!weekSpan) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+
+      const restLine = buildRestDayLine(dayNumber);
+      const insertResult = insertDayLine(
+        prev.dslSource, weekSpan, week.raw_dsl, week.days.map(d => ({ day: d.day, raw_dsl: d.dsl })), dayNumber, restLine,
+      );
+      if (!insertResult.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+      let dslSource = insertResult.source;
+
+      const materializedDay: DayView = {
+        day: dayNumber, workout_type: "rest", dsl: restLine, needs_review: false, warnings: [],
+        distance: { meters: 0, approximate: false }, segments: undefined,
+      };
+      const sourceDay = swapWith ? week.days[swapWith.dayIndex] : undefined;
+      const insertAt = week.days.findIndex(d => d.day > dayNumber);
+      const workingDays = [...week.days];
+      workingDays.splice(insertAt === -1 ? workingDays.length : insertAt, 0, materializedDay);
+      let highlightDayIndex = workingDays.indexOf(materializedDay);
+      let highlightLine = restLine;
+
+      // The Week view only ever renders one week's 7 slots at once, so a
+      // drop's source day is always this same week's own — swapWith never
+      // crosses section/week boundaries in practice.
+      if (sourceDay) {
+        const [newSourceLine, newTargetLine] = swapDayContent(sourceDay.dsl, materializedDay.dsl);
+        const sourceIdxAfter = workingDays.indexOf(sourceDay);
+        const targetIdxAfter = workingDays.indexOf(materializedDay);
+
+        const targetSpan = findWeekSpan(dslSource, prev.sections, sectionIndex, weekIndex);
+        const rTarget = replaceWithinSpan(dslSource, targetSpan, materializedDay.dsl, newTargetLine);
+        if (!rTarget.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+        dslSource = rTarget.source;
+        const sourceSpan = findWeekSpan(dslSource, prev.sections, sectionIndex, weekIndex);
+        const rSource = replaceWithinSpan(dslSource, sourceSpan, sourceDay.dsl, newSourceLine);
+        if (!rSource.ok) { setPatchError(t("manage.planTemplates.patchFailed", "Could not apply this edit — the underlying text may have changed unexpectedly.")); return prev; }
+        dslSource = rSource.source;
+
+        workingDays[targetIdxAfter] = { ...sourceDay, dsl: newTargetLine, notes: splitNote(newTargetLine).note, day: materializedDay.day, suffix: materializedDay.suffix, category: materializedDay.category };
+        workingDays[sourceIdxAfter] = { ...materializedDay, dsl: newSourceLine, notes: splitNote(newSourceLine).note, day: sourceDay.day, suffix: sourceDay.suffix, category: sourceDay.category };
+        highlightDayIndex = targetIdxAfter;
+        highlightLine = newTargetLine;
+      }
+
+      const newWeek = { ...week, days: workingDays, totals: aggregateDayViews(workingDays) };
+      const weeks = [...section.weeks];
+      weeks[weekIndex] = newWeek;
+      const newSection = { ...section, weeks, totals: aggregateDayViews(weeks.flatMap(w => w.days)) };
+      const sections = [...prev.sections];
+      sections[sectionIndex] = newSection;
+
+      setLastPatchedLine(highlightLine);
+      setLastEditedRef({ kind: "day", sectionIndex, weekIndex, dayIndex: highlightDayIndex });
+      return { dslSource, sections, offsetUnit: prev.offsetUnit };
     });
   }
 
@@ -1075,15 +1194,40 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         )}
 
         {generated && (
-          <TrainingPlanAccordion
-            ownerName={name || t("manage.planTemplates.untitled", "Untitled plan")}
-            sections={editor.sections}
-            onSectionEdit={onSectionEdit}
-            onWeekEdit={onWeekEdit}
-            onDayEdit={onDayEdit}
-            offsetUnit={editor.offsetUnit}
-            highlightedRef={lastEditedRef ?? undefined}
-          />
+          <>
+            {/* HRA-283: mirrors PlanInstancesSection's own List/Agenda toggle
+                — defaults to List, switching never touches dslSource/the
+                current preview (both views render the same editor.sections). */}
+            <div className="hra-segment self-start hra-plan-instance-section-gap">
+              <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
+                {t("manage.planTemplates.viewList", "List")}
+              </button>
+              <button className="hra-segment-item" data-active={viewMode === "week"} onClick={() => setViewMode("week")}>
+                {t("manage.planTemplates.viewWeek", "Week")}
+              </button>
+            </div>
+            {viewMode === "list" ? (
+              <TrainingPlanAccordion
+                ownerName={name || t("manage.planTemplates.untitled", "Untitled plan")}
+                sections={editor.sections}
+                onSectionEdit={onSectionEdit}
+                onWeekEdit={onWeekEdit}
+                onDayEdit={onDayEdit}
+                offsetUnit={editor.offsetUnit}
+                highlightedRef={lastEditedRef ?? undefined}
+              />
+            ) : (
+              <PlanTemplateWeekView
+                ownerName={name || t("manage.planTemplates.untitled", "Untitled plan")}
+                sections={editor.sections}
+                onDayEdit={onDayEdit}
+                onDaySwap={onWeekViewDaySwap}
+                onMaterializeDay={onMaterializeDay}
+                offsetUnit={editor.offsetUnit}
+                highlightedRef={lastEditedRef ?? undefined}
+              />
+            )}
+          </>
         )}
 
         {pendingRestoreConfirm && (

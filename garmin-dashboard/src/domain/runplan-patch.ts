@@ -101,6 +101,14 @@ export function replaceSegmentInDayLine(currentFullLine: string, segmentIndex: n
   return note ? `${newMain} # ${note}` : newMain;
 }
 
+// HRA-283: the Week view's own "materialize an undeclared slot" line — a
+// bare REST day, no suffix/tag (those only ever exist on a day the user
+// already declared). Mirrors reconstructDslFromResolvedDay's own
+// `D<n>: REST` shape for the rest case.
+export function buildRestDayLine(dayNumber: number): string {
+  return `D${dayNumber}: REST`;
+}
+
 export type ReplaceResult =
   | { ok: true; source: string }
   | { ok: false; reason: "not-found" | "ambiguous" };
@@ -195,4 +203,34 @@ export function replaceWithinSpan(fullSource: string, span: Span | null, oldText
   const result = replaceSpan(region, oldText, newText);
   if (!result.ok) return result;
   return { ok: true, source: fullSource.slice(0, span.start) + result.source + fullSource.slice(span.end) };
+}
+
+// HRA-283: inserts a brand-new day line into a WEEK block's own span —
+// nothing in this file previously ADDED a line, only ever replaced one
+// (see the module comment). Anchors on the nearest already-declared day with
+// a smaller D-number (or the WEEK header itself when none exists), so
+// declared days stay in ascending D-number order the same way a
+// hand-authored plan naturally would — content-anchored, same "don't guess"
+// discipline as replaceSpan: refuses when that anchor line can't be found
+// inside the span (a stale caller-supplied weekSpan/existingDays list).
+// `weekSpan` must already scope exactly one WEEK block (findWeekSpan) —
+// anchor text is searched only within it, so an identical day/header line
+// belonging to a DIFFERENT week can never collide (same reasoning
+// findWeekSpan itself exists for).
+export function insertDayLine(
+  fullSource: string,
+  weekSpan: Span,
+  weekHeaderRawDsl: string,
+  existingDays: { day: number; raw_dsl: string }[],
+  newDayNumber: number,
+  newLine: string,
+): ReplaceResult {
+  const region = fullSource.slice(weekSpan.start, weekSpan.end);
+  const before = existingDays.filter(d => d.day < newDayNumber).sort((a, b) => b.day - a.day)[0];
+  const anchor = before ? before.raw_dsl : weekHeaderRawDsl;
+  const anchorIdx = region.indexOf(anchor);
+  if (anchorIdx === -1) return { ok: false, reason: "not-found" };
+  const insertAt = anchorIdx + anchor.length;
+  const newRegion = `${region.slice(0, insertAt)}\n${newLine}${region.slice(insertAt)}`;
+  return { ok: true, source: fullSource.slice(0, weekSpan.start) + newRegion + fullSource.slice(weekSpan.end) };
 }

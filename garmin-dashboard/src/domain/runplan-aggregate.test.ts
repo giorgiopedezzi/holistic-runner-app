@@ -4,9 +4,9 @@ import {
   buildContinuousSegmentPresentation, buildDayClassificationContext, buildInstanceSectionView,
   buildIntervalSegmentPresentation, buildMultiSegmentPresentation, buildStateDayPresentation, buildTemplateSectionView, buildUnsupportedPresentation,
   classifyResolvedDay, computeResolvedDayDistance,
-  computeResolvedDayMetrics, computeTemplateDayDistance, getEffectivePacePolicy,
+  computeResolvedDayMetrics, computeTemplateDayDistance, flattenWeeks, getEffectivePacePolicy,
   groupResolvedDaysIntoSectionViews, reconstructDslFromResolvedDay, resolveIntensityPaceSecPerKm,
-  type DayView,
+  type DayView, type SectionView,
 } from "./runplan-aggregate";
 import type {
   DayEntry, PacePolicy, ResolvedDay, ResolvedSegment, Section, Target, Week, WorkoutSegment,
@@ -816,5 +816,31 @@ describe("groupResolvedDaysIntoSectionViews (HRA-118)", () => {
     expect(views[0].weeks.map(w => w.number)).toEqual([1, 2]);
     expect(views[0].weeks[0].raw_dsl).toBe("");
     expect(views[0].weeks[0].days[0].date).toBe("2026-09-01");
+  });
+});
+
+describe("flattenWeeks (HRA-283)", () => {
+  function sectionWithWeeks(weekCount: number): SectionView {
+    return {
+      name: "S", raw_dsl: `SECTION "S"`,
+      weeks: Array.from({ length: weekCount }, (_, i) => ({
+        number: i + 1, raw_dsl: `WEEK ${i + 1}`, days: [],
+        totals: { totalDays: 0, activeDays: 0, runningDays: 0, restDays: 0, otherDays: 0, distance: { meters: 0, approximate: false } },
+      })),
+      totals: { totalDays: 0, activeDays: 0, runningDays: 0, restDays: 0, otherDays: 0, distance: { meters: 0, approximate: false } },
+    };
+  }
+
+  it("flattens every section's weeks into one ordered list, addressed by section/week index", () => {
+    const sections = [sectionWithWeeks(2), sectionWithWeeks(1)];
+    expect(flattenWeeks(sections)).toEqual([
+      { sectionIndex: 0, weekIndex: 0 },
+      { sectionIndex: 0, weekIndex: 1 },
+      { sectionIndex: 1, weekIndex: 0 },
+    ]);
+  });
+
+  it("returns an empty list for no sections", () => {
+    expect(flattenWeeks([])).toEqual([]);
   });
 });
