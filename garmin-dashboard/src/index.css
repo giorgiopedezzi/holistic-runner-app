@@ -2306,12 +2306,31 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-date-range-row { display: flex; gap: 8px; align-items: center; width: 100%; margin-bottom: 12px; }
 .hra-date-range-name { flex: 2 1 120px; min-width: 0; font-size: var(--text-label); padding: 6px 8px; border-radius: 6px; }
 .hra-date-range-action { flex: 0 0 auto; width: 100px; }
+/* HRA-272: this row has no flex-wrap of its own — the name field/two
+   DatePickers/race Select can shrink (each already has a flexible
+   basis/min-width: 0, see the rules above), but a DatePicker's own
+   `.hra-date-trigger` is a fixed ~128px, so the row's real minimum width
+   is well past 375px and forced page-level horizontal scroll. Wrapping at
+   the phone tier lets each control land on its own line instead. */
+@media (max-width: 767px) {
+  .hra-date-range-row { flex-wrap: wrap; }
+}
 .hra-chip-action { padding: 3px 10px; }
 .hra-control-action { padding: 5px 14px; }
 .hra-list-row { padding: 3px 0; }
 .hra-icon-action { border-radius: var(--radius-sm); padding: 2px 5px; }
 .hra-instance-identity-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .hra-instance-timing-grid { grid-template-columns: 160px 160px 220px; }
+/* HRA-272: identity's 5 equal-fr columns and timing's fixed 160/160/220px
+   columns (540px total) both clip their field values well before 375px —
+   stacking to one column at the phone tier gives each field its own full-
+   width row, same pattern .hra-activity-row's own HRA-271 fix uses. */
+@media (max-width: 767px) {
+  .hra-instance-identity-grid,
+  .hra-instance-timing-grid {
+    grid-template-columns: 1fr;
+  }
+}
 .hra-goal-time-input { width: 90px; }
 .hra-tight-action { border-radius: 5px; padding: 5px 10px; }
 .hra-resolution-hint { color: var(--text-muted); }
