@@ -84,11 +84,11 @@ export function DeleteSection() {
       </div>
 
       <div className="hra-control-row gap-4 mb-3" >
-        <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
+        <label className="hra-list-row hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
           <Checkbox checked={delActivities} onCheckedChange={setDelActivities} />
           {t("manage.delete.activitiesLabel", "Activities (Garmin + Strava)")}
         </label>
-        <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
+        <label className="hra-list-row hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
           <Checkbox checked={delBody} onCheckedChange={setDelBody} />
           {t("manage.delete.bodyLabel", "Withings measurements")}
         </label>
@@ -117,7 +117,7 @@ export function DeleteSection() {
       )}
 
       {canDelete && (
-        <label className="hra-text-secondary flex items-center gap-1.5 text-meta mb-2.5 cursor-pointer" >
+        <label className="hra-list-row hra-text-secondary flex items-center gap-1.5 text-meta mb-2.5 cursor-pointer" >
           <Checkbox checked={showData} onCheckedChange={setShowData} />
           {t("manage.delete.showData", "Show data")}
         </label>

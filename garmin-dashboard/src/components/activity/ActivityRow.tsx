@@ -139,7 +139,7 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             column's own fixed width instead of forcing the column wider. */}
         <button
           type="button"
-          className="hra-row-wrap gap-3 min-w-0 w-full text-left bg-transparent border-0 p-0 cursor-pointer"
+          className="hra-activity-row-open hra-row-wrap gap-3 min-w-0 w-full text-left bg-transparent border-0 p-0 cursor-pointer"
           onClick={onClick}
           aria-expanded={expandIndicator === "accordion" ? expanded : undefined}
         >

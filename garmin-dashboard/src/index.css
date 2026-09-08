@@ -1265,6 +1265,13 @@ body {
   cursor: not-allowed;
   opacity: 0.5;
 }
+/* HRA-282: audit found Overview/Activities segment toggles (e.g. the
+   Order/Direction switches) at a 27px rendered height on phone — bump to a
+   real 44px touch target below the phone breakpoint only; desktop's
+   tighter segmented-control look is untouched. */
+@media (max-width: 767px) {
+  .hra-segment-item { min-height: 44px; }
+}
 
 /* Boolean on/off switch (DateRangeBar's "Compare" toggle) — a plain <button
    role="switch">, not @radix-ui/react-switch (not a project dependency;
@@ -1283,6 +1290,19 @@ body {
   background: var(--text-primary); transition: transform 0.15s;
 }
 .hra-switch[data-checked="true"] .hra-switch-thumb { transform: translateX(14px); background: var(--bg); }
+/* HRA-282: the pill itself (34x20) must stay visually unchanged — an
+   invisible ::after hit-slop centered over it gives phone users a real
+   44x44 tap target without inflating the switch's on-screen size. Relies
+   on .hra-switch's own `position: relative` above. */
+@media (max-width: 767px) {
+  .hra-switch::after {
+    content: "";
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 44px; height: 44px;
+    transform: translate(-50%, -50%);
+  }
+}
 
 /* Theme/Palette swatch previews (SettingsTab's ThemePicker + PalettePicker,
    sharing the same .hra-theme-swatch* CSS shape) — keyed by data-theme-preview
@@ -1436,6 +1456,12 @@ body {
   body::before { animation: none !important; }
   .hra-chart-hover-dim, .hra-chart-hover-glow { transition: none !important; }
   .hra-loading-bar { animation: none !important; left: 0; width: 100%; opacity: 0.5; }
+  /* HRA-282: OAuthSyncSection's in-progress sync bar (Data & Sync tab) was
+     the one infinite, unbounded-sweep animation in this app not already
+     covered by this block — same "freeze at a settled, still-informative
+     state" treatment .hra-loading-bar just above gets, rather than just
+     stopping it invisibly at 0 width. */
+  .hra-progress-bar[data-indeterminate] { animation: none !important; left: 0; width: 100%; }
 }
 
 /* Automatic ambient (corrected 2026-08-16, then again 2026-08-17), now the
@@ -1547,6 +1573,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-date-trigger[data-state="open"] { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 .hra-date-trigger:disabled { opacity: 0.4; cursor: not-allowed; }
 .hra-date-trigger:disabled:hover { border-color: var(--border-strong); box-shadow: none; }
+/* HRA-282: audit found this trigger at a 29px rendered height everywhere it
+   appears on phone (DateRangeBar's Current/Compare rows, ClassifySection,
+   DeleteSection's range pickers) — bump to 44px below the phone breakpoint
+   only; the fixed 128px width was already >=44px. */
+@media (max-width: 767px) {
+  .hra-date-trigger { min-height: 44px; }
+}
 
 .hra-popover-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
@@ -1599,6 +1632,14 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 }
 .hra-select-trigger:hover { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
 .hra-select-trigger[data-state="open"] { border-color: var(--accent); box-shadow: 0 0 12px color-mix(in srgb, var(--accent) 25%, transparent); }
+/* HRA-282: audit found triggers at ~33px (Overview's window/named-range
+   Selects) down to a runtime-forced 30px (ActivityTypePicker's type Select,
+   `[data-runtime-height]` below) on phone — bump both the default and any
+   runtime-forced height to 44px below the phone breakpoint only. */
+@media (max-width: 767px) {
+  .hra-select-trigger { min-height: 44px; }
+  .hra-select-trigger[data-runtime-height] { height: 44px; }
+}
 .hra-select-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
@@ -1732,6 +1773,20 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    DatePicker's style prop must be passed { width: "100%" } at any call site
    inside a row that should fill its column, same as every other field. */
 .hra-instantiate-form .hra-date-trigger { width: 100%; }
+/* HRA-282: this form's shared --hra-field-h (32px, set above) is a fixed
+   desktop-tuned row height and isn't itself phone-aware — the New Instance
+   form (Identity/Pacing) renders on phone too (PlanInstancesSection.tsx's
+   isPhone branch only reorganizes it into accordions, it doesn't resize the
+   fields), so every field here was under the 44px touch-target minimum on
+   phone. Comes after the rule above so it wins at equal specificity; the
+   more specific .hra-regenerate-unit/.hra-anchor-table overrides below and
+   above respectively are untouched (both are deliberate, already-approved
+   exceptions to this form's shared height). */
+@media (max-width: 767px) {
+  .hra-instantiate-form .hra-date-trigger,
+  .hra-instantiate-form .hra-select-trigger,
+  .hra-instantiate-form .hra-segment { height: 44px; }
+}
 
 /* Regenerate-unit (HRA-136 review): the date picker nests INSIDE the
    Regenerate button now, not beside it — comes after the general
@@ -1915,6 +1970,14 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 }
 .hra-pagination-button:disabled { color: var(--text-muted); cursor: not-allowed; opacity: 0.5; }
 .hra-pagination-input { width: 48px; padding: 3px 6px; font-size: var(--text-meta); text-align: center; }
+/* HRA-282: the prev/next/first/last buttons and the jump-to-page input all
+   render well under 44px tall (padding-only sizing) — Activities' own
+   pagination is one of this Epic's audited surfaces, and this is a shared
+   ui/ primitive so the fix benefits every other paginated list too. */
+@media (max-width: 767px) {
+  .hra-pagination-button,
+  .hra-pagination-input { min-height: 44px; }
+}
 
 .hra-progress-label {
   display: flex; justify-content: space-between; margin-bottom: 6px;
@@ -2571,6 +2634,29 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-control-action { padding: 5px 14px; }
 .hra-list-row { padding: 3px 0; }
 .hra-icon-action { border-radius: var(--radius-sm); padding: 2px 5px; }
+/* HRA-282: audit found every checkbox-row label (ClassifySection's
+   select-all + per-activity rows, TrashList's matching rows, DeleteSection's
+   three bare data-scope labels — all now carrying .hra-list-row/
+   .hra-classify-row, see those components) at 16-23px tall on phone, plus
+   the "Select all"/retry-trash chip and icon actions at well under 44px —
+   grow the row height (not the 14px checkbox box itself) and the two
+   action buttons below the phone breakpoint only. */
+@media (max-width: 767px) {
+  .hra-classify-row,
+  .hra-list-row {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+  .hra-chip-action,
+  .hra-icon-action {
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
 .hra-instance-identity-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .hra-instance-timing-grid { grid-template-columns: 160px 160px 220px; }
 /* HRA-272: identity's 5 equal-fr columns and timing's fixed 160/160/220px
@@ -2629,8 +2715,22 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    width instead. */
 @media (max-width: 767px) {
   .hra-activity-row { grid-template-columns: 1fr; }
+  /* HRA-282: column 1's own "open detail" button (badge/date/name/distance)
+     renders at ~20px tall (content-height, no padding) — well under the
+     44px minimum, despite already being full-width. Desktop is untouched;
+     this row already reads fine there at its natural content height. */
+  .hra-activity-row-open { min-height: 44px; }
 }
 .hra-activity-row-action { width: 177px; height: 30px; }
+/* HRA-282: both the type Select (--activity-action-height above) and this
+   Delete button are pinned to a fixed 30px on every breakpoint (dashboard
+   design-system rework, "keep them at a fixed width... same height") —
+   under the 44px minimum on phone. Comes after both base rules so it wins
+   at equal specificity; desktop's 30px is untouched. */
+@media (max-width: 767px) {
+  .hra-activity-type-action,
+  .hra-activity-row-action { height: 44px; }
+}
 .hra-metric-toggle {
   --dyn-border: var(--border-strong);
   --dyn-bg: transparent;

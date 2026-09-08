@@ -54,7 +54,7 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
       {!loading && !error && items && items.length > 0 && (
         <>
           <div className="hra-border max-h-50 overflow-auto rounded-md p-2 mb-2.5" >
-            <label className="hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5" >
+            <label className="hra-list-row hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5" >
               <Checkbox checked={selected.size === items.length} onCheckedChange={toggleAll} />
               {t("manage.trash.selectAll", `Select all (${items.length})`, { n: items.length })}
             </label>

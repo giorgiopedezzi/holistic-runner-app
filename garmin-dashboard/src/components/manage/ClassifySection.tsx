@@ -145,7 +145,7 @@ export function ClassifySection() {
             <div className="hra-text-muted text-meta mb-3" >{t("manage.classify.noActivities", "No running activities in this range.")}</div>
           ) : (
             <div className="hra-border max-h-60 overflow-auto rounded-md p-2 mb-2.5" >
-              <label className="hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5" >
+              <label className="hra-list-row hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5" >
                 <Checkbox checked={selected.size === activities.length} onCheckedChange={toggleAll} />
                 {t("manage.classify.selectAll", `Select all (${activities.length})`, { count: activities.length })}
               </label>
