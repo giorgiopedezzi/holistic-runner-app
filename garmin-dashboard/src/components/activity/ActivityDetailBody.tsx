@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empty } from "@/components/ui";
 import { ClassificationCard } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
+import { ActivityActionsMenu } from "./ActivityActionsMenu";
 import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
 import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
@@ -46,6 +48,7 @@ interface DetailBodyProps {
 // with an × button.
 export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUpdate }: DetailBodyProps) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
   const [activity, setActivity] = useState<Activity | null>(null);
   // Wraps setActivity for the picker/classification save paths specifically
   // (not the initial fetch below, which has no sibling list to notify yet).
@@ -271,33 +274,43 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
             <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(activity.source)}`, { source: fmtSource(activity.source) })}</span>
           )}
           <div className="flex-1" />
-          {activity && <ActivityTypePicker activity={activity} onUpdate={applyActivityUpdate} />}
-          {!confirmDelete ? (
-            <button
-              className="hra-btn"
-              data-variant="cta"
-              data-tone="red"
-              onClick={() => setConfirmDelete(true)}
-              title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
-            >
-              {t("activity.detail.deleteButton", "Remove activity")}
-            </button>
+          {activity && (isPhone ? (
+            // Mobile-width overflow menu (HRA-291): type change, rename, and
+            // delete collapse into one Popover-triggered menu instead of
+            // sitting inline in the header's primary content flow. Desktop
+            // (below) is untouched.
+            <ActivityActionsMenu activity={activity} onUpdate={applyActivityUpdate} onDelete={onDelete} onDeleted={onClose} />
           ) : (
-            <div className="hra-row gap-1.5">
-              <span className="hra-text-danger text-meta">{t("activity.detail.moveToTrash", "Move to trash?")}</span>
-              <button
-                className="hra-btn" data-variant="cta"
-                data-tone="red"
-                onClick={handleDelete} disabled={deleting}
-              >
-                {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
-              </button>
-              <button onClick={() => setConfirmDelete(false)}
-                className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
-                {t("common.cancel", "Cancel")}
-              </button>
-            </div>
-          )}
+            <>
+              <ActivityTypePicker activity={activity} onUpdate={applyActivityUpdate} />
+              {!confirmDelete ? (
+                <button
+                  className="hra-btn"
+                  data-variant="cta"
+                  data-tone="red"
+                  onClick={() => setConfirmDelete(true)}
+                  title={t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
+                >
+                  {t("activity.detail.deleteButton", "Remove activity")}
+                </button>
+              ) : (
+                <div className="hra-row gap-1.5">
+                  <span className="hra-text-danger text-meta">{t("activity.detail.moveToTrash", "Move to trash?")}</span>
+                  <button
+                    className="hra-btn" data-variant="cta"
+                    data-tone="red"
+                    onClick={handleDelete} disabled={deleting}
+                  >
+                    {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)}
+                    className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
+                    {t("common.cancel", "Cancel")}
+                  </button>
+                </div>
+              )}
+            </>
+          ))}
           <button onClick={onClose}
             className="hra-text-muted text-heading border-0 bg-transparent cursor-pointer leading-none px-1">
             ×
@@ -366,20 +379,44 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 width — only the row INSIDE the graph card itself narrows in
                 to the chart's actual plot width, see
                 ActivityChartSection.tsx's CHART_HEADER_EXTRA_LEFT/RIGHT). */}
-            <StatGrid>
-              {activity.moving_time_sec != null && <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("activity.stat.movingTime", "Moving time")} value={fmtDuration(activity.moving_time_sec)} />}
-              <Stat icon={<Clock size={18} color="var(--accent)" />} label={t("activity.stat.duration", "Duration")} value={fmtDuration(activity.duration_sec)} />
-              {activity.calories != null && <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />} label={t("activity.stat.calories", "Calories")} value={`${activity.calories} kcal`} />}
-              {activity.avg_cadence != null && <Stat icon={<Footprints size={18} color="var(--accent)" />} label={t("activity.stat.cadence", "Cadence")} value={`${activity.avg_cadence} spm`} />}
-              {(activity.ascent_m != null || activity.descent_m != null) && (
-                <Stat icon={<Mountain size={18} color="var(--accent)" />} label={t("activity.stat.elevation", "Elevation")}
-                  value={[
+            {(() => {
+              // HRA-291: wires Stat's existing layout="row" text variant
+              // (HRA-279, never previously called) into this KPI section —
+              // at phone width, plain divider rows replace the bordered
+              // mini-cards; the same show-gates that used to skip an
+              // absent metric's <Stat/> entirely (no empty card, no
+              // misleading zero) carry over unchanged to the row layout.
+              const kpis: Array<{ key: string; show: boolean; icon: ReactNode; label: string; value: string; accent?: string }> = [
+                { key: "movingTime", show: activity.moving_time_sec != null, icon: <Timer size={18} color="var(--accent)" />, label: t("activity.stat.movingTime", "Moving time"), value: fmtDuration(activity.moving_time_sec) },
+                { key: "duration", show: true, icon: <Clock size={18} color="var(--accent)" />, label: t("activity.stat.duration", "Duration"), value: fmtDuration(activity.duration_sec) },
+                { key: "calories", show: activity.calories != null, icon: <Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />, label: t("activity.stat.calories", "Calories"), value: `${activity.calories} kcal` },
+                { key: "cadence", show: activity.avg_cadence != null, icon: <Footprints size={18} color="var(--accent)" />, label: t("activity.stat.cadence", "Cadence"), value: `${activity.avg_cadence} spm` },
+                {
+                  key: "elevation", show: activity.ascent_m != null || activity.descent_m != null,
+                  icon: <Mountain size={18} color="var(--accent)" />, label: t("activity.stat.elevation", "Elevation"),
+                  value: [
                     activity.ascent_m  != null ? `↑${fmtElevation(activity.ascent_m)}`  : null,
                     activity.descent_m != null ? `↓${fmtElevation(activity.descent_m)}` : null,
-                  ].filter(Boolean).join("  ")} />
-              )}
-              {activity.max_hr != null && <Stat icon={<HeartPulse size={18} color={hrRunnerColor(activity.max_hr)} />} label={t("activity.stat.maxHr", "Max HR")} value={`${activity.max_hr} bpm`} accent={hrRunnerColor(activity.max_hr)} />}
-            </StatGrid>
+                  ].filter(Boolean).join("  "),
+                },
+                {
+                  key: "maxHr", show: activity.max_hr != null,
+                  icon: <HeartPulse size={18} color={activity.max_hr != null ? hrRunnerColor(activity.max_hr) : undefined} />,
+                  label: t("activity.stat.maxHr", "Max HR"), value: `${activity.max_hr} bpm`,
+                  accent: activity.max_hr != null ? hrRunnerColor(activity.max_hr) : undefined,
+                },
+              ];
+              const visible = kpis.filter(k => k.show);
+              return isPhone ? (
+                <div className="flex flex-col">
+                  {visible.map(k => <Stat key={k.key} layout="row" icon={k.icon} label={k.label} value={k.value} accent={k.accent} />)}
+                </div>
+              ) : (
+                <StatGrid>
+                  {visible.map(k => <Stat key={k.key} icon={k.icon} label={k.label} value={k.value} accent={k.accent} />)}
+                </StatGrid>
+              );
+            })()}
 
             {track.length <= 5 && (
               // Distance/Speed-Pace moved inside the graph (see above) —

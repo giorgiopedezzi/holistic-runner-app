@@ -2816,6 +2816,16 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
      44px minimum, despite already being full-width. Desktop is untouched;
      this row already reads fine there at its natural content height. */
   .hra-activity-row-open { min-height: 44px; }
+  /* HRA-291: reorders the row's three stacked columns at phone width only —
+     primary result (info) first, secondary metrics (duration/HR/pace)
+     right after it, the overflow actions menu last — instead of the DOM
+     order (info, actions, metrics) the 3-column desktop grid needs. Pure
+     CSS `order`, same elements, so desktop's own column order stays
+     untouched (this rule is scoped to the same media query as the grid
+     collapse above). */
+  .hra-activity-row-info { order: 1; }
+  .hra-activity-row-metrics { order: 2; }
+  .hra-activity-row-actions { order: 3; }
 }
 .hra-activity-row-action { width: 177px; height: 30px; }
 /* HRA-282: both the type Select (--activity-action-height above) and this

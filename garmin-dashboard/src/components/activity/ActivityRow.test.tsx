@@ -164,6 +164,55 @@ describe("ActivityRow", () => {
   });
 });
 
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+describe("ActivityRow phone-width overflow menu (HRA-291)", () => {
+  it("collapses type change/rename/delete into one overflow menu at phone width, hiding the desktop inline cluster", async () => {
+    stubPhoneWidth(true);
+    installFetch({ "GET /api/v1/activity-types": paginated([{ id: 1, name: "Race", min_distance_m: 0 }]) });
+    render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Remove activity" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Activity actions" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Remove activity" })).toBeInTheDocument();
+  });
+
+  it("deletes through the overflow menu's ConfirmModal and calls onDelete with the id", async () => {
+    stubPhoneWidth(true);
+    const onDelete = vi.fn();
+    installFetch({
+      "GET /api/v1/activity-types": paginated([]),
+      [`DELETE /api/v1/activities/${ID}`]: { deleted: 1 },
+    });
+    render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={onDelete} onUpdate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Activity actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove activity" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
+  });
+});
+
 describe("ActivitySportLegend", () => {
   it("gives every workout-type color a visible text alternative, not just the swatch (HRA-280 AC3)", () => {
     render(<ActivitySportLegend />);
