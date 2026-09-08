@@ -17,7 +17,7 @@ import { beforeAll, describe, it, expect } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { PlanTemplatesSection } from "./PlanTemplatesSection";
-import { installFetch, json } from "@/test/api-stub";
+import { installFetch, json, type StubRequest } from "@/test/api-stub";
 import { planTemplate } from "@/test/fixtures";
 
 const TEMPLATE = planTemplate();
@@ -304,6 +304,96 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
     // Save/Activate/Clear pending changes render once, outside any AccordionCard section.
     expect(screen.getByRole("button", { name: "Activate" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Clear pending changes" })).toBeEnabled();
+  });
+});
+
+describe("PlanTemplatesSection — Save/Activate require unsaved changes (HRA-287)", () => {
+  function mockGenerate(dslSource: string) {
+    const hasSegment = dslSource.includes(";");
+    return json({
+      plan: {
+        metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+        sections: [{
+          name: "Base", week_spec: "1", raw_dsl: "SECTION \"Base\" WEEKS 1", pace_policy: {},
+          weeks: [{
+            number: 1, raw_dsl: "WEEK 1", pace_policy: {},
+            days: [{
+              day: 1, workout_type: "run", needs_review: false, warnings: [],
+              raw_dsl: hasSegment ? "D1: 5km @ RG; 2km @ jog" : "D1: 5km @ RG",
+              segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }],
+            }],
+          }],
+        }],
+      },
+      warnings: [],
+    });
+  }
+
+  const EXISTING_DSL = "SECTION \"Base\" WEEKS 1\nWEEK 1\nD1: 5km @ RG";
+  function existingTemplateProps() {
+    return mountProps({ templates: [planTemplate({ dsl_source: EXISTING_DSL })] });
+  }
+
+  it("Save is disabled on an untouched, already-saved template — nothing to save", async () => {
+    installFetch({ "POST /api/v1/plan-templates/generate": (req: StubRequest) => mockGenerate((req.body as { dsl_source: string }).dsl_source) });
+    render(<PlanTemplatesSection {...existingTemplateProps()} />);
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue(EXISTING_DSL));
+    // The List view's Week accordion row starts collapsed — expand it to
+    // reveal its day rows.
+    fireEvent.click(screen.getByText(/^Week 1/).closest('[role="button"]')!);
+    await screen.findByText("D1: 5km @ RG");
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("Activate is disabled by a name-only edit — previously it only checked the DSL text", async () => {
+    installFetch({ "POST /api/v1/plan-templates/generate": (req: StubRequest) => mockGenerate((req.body as { dsl_source: string }).dsl_source) });
+    render(<PlanTemplatesSection {...existingTemplateProps()} />);
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue(EXISTING_DSL));
+    await screen.findByText(/^Week 1/); // preview settled — same dslSource, so pre-fix Activate would already read enabled here
+    expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "5K Base renamed" } });
+    expect(screen.getByRole("button", { name: "Activate" })).toBeDisabled();
+  });
+
+  it("editing a day's DSL to add a segment keeps Save enabled through the debounce window and persists it", async () => {
+    const fetchMock = installFetch({
+      "POST /api/v1/plan-templates/generate": (req: StubRequest) => mockGenerate((req.body as { dsl_source: string }).dsl_source),
+      "PUT /api/v1/plan-templates/1": json(TEMPLATE),
+    });
+    render(<PlanTemplatesSection {...existingTemplateProps()} />);
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue(EXISTING_DSL));
+    // The List view's Week accordion row starts collapsed — expand it to
+    // reveal its day rows.
+    fireEvent.click(screen.getByText(/^Week 1/).closest('[role="button"]')!);
+    await screen.findByText("D1: 5km @ RG");
+
+    // Expand Day 1's own row and switch it to the DSL sub-view, then append
+    // a segment — the exact HRA-287 repro (structured/List view already
+    // shows the day correctly; the regression was Save silently disabling).
+    const day1Title = screen.getAllByText("D1: 5km @ RG").find(el => el.tagName === "SPAN")!;
+    fireEvent.click(day1Title.closest('[role="button"]')!);
+    fireEvent.click(await screen.findByRole("button", { name: "DSL" }));
+    const dayDslField = await screen.findByLabelText("Workout plan text (DSL)");
+    fireEvent.change(dayDslField, { target: { value: "D1: 5km @ RG; 2km @ jog" } });
+
+    // HRA-287's own regression: Save must NOT go disabled while the
+    // debounced re-parse (700ms) is still pending — the old bug wiped
+    // `sections` synchronously, disabling Save for that whole window.
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PUT");
+      expect(putCall).toBeTruthy();
+    });
+    const putCall = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PUT")!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string) as { dsl_source: string };
+    expect(body.dsl_source).toContain("2km @ jog");
   });
 });
 

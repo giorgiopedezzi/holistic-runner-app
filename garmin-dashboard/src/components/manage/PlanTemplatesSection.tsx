@@ -767,9 +767,17 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
   const generated = editor.sections.length > 0;
   const isCustomEvent = event === "custom";
-  const canSave = generated && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== ""
-    && event !== "" && (!isCustomEvent || distanceValue.trim() !== "");
-  const canApprove = editingId != null && savedDslSource === editor.dslSource && !hasOutstandingWarnings(editor, planWarnings);
+  // HRA-287: both gates now also require isEditorDirty() — previously Save
+  // was clickable the instant an existing template opened, with zero edits,
+  // and Activate only checked dslSource (a name/event/distance-only edit
+  // left it enabled with a pending change it wouldn't actually persist).
+  // genError == null guards the OTHER HRA-287 fix: onDslTextareaChange no
+  // longer wipes `sections` to `[]` on every keystroke (see its own
+  // comment), so `generated` alone can no longer be trusted to reflect the
+  // live dslSource — a known/reported parse failure must still block Save.
+  const canSave = generated && genError == null && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== ""
+    && event !== "" && (!isCustomEvent || distanceValue.trim() !== "") && isEditorDirty();
+  const canApprove = editingId != null && genError == null && !isEditorDirty() && !hasOutstandingWarnings(editor, planWarnings);
 
   async function onSave() {
     if (event === "") return;
@@ -926,8 +934,17 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     );
   }
 
+  // HRA-287: keeps the previous (now-stale) sections instead of wiping them
+  // to `[]` — the debounced auto-regenerate effect below re-parses ~700ms
+  // after the user stops typing, and until then `generated`
+  // (editor.sections.length > 0) is what gates Save/Activate. Resetting to
+  // `[]` on every keystroke meant Save silently went disabled for that whole
+  // debounce+network window after EVERY edit — a click landing inside it was
+  // a no-op, which read as "my edit didn't save" (HRA-287's reported bug).
+  // canSave's own genError == null check covers the case where the live
+  // text is actually broken while these stale sections still look valid.
   function onDslTextareaChange(value: string) {
-    setEditor({ dslSource: value, sections: [], offsetUnit: "s/km" });
+    setEditor(prev => ({ dslSource: value, sections: prev.sections, offsetUnit: prev.offsetUnit }));
     setLastPatchedLine(null); setLastEditedRef(null);
   }
 
