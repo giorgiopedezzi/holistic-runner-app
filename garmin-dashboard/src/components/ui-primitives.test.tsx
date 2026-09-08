@@ -9,6 +9,9 @@ import {
   HelpDisclosure,
   ProgressBar,
   Select,
+  Sheet,
+  SheetContent,
+  SheetTrigger,
 } from "./ui";
 
 beforeAll(() => {
@@ -160,5 +163,58 @@ describe("shared UI primitive contracts", () => {
     expect(screen.queryByText("Pace zones")).not.toBeInTheDocument();
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
     expect(trigger).toHaveFocus();
+  });
+
+  it("Sheet: opens via trigger, traps focus, closes on Escape or the backdrop, and restores focus to the trigger (HRA-290)", async () => {
+    render(
+      <Sheet>
+        <SheetTrigger>Open filters</SheetTrigger>
+        <SheetContent title="Filters">
+          <button>Inside field</button>
+        </SheetContent>
+      </Sheet>,
+    );
+    const trigger = screen.getByRole("button", { name: "Open filters" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveClass("hra-sheet-content");
+    expect(screen.getByText("Filters")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Inside field" })).toBeInTheDocument();
+
+    // Escape closes and returns focus to the trigger (Radix's default modal
+    // Dialog behavior — the whole point of building this on
+    // @radix-ui/react-dialog instead of hand-rolling it).
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(trigger).toHaveFocus();
+
+    // Reopen, then dismiss via the backdrop (Overlay) itself.
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    const overlay = document.querySelector(".hra-sheet-overlay")!;
+    fireEvent.pointerDown(overlay);
+    fireEvent.pointerUp(overlay);
+    fireEvent.click(overlay);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(trigger).toHaveFocus();
+  });
+
+  it("Sheet: close button carries an accessible name and closes the dialog", () => {
+    render(
+      <Sheet>
+        <SheetTrigger>Open filters</SheetTrigger>
+        <SheetContent title="Filters">
+          <span>Body</span>
+        </SheetContent>
+      </Sheet>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Open filters" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 });

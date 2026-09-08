@@ -1962,6 +1962,68 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   background: none; color: var(--text-secondary); font-size: var(--text-meta); cursor: pointer;
 }
 
+/* Sheet (HRA-290) — bottom sheet on every width (not just phone): fixed to
+   the viewport bottom, slides up, rounded top corners only. Radix's own
+   Overlay/Content data-state attributes drive the slide/fade so no JS
+   timing is needed; the whole transition is skipped under reduced motion. */
+.hra-sheet-overlay {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6);
+}
+.hra-sheet-content {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 101;
+  max-height: 85vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border); border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--bg-surface); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+}
+.hra-sheet-overlay[data-state="open"] { animation: hra-sheet-fade-in 0.15s ease-out; }
+.hra-sheet-content[data-state="open"] { animation: hra-sheet-slide-up 0.2s ease-out; }
+@keyframes hra-sheet-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hra-sheet-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .hra-sheet-overlay[data-state="open"],
+  .hra-sheet-content[data-state="open"] { animation: none; }
+}
+.hra-sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hra-sheet-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; margin: -13px -13px -13px 0;
+  background: transparent; color: var(--text-secondary);
+  border: none; border-radius: 50%; cursor: pointer;
+}
+.hra-sheet-close:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.hra-sheet-body { display: flex; flex-direction: column; gap: 14px; }
+.hra-sheet-body .hra-select-full { width: 100%; }
+.hra-sheet-body .hra-date-pair { width: 100%; }
+
+/* Compact mobile filter trigger (DateRangeBar, HRA-290) — the summary text
+   ellipsizes rather than wrapping/overflowing; the trigger itself is a real
+   44px tap target regardless of the Filter icon's own smaller size. */
+.hra-filter-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hra-filter-trigger {
+  position: relative; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer;
+}
+.hra-filter-trigger:hover { border-color: var(--accent); }
+.hra-filter-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--accent); color: var(--on-accent);
+  font-size: 10px; line-height: 1; font-weight: 600;
+}
+
+/* Compact result-position label (Pagination, HRA-290) — replaces the
+   full first/prev/jump/next/last control set at phone widths with just
+   prev/next plus a plain "1-25 of 216" readout. */
+.hra-pagination-compact { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hra-pagination-compact-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
 .hra-empty { padding: 40px 0; color: var(--text-muted); font-size: var(--text-label); text-align: center; }
 .hra-loading-label { color: var(--text-muted); font-size: var(--text-meta); }
 
