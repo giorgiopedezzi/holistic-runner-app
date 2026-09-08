@@ -1,21 +1,21 @@
 /**
- * PlanTemplateAgendaView.tsx (HRA-283, renamed/rebuilt per HRA-285)
- * PlanTemplatesSection's alternate week-at-a-time Agenda view — built on the
- * SAME shadcn-big-calendar (react-big-calendar) vendor library
- * PlanInstanceCalendar.tsx's real Agenda uses, per HRA-285's explicit
- * correction: HRA-283 originally shipped a hand-rolled CSS grid labeled
- * "Week", which didn't match the real Agenda's visual/library identity.
+ * PlanTemplateAgendaView.tsx (HRA-283, rebuilt per HRA-285, corrected again
+ * per HRA-285's own follow-up: the vendor's Week/Month views lay days out as
+ * side-by-side COLUMNS — fine with real dates and a full-width page, but
+ * squeezed illegibly inside this editor's own narrower card. The real
+ * Agenda's own row-per-day list (its phone-width fallback, visually) is what
+ * was actually asked for, and react-big-calendar ships that natively as a
+ * dedicated view type — Views.AGENDA, a plain <table>, one row per day. Using
+ * it here (rather than hand-rolling a lookalike list) is still "the same
+ * big-calendar library", just its list view instead of its grid view.
  *
  * Still none of PlanInstanceCalendar's date or actual-workout machinery — a
  * template day only ever has a D-number, never a calendar date, never a
  * scheduled_time, never a matched recorded activity. The vendor calendar is
  * fed a fixed, synthetic anchor week (TEMPLATE_AGENDA_DAY_DATES below) purely
- * so it has real Date objects to lay its 7 columns out with; that date is
- * never surfaced anywhere in the UI — every header reads "Day N", not a date.
- * Every event is `allDay` (there is no time-of-day to place it at), so all 7
- * cards render in the vendor's own all-day row; the empty hourly time-grid
- * beneath it is hidden entirely via .hra-template-agenda-calendar in
- * index.css, since nothing is ever timed.
+ * so it has real Date objects to build its 7 rows from; that date is never
+ * surfaced anywhere in the UI — `components.date` renders "Day N", not a
+ * date, and `components.time` renders nothing (no scheduled_time exists).
  *
  * Prev/Next does NOT move the calendar's own `date` — the vendor is always
  * showing the same fixed synthetic week. It instead changes which
@@ -111,19 +111,22 @@ function UndeclaredDaySlot({ onMaterialize }: { onMaterialize: (swapWith?: DayRe
 
 // "Day N" only — no date, no scheduled-time chip/editor (templates have
 // neither). Stateless/pure, so no ref-stabilization is needed the way the
-// data-carrying event renderer below requires.
-// react-big-calendar's Week view labels its day columns via
-// `components.header` (a Month-only slot, `components.dateHeader`, is what
-// the vendor's own docs/Month.js name — confirmed against TimeGridHeader.js,
-// which reads `components.header`, not `dateHeader`).
-function TemplateDayHeader({ date }: { date: Date }) {
+// data-carrying event renderer below requires. react-big-calendar's Agenda
+// view (Agenda.js) reads this via `components.date`, receiving `{ day }` —
+// the Date it computed from `date`/`length`, which dayNumberFromDate maps
+// back to its own Day N.
+function TemplateAgendaDateCell({ day }: { day: Date }) {
   const { t } = useTranslation();
-  const dayNumber = dayNumberFromDate(date);
-  return (
-    <span className="hra-agenda-date-header">
-      <span className="hra-agenda-date-num">{t("runplan.weekView.dayHeader", `Day ${dayNumber}`, { n: dayNumber })}</span>
-    </span>
-  );
+  const dayNumber = dayNumberFromDate(day);
+  return <span className="hra-agenda-date-num">{t("runplan.weekView.dayHeader", `Day ${dayNumber}`, { n: dayNumber })}</span>;
+}
+
+// Suppresses Agenda.js's own "All day" fallback label in its time column —
+// no scheduled_time exists for a template day, so that column carries
+// nothing at all (hidden outright via index.css's .rbc-agenda-time-cell rule
+// below; this is what would otherwise render inside it).
+function TemplateAgendaTimeCell() {
+  return null;
 }
 
 interface Props {
@@ -239,14 +242,15 @@ export function PlanTemplateAgendaView({ ownerName, sections, onDayEdit, onDaySw
           events={TEMPLATE_AGENDA_EVENTS}
           startAccessor="start"
           endAccessor="end"
-          views={["week"]}
-          view="week"
+          views={["agenda"]}
+          view="agenda"
+          length={7}
           onView={() => {}}
           date={TEMPLATE_AGENDA_ANCHOR}
           onNavigate={noopNavigate}
           toolbar={false}
           className="h-full"
-          components={{ event: EventComponent, header: TemplateDayHeader }}
+          components={{ event: EventComponent, date: TemplateAgendaDateCell, time: TemplateAgendaTimeCell }}
           messages={{ noEventsInRange: t("runplan.weekView.empty", "No weeks to show.") }}
         />
       </div>
