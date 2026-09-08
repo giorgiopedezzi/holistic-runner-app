@@ -67,4 +67,12 @@ describe("Pagination phone-width compaction (HRA-290)", () => {
     );
     expect(screen.getByText("· 0 total")).toBeInTheDocument();
   });
+
+  it("shows a correct 1-of-1 range for a single result", () => {
+    stubPhoneWidth(true);
+    render(
+      <Pagination page={1} totalPages={1} onPageChange={() => {}} perPage={25} perPageOptions={[10, 25, 50]} onPerPageChange={() => {}} totalItems={1} />,
+    );
+    expect(screen.getByText("1–1 of 1")).toBeInTheDocument();
+  });
 });
