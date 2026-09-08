@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Save } from "lucide-react";
 import { api } from "@/api/client";
 import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import type { Settings, Theme, StoredUnitSystem, Palette } from "@/types/api";
@@ -432,13 +433,15 @@ export function SettingsTab({ appearance }: Props) {
     return (
       <div className="hra-row gap-2.5 mt-1" >
         <button
-          className="hra-btn"
+          className="hra-btn hra-btn-icon-label"
           data-variant="cta"
           data-tone="green"
           onClick={onSave}
           disabled={!dirty || saving}
+          aria-label={saving ? t("settings.savingEllipsis", "Saving…") : t("common.save", "Save")}
         >
-          {saving ? t("settings.savingEllipsis", "Saving…") : t("common.save", "Save")}
+          <Save size={14} />
+          <span className="hra-btn-label">{saving ? t("settings.savingEllipsis", "Saving…") : t("common.save", "Save")}</span>
         </button>
         {justSavedKey === cardKey && !dirty && <span className="hra-text-success text-meta" >{t("settings.saved", "Saved")}</span>}
       </div>

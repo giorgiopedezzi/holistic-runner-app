@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Save, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, Select, DatePicker } from "@/components/ui";
 import type { RaceActivity, SavedDateRange } from "@/types/api";
@@ -178,9 +179,11 @@ export function DateRangesSection() {
           title={createName}
           className="hra-date-range-name hra-border-strong hra-bg-card hra-text-primary"
         />
-        <DatePicker value={createFrom} onChange={setCreateFrom} max={createTo} />
-        <span className="hra-text-muted text-meta" >→</span>
-        <DatePicker value={createTo} onChange={setCreateTo} min={createFrom} />
+        <div className="hra-date-pair">
+          <DatePicker value={createFrom} onChange={setCreateFrom} max={createTo} />
+          <span className="hra-text-muted text-meta" >→</span>
+          <DatePicker value={createTo} onChange={setCreateTo} min={createFrom} />
+        </div>
         <Select
           value={createRaceId}
           onValueChange={setCreateRaceId}
@@ -189,13 +192,15 @@ export function DateRangesSection() {
           options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForCreate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
-          className="hra-btn hra-date-range-action"
+          className="hra-btn hra-date-range-action hra-btn-icon-label"
           data-variant="cta"
           data-tone="green"
           onClick={handleCreate}
           disabled={!canCreate}
+          aria-label={creating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.create", "Create")}
         >
-          {creating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.create", "Create")}
+          <Save size={14} />
+          <span className="hra-btn-label">{creating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.create", "Create")}</span>
         </button>
       </div>
       {createError && <ErrorLine>{createError}</ErrorLine>}
@@ -209,9 +214,11 @@ export function DateRangesSection() {
           triggerClassName="hra-select-first-column"
           options={[{ value: NO_SELECTION, label: t("manage.dateRanges.pickRangeOption", "— pick a range —") }, ...(ranges ?? []).map(r => ({ value: String(r.id), label: rangeLabel(r) }))]}
         />
-        <DatePicker value={updateFrom} onChange={setUpdateFrom} max={updateTo} />
-        <span className="hra-text-muted text-meta" >→</span>
-        <DatePicker value={updateTo} onChange={setUpdateTo} min={updateFrom} />
+        <div className="hra-date-pair">
+          <DatePicker value={updateFrom} onChange={setUpdateFrom} max={updateTo} />
+          <span className="hra-text-muted text-meta" >→</span>
+          <DatePicker value={updateTo} onChange={setUpdateTo} min={updateFrom} />
+        </div>
         <Select
           value={updateRaceId}
           onValueChange={setUpdateRaceId}
@@ -220,14 +227,16 @@ export function DateRangesSection() {
           options={[{ value: NO_RACE, label: t("manage.dateRanges.noRace", "No race") }, ...eligibleRacesForUpdate.map(r => ({ value: String(r.id), label: fmtRaceLabel(r) }))]}
         />
         <button
-          className="hra-btn hra-date-range-action"
+          className="hra-btn hra-date-range-action hra-btn-icon-label"
           data-variant="cta"
           data-tone="green"
           onClick={handleUpdate}
           disabled={!canUpdate}
           title={loaded == null ? t("manage.dateRanges.pickFirstTooltip", "Pick a saved range above first") : undefined}
+          aria-label={updating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.update", "Update")}
         >
-          {updating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.update", "Update")}
+          <Save size={14} />
+          <span className="hra-btn-label">{updating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.update", "Update")}</span>
         </button>
       </div>
       {updateError && <ErrorLine>{updateError}</ErrorLine>}
@@ -245,10 +254,11 @@ export function DateRangesSection() {
           <>
             <span className="hra-text-danger text-meta" >{t("manage.dateRanges.confirmDeleteQuestion", "Delete this range?")}</span>
             <button
-              className="hra-btn hra-date-range-action" data-variant="cta" data-tone="red"
+              className="hra-btn hra-date-range-action hra-btn-icon-label" data-variant="cta" data-tone="red"
               onClick={handleDelete} disabled={deleting}
+              aria-label={t("common.yesDelete", "Yes, delete")}
             >
-              {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
+              {deleting ? "…" : <><Trash2 size={14} /><span className="hra-btn-label">{t("common.yesDelete", "Yes, delete")}</span></>}
             </button>
             <button onClick={() => setConfirmingDelete(false)}
               className="hra-border-strong hra-text-secondary text-meta rounded-md py-1.5 px-3 bg-transparent cursor-pointer"
@@ -258,12 +268,14 @@ export function DateRangesSection() {
           </>
         ) : (
           <button
-            className="hra-btn hra-date-range-action" data-variant="cta" data-tone="red"
+            className="hra-btn hra-date-range-action hra-btn-icon-label" data-variant="cta" data-tone="red"
             onClick={() => setConfirmingDelete(true)}
             disabled={deleteId === NO_SELECTION || demoMode}
             title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+            aria-label={t("common.delete", "Delete")}
           >
-            {t("common.delete", "Delete")}
+            <Trash2 size={14} />
+            <span className="hra-btn-label">{t("common.delete", "Delete")}</span>
           </button>
         )}
       </div>

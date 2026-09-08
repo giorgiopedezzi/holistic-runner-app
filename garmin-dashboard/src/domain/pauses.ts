@@ -100,6 +100,33 @@ export function fmtPauseDuration(sec: number): string {
   return s > 0 ? `${m}m${s}s` : `${m}m`;
 }
 
+export interface LabelCluster { anchorIndex: number; memberIndices: number[]; }
+
+// HRA-293: groups points whose x-value falls within `gap` of a neighbor into
+// one cluster -- chained (A-B close, B-C close -> A,B,C one cluster even if
+// A-C alone would exceed `gap`), matching how a reader perceives a run of
+// overlapping labels rather than a strict pairwise distance. `xs` must
+// already be ascending (pause/HR-recovery rows are, by construction of
+// buildChartData/computeHrRecovery). The middle member (rounding down)
+// anchors the cluster's own combined label -- see PauseFlagShape/
+// HrRecoveryFlagShape for how callers use `anchorIndex` to draw one
+// aggregated label per cluster instead of one per member.
+export function clusterByProximity(xs: number[], gap: number): LabelCluster[] {
+  if (xs.length === 0) return [];
+  const clusters: LabelCluster[] = [];
+  let current: number[] = [0];
+  for (let i = 1; i < xs.length; i++) {
+    if (xs[i] - xs[i - 1] <= gap) current.push(i);
+    else { clusters.push(finalizeCluster(current)); current = [i]; }
+  }
+  clusters.push(finalizeCluster(current));
+  return clusters;
+}
+
+function finalizeCluster(indices: number[]): LabelCluster {
+  return { anchorIndex: indices[Math.floor((indices.length - 1) / 2)], memberIndices: indices };
+}
+
 export function nearestHr(points: TrackPoint[], startIdx: number, dir: 1 | -1): number | null {
   for (let i = startIdx; i >= 0 && i < points.length; i += dir) {
     if (points[i].heart_rate != null) return points[i].heart_rate;

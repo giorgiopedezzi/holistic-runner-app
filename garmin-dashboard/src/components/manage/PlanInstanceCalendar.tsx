@@ -1107,28 +1107,32 @@ export function PlanInstanceCalendar({
   const setView = (next: CalendarView) => setRawView(next);
 
   // HRA-262: actual-recorded-activity matching, client-side, no new API.
-  // Fetched once per plan (the range is the plan's own first→last resolved
-  // day, not the currently visible month/week) so switching Month/Week or
-  // navigating within the plan's own span never needs a fresh fetch;
-  // browsing the calendar to a month outside the plan's own date range is
-  // an existing, unrelated blank-cells behavior this Story doesn't change.
-  // HRA-263: with no plan days at all (AgendaTab now renders this calendar
-  // unconditionally, sections === []), there's no plan-derived span to fetch
-  // against — fall back to the currently visible Month/Week window instead,
-  // re-fetching on navigation, so a runner with no active plan still sees
-  // their real recorded activities.
+  // HRA-286 fix: the range is the UNION of the plan's own first→last
+  // resolved day span AND the currently visible Month/Week window — not
+  // the plan's span alone. HRA-262's original version fetched only the
+  // plan's own span whenever it had any days at all, so an activity dated
+  // entirely before/after the active plan (e.g. a recorded run from before
+  // the plan started) never got fetched, regardless of navigation — the
+  // plan-only branch below never even looked at `view`/`date`. A single
+  // [from, to] request can't express two disjoint windows, so "union" here
+  // is the min/max ENVELOPE covering both — e.g. navigating to a month
+  // entirely before the plan's own span fetches [that month's start, the
+  // plan's own last day], not just that one month — a superset, never a
+  // narrower range than either side alone. Within the plan's own span this
+  // reduces to exactly what it was before (the visible window is a subset
+  // of the plan's span, so the envelope just IS the plan's span) —
+  // switching Month/Week or navigating within it still never needs a fresh
+  // fetch. HRA-263: with no plan days at all (AgendaTab now renders this
+  // calendar unconditionally, sections === []), the loop below never runs
+  // and this reduces to exactly the visible-window range it always was.
   const activityRange = useMemo(() => {
-    if (events.length > 0) {
-      let min = events[0].start, max = events[0].start;
-      for (const e of events) {
-        if (e.start < min) min = e.start;
-        if (e.start > max) max = e.start;
-      }
-      return { from: toDateKey(min), to: toDateKey(max) };
+    let from = view === "week" ? startOfWeek(date) : startOfMonth(date);
+    let to = view === "week" ? endOfWeek(date) : endOfMonth(date);
+    for (const e of events) {
+      if (e.start < from) from = e.start;
+      if (e.start > to) to = e.start;
     }
-    const rangeStart = view === "week" ? startOfWeek(date) : startOfMonth(date);
-    const rangeEnd = view === "week" ? endOfWeek(date) : endOfMonth(date);
-    return { from: toDateKey(rangeStart), to: toDateKey(rangeEnd) };
+    return { from: toDateKey(from), to: toDateKey(to) };
   }, [events, view, date]);
   const { state: activitiesState } = useQuery(
     () => api.garmin.activities(activityRange.from, activityRange.to),

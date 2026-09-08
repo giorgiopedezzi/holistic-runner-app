@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { Filter } from "lucide-react";
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
 import { defaultCompareRange, type CompareRangeState } from "@/hooks/useCompareRange";
-import { DatePicker, Select, Switch } from "@/components/ui";
+import { DatePicker, Select, Sheet, SheetContent, SheetTrigger, Switch } from "@/components/ui";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import type { SavedDateRange } from "@/types/api";
 import { fmtDate } from "@/utils/fmt";
 import { ALL_SENTINEL } from "@/utils/date";
@@ -27,6 +29,7 @@ function savedRangeLabel(r: SavedDateRange): string {
 
 export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, savedRanges = [], racePicker }: Props) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
   function isActive(days: number) {
     const target = days >= 9999 ? ALL_SENTINEL
       : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
@@ -73,6 +76,63 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
     if (r) { compare.setFrom(r.from_date); compare.setTo(r.to_date); }
   }
 
+  // Phone-width compact header (HRA-290): a range summary + a Filter button
+  // opening a Sheet with everything the full row below shows. Deliberately
+  // scoped to !compare — Overview & Trends' two-row Current/Compared-to
+  // layout isn't part of this Story's epic (HRA-289 only covers the
+  // activity list/summary/analysis surfaces), so that usage keeps its
+  // existing desktop-shaped row unchanged at every width.
+  if (isPhone && !compare) {
+    const matchedSaved = savedRanges.find(r => r.from_date === from && r.to_date === to);
+    const summaryLabel = allSelected ? allAvailableLabel
+      : matchedSaved ? savedRangeLabel(matchedSaved)
+      : `${fmtDate(from)} → ${fmtDate(to)}`;
+    // Simple, derivable-from-this-component signal: off the app's shared
+    // 30-day default counts as one active filter. Race selection (an opaque
+    // racePicker ReactNode) isn't introspectable here, so it isn't counted.
+    const activeFilterCount = isActive(30) ? 0 : 1;
+    const filtersLabel = t("dateRange.filters", "Filters");
+    const triggerLabel = activeFilterCount > 0
+      ? t("dateRange.filtersActive", `${filtersLabel} (${activeFilterCount} active)`, { n: activeFilterCount })
+      : filtersLabel;
+    return (
+      <div className="flex items-center gap-2">
+        <span className="hra-filter-summary text-body hra-text-primary">{summaryLabel}</span>
+        <Sheet>
+          <SheetTrigger className="hra-filter-trigger" aria-label={triggerLabel}>
+            <Filter size={18} aria-hidden="true" />
+            {activeFilterCount > 0 && <span className="hra-filter-badge" aria-hidden="true">{activeFilterCount}</span>}
+          </SheetTrigger>
+          <SheetContent title={filtersLabel}>
+            <Select
+              value={activePreset ? String(activePreset.days) : NO_NAMED_RANGE}
+              onValueChange={v => setPreset(Number(v))}
+              placeholder={t("dateRange.customRange", "Custom range")}
+              triggerClassName="hra-select-full"
+              options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
+            />
+            <div className="hra-date-pair">
+              <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
+              <span className="hra-text-muted text-meta">→</span>
+              <DatePicker value={to} min={from} onChange={setTo} />
+            </div>
+            <Select
+              value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
+              onValueChange={pickCurrent}
+              placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
+              triggerClassName="hra-select-full"
+              options={[
+                { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
+                ...savedRanges.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
+              ]}
+            />
+            {racePicker}
+          </SheetContent>
+        </Sheet>
+      </div>
+    );
+  }
+
   return (
     <div>
       {/* "Current" title + the Compare on/off switch — only where a compare
@@ -106,9 +166,16 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
         <span className="hra-text-muted text-meta">{orLabel}</span>
-        <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
-        <span className="hra-text-muted text-meta">→</span>
-        <DatePicker value={to} min={from} onChange={setTo} />
+        {/* Grouped as one atomic unit (.hra-date-pair, index.css) so a
+            narrow/mobile wrap never splits "from" from "to" across lines —
+            the whole pair moves together, or stacks internally as a last
+            resort, but never gets interrupted by the Select on either
+            side. */}
+        <div className="hra-date-pair">
+          <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
+          <span className="hra-text-muted text-meta">→</span>
+          <DatePicker value={to} min={from} onChange={setTo} />
+        </div>
         <span className="hra-text-muted text-meta">{orLabel}</span>
         <Select
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
@@ -150,9 +217,11 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
               />
               <span className="hra-text-muted text-meta invisible">{orLabel}</span>
             </div>
-            <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
-            <span className="hra-text-muted text-meta">→</span>
-            <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
+            <div className="hra-date-pair">
+              <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
+              <span className="hra-text-muted text-meta">→</span>
+              <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
+            </div>
             <span className="hra-text-muted text-meta">{orLabel}</span>
             <Select
               value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}

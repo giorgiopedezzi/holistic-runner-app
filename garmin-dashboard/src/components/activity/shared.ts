@@ -28,6 +28,18 @@ export const RIGHT_AXES_WIDTH = AXIS_WIDTH;
 export const PLAYBACK_DURATION_MS = 30000; // full activity compressed into ~30s
 export const PAUSE_DWELL_MS = 4000;        // hold on a pause row before continuing
 
+// HRA-293: mobile-only pause/HR-recovery label clustering (ActivityChartSection
+// gates this on isPhone -- desktop stays pixel-unchanged, Epic AC). A fraction
+// of the chart's own visible x-range (distance or time, whichever xMode is
+// active), not a fixed pixel/meter/second value -- the flag pill's own
+// on-screen footprint scales with how zoomed-in a short vs. long activity's
+// x-axis is, so a range-relative threshold catches genuinely-crowded runs
+// without over-clustering a sparse one. 4% is a starting heuristic (the
+// Story's own risk note: "collision-detection algorithm choice is an
+// implementation detail") -- roughly one pause-pill width on a narrow phone
+// plot, tune here if a real dense-pause activity still overlaps.
+export const MOBILE_LABEL_CLUSTER_GAP_FRACTION = 0.04;
+
 // A chart-domain x to a pixel offset inside a plot area — the chart's own
 // axis layout math, replicated (Recharts exposes no scale to read). Shared
 // by ActivityChartSection's autoplay loop/terrain and SplashScreen's own

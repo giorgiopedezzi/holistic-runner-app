@@ -102,6 +102,74 @@ describe("PlanInstanceCalendar — actual-workout indicators (HRA-262)", () => {
   });
 });
 
+// HRA-286: the plan's own day span (2026-09-01 → 2026-09-03, from `sections()`
+// above) no longer PINS the activity fetch range on its own — the range is
+// the union of that span and the calendar's currently visible Month/Week
+// window, so an activity dated entirely outside the plan's span is fetched
+// (and shown) once the calendar is navigated to it. Asserted directly
+// against the fetch call's own `from`/`to` query params (not just whether
+// the fixture activity renders) — `installFetch` matches routes by pathname
+// only, ignoring query string, so a DOM-only assertion would pass identically
+// whether or not the range actually widened; reading the real request is
+// what proves the range itself changed, not just that the stub is lenient.
+describe("PlanInstanceCalendar — activity fetch range follows navigation (HRA-286)", () => {
+  function lastActivitiesCall(fetchMock: ReturnType<typeof installFetch>) {
+    const calls = fetchMock.mock.calls.filter(c => new URL(c[0] as string).pathname === "/api/v1/activities");
+    const url = new URL(calls[calls.length - 1][0] as string);
+    return { from: url.searchParams.get("from"), to: url.searchParams.get("to") };
+  }
+
+  it("the initial fetch already covers the whole visible month, not just the plan's own 3-day span", async () => {
+    const fetchMock = installFetch({ "GET /api/v1/activities": paginated([]) });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+    await waitFor(() => expect(screen.getByText("Rest")).toBeInTheDocument());
+
+    const range = lastActivitiesCall(fetchMock);
+    // Old behavior (plan-span-only) would have fetched exactly 2026-09-01 →
+    // 2026-09-03 — the union with the visible month widens both ends.
+    expect(range.from).toBe("2026-09-01");
+    expect(range.to).toBe("2026-09-30");
+  });
+
+  it("navigating to a month entirely outside the plan's span widens the fetch to cover it, and the activity there renders", async () => {
+    const fetchMock = installFetch({
+      "GET /api/v1/activities": paginated([activity({ date_only: "2026-08-15", distance_m: 2000 })]),
+    });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+    await waitFor(() => expect(screen.getByText("Rest")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous" })); // September -> August
+
+    await waitFor(() => {
+      // A single [from, to] request can't express two disjoint windows, so
+      // the union is the envelope covering both — August (now visible)
+      // through the plan's own last day (2026-09-03) — a superset that
+      // still satisfies "never needs a fresh fetch while browsing within
+      // the plan's own span" for whichever span comes second.
+      const range = lastActivitiesCall(fetchMock);
+      expect(range.from).toBe("2026-08-01");
+      expect(range.to).toBe("2026-09-03");
+    });
+    expect(await screen.findByTitle("Recorded activity: 2.0 km")).toBeInTheDocument();
+  });
+
+  it("navigating to a month entirely outside the plan's span, on the OTHER side, also widens the fetch", async () => {
+    const fetchMock = installFetch({ "GET /api/v1/activities": paginated([]) });
+    render(<PlanInstanceCalendar sections={sections()} readOnlyDays={false} onScheduledTimeEdit={noop} onDaySwap={noop} />);
+    await waitFor(() => expect(screen.getByText("Rest")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" })); // September -> October
+
+    await waitFor(() => {
+      // Envelope the other direction — the plan's own first day
+      // (2026-09-01) through October (now visible).
+      const range = lastActivitiesCall(fetchMock);
+      expect(range.from).toBe("2026-09-01");
+      expect(range.to).toBe("2026-10-31");
+    });
+  });
+});
+
 // HRA-264: Week view's row-based day card — Month view is untouched (still
 // covered by every test above, all of which force month via the file's own
 // beforeAll). Each test here switches to Week view explicitly and restores

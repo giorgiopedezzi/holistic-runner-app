@@ -1177,6 +1177,16 @@ body {
 .hra-btn[data-disabled] { background: var(--border-strong); color: var(--text-muted); cursor: not-allowed; --btn-glow: transparent; }
 .hra-btn[data-disabled]:hover { box-shadow: none; }
 
+/* Icon+label action button (mobile UX pass, frontend.md "Icon+label buttons
+   collapse to icon-only under narrow widths") — the visible text drops at
+   the phone tier, leaving only the icon; the button's own aria-label (set
+   at every call site, same string as the hidden label) carries the
+   accessible name once the text node is display:none. */
+.hra-btn-icon-label { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+@media (max-width: 767px) {
+  .hra-btn-icon-label .hra-btn-label { display: none; }
+}
+
 /* Solid outline stays the primary, always-legible focus signal (readability
    first) — the box-shadow only ADDS a soft glow around it, never replaces
    it or touches contrast/text color. */
@@ -1456,6 +1466,12 @@ body {
   body::before { animation: none !important; }
   .hra-chart-hover-dim, .hra-chart-hover-glow { transition: none !important; }
   .hra-loading-bar { animation: none !important; left: 0; width: 100%; opacity: 0.5; }
+  /* HRA-293: the runner glyph's autoplay dwell-fade/hop were the one chart
+     animation this rule didn't yet cover -- both infinite loops, run
+     whenever a scheduled workout's playback dwells on a pause. Snapped to
+     each keyframe's own resting frame (opacity 1, no vertical offset)
+     rather than left mid-cycle. */
+  .hra-runner-dwell, .hra-runner-hop { animation: none !important; opacity: 1; transform: translateY(0); }
   /* HRA-282: OAuthSyncSection's in-progress sync bar (Data & Sync tab) was
      the one infinite, unbounded-sweep animation in this app not already
      covered by this block — same "freeze at a settled, still-informative
@@ -1951,6 +1967,68 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 6px 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
   background: none; color: var(--text-secondary); font-size: var(--text-meta); cursor: pointer;
 }
+
+/* Sheet (HRA-290) — bottom sheet on every width (not just phone): fixed to
+   the viewport bottom, slides up, rounded top corners only. Radix's own
+   Overlay/Content data-state attributes drive the slide/fade so no JS
+   timing is needed; the whole transition is skipped under reduced motion. */
+.hra-sheet-overlay {
+  position: fixed; inset: 0; z-index: 100; background: rgba(0, 0, 0, 0.6);
+}
+.hra-sheet-content {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 101;
+  max-height: 85vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  padding: 16px 20px calc(16px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid var(--border); border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--bg-surface); box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+}
+.hra-sheet-overlay[data-state="open"] { animation: hra-sheet-fade-in 0.15s ease-out; }
+.hra-sheet-content[data-state="open"] { animation: hra-sheet-slide-up 0.2s ease-out; }
+@keyframes hra-sheet-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes hra-sheet-slide-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) {
+  .hra-sheet-overlay[data-state="open"],
+  .hra-sheet-content[data-state="open"] { animation: none; }
+}
+.hra-sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.hra-sheet-close {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; margin: -13px -13px -13px 0;
+  background: transparent; color: var(--text-secondary);
+  border: none; border-radius: 50%; cursor: pointer;
+}
+.hra-sheet-close:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.hra-sheet-body { display: flex; flex-direction: column; gap: 14px; }
+.hra-sheet-body .hra-select-full { width: 100%; }
+.hra-sheet-body .hra-date-pair { width: 100%; }
+
+/* Compact mobile filter trigger (DateRangeBar, HRA-290) — the summary text
+   ellipsizes rather than wrapping/overflowing; the trigger itself is a real
+   44px tap target regardless of the Filter icon's own smaller size. */
+.hra-filter-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hra-filter-trigger {
+  position: relative; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: var(--bg-card); color: var(--text-primary);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer;
+}
+.hra-filter-trigger:hover { border-color: var(--accent); }
+.hra-filter-badge {
+  position: absolute; top: -4px; right: -4px;
+  min-width: 16px; height: 16px; padding: 0 3px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 999px; background: var(--accent); color: var(--on-accent);
+  font-size: 10px; line-height: 1; font-weight: 600;
+}
+
+/* Compact result-position label (Pagination, HRA-290) — replaces the
+   full first/prev/jump/next/last control set at phone widths with just
+   prev/next plus a plain "1-25 of 216" readout. */
+.hra-pagination-compact { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hra-pagination-compact-controls { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 
 .hra-empty { padding: 40px 0; color: var(--text-muted); font-size: var(--text-label); text-align: center; }
 .hra-loading-label { color: var(--text-muted); font-size: var(--text-meta); }
@@ -2588,11 +2666,24 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-compare-range[data-enabled="false"] { opacity: 0.4; pointer-events: none; }
 .hra-preview-pill { padding: 5px 14px; }
 .hra-plan-day-grid { grid-template-columns: auto minmax(0, 1fr) auto; }
-/* HRA-283: the template Week view's 7-day grid — a fixed min-width so the
-   7 columns stay legible (scrolling horizontally inside their own container)
-   instead of squeezing illegibly narrow on a small viewport; no phone-width
-   layout was specified for this Story. */
-.hra-week-view-grid { min-width: 770px; }
+/* HRA-285 (follow-up correction): PlanTemplateAgendaView's own modifier on
+   .hra-agenda-calendar (both classes applied together). The Week/Month grid
+   views lay days out as side-by-side columns, which squeezed illegibly
+   inside this editor's own narrower card — corrected to react-big-calendar's
+   Agenda view instead: a plain <table>, one ROW per day, matching the real
+   Agenda's own narrow-width row-list presentation. This block strips the
+   vendor's own hardcoded #ddd borders/header row and empty time column (no
+   scheduled_time exists for a template day — components.time already
+   renders nothing there; this collapses its cell too) down to a bare
+   vertical stack of TemplateDayRow/UndeclaredDaySlot cards, each providing
+   its own card chrome, spaced by this stack rather than table borders. */
+.hra-template-agenda-calendar { height: auto; }
+.hra-template-agenda-calendar .rbc-agenda-view { overflow: visible; }
+.hra-template-agenda-calendar table.rbc-agenda-table { width: 100%; border: none; border-collapse: collapse; }
+.hra-template-agenda-calendar table.rbc-agenda-table thead { display: none; }
+.hra-template-agenda-calendar table.rbc-agenda-table tbody > tr > td { padding: 0 0 8px; border: none; vertical-align: middle; }
+.hra-template-agenda-calendar .rbc-agenda-date-cell { width: 44px; padding-right: 8px; text-align: center; }
+.hra-template-agenda-calendar .rbc-agenda-time-cell { display: none; }
 [data-swappable="true"] { cursor: grab; }
 .hra-warning-list { padding-left: 18px; }
 .hra-classification-method { flex: 1 1 240px; }
@@ -2630,6 +2721,17 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 @media (max-width: 767px) {
   .hra-date-range-row { flex-wrap: wrap; }
 }
+/* Mobile UX pass — the atomic "from → to" unit shared by DateRangeBar and
+   every from/to row above (DateRangesSection, DeleteSection). A flex item
+   of its own, so a wrapping parent (.hra-row-wrap, .hra-date-range-row)
+   moves the WHOLE pair to its own line rather than ever splitting "from"
+   from "to" across two lines when unrelated sibling controls (a preset
+   dropdown, a name field, a race picker) crowd the row. flex-wrap here
+   (not nowrap) is the fallback for the tightest cards (16px padding leaves
+   ~264px at 320px) — the two 128px .hra-date-trigger's + arrow don't fit
+   side by side there, so "to" drops below "from" instead of forcing
+   horizontal scroll.  */
+.hra-date-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .hra-chip-action { padding: 3px 10px; }
 .hra-control-action { padding: 5px 14px; }
 .hra-list-row { padding: 3px 0; }
@@ -2720,6 +2822,16 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
      44px minimum, despite already being full-width. Desktop is untouched;
      this row already reads fine there at its natural content height. */
   .hra-activity-row-open { min-height: 44px; }
+  /* HRA-291: reorders the row's three stacked columns at phone width only —
+     primary result (info) first, secondary metrics (duration/HR/pace)
+     right after it, the overflow actions menu last — instead of the DOM
+     order (info, actions, metrics) the 3-column desktop grid needs. Pure
+     CSS `order`, same elements, so desktop's own column order stays
+     untouched (this rule is scoped to the same media query as the grid
+     collapse above). */
+  .hra-activity-row-info { order: 1; }
+  .hra-activity-row-metrics { order: 2; }
+  .hra-activity-row-actions { order: 3; }
 }
 .hra-activity-row-action { width: 177px; height: 30px; }
 /* HRA-282: both the type Select (--activity-action-height above) and this
@@ -2747,6 +2859,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-metric-toggle:disabled { cursor: not-allowed; opacity: 0.4; }
 .hra-metric-card-toggle { cursor: pointer; opacity: 1; }
 .hra-metric-card-toggle[data-active="false"] { cursor: not-allowed; opacity: 0.4; }
+/* HRA-292: MetricLegendChip — colored .hra-legend-chip (series toggle) +
+   a separate, always-visible detail-chart icon button, replacing MetricRow's
+   checkbox+"Card"-label pattern for the optional-metric toggles only. */
+.hra-metric-legend-row { display: flex; align-items: center; gap: 4px; }
+.hra-metric-detail-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: none; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.hra-metric-detail-toggle[data-active="true"] { color: var(--accent); border-color: var(--accent); }
+.hra-metric-detail-toggle:disabled { cursor: not-allowed; opacity: 0.35; }
 .hra-speed-segment { --segment-color: var(--data-pace); }
 .hra-activity-chart-section { margin-top: var(--section-gap); }
 .hra-activity-chart-selectors {
@@ -2778,6 +2902,22 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   .hra-activity-chart-controls {
     grid-template-columns: 1fr;
   }
+  /* HRA-292 AC: "summary values placed above the plot instead of floating
+     cards" — .hra-graph-kpi's bordered/shadowed chrome (index.css, "Main
+     graph header's compact KPI cards") reads as a tappable box on a touch
+     screen even though it isn't (mobile-responsive-web: "drop box/card
+     chrome along with the label" for a non-interactive stat display at
+     mobile widths). Scoped to THIS chart section's own KPI row only — every
+     other GraphKpiCard call site (Overview, etc.) is untouched. */
+  .hra-activity-chart-kpis .hra-graph-kpi {
+    background: none; border: none; padding: 0; min-width: 0;
+  }
+  /* Legend chips and their detail-toggle button are real tap targets on
+     mobile, not just a compact desktop label (mobile-responsive-web: 44px
+     touch-target floor, 8px minimum spacing between adjacent targets). */
+  .hra-metric-legend-row { gap: 8px; }
+  .hra-activity-metric-controls .hra-legend-chip { min-height: 44px; display: inline-flex; align-items: center; }
+  .hra-metric-detail-toggle { width: 44px; height: 44px; }
 }
 .hra-runner-row { height: var(--runner-row-height); }
 .hra-activity-chart-placeholder { height: var(--activity-chart-placeholder-height); }
@@ -3073,6 +3213,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-runner-playbtn:hover { background: color-mix(in srgb, var(--text-primary) 14%, var(--bg-card)); }
 .hra-runner-playbtn:disabled { opacity: 0.35; cursor: not-allowed; }
 .hra-runner-playbtn:disabled:hover { background: var(--bg-card); }
+/* HRA-292 AC: "44x44 play/stop controls" on mobile — desktop keeps the
+   original compact 22px circle (unchanged per the Epic's "desktop
+   pixel-unchanged" rule). Comes after the base rule above so it wins at
+   equal specificity, same pattern as the .hra-activity-row-action bump. */
+@media (max-width: 767px) {
+  .hra-runner-playbtn { width: 44px; height: 44px; }
+}
 
 .hra-trend-line-pace { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-pace) 55%, transparent)); }
 .hra-trend-line-hr   { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-hr) 55%, transparent)); }

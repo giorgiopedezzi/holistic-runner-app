@@ -17,7 +17,7 @@ import { beforeAll, describe, it, expect } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { PlanTemplatesSection } from "./PlanTemplatesSection";
-import { installFetch, json } from "@/test/api-stub";
+import { installFetch, json, type StubRequest } from "@/test/api-stub";
 import { planTemplate } from "@/test/fixtures";
 
 const TEMPLATE = planTemplate();
@@ -307,6 +307,96 @@ describe("PlanTemplatesSection — existing action enablement is unchanged", () 
   });
 });
 
+describe("PlanTemplatesSection — Save/Activate require unsaved changes (HRA-287)", () => {
+  function mockGenerate(dslSource: string) {
+    const hasSegment = dslSource.includes(";");
+    return json({
+      plan: {
+        metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+        sections: [{
+          name: "Base", week_spec: "1", raw_dsl: "SECTION \"Base\" WEEKS 1", pace_policy: {},
+          weeks: [{
+            number: 1, raw_dsl: "WEEK 1", pace_policy: {},
+            days: [{
+              day: 1, workout_type: "run", needs_review: false, warnings: [],
+              raw_dsl: hasSegment ? "D1: 5km @ RG; 2km @ jog" : "D1: 5km @ RG",
+              segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }],
+            }],
+          }],
+        }],
+      },
+      warnings: [],
+    });
+  }
+
+  const EXISTING_DSL = "SECTION \"Base\" WEEKS 1\nWEEK 1\nD1: 5km @ RG";
+  function existingTemplateProps() {
+    return mountProps({ templates: [planTemplate({ dsl_source: EXISTING_DSL })] });
+  }
+
+  it("Save is disabled on an untouched, already-saved template — nothing to save", async () => {
+    installFetch({ "POST /api/v1/plan-templates/generate": (req: StubRequest) => mockGenerate((req.body as { dsl_source: string }).dsl_source) });
+    render(<PlanTemplatesSection {...existingTemplateProps()} />);
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue(EXISTING_DSL));
+    // The List view's Week accordion row starts collapsed — expand it to
+    // reveal its day rows.
+    fireEvent.click(screen.getByText(/^Week 1/).closest('[role="button"]')!);
+    await screen.findByText("D1: 5km @ RG");
+
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("Activate is disabled by a name-only edit — previously it only checked the DSL text", async () => {
+    installFetch({ "POST /api/v1/plan-templates/generate": (req: StubRequest) => mockGenerate((req.body as { dsl_source: string }).dsl_source) });
+    render(<PlanTemplatesSection {...existingTemplateProps()} />);
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue(EXISTING_DSL));
+    await screen.findByText(/^Week 1/); // preview settled — same dslSource, so pre-fix Activate would already read enabled here
+    expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText(/^Name/), { target: { value: "5K Base renamed" } });
+    expect(screen.getByRole("button", { name: "Activate" })).toBeDisabled();
+  });
+
+  it("editing a day's DSL to add a segment keeps Save enabled through the debounce window and persists it", async () => {
+    const fetchMock = installFetch({
+      "POST /api/v1/plan-templates/generate": (req: StubRequest) => mockGenerate((req.body as { dsl_source: string }).dsl_source),
+      "PUT /api/v1/plan-templates/1": json(TEMPLATE),
+    });
+    render(<PlanTemplatesSection {...existingTemplateProps()} />);
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue(EXISTING_DSL));
+    // The List view's Week accordion row starts collapsed — expand it to
+    // reveal its day rows.
+    fireEvent.click(screen.getByText(/^Week 1/).closest('[role="button"]')!);
+    await screen.findByText("D1: 5km @ RG");
+
+    // Expand Day 1's own row and switch it to the DSL sub-view, then append
+    // a segment — the exact HRA-287 repro (structured/List view already
+    // shows the day correctly; the regression was Save silently disabling).
+    const day1Title = screen.getAllByText("D1: 5km @ RG").find(el => el.tagName === "SPAN")!;
+    fireEvent.click(day1Title.closest('[role="button"]')!);
+    fireEvent.click(await screen.findByRole("button", { name: "DSL" }));
+    const dayDslField = await screen.findByLabelText("Workout plan text (DSL)");
+    fireEvent.change(dayDslField, { target: { value: "D1: 5km @ RG; 2km @ jog" } });
+
+    // HRA-287's own regression: Save must NOT go disabled while the
+    // debounced re-parse (700ms) is still pending — the old bug wiped
+    // `sections` synchronously, disabling Save for that whole window.
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      const putCall = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PUT");
+      expect(putCall).toBeTruthy();
+    });
+    const putCall = fetchMock.mock.calls.find(c => (c[1] as RequestInit)?.method === "PUT")!;
+    const body = JSON.parse((putCall[1] as RequestInit).body as string) as { dsl_source: string };
+    expect(body.dsl_source).toContain("2km @ jog");
+  });
+});
+
 describe("PlanTemplatesSection — regression: parsed preview still renders below the pipeline", () => {
   it("a successful generate still renders the Section/Week/Day accordion", async () => {
     installFetch({
@@ -329,7 +419,7 @@ describe("PlanTemplatesSection — regression: parsed preview still renders belo
   });
 });
 
-describe("PlanTemplatesSection — Week view (HRA-283)", () => {
+describe("PlanTemplatesSection — Agenda view (HRA-283/HRA-285)", () => {
   const WEEK1_DSL = ["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n");
   function mockGenerate() {
     return json({
@@ -350,7 +440,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     });
   }
 
-  async function openWeekView() {
+  async function openAgendaView() {
     installFetch({ "POST /api/v1/plan-templates/generate": mockGenerate() });
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -358,7 +448,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     const dslField = await screen.findByLabelText("Workout plan text");
     fireEvent.change(dslField, { target: { value: WEEK1_DSL } });
     await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
     return dslField as HTMLTextAreaElement;
   }
 
@@ -374,33 +464,33 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
 
     // The toggle only mounts once a preview exists — defaults to List.
     expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("data-active", "true");
-    expect(screen.getByRole("button", { name: "Week" })).toHaveAttribute("data-active", "false");
+    expect(screen.getByRole("button", { name: "Agenda" })).toHaveAttribute("data-active", "false");
     expect(screen.getByText("Week 1")).toBeInTheDocument(); // the List view's own accordion
 
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
     expect(dslField).toHaveValue(WEEK1_DSL); // untouched by the toggle itself
     expect(screen.getByText("Day 1")).toBeInTheDocument();
   });
 
   it("renders exactly 7 fixed Day columns regardless of how many D-numbers are declared", async () => {
-    await openWeekView();
+    await openAgendaView();
     for (let n = 1; n <= 7; n++) expect(screen.getByText(`Day ${n}`)).toBeInTheDocument();
   });
 
   it("a declared day reuses the List view's own TemplateDayRow — same collapsed title", async () => {
-    await openWeekView();
+    await openAgendaView();
     expect(screen.getByText("D1: 5km @ RG")).toBeInTheDocument();
     expect(screen.getByText("D3: 4x1000m @ RG-20")).toBeInTheDocument();
   });
 
   it("an undeclared D-number shows a Rest day summary, not a gap, and viewing it alone does not touch dsl_source", async () => {
-    const dslField = await openWeekView();
+    const dslField = await openAgendaView();
     expect(screen.getAllByText("Rest day").length).toBeGreaterThan(0);
     expect(dslField).toHaveValue(WEEK1_DSL);
   });
 
   it("clicking an undeclared slot materializes a D<n>: REST line at the right position and becomes editable", async () => {
-    await openWeekView();
+    await openAgendaView();
     // Day 2 sits between the two declared days (D1, D3) — its own column is
     // the first "Rest day" placeholder in document order. Queries the raw
     // DSL textarea by its stable class rather than by label after the click:
@@ -440,7 +530,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
   }
 
   it("dragging one declared day onto another swaps their content, keeping each D-number in place (AC6)", async () => {
-    await openWeekView();
+    await openAgendaView();
     const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
     const day3 = dayTitle("D3: 4x1000m @ RG-20").closest('[data-swappable="true"]') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
@@ -455,7 +545,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
   });
 
   it("dropping a declared day onto an undeclared slot materializes it and moves the content there, leaving REST behind (AC5/AC6)", async () => {
-    await openWeekView();
+    await openAgendaView();
     const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
     const undeclaredDay2 = screen.getAllByText("Rest day")[0].closest('[role="button"]') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
@@ -500,7 +590,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     fireEvent.click(pipelineHeader(/Workout DSL/));
     fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: MULTI_DSL } });
     await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
 
     expect(screen.getByText("Base — Week 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled(); // first week overall

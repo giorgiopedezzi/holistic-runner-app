@@ -19,6 +19,7 @@ export { Checkbox } from "./Checkbox";
 export { Switch } from "./Switch";
 export { Select } from "./Select";
 export { Popover, PopoverTrigger, PopoverContent, HelpDisclosure } from "./Popover";
+export { Sheet, SheetTrigger, SheetContent } from "./Sheet";
 export { Calendar } from "./Calendar";
 export { DatePicker } from "./DatePicker";
 export { ToastContainer } from "./ToastContainer";

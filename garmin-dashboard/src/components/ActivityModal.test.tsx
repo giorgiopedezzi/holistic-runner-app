@@ -76,3 +76,52 @@ describe("ActivityDetailBody", () => {
     expect(await screen.findByText("activity load failed")).toBeInTheDocument();
   });
 });
+
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291)", () => {
+  it("renders KPIs as text rows, not bordered mini-cards, at phone width", async () => {
+    stubPhoneWidth(true);
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: shortTrack(),
+      "GET /api/v1/settings": settings(),
+    });
+    const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
+
+    await waitFor(() => expect(container.querySelector(".hra-fact-row-stat")).toBeInTheDocument());
+    const maxHrRow = screen.getByText("Max HR").closest(".hra-fact-row-stat");
+    expect(maxHrRow).toHaveTextContent("171");
+    expect(maxHrRow).toHaveTextContent("bpm");
+    expect(container.querySelector(".hra-stat-grid")).not.toBeInTheDocument();
+  });
+
+  it("collapses the popup header's type/rename/delete controls into one overflow menu at phone width", async () => {
+    stubPhoneWidth(true);
+    const onDelete = vi.fn();
+    const onClose = vi.fn();
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: shortTrack(),
+      "GET /api/v1/settings": settings(),
+      [`DELETE /api/v1/activities/${ID}`]: json({ deleted: 1 }),
+    });
+    render(<ActivityDetailBody activityId={ID} onDelete={onDelete} onClose={onClose} />);
+
+    const trigger = await screen.findByRole("button", { name: "Activity actions" });
+    expect(screen.queryByRole("button", { name: "Remove activity" })).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove activity" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
+    expect(onClose).toHaveBeenCalled();
+  });
+});

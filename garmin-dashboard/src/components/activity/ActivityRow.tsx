@@ -8,7 +8,9 @@ import { getResolvedTheme } from "@/utils/theme";
 import { fmtPace, fmtDuration, fmtKm, fmtDate, fmtSource } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { ActivityTypePicker } from "./ActivityTypePicker";
+import { ActivityActionsMenu } from "./ActivityActionsMenu";
 
 // Compact per-sport glyph (HRA-280, "compact type icon + accessible short
 // name") — purely decorative next to the Badge's own text label, which
@@ -105,6 +107,7 @@ interface ActivityRowProps {
 export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, onDelete, onUpdate, expandedContent }: ActivityRowProps) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const isPhone = useIsPhone();
   const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
   const SportIcon = SPORT_ICON[a.sport ?? "other"] ?? ActivityIcon;
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -139,7 +142,7 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             column's own fixed width instead of forcing the column wider. */}
         <button
           type="button"
-          className="hra-activity-row-open hra-row-wrap gap-3 min-w-0 w-full text-left bg-transparent border-0 p-0 cursor-pointer"
+          className="hra-activity-row-open hra-activity-row-info hra-row-wrap gap-3 min-w-0 w-full text-left bg-transparent border-0 p-0 cursor-pointer"
           onClick={onClick}
           aria-expanded={expandIndicator === "accordion" ? expanded : undefined}
         >
@@ -168,40 +171,51 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             button now, not nested inside any clickable ancestor, so it
             needs no stopPropagation to keep its own clicks/keydowns from
             also triggering the row's open-detail action. */}
-        <div className="hra-row-wrap gap-2 min-w-0">
-          <ActivityTypePicker activity={a} onUpdate={onUpdate}
-            selectWidth={TYPE_SELECT_WIDTH} actionWidth={ACTION_BUTTON_WIDTH} height={ACTION_CONTROL_HEIGHT} />
-          {!confirmDelete ? (
-            <button
-              className="hra-activity-row-action hra-btn flex items-center justify-center gap-1.5 shrink-0"
-              data-variant="cta"
-              data-tone="red"
-              onClick={() => setConfirmDelete(true)}
-              disabled={demoMode}
-              title={demoMode
-                ? t("common.demoModeHint", "Not available for demo")
-                : t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
-            >
-              <Trash2 size={13} />
-              {t("activity.detail.deleteButton", "Remove activity")}
-            </button>
+        <div className="hra-activity-row-actions hra-row-wrap gap-2 min-w-0">
+          {isPhone ? (
+            // HRA-291: type change/rename/delete collapse into one overflow
+            // menu at phone width, reordered (via CSS, see
+            // .hra-activity-row-actions' media rule) after the secondary
+            // metrics column so the primary result surfaces first. Desktop
+            // (below) keeps the always-visible inline cluster unchanged.
+            <ActivityActionsMenu activity={a} onUpdate={onUpdate} onDelete={onDelete} />
           ) : (
-            <div className="hra-row gap-1.5">
-              <span className="hra-text-danger text-meta">{t("activity.detail.moveToTrash", "Move to trash?")}</span>
-              <button
-                className="hra-btn" data-variant="cta"
-                data-tone="red"
-                onClick={handleDelete} disabled={deleting}
-              >
-                {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
-              </button>
-              <button onClick={() => setConfirmDelete(false)}
-                className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
-                {t("common.cancel", "Cancel")}
-              </button>
-            </div>
+            <>
+              <ActivityTypePicker activity={a} onUpdate={onUpdate}
+                selectWidth={TYPE_SELECT_WIDTH} actionWidth={ACTION_BUTTON_WIDTH} height={ACTION_CONTROL_HEIGHT} />
+              {!confirmDelete ? (
+                <button
+                  className="hra-activity-row-action hra-btn flex items-center justify-center gap-1.5 shrink-0"
+                  data-variant="cta"
+                  data-tone="red"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={demoMode}
+                  title={demoMode
+                    ? t("common.demoModeHint", "Not available for demo")
+                    : t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
+                >
+                  <Trash2 size={13} />
+                  {t("activity.detail.deleteButton", "Remove activity")}
+                </button>
+              ) : (
+                <div className="hra-row gap-1.5">
+                  <span className="hra-text-danger text-meta">{t("activity.detail.moveToTrash", "Move to trash?")}</span>
+                  <button
+                    className="hra-btn" data-variant="cta"
+                    data-tone="red"
+                    onClick={handleDelete} disabled={deleting}
+                  >
+                    {deleting ? "…" : t("common.yesDelete", "Yes, delete")}
+                  </button>
+                  <button onClick={() => setConfirmDelete(false)}
+                    className="hra-border-strong hra-text-secondary text-meta rounded-md py-1 px-3 bg-transparent cursor-pointer">
+                    {t("common.cancel", "Cancel")}
+                  </button>
+                </div>
+              )}
+              {error && <span className="hra-text-danger text-meta">{error}</span>}
+            </>
           )}
-          {error && <span className="hra-text-danger text-meta">{error}</span>}
         </div>
 
         {/* Column 3 (15%) — duration/HR/pace, untouched, still right-aligned.
@@ -210,7 +224,7 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             open-in-modal status marker, not its own control — its state is
             already exposed to assistive tech via column 1's aria-expanded,
             so it's aria-hidden here to avoid announcing a redundant symbol. */}
-        <div className="hra-row-wrap gap-3 justify-end min-w-0">
+        <div className="hra-activity-row-metrics hra-row-wrap gap-3 justify-end min-w-0">
           <span className="hra-text-secondary text-label">{fmtDuration(a.duration_sec)}</span>
           {a.avg_hr         && <span className="hra-text-danger text-label">♥ {a.avg_hr}</span>}
           {a.avg_pace_minkm && <span className="hra-text-muted text-label">{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}

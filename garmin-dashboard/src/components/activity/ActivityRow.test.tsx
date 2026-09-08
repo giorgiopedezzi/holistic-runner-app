@@ -164,6 +164,83 @@ describe("ActivityRow", () => {
   });
 });
 
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+describe("ActivityRow phone-width overflow menu (HRA-291)", () => {
+  it("collapses type change/rename/delete into one overflow menu at phone width, hiding the desktop inline cluster", async () => {
+    stubPhoneWidth(true);
+    installFetch({ "GET /api/v1/activity-types": paginated([{ id: 1, name: "Race", min_distance_m: 0 }]) });
+    render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Remove activity" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+
+    const trigger = screen.getByRole("button", { name: "Activity actions" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+
+    await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Remove activity" })).toBeInTheDocument();
+  });
+
+  it("deletes through the overflow menu's ConfirmModal and calls onDelete with the id", async () => {
+    stubPhoneWidth(true);
+    const onDelete = vi.fn();
+    installFetch({
+      "GET /api/v1/activity-types": paginated([]),
+      [`DELETE /api/v1/activities/${ID}`]: { deleted: 1 },
+    });
+    render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={onDelete} onUpdate={vi.fn()} />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Activity actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove activity" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+
+    await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
+  });
+
+  // HRA-291 AC4: a long activity_name, in either language, must not break
+  // the row's layout at phone width — verified via the pre-existing
+  // ellipsis contract (ActivityRow's name span: `truncate` clips it to one
+  // line instead of wrapping/growing the row, `title` keeps the full text
+  // one hover away), which this Story's reordering/overflow-menu changes
+  // left untouched. jsdom has no real layout engine to assert actual
+  // rendered width against, so this is the same "clips via CSS, not DOM
+  // growth" contract the surrounding code comments already document.
+  it.each([
+    ["English", "Berlin Marathon 2026 — Full Course PB Attempt, Wave 3 Start Corral G, Charity Bib"],
+    ["Italian", "Mezza Maratona di Roma 2026 — Percorso Panoramico nel Centro Storico, Girone di Beneficenza"],
+  ])("does not break the row layout with a long %s activity name at phone width", (_lang, longName) => {
+    stubPhoneWidth(true);
+    installFetch({ "GET /api/v1/activity-types": paginated([]) });
+    render(
+      <ActivityRow activity={activity({ activity_name: longName })} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    const nameEl = screen.getByTitle(longName);
+    expect(nameEl).toHaveTextContent(longName);
+    expect(nameEl).toHaveClass("truncate");
+    // The rest of the row still renders normally alongside the long name —
+    // nothing was pushed out or omitted to make room for it.
+    expect(screen.getByRole("button", { name: "Activity actions" })).toBeInTheDocument();
+    expect(screen.getByText("10.00 km")).toBeInTheDocument();
+  });
+});
+
 describe("ActivitySportLegend", () => {
   it("gives every workout-type color a visible text alternative, not just the swatch (HRA-280 AC3)", () => {
     render(<ActivitySportLegend />);

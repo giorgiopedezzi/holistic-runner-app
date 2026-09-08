@@ -571,6 +571,18 @@
       "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
     },
     {
+      "file": "src/components/activity/MetricLegendChip.tsx",
+      "symbol": "MetricLegendChip",
+      "category": "custom-property-style",
+      "element": "button",
+      "attribute": "style",
+      "properties": [
+        "--legend-color"
+      ],
+      "count": 1,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+    },
+    {
       "file": "src/components/ui/Checkbox.tsx",
       "symbol": "Checkbox",
       "category": "custom-property-style",

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Gauge, Heart, AlertTriangle } from "lucide-react";
+import { MapPin, Gauge, Heart, AlertTriangle, SlidersHorizontal } from "lucide-react";
 import {
   axisDomainMinMax, distanceTicks, timeTicks,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
@@ -10,15 +10,17 @@ import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
 import type { PlanInstanceDayWithInstance, TrackPoint } from "@/types/api";
 import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
-import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH, PLAYBACK_DURATION_MS, PAUSE_DWELL_MS, xToPixel } from "./shared";
-import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, Select, splitUnit } from "@/components/ui";
+import { useIsPhone } from "@/hooks/useIsPhone";
+import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH, PLAYBACK_DURATION_MS, PAUSE_DWELL_MS, MOBILE_LABEL_CLUSTER_GAP_FRACTION, xToPixel } from "./shared";
+import { AccordionCard, ChartCard, Checkbox, GraphKpiCard, Label, LoadingSpinner, Select, Sheet, SheetContent, SheetTrigger, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
+import { MetricLegendChip } from "./MetricLegendChip";
 import { MainOverlayChart, MetricStandaloneCard } from "./OverlayCharts";
 import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
 import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPlayButton";
-import { nearestHr } from "@/domain/pauses";
+import { nearestHr, clusterByProximity } from "@/domain/pauses";
 import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 
 // How far the actual plotted line sits from this section's own outer edge,
@@ -124,6 +126,17 @@ export function ActivityChartSection({
   plannedDays, selectedPlannedDayId, setSelectedPlannedDayId,
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
+  // HRA-293: each secondary chart's own AccordionCard disclosure — the
+  // "detail chart" chip toggle (MetricLegendChip, HRA-292) decides WHETHER a
+  // metric's card exists at all (showCard); this decides whether that card
+  // starts open or closed once it does. Heart rate defaults open (it's
+  // already the one optional metric active by default — see
+  // ActivityDetailBody's showCard initial state comment); every other
+  // metric's card starts collapsed, matching the Classification accordion
+  // above it (AccordionCard is the same reuse target, per the Story). Local
+  // to this component — no other consumer needs this disclosure state.
+  const [expandedCards, setExpandedCards] = useState<Partial<Record<MetricKey, boolean>>>({ heart_rate: true });
   // ── Mouse-follow runner (icon in its own row above the chart, readout
   // pinned below the chart's vertical center) ────────────────────────────
   // Both RunnerIcon and RunnerReadout hold their OWN local hover state,
@@ -463,10 +476,13 @@ export function ActivityChartSection({
   // interval... depending on the moving time"), dashboard design-system
   // rework. Shared by the main chart and every standalone card below so
   // tick placement matches across all of them, not just their widths.
-  const xTicks = useMemo(
-    () => (xMode === "distance" ? distanceTicks(chartData) : timeTicks(chartData)),
-    [xMode, chartData],
-  );
+  // HRA-292: a narrower tick-count target on phone — the 8-10 desktop target
+  // crowds a ~300px-wide mobile plot; a phone-width plot reads better with
+  // fewer, more legible labels.
+  const xTicks = useMemo(() => {
+    const targetRange: [number, number] | undefined = isPhone ? [4, 6] : undefined;
+    return xMode === "distance" ? distanceTicks(chartData, targetRange) : timeTicks(chartData, targetRange);
+  }, [xMode, chartData, isPhone]);
 
   // Per-metric Y-domain for each shown standalone card — memoized (perf
   // split, playback-lag fix) so its ARRAY reference stays stable across
@@ -485,6 +501,80 @@ export function ActivityChartSection({
     }
     return domains;
   }, [effectiveActive, showCard, displayTrack, speedMode]);
+
+  // HRA-293: mobile-only pause/HR-recovery label clustering — phone-only
+  // (Epic AC: "Desktop is pixel/behavior-unchanged"), so `mainChartData`/
+  // `hrRecoveryCardData` below fall back to the exact same `chartData`/
+  // `hrRecoveryChartData` references whenever `!isPhone`, and
+  // PauseFlagShape/HrRecoveryFlagShape see no cluster fields at all —
+  // desktop rendering is untouched by construction, not just by visual
+  // inspection. See shared.ts's MOBILE_LABEL_CLUSTER_GAP_FRACTION for the
+  // threshold and clusterByProximity (domain/pauses.ts) for the algorithm.
+  const pauseLabelClusters = useMemo(() => {
+    if (!isPhone || chartData.length < 2) return null;
+    const rows = chartData
+      .map((row, idx) => ({ row, idx }))
+      .filter((r): r is { row: typeof r.row & { pauseDurationSec: number }; idx: number } => r.row.pauseDurationSec != null);
+    if (rows.length < 2) return null;
+    const range = chartData[chartData.length - 1].x - chartData[0].x;
+    if (range <= 0) return null;
+    const clusters = clusterByProximity(rows.map(r => r.row.x), range * MOBILE_LABEL_CLUSTER_GAP_FRACTION);
+    const map = new Map<number, { clusterSize: number; isAnchor: boolean; totalDurationSec: number }>();
+    for (const cluster of clusters) {
+      const totalDurationSec = cluster.memberIndices.reduce((sum, i) => sum + rows[i].row.pauseDurationSec, 0);
+      for (const i of cluster.memberIndices) {
+        map.set(rows[i].idx, { clusterSize: cluster.memberIndices.length, isAnchor: i === cluster.anchorIndex, totalDurationSec });
+      }
+    }
+    return map;
+  }, [isPhone, chartData]);
+
+  const mainChartData = useMemo(() => {
+    if (!pauseLabelClusters) return chartData;
+    return chartData.map((row, idx) => {
+      const info = pauseLabelClusters.get(idx);
+      if (!info) return row;
+      return {
+        ...row,
+        pauseClusterSize: info.clusterSize,
+        pauseClusterAnchor: info.isAnchor ? 1 : 0,
+        pauseClusterTotalSec: info.totalDurationSec,
+      };
+    });
+  }, [chartData, pauseLabelClusters]);
+
+  const hrRecoveryLabelClusters = useMemo(() => {
+    if (!isPhone || hrRecoveryChartData.length < 2) return null;
+    const rows = hrRecoveryChartData
+      .map((row, idx) => ({ row, idx }))
+      .filter((r): r is { row: typeof r.row & { hrRecoveryDelta: number }; idx: number } => r.row.hrRecoveryDelta != null);
+    if (rows.length < 2) return null;
+    const range = hrRecoveryChartData[hrRecoveryChartData.length - 1].x - hrRecoveryChartData[0].x;
+    if (range <= 0) return null;
+    const clusters = clusterByProximity(rows.map(r => r.row.x), range * MOBILE_LABEL_CLUSTER_GAP_FRACTION);
+    const map = new Map<number, { clusterSize: number; isAnchor: boolean; avgDelta: number }>();
+    for (const cluster of clusters) {
+      const avgDelta = cluster.memberIndices.reduce((sum, i) => sum + rows[i].row.hrRecoveryDelta, 0) / cluster.memberIndices.length;
+      for (const i of cluster.memberIndices) {
+        map.set(rows[i].idx, { clusterSize: cluster.memberIndices.length, isAnchor: i === cluster.anchorIndex, avgDelta });
+      }
+    }
+    return map;
+  }, [isPhone, hrRecoveryChartData]);
+
+  const hrRecoveryCardData = useMemo(() => {
+    if (!hrRecoveryLabelClusters) return hrRecoveryChartData;
+    return hrRecoveryChartData.map((row, idx) => {
+      const info = hrRecoveryLabelClusters.get(idx);
+      if (!info) return row;
+      return {
+        ...row,
+        hrRecoveryClusterSize: info.clusterSize,
+        hrRecoveryClusterAnchor: info.isAnchor ? 1 : 0,
+        hrRecoveryClusterAvg: info.avgDelta,
+      };
+    });
+  }, [hrRecoveryChartData, hrRecoveryLabelClusters]);
 
   // Heart rate is the only optional metric that can ever show a Y-axis
   // (Cadence/Power never do — see MainOverlayChart's per-metric YAxis
@@ -507,6 +597,29 @@ export function ActivityChartSection({
   // for the planned pill itself), just resolved here since MainOverlayChart
   // takes the model directly rather than the toggle state.
   const plannedOverlay = plannedShown ? plannedModel : null;
+
+  // HRA-292 scope: "move pause-threshold, anomaly-removal and other
+  // technical settings into a 'Chart options' disclosure using Story 1's
+  // Sheet primitive" — phone-only (desktop stays pixel-unchanged, Epic AC).
+  // Shared between the always-inline desktop row and the phone Sheet's body
+  // so the two never drift into two different controls.
+  const chartOptionsLabel = t("activity.chart.options", "Chart options");
+  const chartOptionsFields = (
+    <>
+      <label className="hra-text-muted flex items-center gap-1.5 text-meta">
+        {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
+        <input type="number" min={5} step={5} value={pauseThreshold}
+          onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
+          className="w-14 text-meta py-0.5 px-1.5" />
+        sec
+      </label>
+      <label className="hra-text-muted flex items-center gap-1.5 text-meta cursor-pointer"
+        title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
+        <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
+        {t("activity.chart.removeOutliers", "Remove outliers")}
+      </label>
+    </>
+  );
 
   return (
     <div className="hra-activity-chart-section">
@@ -547,23 +660,25 @@ export function ActivityChartSection({
             ))}
           </div>
         </div>
-        <div className="hra-row-wrap gap-4 justify-center">
-          <label className="hra-text-muted flex items-center gap-1.5 text-meta">
-            {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
-            <input type="number" min={5} step={5} value={pauseThreshold}
-              onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
-              className="w-14 text-meta py-0.5 px-1.5" />
-            sec
-          </label>
-          <label className="hra-text-muted flex items-center gap-1.5 text-meta cursor-pointer"
-            title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
-            <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
-            {t("activity.chart.removeOutliers", "Remove outliers")}
-          </label>
-        </div>
+        {isPhone ? (
+          <div className="hra-row-wrap gap-4 justify-center">
+            <Sheet>
+              <SheetTrigger className="hra-filter-trigger" aria-label={chartOptionsLabel}>
+                <SlidersHorizontal size={18} aria-hidden="true" />
+              </SheetTrigger>
+              <SheetContent title={chartOptionsLabel}>
+                {chartOptionsFields}
+              </SheetContent>
+            </Sheet>
+          </div>
+        ) : (
+          <div className="hra-row-wrap gap-4 justify-center">
+            {chartOptionsFields}
+          </div>
+        )}
         <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
           {OPTIONAL_METRIC_ORDER.map(key => (
-            <MetricRow
+            <MetricLegendChip
               key={key}
               color={METRIC_DEFS[key].color}
               label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
@@ -675,7 +790,7 @@ export function ActivityChartSection({
               </div>
             )}
           </div>
-          <div className="hra-row-wrap gap-2 justify-end">
+          <div className="hra-activity-chart-kpis hra-row-wrap gap-2 justify-end">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
               value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
             <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
@@ -717,7 +832,7 @@ export function ActivityChartSection({
           <div ref={plotRef} className="relative">
           <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
           <MainOverlayChart
-            chartData={chartData} displayTrack={displayTrack} xTicks={xTicks} xMode={xMode}
+            chartData={mainChartData} displayTrack={displayTrack} xTicks={xTicks} xMode={xMode}
             speedDomain={speedDomain} speedMode={speedMode} activeMetrics={activeMetrics} effectiveActive={effectiveActive}
             rightMargin={mainChartRightMargin} plannedOverlay={plannedOverlay}
             onMouseMove={handleChartMouseMove} onMouseLeave={handleChartMouseLeave}
@@ -758,19 +873,46 @@ export function ActivityChartSection({
         // one exception is Heart rate, which gets its own
         // recovery-delta flag instead (a different signal: HR drop
         // across the pause, not the pause's duration).
-        const cardData = key === "heart_rate" ? hrRecoveryChartData : chartData;
-        return (
+        const cardData = key === "heart_rate" ? hrRecoveryCardData : chartData;
+        const cardLabel = (
+          <>
+            {key === "speed"
+              ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
+              : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+            {key === "heart_rate" && <span className="ml-2 font-normal normal-case tracking-normal">{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
+          </>
+        );
+        const card = (
+          <MetricStandaloneCard
+            metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}
+            mainChartData={chartData}
+          />
+        );
+        // HRA-293: on phone only — Epic AC ("Desktop is pixel/behavior-
+        // unchanged"), same isPhone gate Story 3's own Sheet disclosure
+        // uses above — each secondary chart becomes its own AccordionCard
+        // (the natural reuse target, same collapsible pattern the
+        // Classification section already uses), collapsed by default except
+        // Heart rate (see expandedCards' own comment). AccordionCard only
+        // mounts `children` while `expanded` (ui/AccordionCard.tsx), so
+        // MetricStandaloneCard's Recharts tree isn't built at all for a
+        // collapsed section (AC2: no chart-rendering work before expansion).
+        // Desktop keeps the exact pre-HRA-293 markup: a plain label above an
+        // always-rendered card, no accordion chrome, no collapse state.
+        return isPhone ? (
+          <AccordionCard
+            key={key}
+            className="hra-activity-metric-card"
+            expanded={!!expandedCards[key]}
+            onToggle={() => setExpandedCards(prev => ({ ...prev, [key]: !prev[key] }))}
+            title={<Label className="mb-0">{cardLabel}</Label>}
+          >
+            {card}
+          </AccordionCard>
+        ) : (
           <div key={key} className="hra-activity-metric-card">
-            <Label className="mb-1">
-              {key === "speed"
-                ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
-                : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
-              {key === "heart_rate" && <span className="ml-2 font-normal normal-case tracking-normal">{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
-            </Label>
-            <MetricStandaloneCard
-              metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}
-              mainChartData={chartData}
-            />
+            <Label className="mb-1">{cardLabel}</Label>
+            {card}
           </div>
         );
       })}

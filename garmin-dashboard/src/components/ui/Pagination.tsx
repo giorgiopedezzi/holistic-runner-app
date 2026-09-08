@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Select } from "./Select";
+import { useIsPhone } from "@/hooks/useIsPhone";
 
 // Classical pagination: per-page selector, first/prev/next/last arrows, and
 // a "jump to page" number input — all client-side (the caller slices its
@@ -18,6 +19,7 @@ interface PaginationProps {
 
 export function Pagination({ page, totalPages, onPageChange, perPage, perPageOptions, onPerPageChange, totalItems }: PaginationProps) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
   const [jumpTo, setJumpTo] = useState(String(page));
   useEffect(() => setJumpTo(String(page)), [page]);
 
@@ -25,6 +27,37 @@ export function Pagination({ page, totalPages, onPageChange, perPage, perPageOpt
     const n = Math.max(1, Math.min(totalPages, Math.round(Number(jumpTo)) || 1));
     onPageChange(n);
     setJumpTo(String(n));
+  }
+
+  // Phone-width compact readout (HRA-290): drops first/last and the
+  // jump-to-page input, keeping just prev/next and a plain "1-25 of 216"
+  // position label plus the per-page selector — replaces the full control
+  // set above rather than shrinking it, since the jump input has no room to
+  // stay usable at 320-430px.
+  if (isPhone) {
+    const start = totalItems === 0 ? 0 : (page - 1) * perPage + 1;
+    const end = Math.min(page * perPage, totalItems);
+    return (
+      <div className="hra-pagination hra-pagination-compact">
+        <div className="hra-pagination-size">
+          <Select
+            value={String(perPage)}
+            onValueChange={v => onPerPageChange(Number(v))}
+            options={perPageOptions.map(n => ({ value: String(n), label: String(n) }))}
+            triggerClassName="hra-pagination-select"
+            ariaLabel={t("common.perPage", "Per page")}
+          />
+          <span className="hra-text-muted">
+            {totalItems === 0 ? t("common.totalCount", `· ${totalItems} total`, { n: totalItems })
+              : t("common.resultsRange", `${start}–${end} of ${totalItems}`, { start, end, total: totalItems })}
+          </span>
+        </div>
+        <div className="hra-pagination-compact-controls">
+          <button type="button" className="hra-pagination-button" onClick={() => onPageChange(page - 1)} disabled={page <= 1} aria-label={t("common.previous", "Previous")}>‹</button>
+          <button type="button" className="hra-pagination-button" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages} aria-label={t("common.next", "Next")}>›</button>
+        </div>
+      </div>
+    );
   }
 
   return (
