@@ -552,6 +552,7 @@
   "manage.planInstances.viewList": "リスト",
   "manage.planInstances.viewAgenda": "予定",
   "manage.planInstances.calendarToday": "今日",
+  "manage.planInstances.calendarWeekLabel": "第{{week}}週",
   "manage.planInstances.calendarPrevious": "前へ",
   "manage.planInstances.calendarNext": "次へ",
   "manage.planInstances.calendarMonth": "月",
