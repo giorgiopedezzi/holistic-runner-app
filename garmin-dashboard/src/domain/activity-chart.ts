@@ -190,17 +190,18 @@ const KM_PER_MI = 1.609344;
 // real value, which is why the result reads as the round number it was
 // chosen for (real samples aren't necessarily bit-exact on the target, but
 // always round cleanly at display precision).
-function niceTicks(known: (ChartRow & { realX: number })[], unitSize: number, steps: number[]): number[] {
+function niceTicks(known: (ChartRow & { realX: number })[], unitSize: number, steps: number[], targetRange: [number, number] = [8, 10]): number[] {
   if (known.length === 0) return [];
   const maxUnits = known[known.length - 1].realX / unitSize;
   if (maxUnits <= 0) return [known[0].x];
 
+  const [targetLo, targetHi] = targetRange;
   let bestStep = steps[steps.length - 1];
   let bestScore = Infinity;
   for (const step of steps) {
     const count = Math.floor(maxUnits / step) + 1;
     if (count < 2) continue;
-    const score = count >= 8 && count <= 10 ? 0 : Math.min(Math.abs(count - 8), Math.abs(count - 10));
+    const score = count >= targetLo && count <= targetHi ? 0 : Math.min(Math.abs(count - targetLo), Math.abs(count - targetHi));
     if (score < bestScore) { bestScore = score; bestStep = step; }
   }
 
@@ -221,17 +222,23 @@ function niceTicks(known: (ChartRow & { realX: number })[], unitSize: number, st
 // on round km/mi marks — never an arbitrary evenly-spaced auto-tick like
 // "3.01 km" (dashboard design-system rework: "8 to 10 labels, at a perfect
 // km"). Unit-aware: km normally, mi under imperial (fmtKm's own unit switch).
-export function distanceTicks(rows: ChartRow[]): number[] {
+// `targetRange` narrows the label count on a narrow phone plot (HRA-292,
+// "legible tick density") — the 8-10 default is tuned for a desktop-width
+// plot; the same count on a ~300px mobile plot crowds the axis labels
+// together. Callers pass a tighter range (e.g. [4, 6]) once they know the
+// chart's own rendered width; the default keeps every existing caller
+// (SplashScreen, this file's own tests) unchanged.
+export function distanceTicks(rows: ChartRow[], targetRange?: [number, number]): number[] {
   const known = rows.filter((r): r is ChartRow & { realX: number } => r.realX != null);
   const unitMeters = getUnitSystem() === "imperial" ? KM_PER_MI * 1000 : 1000;
-  return niceTicks(known, unitMeters, NICE_DISTANCE_STEPS);
+  return niceTicks(known, unitMeters, NICE_DISTANCE_STEPS, targetRange);
 }
 
 // Same idea for time mode — round 5/10/15-minute marks instead of an
 // arbitrary elapsed-seconds fraction (dashboard design-system rework:
 // "applies meaningful interval to time too... every 5, 10 or 15 min
 // depending on the moving time").
-export function timeTicks(rows: ChartRow[]): number[] {
+export function timeTicks(rows: ChartRow[], targetRange?: [number, number]): number[] {
   const known = rows.filter((r): r is ChartRow & { realX: number } => r.realX != null);
-  return niceTicks(known, 60, TIME_STEP_MINUTES);
+  return niceTicks(known, 60, TIME_STEP_MINUTES, targetRange);
 }

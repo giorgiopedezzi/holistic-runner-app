@@ -2853,6 +2853,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-metric-toggle:disabled { cursor: not-allowed; opacity: 0.4; }
 .hra-metric-card-toggle { cursor: pointer; opacity: 1; }
 .hra-metric-card-toggle[data-active="false"] { cursor: not-allowed; opacity: 0.4; }
+/* HRA-292: MetricLegendChip — colored .hra-legend-chip (series toggle) +
+   a separate, always-visible detail-chart icon button, replacing MetricRow's
+   checkbox+"Card"-label pattern for the optional-metric toggles only. */
+.hra-metric-legend-row { display: flex; align-items: center; gap: 4px; }
+.hra-metric-detail-toggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; flex: none; padding: 0;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-muted); cursor: pointer;
+}
+.hra-metric-detail-toggle[data-active="true"] { color: var(--accent); border-color: var(--accent); }
+.hra-metric-detail-toggle:disabled { cursor: not-allowed; opacity: 0.35; }
 .hra-speed-segment { --segment-color: var(--data-pace); }
 .hra-activity-chart-section { margin-top: var(--section-gap); }
 .hra-activity-chart-selectors {
@@ -2884,6 +2896,22 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   .hra-activity-chart-controls {
     grid-template-columns: 1fr;
   }
+  /* HRA-292 AC: "summary values placed above the plot instead of floating
+     cards" — .hra-graph-kpi's bordered/shadowed chrome (index.css, "Main
+     graph header's compact KPI cards") reads as a tappable box on a touch
+     screen even though it isn't (mobile-responsive-web: "drop box/card
+     chrome along with the label" for a non-interactive stat display at
+     mobile widths). Scoped to THIS chart section's own KPI row only — every
+     other GraphKpiCard call site (Overview, etc.) is untouched. */
+  .hra-activity-chart-kpis .hra-graph-kpi {
+    background: none; border: none; padding: 0; min-width: 0;
+  }
+  /* Legend chips and their detail-toggle button are real tap targets on
+     mobile, not just a compact desktop label (mobile-responsive-web: 44px
+     touch-target floor, 8px minimum spacing between adjacent targets). */
+  .hra-metric-legend-row { gap: 8px; }
+  .hra-activity-metric-controls .hra-legend-chip { min-height: 44px; display: inline-flex; align-items: center; }
+  .hra-metric-detail-toggle { width: 44px; height: 44px; }
 }
 .hra-runner-row { height: var(--runner-row-height); }
 .hra-activity-chart-placeholder { height: var(--activity-chart-placeholder-height); }
@@ -3179,6 +3207,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-runner-playbtn:hover { background: color-mix(in srgb, var(--text-primary) 14%, var(--bg-card)); }
 .hra-runner-playbtn:disabled { opacity: 0.35; cursor: not-allowed; }
 .hra-runner-playbtn:disabled:hover { background: var(--bg-card); }
+/* HRA-292 AC: "44x44 play/stop controls" on mobile — desktop keeps the
+   original compact 22px circle (unchanged per the Epic's "desktop
+   pixel-unchanged" rule). Comes after the base rule above so it wins at
+   equal specificity, same pattern as the .hra-activity-row-action bump. */
+@media (max-width: 767px) {
+  .hra-runner-playbtn { width: 44px; height: 44px; }
+}
 
 .hra-trend-line-pace { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-pace) 55%, transparent)); }
 .hra-trend-line-hr   { filter: drop-shadow(0 0 3px color-mix(in srgb, var(--data-hr) 55%, transparent)); }

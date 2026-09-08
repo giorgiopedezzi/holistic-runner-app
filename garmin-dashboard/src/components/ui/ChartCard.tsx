@@ -77,10 +77,13 @@ export function chartGradientDef(id: string, color: string) {
 }
 
 // Clickable pill-chip legend — a generic, controlled toggle-series legend.
-// Existing per-chart toggle UIs (BodyTab's checkbox pills, ActivityChartSection's
-// MetricRow) already satisfy this rule with their own bespoke layouts and are
-// left as-is (AC: preserve existing toggle behavior unmodified); this is for
-// charts that don't already have one.
+// BodyTab's checkbox pills already satisfy this rule with their own bespoke
+// layout and are left as-is (AC: preserve existing toggle behavior
+// unmodified). ActivityChartSection's optional-metric toggle (HRA-292)
+// reuses this same .hra-legend-chip CSS class via MetricLegendChip.tsx
+// rather than this component directly — that toggle needs a SECOND,
+// independent control per item (the detail-chart button) that this
+// component's one-`onToggle`-per-item shape has no room for.
 interface ChartLegendItem {
   key: string;
   label: string;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Gauge, Heart, AlertTriangle } from "lucide-react";
+import { MapPin, Gauge, Heart, AlertTriangle, SlidersHorizontal } from "lucide-react";
 import {
   axisDomainMinMax, distanceTicks, timeTicks,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
@@ -10,9 +10,11 @@ import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
 import type { PlanInstanceDayWithInstance, TrackPoint } from "@/types/api";
 import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH, PLAYBACK_DURATION_MS, PAUSE_DWELL_MS, xToPixel } from "./shared";
-import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, Select, splitUnit } from "@/components/ui";
+import { Label, ChartCard, Checkbox, GraphKpiCard, LoadingSpinner, Select, Sheet, SheetContent, SheetTrigger, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
+import { MetricLegendChip } from "./MetricLegendChip";
 import { MainOverlayChart, MetricStandaloneCard } from "./OverlayCharts";
 import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
@@ -124,6 +126,7 @@ export function ActivityChartSection({
   plannedDays, selectedPlannedDayId, setSelectedPlannedDayId,
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
   // ── Mouse-follow runner (icon in its own row above the chart, readout
   // pinned below the chart's vertical center) ────────────────────────────
   // Both RunnerIcon and RunnerReadout hold their OWN local hover state,
@@ -463,10 +466,13 @@ export function ActivityChartSection({
   // interval... depending on the moving time"), dashboard design-system
   // rework. Shared by the main chart and every standalone card below so
   // tick placement matches across all of them, not just their widths.
-  const xTicks = useMemo(
-    () => (xMode === "distance" ? distanceTicks(chartData) : timeTicks(chartData)),
-    [xMode, chartData],
-  );
+  // HRA-292: a narrower tick-count target on phone — the 8-10 desktop target
+  // crowds a ~300px-wide mobile plot; a phone-width plot reads better with
+  // fewer, more legible labels.
+  const xTicks = useMemo(() => {
+    const targetRange: [number, number] | undefined = isPhone ? [4, 6] : undefined;
+    return xMode === "distance" ? distanceTicks(chartData, targetRange) : timeTicks(chartData, targetRange);
+  }, [xMode, chartData, isPhone]);
 
   // Per-metric Y-domain for each shown standalone card — memoized (perf
   // split, playback-lag fix) so its ARRAY reference stays stable across
@@ -508,6 +514,29 @@ export function ActivityChartSection({
   // takes the model directly rather than the toggle state.
   const plannedOverlay = plannedShown ? plannedModel : null;
 
+  // HRA-292 scope: "move pause-threshold, anomaly-removal and other
+  // technical settings into a 'Chart options' disclosure using Story 1's
+  // Sheet primitive" — phone-only (desktop stays pixel-unchanged, Epic AC).
+  // Shared between the always-inline desktop row and the phone Sheet's body
+  // so the two never drift into two different controls.
+  const chartOptionsLabel = t("activity.chart.options", "Chart options");
+  const chartOptionsFields = (
+    <>
+      <label className="hra-text-muted flex items-center gap-1.5 text-meta">
+        {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
+        <input type="number" min={5} step={5} value={pauseThreshold}
+          onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
+          className="w-14 text-meta py-0.5 px-1.5" />
+        sec
+      </label>
+      <label className="hra-text-muted flex items-center gap-1.5 text-meta cursor-pointer"
+        title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
+        <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
+        {t("activity.chart.removeOutliers", "Remove outliers")}
+      </label>
+    </>
+  );
+
   return (
     <div className="hra-activity-chart-section">
       {/* Three-column selector row (dashboard design-system rework,
@@ -547,23 +576,25 @@ export function ActivityChartSection({
             ))}
           </div>
         </div>
-        <div className="hra-row-wrap gap-4 justify-center">
-          <label className="hra-text-muted flex items-center gap-1.5 text-meta">
-            {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
-            <input type="number" min={5} step={5} value={pauseThreshold}
-              onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
-              className="w-14 text-meta py-0.5 px-1.5" />
-            sec
-          </label>
-          <label className="hra-text-muted flex items-center gap-1.5 text-meta cursor-pointer"
-            title={t("activity.chart.removeOutliersTooltip", "Drops isolated bad samples (GPS/sensor noise) from Speed/Pace and Cadence, plus any Speed/Pace sample slower than walking pace — thresholds adjustable in Settings")}>
-            <Checkbox size={12} checked={removeOutliers} onCheckedChange={setRemoveOutliers} />
-            {t("activity.chart.removeOutliers", "Remove outliers")}
-          </label>
-        </div>
+        {isPhone ? (
+          <div className="hra-row-wrap gap-4 justify-center">
+            <Sheet>
+              <SheetTrigger className="hra-filter-trigger" aria-label={chartOptionsLabel}>
+                <SlidersHorizontal size={18} aria-hidden="true" />
+              </SheetTrigger>
+              <SheetContent title={chartOptionsLabel}>
+                {chartOptionsFields}
+              </SheetContent>
+            </Sheet>
+          </div>
+        ) : (
+          <div className="hra-row-wrap gap-4 justify-center">
+            {chartOptionsFields}
+          </div>
+        )}
         <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
           {OPTIONAL_METRIC_ORDER.map(key => (
-            <MetricRow
+            <MetricLegendChip
               key={key}
               color={METRIC_DEFS[key].color}
               label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
@@ -675,7 +706,7 @@ export function ActivityChartSection({
               </div>
             )}
           </div>
-          <div className="hra-row-wrap gap-2 justify-end">
+          <div className="hra-activity-chart-kpis hra-row-wrap gap-2 justify-end">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
               value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
             <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
