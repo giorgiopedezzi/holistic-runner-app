@@ -33,6 +33,7 @@ paths:
 - Run `npm run style:check` from `garmin-dashboard/` after styling changes. It rejects static JSX styles, literal component typography, runtime-generated Tailwind utility names, arbitrary values, unlisted direct exceptions, count drift, and stale ledger entries.
 - **No moving UI:** when a conditionally displayed field joins a row, stable siblings must not visibly shift/resize. Give stable siblings fixed sizing; the conditional field should extend or wrap the row instead of redistributing existing siblings.
 - **Container budget (HRA-276):** give a value card chrome (`.card`) only when it offers real interaction or groups multiple related controls; a plain read-only fact uses `.hra-fact-row` (typography + a divider between stacked rows) instead — do not wrap every value in a card by default.
+- **Icon+label buttons collapse to icon-only under narrow widths.** Trash, save, edit, and similar action buttons that show an icon + text label on desktop drop the visible label at mobile breakpoints, keeping only the icon — with `aria-label` (or a tooltip) preserving discoverability. Never remove the icon and keep only text; the icon carries the meaning at small sizes.
 
 ## React behavior — load-bearing
 
