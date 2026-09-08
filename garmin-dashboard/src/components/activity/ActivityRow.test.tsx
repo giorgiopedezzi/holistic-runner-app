@@ -211,6 +211,34 @@ describe("ActivityRow phone-width overflow menu (HRA-291)", () => {
 
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
   });
+
+  // HRA-291 AC4: a long activity_name, in either language, must not break
+  // the row's layout at phone width — verified via the pre-existing
+  // ellipsis contract (ActivityRow's name span: `truncate` clips it to one
+  // line instead of wrapping/growing the row, `title` keeps the full text
+  // one hover away), which this Story's reordering/overflow-menu changes
+  // left untouched. jsdom has no real layout engine to assert actual
+  // rendered width against, so this is the same "clips via CSS, not DOM
+  // growth" contract the surrounding code comments already document.
+  it.each([
+    ["English", "Berlin Marathon 2026 — Full Course PB Attempt, Wave 3 Start Corral G, Charity Bib"],
+    ["Italian", "Mezza Maratona di Roma 2026 — Percorso Panoramico nel Centro Storico, Girone di Beneficenza"],
+  ])("does not break the row layout with a long %s activity name at phone width", (_lang, longName) => {
+    stubPhoneWidth(true);
+    installFetch({ "GET /api/v1/activity-types": paginated([]) });
+    render(
+      <ActivityRow activity={activity({ activity_name: longName })} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    const nameEl = screen.getByTitle(longName);
+    expect(nameEl).toHaveTextContent(longName);
+    expect(nameEl).toHaveClass("truncate");
+    // The rest of the row still renders normally alongside the long name —
+    // nothing was pushed out or omitted to make room for it.
+    expect(screen.getByRole("button", { name: "Activity actions" })).toBeInTheDocument();
+    expect(screen.getByText("10.00 km")).toBeInTheDocument();
+  });
 });
 
 describe("ActivitySportLegend", () => {
