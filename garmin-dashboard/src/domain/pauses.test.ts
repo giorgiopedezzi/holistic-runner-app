@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import type { TrackPoint } from "@/types/api";
 import {
   detectPauses, detectPausesFromTimestamps, detectPausesHeuristic,
-  fmtPauseDuration, nearestHr, computeHrRecovery,
+  fmtPauseDuration, nearestHr, computeHrRecovery, clusterByProximity,
 } from "./pauses";
 
 function pt(o: Partial<TrackPoint>): TrackPoint {
@@ -97,6 +97,36 @@ describe("fmtPauseDuration", () => {
     expect(fmtPauseDuration(360)).toBe("6m");
     expect(fmtPauseDuration(125)).toBe("2m5s");
     expect(fmtPauseDuration(59.6)).toBe("1m"); // rounds to 60 → 1m, no "60s" carry bug
+  });
+});
+
+describe("clusterByProximity (HRA-293 — mobile label collision handling)", () => {
+  it("keeps well-separated points in their own singleton clusters", () => {
+    const clusters = clusterByProximity([0, 100, 200], 10);
+    expect(clusters).toEqual([
+      { anchorIndex: 0, memberIndices: [0] },
+      { anchorIndex: 1, memberIndices: [1] },
+      { anchorIndex: 2, memberIndices: [2] },
+    ]);
+  });
+  it("chains three close points into one cluster even though the two ends alone exceed the gap", () => {
+    // 0 and 20 are 20 apart (over the gap=12 threshold) but each is within
+    // 12 of the middle point at 10 — the whole run must still merge into a
+    // single cluster (transitive/chained grouping), not split at the ends.
+    const clusters = clusterByProximity([0, 10, 20], 12);
+    expect(clusters).toHaveLength(1);
+    expect(clusters[0].memberIndices).toEqual([0, 1, 2]);
+    expect(clusters[0].anchorIndex).toBe(1); // middle member anchors the label
+  });
+  it("a dense-pause fixture: 5 pauses bunched in a 30-unit span collapse to one cluster, an isolated 6th does not", () => {
+    const xs = [0, 5, 12, 20, 28, 500]; // first 5 within a tight span; the 6th is far off
+    const clusters = clusterByProximity(xs, 10);
+    expect(clusters).toHaveLength(2);
+    expect(clusters[0].memberIndices).toEqual([0, 1, 2, 3, 4]);
+    expect(clusters[1].memberIndices).toEqual([5]);
+  });
+  it("returns [] for an empty input", () => {
+    expect(clusterByProximity([], 10)).toEqual([]);
   });
 });
 

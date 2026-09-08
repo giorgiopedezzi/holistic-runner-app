@@ -1466,6 +1466,12 @@ body {
   body::before { animation: none !important; }
   .hra-chart-hover-dim, .hra-chart-hover-glow { transition: none !important; }
   .hra-loading-bar { animation: none !important; left: 0; width: 100%; opacity: 0.5; }
+  /* HRA-293: the runner glyph's autoplay dwell-fade/hop were the one chart
+     animation this rule didn't yet cover -- both infinite loops, run
+     whenever a scheduled workout's playback dwells on a pause. Snapped to
+     each keyframe's own resting frame (opacity 1, no vertical offset)
+     rather than left mid-cycle. */
+  .hra-runner-dwell, .hra-runner-hop { animation: none !important; opacity: 1; transform: translateY(0); }
   /* HRA-282: OAuthSyncSection's in-progress sync bar (Data & Sync tab) was
      the one infinite, unbounded-sweep animation in this app not already
      covered by this block — same "freeze at a settled, still-informative
