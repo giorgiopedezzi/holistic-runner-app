@@ -7,6 +7,7 @@ import {
 import { MapPin, Timer, Flame, Gauge, Heart } from "lucide-react";
 import { RunnerGlyph } from "@/components/activity/RunnerGlyph";
 import { useQuery } from "@/hooks/useQuery";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import { useSettings } from "@/hooks/useSettings";
 import { useUrlState } from "@/hooks/useUrlState";
 import type { DateRangeState } from "@/hooks/useDateRange";
@@ -1153,6 +1154,7 @@ function prevSportStats(prevActs: Activity[]) {
 
 export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   const { t } = useTranslation();
+  const isPhone = useIsPhone();
   const { from, to } = range;
   // The "compare to" range — powers every "vs previous period" comparison on
   // this tab (hero rings, Total tooltips, By-sport tooltips, AND each sport's
@@ -1308,23 +1310,27 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // (showDiff) — explicit feedback: "do not show differences when they're
   // distinct." Passed to TrendsBySport, which renders it as a vertical
   // sidebar beside the main graph.
+  // Container-budget compression on phone widths (HRA-279): the bordered
+  // Stat cards become a typographic fact-row list — no per-value card
+  // chrome — per .claude/rules/frontend.md; desktop's card grid is untouched.
+  const otherKeyMetricsLayout = isPhone ? "row" : "card";
   const otherKeyMetrics = (
-    <div className="grid grid-cols-1 gap-2.5">
+    <div className={isPhone ? undefined : "grid grid-cols-1 gap-2.5"}>
       {totals.acts > 0 && (
-        <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
+        <Stat layout={otherKeyMetricsLayout} icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")} value={fmtKm((totals.km / totals.acts) * 1000)}
           deltaText={showDiff ? comparisonTooltip(totals.km / totals.acts, prevAvgDistance, v => fmtKm(v * 1000)) : undefined}
           deltaPositive={showDiff ? deltaPositive(totals.km / totals.acts, prevAvgDistance) : undefined} />
       )}
       {run?.avg_hr && (
-        <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
+        <Stat layout={otherKeyMetricsLayout} icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")} value={`${run.avg_hr} bpm`} accent="var(--accent-red)"
           deltaText={showDiff && prevRun ? comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`) : undefined}
           deltaPositive={showDiff && prevRun ? deltaPositive(run.avg_hr, prevRun.avgHr) : undefined} />
       )}
-      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
+      <Stat layout={otherKeyMetricsLayout} icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
         deltaText={showDiff ? comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`) : undefined}
         deltaPositive={showDiff ? deltaPositive(totals.hours, prevHours) : undefined} />
       {totals.calories > 0 && (
-        <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+        <Stat layout={otherKeyMetricsLayout} icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
           label={t("overview.stat.calories", "Calories")} value={`${totals.calories.toLocaleString()} kcal`}
           deltaText={showDiff ? comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`) : undefined}
           deltaPositive={showDiff ? deltaPositive(totals.calories, prevCalories) : undefined} />
@@ -1337,14 +1343,14 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // reasoning as compareKpis) — explicit feedback: "data in the Other
   // metric of the second graph must be the data of the second graph."
   const compareOtherKeyMetrics = (
-    <div className="grid grid-cols-1 gap-2.5">
-      <Stat icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")}
+    <div className={isPhone ? undefined : "grid grid-cols-1 gap-2.5"}>
+      <Stat layout={otherKeyMetricsLayout} icon={<MapPin size={18} color="var(--accent)" />} label={t("overview.stat.avgDistance", "Avg distance")}
         value={prevAvgDistance != null ? fmtKm(prevAvgDistance * 1000) : "—"} />
-      <Stat icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")}
+      <Stat layout={otherKeyMetricsLayout} icon={<Heart size={18} color="var(--accent-red)" />} label={t("overview.stat.avgHr", "Avg HR")}
         value={prevRun?.avgHr != null ? `${Math.round(prevRun.avgHr)} bpm` : "—"} accent="var(--accent-red)" />
-      <Stat icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")}
+      <Stat layout={otherKeyMetricsLayout} icon={<Timer size={18} color="var(--accent)" />} label={t("overview.stat.time", "Time")}
         value={prevHours != null ? `${prevHours.toFixed(1)} h` : "—"} />
-      <Stat icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
+      <Stat layout={otherKeyMetricsLayout} icon={<Flame size={18} color="color-mix(in srgb, var(--accent-orange) 65%, black)" fill="color-mix(in srgb, var(--accent-orange) 65%, black)" />}
         label={t("overview.stat.calories", "Calories")} value={prevCalories != null ? `${Math.round(prevCalories).toLocaleString()} kcal` : "—"} />
     </div>
   );
@@ -1393,7 +1399,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
                   <span className="hra-text-primary flex-1 font-medium">
                     {fmtKm(s.total_km * 1000)}
                   </span>
-                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", `${s.total_activities} sessions`, { count: s.total_activities })}</span>
+                  <span className="hra-text-secondary">{t("overview.bySportSessionsLabel", s.total_activities === 1 ? "1 session" : `${s.total_activities} sessions`, { count: s.total_activities })}</span>
                   {s.avg_hr && (
                     <span className="hra-text-danger text-label">♥ {s.avg_hr}</span>
                   )}

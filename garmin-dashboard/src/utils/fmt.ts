@@ -11,8 +11,9 @@ import type { DateFormat } from "@/types/api";
 export function fmtPace(minKm: number | null | undefined): string {
   if (!minKm || minKm > 30) return "—";
   const val = getUnitSystem() === "imperial" ? paceKmToMi(minKm) : minKm;
-  const m = Math.floor(val);
-  const s = Math.round((val - m) * 60);
+  let m = Math.floor(val);
+  let s = Math.round((val - m) * 60);
+  if (s === 60) { m += 1; s = 0; }
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 

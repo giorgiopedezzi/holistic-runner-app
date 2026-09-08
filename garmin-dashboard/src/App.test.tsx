@@ -14,7 +14,7 @@ import App from "./App";
 import { installFetch, paginated, json, problem, type Routes } from "@/test/api-stub";
 import {
   activity, sportSummary, bodyMeasurement, settings, dateRange,
-  deviceStatus, withingsStatus, stravaStatus,
+  deviceStatus, withingsStatus, stravaStatus, planTemplate,
 } from "@/test/fixtures";
 import { getUnitSystem, setUnitSystem } from "@/utils/units";
 import { fmtDate } from "@/utils/fmt";
@@ -337,5 +337,58 @@ describe("unit-system propagation across tabs (load-bearing)", () => {
     fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "Overview & Trends" }));
     await waitFor(() => expect(screen.getByText("min/mi")).toBeInTheDocument());
     expect(screen.queryByText("min/km")).not.toBeInTheDocument();
+  });
+});
+
+// Field labels here are a plain sibling <span>, not a real <label htmlFor>
+// (same PlanInstancesSection.test.tsx helper, reused here since this is the
+// one place App.test.tsx reaches inside that editor's own form fields).
+function fieldControl(label: string): HTMLElement {
+  const labelEl = screen.getByText(new RegExp(`^${label}`), { selector: ".hra-field-label" });
+  const wrapper = labelEl.closest("div")!;
+  const control = wrapper.querySelector("input, button, [role='combobox']");
+  if (!control) throw new Error(`No control found for field "${label}"`);
+  return control as HTMLElement;
+}
+
+describe("in-app navigation guard for an unsaved race-plan instance (HRA-281 AC2)", () => {
+  it("blocks a sidebar tab switch while the new-instance draft is dirty, then navigates once confirmed", async () => {
+    installFetch({
+      ...appRoutes(),
+      "GET /api/v1/plan-templates": paginated([planTemplate()]),
+      "GET /api/v1/plan-instances": paginated([]),
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Training plans" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
+    fireEvent.change(fieldControl("Name"), { target: { value: "My race plan" } });
+
+    // Clicking away to a different tab must NOT navigate yet — it opens the
+    // unsaved-work confirmation instead.
+    fireEvent.click(screen.getByRole("button", { name: "Your agenda" }));
+    expect(await screen.findByText("You have unsaved changes. Leave and discard them?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Training plans" })).toHaveAttribute("aria-current", "page");
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard and leave" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Your agenda" })).toHaveAttribute("aria-current", "page"));
+  });
+
+  it("does not block navigation once the draft is clean again", async () => {
+    installFetch({
+      ...appRoutes(),
+      "GET /api/v1/plan-templates": paginated([planTemplate()]),
+      "GET /api/v1/plan-instances": paginated([]),
+    });
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Training plans" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
+    fireEvent.change(fieldControl("Name"), { target: { value: "My race plan" } });
+    fireEvent.change(fieldControl("Name"), { target: { value: "" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Your agenda" }));
+    expect(screen.queryByText("You have unsaved changes. Leave and discard them?")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Your agenda" })).toHaveAttribute("aria-current", "page"));
   });
 });

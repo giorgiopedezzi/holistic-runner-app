@@ -18,7 +18,7 @@ export { ProgressBar } from "./ProgressBar";
 export { Checkbox } from "./Checkbox";
 export { Switch } from "./Switch";
 export { Select } from "./Select";
-export { Popover, PopoverTrigger, PopoverContent } from "./Popover";
+export { Popover, PopoverTrigger, PopoverContent, HelpDisclosure } from "./Popover";
 export { Calendar } from "./Calendar";
 export { DatePicker } from "./DatePicker";
 export { ToastContainer } from "./ToastContainer";

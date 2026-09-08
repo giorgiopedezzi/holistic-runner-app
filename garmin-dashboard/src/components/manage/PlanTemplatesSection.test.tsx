@@ -329,6 +329,195 @@ describe("PlanTemplatesSection — regression: parsed preview still renders belo
   });
 });
 
+describe("PlanTemplatesSection — Week view (HRA-283)", () => {
+  const WEEK1_DSL = ["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n");
+  function mockGenerate() {
+    return json({
+      plan: {
+        metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+        sections: [{
+          name: "Base", week_spec: "1", raw_dsl: "SECTION \"Base\" WEEKS 1", pace_policy: {},
+          weeks: [{
+            number: 1, raw_dsl: "WEEK 1", pace_policy: {},
+            days: [
+              { day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 5km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }] },
+              { day: 3, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D3: 4x1000m @ RG-20", segments: [{ type: "interval", reps: 4, work_target: { kind: "distance", distance_m: 1000, raw: "1000m" }, work_intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" }, raw: "4x1000m @ RG-20" }] },
+            ],
+          }],
+        }],
+      },
+      warnings: [],
+    });
+  }
+
+  async function openWeekView() {
+    installFetch({ "POST /api/v1/plan-templates/generate": mockGenerate() });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    const dslField = await screen.findByLabelText("Workout plan text");
+    fireEvent.change(dslField, { target: { value: WEEK1_DSL } });
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    return dslField as HTMLTextAreaElement;
+  }
+
+  it("defaults to List; switching to Week does not alter dslSource or the preview", async () => {
+    installFetch({ "POST /api/v1/plan-templates/generate": mockGenerate() });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    const dslField = await screen.findByLabelText("Workout plan text");
+    fireEvent.change(dslField, { target: { value: WEEK1_DSL } });
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
+
+    // The toggle only mounts once a preview exists — defaults to List.
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("data-active", "true");
+    expect(screen.getByRole("button", { name: "Week" })).toHaveAttribute("data-active", "false");
+    expect(screen.getByText("Week 1")).toBeInTheDocument(); // the List view's own accordion
+
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    expect(dslField).toHaveValue(WEEK1_DSL); // untouched by the toggle itself
+    expect(screen.getByText("Day 1")).toBeInTheDocument();
+  });
+
+  it("renders exactly 7 fixed Day columns regardless of how many D-numbers are declared", async () => {
+    await openWeekView();
+    for (let n = 1; n <= 7; n++) expect(screen.getByText(`Day ${n}`)).toBeInTheDocument();
+  });
+
+  it("a declared day reuses the List view's own TemplateDayRow — same collapsed title", async () => {
+    await openWeekView();
+    expect(screen.getByText("D1: 5km @ RG")).toBeInTheDocument();
+    expect(screen.getByText("D3: 4x1000m @ RG-20")).toBeInTheDocument();
+  });
+
+  it("an undeclared D-number shows a Rest day summary, not a gap, and viewing it alone does not touch dsl_source", async () => {
+    const dslField = await openWeekView();
+    expect(screen.getAllByText("Rest day").length).toBeGreaterThan(0);
+    expect(dslField).toHaveValue(WEEK1_DSL);
+  });
+
+  it("clicking an undeclared slot materializes a D<n>: REST line at the right position and becomes editable", async () => {
+    await openWeekView();
+    // Day 2 sits between the two declared days (D1, D3) — its own column is
+    // the first "Rest day" placeholder in document order. Queries the raw
+    // DSL textarea by its stable class rather than by label after the click:
+    // materializing highlights the just-patched line (setLastPatchedLine),
+    // which swaps the plain <textarea> for a wrapped highlighted variant
+    // (renderDslTextarea in PlanTemplatesSection.tsx) that — a pre-existing,
+    // out-of-scope gap this test exposed — carries no aria-label of its own,
+    // unlike the plain variant (implicit <label> association breaks once the
+    // control is wrapped in the highlight markup); flagged as a candidate,
+    // not fixed here.
+    fireEvent.click(screen.getAllByText("Rest day")[0]);
+
+    await waitFor(() => {
+      const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
+      expect(field).not.toBeNull();
+      expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 5km @ RG", "D2: REST", "D3: 4x1000m @ RG-20"].join("\n"));
+    });
+    // Materializing opens it pre-expanded (AC5's "one interaction") — its
+    // Structured view's Rest-day state label is now visible.
+    expect(await screen.findByText("D2: REST")).toBeInTheDocument();
+  });
+
+  // jsdom has no real DataTransfer — a plain object implementing the two
+  // methods useDragSwap/UndeclaredDaySlot actually call is enough to drive
+  // the native HTML5 DnD handlers under fireEvent.
+  function fakeDataTransfer() {
+    const store: Record<string, string> = {};
+    return { setData: (t: string, v: string) => { store[t] = v; }, getData: (t: string) => store[t] ?? "", effectAllowed: "", dropEffect: "" };
+  }
+
+  // A day's title text also matches inside the raw-DSL textarea's own
+  // highlight backdrop (a <mark> mirroring the same string, see
+  // renderDslTextarea in PlanTemplatesSection.tsx) — scope to the real title
+  // <span>, same collision this file's own earlier tests already work around.
+  function dayTitle(text: string): HTMLElement {
+    return screen.getAllByText(text).find(el => el.tagName === "SPAN")!;
+  }
+
+  it("dragging one declared day onto another swaps their content, keeping each D-number in place (AC6)", async () => {
+    await openWeekView();
+    const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
+    const day3 = dayTitle("D3: 4x1000m @ RG-20").closest('[data-swappable="true"]') as HTMLElement;
+    const dataTransfer = fakeDataTransfer();
+
+    fireEvent.dragStart(day1, { dataTransfer });
+    fireEvent.drop(day3, { dataTransfer });
+
+    await waitFor(() => expect(dayTitle("D1: 4x1000m @ RG-20")).toBeInTheDocument());
+    expect(dayTitle("D3: 5km @ RG")).toBeInTheDocument();
+    const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
+    expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 4x1000m @ RG-20", "D3: 5km @ RG"].join("\n"));
+  });
+
+  it("dropping a declared day onto an undeclared slot materializes it and moves the content there, leaving REST behind (AC5/AC6)", async () => {
+    await openWeekView();
+    const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
+    const undeclaredDay2 = screen.getAllByText("Rest day")[0].closest('[role="button"]') as HTMLElement;
+    const dataTransfer = fakeDataTransfer();
+
+    fireEvent.dragStart(day1, { dataTransfer });
+    fireEvent.drop(undeclaredDay2, { dataTransfer });
+
+    await waitFor(() => expect(dayTitle("D2: 5km @ RG")).toBeInTheDocument()); // the dragged workout moved to D2
+    expect(dayTitle("D1: REST")).toBeInTheDocument(); // origin left as REST
+    const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
+    expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: REST", "D2: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n"));
+  });
+
+  it("Prev/Next flatten across sections — steps through every week in the template, not just one section's own", async () => {
+    const MULTI_DSL = [
+      "SECTION \"Base\" WEEKS 1-2", "WEEK 1", "D1: 5km @ RG", "WEEK 2", "D1: 6km @ RG",
+      "SECTION \"Peak\" WEEKS 3", "WEEK 3", "D1: 8km @ RG",
+    ].join("\n");
+    installFetch({
+      "POST /api/v1/plan-templates/generate": json({
+        plan: {
+          metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+          sections: [
+            {
+              name: "Base", week_spec: "1-2", raw_dsl: "SECTION \"Base\" WEEKS 1-2", pace_policy: {},
+              weeks: [
+                { number: 1, raw_dsl: "WEEK 1", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 5km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }] }] },
+                { number: 2, raw_dsl: "WEEK 2", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 6km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 6000, raw: "6km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "6km @ RG" }] }] },
+              ],
+            },
+            {
+              name: "Peak", week_spec: "3", raw_dsl: "SECTION \"Peak\" WEEKS 3", pace_policy: {},
+              weeks: [{ number: 3, raw_dsl: "WEEK 3", pace_policy: {}, days: [{ day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 8km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 8000, raw: "8km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "8km @ RG" }] }] }],
+            },
+          ],
+        },
+        warnings: [],
+      }),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: MULTI_DSL } });
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
+    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+
+    expect(screen.getByText("Base — Week 1")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled(); // first week overall
+
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    expect(screen.getByText("Base — Week 2")).toBeInTheDocument();
+
+    // Crosses the section boundary — still just "Next", no per-section reset.
+    fireEvent.click(screen.getByRole("button", { name: "Next week" }));
+    expect(screen.getByText("Peak — Week 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next week" })).toBeDisabled(); // last week overall
+
+    fireEvent.click(screen.getByRole("button", { name: "Previous week" }));
+    expect(screen.getByText("Base — Week 2")).toBeInTheDocument();
+  });
+});
+
 describe("PlanTemplatesSection — English/Italian label parity for the new pipeline keys", () => {
   it("every new manage.planTemplates.pipeline.* key exists with a non-empty value in both locale files", () => {
     const pipelineKeys = Object.keys(enLocale).filter(k => k.startsWith("manage.planTemplates.pipeline."));

@@ -34,6 +34,7 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
   }
   const allSelected = from === ALL_SENTINEL;
   const allAvailableLabel = t("dateRange.allAvailable", "All available data");
+  const orLabel = t("dateRange.or", "or");
 
   // Derived, not separately stored — the named-range dropdown shows
   // whichever saved range's (from_date, to_date) currently matches the live
@@ -104,11 +105,11 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           triggerClassName="hra-select-window"
           options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
-        <span className="hra-text-muted text-meta">or</span>
+        <span className="hra-text-muted text-meta">{orLabel}</span>
         <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
         <span className="hra-text-muted text-meta">→</span>
         <DatePicker value={to} min={from} onChange={setTo} />
-        <span className="hra-text-muted text-meta">or</span>
+        <span className="hra-text-muted text-meta">{orLabel}</span>
         <Select
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
           onValueChange={pickCurrent}
@@ -147,12 +148,12 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
                 triggerClassName="hra-select-window hra-select-placeholder-hidden"
                 options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
               />
-              <span className="hra-text-muted text-meta invisible">or</span>
+              <span className="hra-text-muted text-meta invisible">{orLabel}</span>
             </div>
             <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
             <span className="hra-text-muted text-meta">→</span>
             <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
-            <span className="hra-text-muted text-meta">or</span>
+            <span className="hra-text-muted text-meta">{orLabel}</span>
             <Select
               value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}
               onValueChange={pickCompare}

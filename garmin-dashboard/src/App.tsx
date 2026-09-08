@@ -13,6 +13,7 @@ import { useUrlState } from "@/hooks/useUrlState";
 import { useQuery } from "@/hooks/useQuery";
 import { api } from "@/api/client";
 import { SettingsProvider } from "@/hooks/useSettings";
+import { UnsavedGuardProvider, useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { Select, ToastContainer } from "@/components/ui";
 import { fmtRaceLabel } from "@/utils/fmt";
@@ -129,7 +130,9 @@ function FeedbackBanner({ onNavigate }: { onNavigate: () => void }) {
 export default function App() {
   return (
     <SettingsProvider>
-      <AppShell />
+      <UnsavedGuardProvider>
+        <AppShell />
+      </UnsavedGuardProvider>
     </SettingsProvider>
   );
 }
@@ -162,6 +165,11 @@ function AppShell() {
   const races = racesQ.state.status === "success" ? racesQ.state.data : [];
   const appearance = useAppearance();
   const { t } = useTranslation();
+  // HRA-281: gates every in-app navigation that could discard the race-plan
+  // instance editor's unsaved work (PlanInstancesSection.tsx registers its
+  // own dirty check via useUnsavedGuard's setGuard) — a no-op pass-through
+  // whenever nothing is dirty.
+  const { guardedAction } = useUnsavedGuard();
   // Backed by the URL's `tab` param (HRA-193) so a refresh or a direct link
   // lands on the same tab instead of bouncing back to the default. An
   // unknown or missing value falls back to "Your agenda" here (not inside
@@ -177,8 +185,10 @@ function AppShell() {
   // own doc comment describes (HRA-193).
   const [, setActivityIdParam] = useUrlState("activityId", "");
   function navigateToActivity(activityId: number) {
-    setActivityIdParam(String(activityId));
-    setTab("activities");
+    guardedAction(() => {
+      setActivityIdParam(String(activityId));
+      setTab("activities");
+    });
   }
   const [online, setOnline] = useState<boolean | null>(null);
   const [viewportTier, setViewportTier] = useState<ViewportTier>(() =>
@@ -301,7 +311,7 @@ function AppShell() {
         ].filter(Boolean).join(" ")}
         aria-current={isActive ? "page" : undefined}
         data-active={tabDef.id === "manage" ? isActive : undefined}
-        onClick={() => { setTab(tabDef.id); closeSidebarOverlay(); }}
+        onClick={() => guardedAction(() => { setTab(tabDef.id); closeSidebarOverlay(); })}
         title={sidebarMode === "icon" ? label : undefined}
       >
         <span className="hra-sidebar-item-icon" aria-hidden="true"><Icon size={16} /></span>
@@ -378,7 +388,7 @@ function AppShell() {
               ? <>DR<span className="hra-brand-accent">F</span></>
               : <>Dreams run <span className="hra-brand-accent">free</span></>}
           </span>
-          <LanguagePicker appearance={appearance} compact={sidebarMode === "icon"} />
+          <LanguagePicker appearance={appearance} compact={sidebarMode === "icon"} guardChange={guardedAction} />
         </div>
 
         <nav className="hra-sidebar-nav" aria-label={t("nav.mainNavigation", "Main navigation")}>
@@ -416,7 +426,7 @@ function AppShell() {
 
       {/* ── content column ──────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
-        {tab !== "feedback" && <FeedbackBanner onNavigate={() => setTab("feedback")} />}
+        {tab !== "feedback" && <FeedbackBanner onNavigate={() => guardedAction(() => setTab("feedback"))} />}
         <main className="hra-app-main flex-1">
 
           {online === false && (
@@ -437,7 +447,7 @@ function AppShell() {
           )}
 
           {tab === "agenda"     && (
-            <AgendaTab onNavigateToPlans={() => setTab("plans")} onNavigateToActivity={navigateToActivity} />
+            <AgendaTab onNavigateToPlans={() => guardedAction(() => setTab("plans"))} onNavigateToActivity={navigateToActivity} />
           )}
           {tab === "overview"   && (
             <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
