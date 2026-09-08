@@ -470,7 +470,7 @@
   "manage.planTemplates.newTemplate": "New template",
   "manage.planTemplates.createTitle": "New template",
   "manage.planTemplates.viewList": "List",
-  "manage.planTemplates.viewWeek": "Week",
+  "manage.planTemplates.viewAgenda": "Agenda",
   "manage.planTemplates.openToEditHint": "Open and edit",
   "manage.planTemplates.unsavedChanges": "There are pending changes",
   "manage.planTemplates.restoreConfirmBody": "You have unsaved changes — discard them?",

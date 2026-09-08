@@ -470,7 +470,7 @@
   "manage.planTemplates.newTemplate": "Nuovo modello",
   "manage.planTemplates.createTitle": "Nuovo modello",
   "manage.planTemplates.viewList": "Elenco",
-  "manage.planTemplates.viewWeek": "Settimana",
+  "manage.planTemplates.viewAgenda": "Agenda",
   "manage.planTemplates.openToEditHint": "Apri e modifica",
   "manage.planTemplates.unsavedChanges": "Ci sono modifiche in sospeso",
   "manage.planTemplates.restoreConfirmBody": "Hai modifiche non salvate — vuoi scartarle?",

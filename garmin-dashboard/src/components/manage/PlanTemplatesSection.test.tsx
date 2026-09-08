@@ -329,7 +329,7 @@ describe("PlanTemplatesSection — regression: parsed preview still renders belo
   });
 });
 
-describe("PlanTemplatesSection — Week view (HRA-283)", () => {
+describe("PlanTemplatesSection — Agenda view (HRA-283/HRA-285)", () => {
   const WEEK1_DSL = ["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n");
   function mockGenerate() {
     return json({
@@ -350,7 +350,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     });
   }
 
-  async function openWeekView() {
+  async function openAgendaView() {
     installFetch({ "POST /api/v1/plan-templates/generate": mockGenerate() });
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
@@ -358,7 +358,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     const dslField = await screen.findByLabelText("Workout plan text");
     fireEvent.change(dslField, { target: { value: WEEK1_DSL } });
     await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
     return dslField as HTMLTextAreaElement;
   }
 
@@ -374,33 +374,33 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
 
     // The toggle only mounts once a preview exists — defaults to List.
     expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("data-active", "true");
-    expect(screen.getByRole("button", { name: "Week" })).toHaveAttribute("data-active", "false");
+    expect(screen.getByRole("button", { name: "Agenda" })).toHaveAttribute("data-active", "false");
     expect(screen.getByText("Week 1")).toBeInTheDocument(); // the List view's own accordion
 
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
     expect(dslField).toHaveValue(WEEK1_DSL); // untouched by the toggle itself
     expect(screen.getByText("Day 1")).toBeInTheDocument();
   });
 
   it("renders exactly 7 fixed Day columns regardless of how many D-numbers are declared", async () => {
-    await openWeekView();
+    await openAgendaView();
     for (let n = 1; n <= 7; n++) expect(screen.getByText(`Day ${n}`)).toBeInTheDocument();
   });
 
   it("a declared day reuses the List view's own TemplateDayRow — same collapsed title", async () => {
-    await openWeekView();
+    await openAgendaView();
     expect(screen.getByText("D1: 5km @ RG")).toBeInTheDocument();
     expect(screen.getByText("D3: 4x1000m @ RG-20")).toBeInTheDocument();
   });
 
   it("an undeclared D-number shows a Rest day summary, not a gap, and viewing it alone does not touch dsl_source", async () => {
-    const dslField = await openWeekView();
+    const dslField = await openAgendaView();
     expect(screen.getAllByText("Rest day").length).toBeGreaterThan(0);
     expect(dslField).toHaveValue(WEEK1_DSL);
   });
 
   it("clicking an undeclared slot materializes a D<n>: REST line at the right position and becomes editable", async () => {
-    await openWeekView();
+    await openAgendaView();
     // Day 2 sits between the two declared days (D1, D3) — its own column is
     // the first "Rest day" placeholder in document order. Queries the raw
     // DSL textarea by its stable class rather than by label after the click:
@@ -440,7 +440,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
   }
 
   it("dragging one declared day onto another swaps their content, keeping each D-number in place (AC6)", async () => {
-    await openWeekView();
+    await openAgendaView();
     const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
     const day3 = dayTitle("D3: 4x1000m @ RG-20").closest('[data-swappable="true"]') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
@@ -455,7 +455,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
   });
 
   it("dropping a declared day onto an undeclared slot materializes it and moves the content there, leaving REST behind (AC5/AC6)", async () => {
-    await openWeekView();
+    await openAgendaView();
     const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
     const undeclaredDay2 = screen.getAllByText("Rest day")[0].closest('[role="button"]') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
@@ -500,7 +500,7 @@ describe("PlanTemplatesSection — Week view (HRA-283)", () => {
     fireEvent.click(pipelineHeader(/Workout DSL/));
     fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: MULTI_DSL } });
     await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
-    fireEvent.click(screen.getByRole("button", { name: "Week" }));
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
 
     expect(screen.getByText("Base — Week 1")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Previous week" })).toBeDisabled(); // first week overall

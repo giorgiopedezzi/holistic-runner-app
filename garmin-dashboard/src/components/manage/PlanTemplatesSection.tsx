@@ -31,7 +31,7 @@ import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
-import { PlanTemplateWeekView } from "@/components/manage/PlanTemplateWeekView";
+import { PlanTemplateAgendaView } from "@/components/manage/PlanTemplateAgendaView";
 import { aggregateDayViews, buildTemplateSectionView, type DayView, type SectionView } from "@/domain/runplan-aggregate";
 import {
   buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, recomposeDayLine, replaceSpan, replaceWithinSpan,
@@ -204,11 +204,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [activeKey, setActiveKey] = useState<RowKey | null>(null);
   const editingId = typeof activeKey === "number" ? activeKey : null;
 
-  // HRA-283: the per-template editor's List/Week toggle — mirrors
-  // PlanInstancesSection's own List/Agenda toggle. A display preference, not
-  // edited data, so it's plain local state (not part of Draft/dirty-tracking)
-  // and always resets to List whenever a row opens (onToggleRow below).
-  const [viewMode, setViewMode] = useState<"list" | "week">("list");
+  // HRA-283/HRA-285: the per-template editor's List/Agenda toggle — mirrors
+  // PlanInstancesSection's own List/Agenda toggle, same name and same
+  // big-calendar library. A display preference, not edited data, so it's
+  // plain local state (not part of Draft/dirty-tracking) and always resets
+  // to List whenever a row opens (onToggleRow below).
+  const [viewMode, setViewMode] = useState<"list" | "agenda">("list");
 
   const [showHelp, setShowHelp] = useState(false);
   const [savedDslSource, setSavedDslSource] = useState<string | null>(null);
@@ -648,9 +649,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     });
   }
 
-  // HRA-283: the Week view's own drag-and-drop day swap — templates never
-  // had one before this Story (the List view stays exactly as it was, per
-  // the Story's own explicit scope). Reuses swapDayContent verbatim (no new
+  // HRA-283/HRA-285: the Agenda view's own drag-and-drop day swap — templates
+  // never had one before HRA-283 (the List view stays exactly as it was, per
+  // that Story's own explicit scope). Reuses swapDayContent verbatim (no new
   // swap logic), then content-anchor-patches both touched D-lines the same
   // way onSectionEdit/onWeekEdit/onDayEdit above already patch a single one —
   // recomputing each span fresh from the just-updated source, since a
@@ -687,7 +688,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   }
 
   // HRA-283: materializes an undeclared D-number into a real `D<n>: REST`
-  // line — the Week view's own first-interaction rule (AC5). `swapWith`,
+  // line — the Agenda view's own first-interaction rule (AC5). `swapWith`,
   // when supplied (a drop landing on this slot, not a plain click-to-open),
   // folds the usual swapDayContent exchange into the SAME update: the
   // dragged day's content moves onto the newly-real day, and REST is left
@@ -720,7 +721,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
       let highlightDayIndex = workingDays.indexOf(materializedDay);
       let highlightLine = restLine;
 
-      // The Week view only ever renders one week's 7 slots at once, so a
+      // The Agenda view only ever renders one week's 7 slots at once, so a
       // drop's source day is always this same week's own — swapWith never
       // crosses section/week boundaries in practice.
       if (sourceDay) {
@@ -1199,15 +1200,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
         {generated && (
           <>
-            {/* HRA-283: mirrors PlanInstancesSection's own List/Agenda toggle
-                — defaults to List, switching never touches dslSource/the
-                current preview (both views render the same editor.sections). */}
+            {/* HRA-283/HRA-285: mirrors PlanInstancesSection's own List/Agenda
+                toggle — same name, same shadcn-big-calendar library. Defaults
+                to List, switching never touches dslSource/the current
+                preview (both views render the same editor.sections). */}
             <div className="hra-segment self-start hra-plan-instance-section-gap">
               <button className="hra-segment-item" data-active={viewMode === "list"} onClick={() => setViewMode("list")}>
                 {t("manage.planTemplates.viewList", "List")}
               </button>
-              <button className="hra-segment-item" data-active={viewMode === "week"} onClick={() => setViewMode("week")}>
-                {t("manage.planTemplates.viewWeek", "Week")}
+              <button className="hra-segment-item" data-active={viewMode === "agenda"} onClick={() => setViewMode("agenda")}>
+                {t("manage.planTemplates.viewAgenda", "Agenda")}
               </button>
             </div>
             {viewMode === "list" ? (
@@ -1221,7 +1223,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 highlightedRef={lastEditedRef ?? undefined}
               />
             ) : (
-              <PlanTemplateWeekView
+              <PlanTemplateAgendaView
                 ownerName={name || t("manage.planTemplates.untitled", "Untitled plan")}
                 sections={editor.sections}
                 onDayEdit={onDayEdit}
