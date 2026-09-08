@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Checkbox, DatePicker } from "@/components/ui";
 import type { Activity, BodyMeasurement } from "@/types/api";
@@ -100,7 +101,7 @@ export function DeleteSection() {
         </button>
       </div>
 
-      <div className="hra-control-row gap-2 mb-3" >
+      <div className="hra-date-pair mb-3" >
         <DatePicker value={from} onChange={setFrom} max={to} />
         <span className="hra-text-muted text-meta" >→</span>
         <DatePicker value={to} onChange={setTo} min={from} />
@@ -153,12 +154,14 @@ export function DeleteSection() {
 
       {!confirm ? (
         <button
-          className="hra-btn" data-variant="cta"
+          className="hra-btn hra-btn-icon-label" data-variant="cta"
           data-tone="red"
           onClick={() => setConfirm(true)} disabled={!canDelete || demoMode}
           title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+          aria-label={t("manage.delete.moveToTrashButton", "Move to trash…")}
         >
-          {t("manage.delete.moveToTrashButton", "Move to trash…")}
+          <Trash2 size={14} />
+          <span className="hra-btn-label">{t("manage.delete.moveToTrashButton", "Move to trash…")}</span>
         </button>
       ) : (
         <div className="hra-row-wrap">
@@ -166,11 +169,12 @@ export function DeleteSection() {
             {t("manage.delete.moveToTrashConfirm", `Move to trash, ${from} to ${to}?`, { from, to })}
           </span>
           <button
-            className="hra-btn" data-variant="cta"
+            className="hra-btn hra-btn-icon-label" data-variant="cta"
             data-tone="red"
             onClick={doDelete} disabled={loading}
+            aria-label={t("common.confirm", "Confirm")}
           >
-            {loading ? "…" : t("common.confirm", "Confirm")}
+            {loading ? "…" : <><Trash2 size={14} /><span className="hra-btn-label">{t("common.confirm", "Confirm")}</span></>}
           </button>
           <button onClick={() => setConfirm(false)}
             className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer">

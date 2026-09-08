@@ -106,9 +106,16 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
         />
         <span className="hra-text-muted text-meta">{orLabel}</span>
-        <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
-        <span className="hra-text-muted text-meta">→</span>
-        <DatePicker value={to} min={from} onChange={setTo} />
+        {/* Grouped as one atomic unit (.hra-date-pair, index.css) so a
+            narrow/mobile wrap never splits "from" from "to" across lines —
+            the whole pair moves together, or stacks internally as a last
+            resort, but never gets interrupted by the Select on either
+            side. */}
+        <div className="hra-date-pair">
+          <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
+          <span className="hra-text-muted text-meta">→</span>
+          <DatePicker value={to} min={from} onChange={setTo} />
+        </div>
         <span className="hra-text-muted text-meta">{orLabel}</span>
         <Select
           value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
@@ -150,9 +157,11 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
               />
               <span className="hra-text-muted text-meta invisible">{orLabel}</span>
             </div>
-            <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
-            <span className="hra-text-muted text-meta">→</span>
-            <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
+            <div className="hra-date-pair">
+              <DatePicker value={compare.from} max={compare.to} onChange={compare.setFrom} />
+              <span className="hra-text-muted text-meta">→</span>
+              <DatePicker value={compare.to} min={compare.from} onChange={compare.setTo} />
+            </div>
             <span className="hra-text-muted text-meta">{orLabel}</span>
             <Select
               value={compareNamedId != null ? String(compareNamedId) : NO_NAMED_RANGE}

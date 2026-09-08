@@ -193,6 +193,7 @@ Existing Claude specialist authorities include:
 - React/Next performance: `vercel-react-best-practices`
 - React component architecture: `vercel-composition-patterns`
 - charts/data-viz: `dataviz`
+- retrofitting mobile-width responsiveness onto existing desktop UI: `mobile-responsive-web`
 
 Precedence when concerns overlap: **approved behavior / correctness / contract > code structure > visual taste**.
 

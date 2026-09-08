@@ -26,7 +26,7 @@
  */
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Trash2 } from "lucide-react";
+import { AlertTriangle, Save, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
@@ -1170,8 +1170,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             (canSave/canApprove/onRestoreClick) are byte-identical to before
             this Story. */}
         <div className="hra-plan-instance-section-gap hra-row-wrap" >
-          <button className="hra-btn" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}>
-            {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+          <button
+            className="hra-btn hra-btn-icon-label" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}
+            aria-label={saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+          >
+            <Save size={14} />
+            <span className="hra-btn-label">{saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}</span>
           </button>
           <button
             className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading || demoMode}
@@ -1336,8 +1340,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1.5 px-3.5 text-meta cursor-pointer"  onClick={() => setDeleteConfirmId(null)}>
                 {t("common.cancel", "Cancel")}
               </button>
-              <button className="hra-btn" data-variant="danger" onClick={() => onDelete(deleteConfirmId)}>
-                {t("common.yesDelete", "Yes, delete")}
+              <button
+                className="hra-btn hra-btn-icon-label" data-variant="danger" onClick={() => onDelete(deleteConfirmId)}
+                aria-label={t("common.yesDelete", "Yes, delete")}
+              >
+                <Trash2 size={14} />
+                <span className="hra-btn-label">{t("common.yesDelete", "Yes, delete")}</span>
               </button>
             </div>
           </div>

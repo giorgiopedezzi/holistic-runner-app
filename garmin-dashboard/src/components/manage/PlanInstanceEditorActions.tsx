@@ -6,6 +6,7 @@
  * its own — PlanInstancesSection.tsx keeps owning every underlying value.
  */
 import { useTranslation } from "react-i18next";
+import { Save, RotateCcw } from "lucide-react";
 import { DatePicker } from "@/components/ui";
 import { useDemoMode } from "@/hooks/useDemoMode";
 
@@ -63,8 +64,13 @@ export function PlanInstanceEditorActions({
               instead of a lock (see PlanInstancesSection.tsx's
               WarningBanner). Save still legitimately disables via
               !saveEnabled when there's nothing dirty to save. */}
-          <button className="hra-btn" data-variant="green" onClick={onSaveClick} disabled={saveLoading || !hasSections || !saveEnabled || demoMode} title={demoTitle}>
-            {saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+          <button
+            className="hra-btn hra-btn-icon-label" data-variant="green"
+            onClick={onSaveClick} disabled={saveLoading || !hasSections || !saveEnabled || demoMode} title={demoTitle}
+            aria-label={saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+          >
+            <Save size={14} />
+            <span className="hra-btn-label">{saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}</span>
           </button>
           <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || demoMode} title={demoTitle}>
             {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
@@ -105,8 +111,12 @@ export function PlanInstanceEditorActions({
           the active row has no unsaved changes (nothing to restore),
           mirroring PlanTemplatesSection.tsx's own disabled={!isEditorDirty()}
           gating. */}
-      <button className="hra-btn" onClick={() => onRestoreClick(isDirty)} disabled={!isDirty}>
-        {t("manage.planInstances.resetButton", "Reset to previous values")}
+      <button
+        className="hra-btn hra-btn-icon-label" onClick={() => onRestoreClick(isDirty)} disabled={!isDirty}
+        aria-label={t("manage.planInstances.resetButton", "Reset to previous values")}
+      >
+        <RotateCcw size={14} />
+        <span className="hra-btn-label">{t("manage.planInstances.resetButton", "Reset to previous values")}</span>
       </button>
       {/* HRA-157: List/Agenda switch relocated here from its own row
           above the accordion/calendar — right-aligned via marginLeft:

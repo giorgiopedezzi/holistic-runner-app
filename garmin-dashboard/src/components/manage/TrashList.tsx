@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { ErrorBanner, Checkbox } from "@/components/ui";
 import { useDemoMode } from "@/hooks/useDemoMode";
 
@@ -68,32 +69,37 @@ export function TrashList<T extends { id: number; deleted_at: string }>({
 
           <div className="hra-row-wrap">
             <button
-              className="hra-btn" data-variant="cta" onClick={doRestore} disabled={selected.size === 0 || busy || demoMode}
+              className="hra-btn hra-btn-icon-label" data-variant="cta" onClick={doRestore} disabled={selected.size === 0 || busy || demoMode}
               title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+              aria-label={t("manage.trash.restoreSelected", "Restore selected")}
             >
-              {t("manage.trash.restoreSelected", "Restore selected")}
+              <RotateCcw size={14} />
+              <span className="hra-btn-label">{t("manage.trash.restoreSelected", "Restore selected")}</span>
             </button>
 
             {!confirmPurge ? (
               <button
-                className="hra-btn" data-variant="cta"
+                className="hra-btn hra-btn-icon-label" data-variant="cta"
                 data-tone="red"
                 onClick={() => setConfirmPurge(true)} disabled={selected.size === 0 || busy || demoMode}
                 title={demoMode
                   ? t("common.demoModeHint", "Not available for demo")
                   : t("manage.trash.purgeTooltip", "Permanently deletes the selected item(s) — this can't be undone. The filename/date is still kept internally so a resync won't bring it back.")}
+                aria-label={t("manage.trash.deletePermanently", "Delete permanently…")}
               >
-                {t("manage.trash.deletePermanently", "Delete permanently…")}
+                <Trash2 size={14} />
+                <span className="hra-btn-label">{t("manage.trash.deletePermanently", "Delete permanently…")}</span>
               </button>
             ) : (
               <>
                 <span className="hra-text-danger text-meta" >{t("manage.trash.confirmPurge", `Permanently delete ${selected.size} item(s)? This can't be undone.`, { n: selected.size })}</span>
                 <button
-                  className="hra-btn" data-variant="cta"
+                  className="hra-btn hra-btn-icon-label" data-variant="cta"
                   data-tone="red"
                   onClick={doPurge} disabled={busy}
+                  aria-label={t("common.confirm", "Confirm")}
                 >
-                  {busy ? "…" : t("common.confirm", "Confirm")}
+                  {busy ? "…" : <><Trash2 size={14} /><span className="hra-btn-label">{t("common.confirm", "Confirm")}</span></>}
                 </button>
                 <button onClick={() => setConfirmPurge(false)}
                   className="hra-control-action hra-border-strong hra-text-secondary bg-transparent rounded-md text-meta cursor-pointer">

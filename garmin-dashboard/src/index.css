@@ -1177,6 +1177,16 @@ body {
 .hra-btn[data-disabled] { background: var(--border-strong); color: var(--text-muted); cursor: not-allowed; --btn-glow: transparent; }
 .hra-btn[data-disabled]:hover { box-shadow: none; }
 
+/* Icon+label action button (mobile UX pass, frontend.md "Icon+label buttons
+   collapse to icon-only under narrow widths") — the visible text drops at
+   the phone tier, leaving only the icon; the button's own aria-label (set
+   at every call site, same string as the hidden label) carries the
+   accessible name once the text node is display:none. */
+.hra-btn-icon-label { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+@media (max-width: 767px) {
+  .hra-btn-icon-label .hra-btn-label { display: none; }
+}
+
 /* Solid outline stays the primary, always-legible focus signal (readability
    first) — the box-shadow only ADDS a soft glow around it, never replaces
    it or touches contrast/text color. */
@@ -2630,6 +2640,17 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 @media (max-width: 767px) {
   .hra-date-range-row { flex-wrap: wrap; }
 }
+/* Mobile UX pass — the atomic "from → to" unit shared by DateRangeBar and
+   every from/to row above (DateRangesSection, DeleteSection). A flex item
+   of its own, so a wrapping parent (.hra-row-wrap, .hra-date-range-row)
+   moves the WHOLE pair to its own line rather than ever splitting "from"
+   from "to" across two lines when unrelated sibling controls (a preset
+   dropdown, a name field, a race picker) crowd the row. flex-wrap here
+   (not nowrap) is the fallback for the tightest cards (16px padding leaves
+   ~264px at 320px) — the two 128px .hra-date-trigger's + arrow don't fit
+   side by side there, so "to" drops below "from" instead of forcing
+   horizontal scroll.  */
+.hra-date-pair { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .hra-chip-action { padding: 3px 10px; }
 .hra-control-action { padding: 5px 14px; }
 .hra-list-row { padding: 3px 0; }

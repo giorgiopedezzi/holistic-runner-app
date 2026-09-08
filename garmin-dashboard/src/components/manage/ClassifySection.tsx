@@ -130,7 +130,7 @@ export function ClassifySection() {
         {t("manage.classify.description", "Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata / Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.")}
       </div>
 
-      <div className="hra-control-row gap-2 mb-3" >
+      <div className="hra-date-pair mb-3" >
         <DatePicker value={from} onChange={setFrom} max={to} />
         <span className="hra-text-muted text-meta" >→</span>
         <DatePicker value={to} onChange={setTo} min={from} />

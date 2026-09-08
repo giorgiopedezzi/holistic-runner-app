@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RefreshCw } from "lucide-react";
 import { api } from "@/api/client";
 import { Card } from "@/components/ui";
 import type { TrashedActivity, TrashedBodyMeasurement } from "@/types/api";
@@ -36,11 +37,12 @@ export function TrashSection() {
       <div className="hra-row gap-2 mb-1" >
         <div className="hra-block-title">{t("manage.trash.title", "Trash")}</div>
         <button
-          className="hra-icon-action hra-nav-hover hra-text-muted bg-transparent border-0 cursor-pointer text-label leading-none"
+          className="hra-icon-action hra-nav-hover hra-text-muted bg-transparent border-0 cursor-pointer inline-flex items-center justify-center"
           onClick={() => { refreshActivities(); refreshMeasurements(); }}
           title={t("manage.trash.refreshTooltip", "Refresh — e.g. after deleting something above")}
+          aria-label={t("manage.trash.refreshTooltip", "Refresh — e.g. after deleting something above")}
         >
-          ⟳
+          <RefreshCw size={14} />
         </button>
       </div>
       <div className="hra-text-secondary text-meta mb-4" >
