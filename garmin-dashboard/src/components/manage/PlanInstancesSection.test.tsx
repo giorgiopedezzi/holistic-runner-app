@@ -656,3 +656,128 @@ describe("PlanInstancesSection — mobile compact list (HRA-296)", () => {
     expect(screen.queryByRole("button", { name: "Create race plan" })).not.toBeInTheDocument();
   });
 });
+
+// HRA-298: a template with real weeks (the default TEMPLATE/planTemplate()
+// fixture has sections: [], i.e. weekCount 0 — summarizeInstanceProgress
+// short-circuits to null for that, so every progress-dependent state below
+// needs a template that actually carries weeks).
+function templateWithWeeks(weekCount: number, paceOverrides: Partial<{ metadata: Record<string, unknown> }> = {}) {
+  return planTemplate({
+    // Same id as the default TEMPLATE/planTemplate() fixture (1) — these
+    // tests replace the whole `templates` array with just this one, and
+    // planInstance()'s own default template_id is 1.
+    parsed_plan: JSON.stringify({
+      metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: { RG: { kind: "absolute", pace_sec_per_km: 330 } }, ...paceOverrides.metadata },
+      sections: [{
+        name: "Base", week_spec: "*", raw_dsl: "", pace_policy: {},
+        weeks: Array.from({ length: weekCount }, (_, i) => ({ number: i + 1, raw_dsl: `WEEK ${i + 1}`, pace_policy: {}, days: [] })),
+      }],
+    }),
+  });
+}
+
+describe("PlanInstancesSection — mobile compact race-plan summary (HRA-298)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  function openRow() {
+    fireEvent.click(screen.getByText("My Plan").closest('[role="button"]')!);
+  }
+
+  it("shows the resolved-pace block as one compact wrapping line, sourced from the template + instance overrides", async () => {
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(2);
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    expect(await screen.findByText("RG 5:30/km")).toBeInTheDocument();
+    expect(screen.getByText("Based on: 5K Base")).toBeInTheDocument();
+  });
+
+  it("shows a generic desktop-required message, never an anchor name, when a pace is unresolved", async () => {
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(1, { metadata: { pace_policy: { RG: { kind: "offset", anchor: "BASE", offset_sec_per_km: 10 } } } });
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    expect(await screen.findByText("Paces to complete from desktop")).toBeInTheDocument();
+    expect(screen.queryByText(/RG/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/BASE/)).not.toBeInTheDocument();
+  });
+
+  it("'View plan' lazily fetches and shows the current week's ribbon; 'Apri nell'agenda' is enabled while in progress", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(2);
+    let getByIdCalls = 0;
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances/10": () => {
+        getByIdCalls++;
+        return json({ ...planInstance(), days: [day1({ date: "2026-09-05" })] });
+      },
+    }));
+    const onNavigateToAgenda = vi.fn();
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={onNavigateToAgenda} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    const openBtn = await screen.findByRole("button", { name: "Open in agenda" });
+    expect(openBtn).toBeEnabled();
+    fireEvent.click(openBtn);
+    expect(onNavigateToAgenda).toHaveBeenCalledTimes(1);
+
+    expect(getByIdCalls).toBe(0); // never fetched until "View plan" is pressed
+    fireEvent.click(screen.getByRole("button", { name: "View plan" }));
+    await waitFor(() => expect(getByIdCalls).toBe(1));
+    expect(await screen.findByText("5km @ 5:30/km")).toBeInTheDocument(); // the ribbon's own day content
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide plan" }));
+    expect(screen.queryByText("5km @ 5:30/km")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View plan" }));
+    expect(await screen.findByText("5km @ 5:30/km")).toBeInTheDocument();
+    expect(getByIdCalls).toBe(1); // reopening reuses the already-fetched days, no second fetch
+  });
+
+  it("disables 'Apri nell'agenda' and shows a start-date message for a not-yet-started plan", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(2);
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances": paginated([planInstance({ start_date: "2026-09-20" })]),
+    }));
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    expect(await screen.findByRole("button", { name: "Open in agenda" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "View plan" }));
+    expect(await screen.findByText("This plan starts on 20 Sep 2026.")).toBeInTheDocument();
+  });
+
+  it("shows days-to-race, missing-race-date and race-date-passed framing", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
+    stubPhoneWidth(true);
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances": paginated([planInstance({ race_date: "2026-09-10" })]),
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+    openRow();
+    expect(await screen.findByText("5 days to race")).toBeInTheDocument();
+  });
+
+  it("shows 'no race date set' when the instance has none", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances": paginated([planInstance({ race_date: null })]) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+    openRow();
+    expect(await screen.findByText("No race date set.")).toBeInTheDocument();
+  });
+});
