@@ -618,7 +618,6 @@
   "manage.planInstances.mobilePreview.completedNoWeek": "This plan is already completed.",
   "manage.planInstances.mobilePreview.noCurrentWeek": "No current week to show for this plan.",
   "manage.planInstances.mobilePreview.openInAgenda": "Open in agenda",
-  "manage.planInstances.mobilePreview.openInAgendaDisabled": "Only available while this plan is in progress.",
   "manage.planInstances.mobilePreview.viewPlan": "View plan",
   "manage.planInstances.mobilePreview.hidePlan": "Hide plan",
   "manage.planInstances.restoreConfirmBody": "You have unsaved changes — reset them to the previous values?",

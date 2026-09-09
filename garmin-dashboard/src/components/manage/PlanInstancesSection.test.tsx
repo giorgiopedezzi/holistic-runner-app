@@ -708,7 +708,7 @@ describe("PlanInstancesSection — mobile compact race-plan summary (HRA-298)", 
     expect(screen.queryByText(/BASE/)).not.toBeInTheDocument();
   });
 
-  it("'View plan' lazily fetches and shows the current week's ribbon; 'Apri nell'agenda' is enabled while in progress", async () => {
+  it("shows the current week's ribbon immediately on expand (no extra tap); 'Apri nell'agenda' shows only while in progress", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
     stubPhoneWidth(true);
@@ -725,38 +725,44 @@ describe("PlanInstancesSection — mobile compact race-plan summary (HRA-298)", 
     await screen.findByText("My Plan");
 
     openRow();
-    const openBtn = await screen.findByRole("button", { name: "Open in agenda" });
-    expect(openBtn).toBeEnabled();
+    // AC1: the current week shows as soon as the row opens — no "View plan" tap needed.
+    expect(await screen.findByText("5km @ 5:30/km")).toBeInTheDocument();
+    await waitFor(() => expect(getByIdCalls).toBe(1));
+
+    const openBtn = screen.getByRole("button", { name: "Open in agenda" });
     fireEvent.click(openBtn);
     expect(onNavigateToAgenda).toHaveBeenCalledTimes(1);
 
-    expect(getByIdCalls).toBe(0); // never fetched until "View plan" is pressed
+    // "View plan" opens the COMPLETE plan (every week, progressive disclosure) —
+    // a distinct surface from the always-visible current-week ribbon above.
     fireEvent.click(screen.getByRole("button", { name: "View plan" }));
-    await waitFor(() => expect(getByIdCalls).toBe(1));
-    expect(await screen.findByText("5km @ 5:30/km")).toBeInTheDocument(); // the ribbon's own day content
+    expect(await screen.findByText("Base")).toBeInTheDocument(); // the section name, from the full-plan view
+    fireEvent.click(screen.getByText("Base"));
+    expect(await screen.findByText("Week 1")).toBeInTheDocument();
+    expect(getByIdCalls).toBe(1); // the full-plan view reuses the same already-fetched days, no second fetch
 
     fireEvent.click(screen.getByRole("button", { name: "Hide plan" }));
-    expect(screen.queryByText("5km @ 5:30/km")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "View plan" }));
-    expect(await screen.findByText("5km @ 5:30/km")).toBeInTheDocument();
-    expect(getByIdCalls).toBe(1); // reopening reuses the already-fetched days, no second fetch
+    expect(screen.queryByText("Week 1")).not.toBeInTheDocument();
+    expect(screen.getByText("5km @ 5:30/km")).toBeInTheDocument(); // the current-week ribbon is unaffected by hiding the full plan
   });
 
-  it("disables 'Apri nell'agenda' and shows a start-date message for a not-yet-started plan", async () => {
+  it("hides 'Apri nell'agenda' (never disables it) and promotes 'View plan' for a not-yet-started plan", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
     stubPhoneWidth(true);
     const template = templateWithWeeks(2);
     installFetch(mountRoutes({
       "GET /api/v1/plan-instances": paginated([planInstance({ start_date: "2026-09-20" })]),
+      "GET /api/v1/plan-instances/10": () => json({ ...planInstance({ start_date: "2026-09-20" }), days: [] }),
     }));
     render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     await screen.findByText("My Plan");
 
     openRow();
-    expect(await screen.findByRole("button", { name: "Open in agenda" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "View plan" }));
     expect(await screen.findByText("This plan starts on 20 Sep 2026.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open in agenda" })).not.toBeInTheDocument();
+    const viewPlanBtn = screen.getByRole("button", { name: "View plan" });
+    expect(viewPlanBtn).toHaveAttribute("data-variant", "accent"); // promoted to primary
   });
 
   it("shows days-to-race, missing-race-date and race-date-passed framing", async () => {

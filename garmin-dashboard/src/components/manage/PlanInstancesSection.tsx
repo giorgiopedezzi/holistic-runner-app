@@ -6,11 +6,12 @@
  */
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import { Card, ErrorBanner, WarningBanner, AccordionCard, Badge } from "@/components/ui";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
-import { TrainingPlanAccordion, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
 import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorTable";
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
@@ -23,7 +24,7 @@ import {
 } from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
-import { fmtDate } from "@/utils/fmt";
+import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
 import type { PlanTemplate, PlanInstance, PlanInstanceWithDays } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, RunPlan } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
@@ -111,22 +112,29 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   function setMobileExpandedId(id: number | null) {
     setRawMobileExpandedId(id == null ? "" : String(id));
     // Any user-driven change of which row is expanded (closing it, or
-    // opening a different one) starts that row's "Vedi piano" disclosure
+    // opening a different one) starts that row's "Vedi piano" full-plan view
     // collapsed again — only a same-row round trip through "Apri
     // nell'agenda" (which never calls this setter) should restore it.
-    setMobileWeekOpen(false);
+    setMobileFullPlanOpen(false);
   }
-  // HRA-298: "Vedi piano" — a second disclosure level inside the expanded
-  // row, revealing the actual current-week Agenda ribbon (lazily fetched,
-  // see ensureMobileInstanceDaysLoaded below) rather than mounting it
-  // unconditionally on every row expand. Same URL-persistence reasoning as
-  // mobileExpandedId above ("the previously expanded week" survives the
-  // Agenda round trip too).
-  const [rawMobileWeekOpen, setMobileWeekOpenRaw] = useUrlState("planInstanceWeekOpen", "");
-  const mobileWeekOpen = rawMobileWeekOpen === "1";
-  function setMobileWeekOpen(open: boolean) {
-    setMobileWeekOpenRaw(open ? "1" : "");
+  // HRA-298 (review round 2): "Vedi piano" now opens the COMPLETE compact
+  // plan view — every week, Section->Week->Day progressive disclosure —
+  // rather than just revealing the current week (that now shows
+  // unconditionally as soon as the row expands, see renderMobileCurrentWeek
+  // below). Same URL-persistence reasoning as mobileExpandedId above ("the
+  // previously expanded week" survives the Agenda round trip too).
+  const [rawMobileFullPlanOpen, setMobileFullPlanOpenRaw] = useUrlState("planInstanceFullPlanOpen", "");
+  const mobileFullPlanOpen = rawMobileFullPlanOpen === "1";
+  function setMobileFullPlanOpen(open: boolean) {
+    setMobileFullPlanOpenRaw(open ? "1" : "");
   }
+  // Section/week disclosure *inside* the full-plan view — plain local state,
+  // not URL-persisted, same precedent PlanTemplatesSection.tsx's own
+  // mobileExpandedSection/mobileExpandedWeek already set for this identical
+  // pattern (HRA-297); only the two outer levels above need to survive the
+  // Agenda round trip.
+  const [mobileFullPlanExpandedSection, setMobileFullPlanExpandedSection] = useState<number | null>(null);
+  const [mobileFullPlanExpandedWeek, setMobileFullPlanExpandedWeek] = useState<string | null>(null);
   const [mobileInstanceDays, setMobileInstanceDays] = useState<Record<number, PlanInstanceWithDays | "loading" | "error">>({});
   function ensureMobileInstanceDaysLoaded(id: number) {
     if (mobileInstanceDays[id] != null) return;
@@ -135,14 +143,17 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       .then(full => setMobileInstanceDays(prev => ({ ...prev, [id]: full })))
       .catch(() => setMobileInstanceDays(prev => ({ ...prev, [id]: "error" })));
   }
-  // A round trip through "Apri nell'agenda" restores mobileWeekOpen from the
-  // URL before this row's days have ever been fetched in this mount — make
-  // sure the fetch actually happens rather than showing a permanently empty
-  // ribbon.
+  // HRA-298 (review round 2): the current-week ribbon is no longer gated
+  // behind "Vedi piano" — it renders as soon as the row expands (AC1) — and
+  // the full-plan view needs the same fetched days regardless of progress
+  // state (AC7 now covers every state, not just in-progress). So the fetch
+  // itself just follows which row is expanded; a round trip through "Apri
+  // nell'agenda" restores mobileExpandedId from the URL before this row's
+  // days have ever been fetched in this mount, so this also covers that case.
   useEffect(() => {
-    if (isPhone && mobileExpandedId != null && mobileWeekOpen) ensureMobileInstanceDaysLoaded(mobileExpandedId);
+    if (isPhone && mobileExpandedId != null) ensureMobileInstanceDaysLoaded(mobileExpandedId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPhone, mobileExpandedId, mobileWeekOpen]);
+  }, [isPhone, mobileExpandedId]);
   const [identityExpanded, setIdentityExpanded] = useState(true);
   const [pacingExpanded, setPacingExpanded] = useState(false);
   const [weeksExpanded, setWeeksExpanded] = useState(false);
@@ -1188,6 +1199,123 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
     );
   }
 
+  // HRA-298 (review round 2): "Vedi piano"'s complete compact plan view —
+  // every week, Section->Week->Day progressive disclosure, built from the
+  // same SectionView tree apiDaysToSections/renderMobileCurrentWeek already
+  // use above, mirroring PlanTemplatesSection.tsx's own HRA-297 pattern for
+  // its (analogous) mobile template preview: nested AccordionCards down to
+  // a plain hra-agenda-ribbon day list, not the interactive Agenda
+  // component — this level shows every week at once, so mounting one
+  // PlanInstanceCalendar (its own toolbar + activities fetch) per week would
+  // be needlessly heavy; the current week above already gives the one real
+  // interactive/tap-for-detail surface this Story's AC5 asks for.
+  function mobileFullPlanDayPresentation(day: DayView): { label: string; dslLines: string[] } {
+    const isTimedWorkout = day.workout_type === "run" || day.workout_type === "cross" || day.workout_type === "strength";
+    let label = "";
+    if (day.notes) label = day.notes;
+    else if (day.workout_type === "todo") label = t("runplan.accordion.stateTodoLabel", "Not yet planned");
+    else if (day.workout_type === "other") label = t("runplan.accordion.stateOtherLabel", "Other");
+    else if (day.workout_type === "rest") label = t("runplan.accordion.stateRestLabel", "Rest day");
+    else if (day.workout_type === "cross") label = t("manage.planInstances.category.crossTraining", "Cross training");
+    else if (day.workout_type === "strength") label = t("manage.planTemplates.mobilePreview.workoutTypeStrength", "Strength");
+    const stripped = day.dsl.replace(DAY_PREFIX_RE, "");
+    const dslLines = isTimedWorkout
+      ? stripped.split(";").map(s => s.trim()).filter(Boolean).filter(line => !(day.notes && line.startsWith("#")))
+      : [];
+    return { label, dslLines };
+  }
+
+  function renderMobileFullPlanView(inst: PlanInstance) {
+    const detail = mobileInstanceDays[inst.id];
+    if (detail == null || detail === "loading") {
+      return <div className="hra-text-secondary text-meta">{t("manage.planInstances.loading", "Loading…")}</div>;
+    }
+    if (detail === "error") {
+      return <ErrorBanner message={t("manage.planInstances.loadFailed", "Failed to load instances")} />;
+    }
+    const sections = apiDaysToSections(detail.days);
+    if (sections.length === 0) {
+      return <div className="hra-text-secondary text-meta">{t("manage.planInstances.mobilePreview.noCurrentWeek", "No current week to show for this plan.")}</div>;
+    }
+    return (
+      <div className="flex flex-col gap-1.5">
+        {sections.map((section, sectionIndex) => {
+          const sectionExpanded = mobileFullPlanExpandedSection === sectionIndex;
+          return (
+            <AccordionCard
+              key={sectionIndex}
+              title={
+                <span className="flex items-center gap-2 flex-1 min-w-0">
+                  <span className="hra-text-primary text-body font-semibold overflow-hidden text-ellipsis">{section.name}</span>
+                  <span className="hra-text-secondary text-meta">
+                    {t("manage.planTemplates.mobileWeekCount", section.weeks.length === 1 ? "1 week" : `${section.weeks.length} weeks`, { count: section.weeks.length })}
+                  </span>
+                </span>
+              }
+              expanded={sectionExpanded}
+              onToggle={() => {
+                setMobileFullPlanExpandedSection(sectionExpanded ? null : sectionIndex);
+                setMobileFullPlanExpandedWeek(null);
+              }}
+            >
+              <div className="flex flex-col gap-1.5">
+                {section.weeks.map((week, weekIndex) => {
+                  const weekKey = `${sectionIndex}-${weekIndex}`;
+                  const weekExpanded = mobileFullPlanExpandedWeek === weekKey;
+                  return (
+                    <AccordionCard
+                      key={weekKey}
+                      title={
+                        <span className="flex items-center gap-2 flex-1 min-w-0">
+                          <span className="hra-text-primary text-body">{t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number })}</span>
+                          <span className="hra-text-secondary text-meta">
+                            {t("runplan.accordion.runningDays", `${week.totals.runningDays} running`, { n: week.totals.runningDays })}
+                            {" · "}
+                            {t("runplan.accordion.restDays", `${week.totals.restDays} rest`, { n: week.totals.restDays })}
+                          </span>
+                        </span>
+                      }
+                      expanded={weekExpanded}
+                      onToggle={() => setMobileFullPlanExpandedWeek(weekExpanded ? null : weekKey)}
+                    >
+                      <ol className="hra-agenda-ribbon" aria-label={t("manage.planInstances.ribbonLabel", "Training days")}>
+                        {week.days.map((day, dayIndex) => {
+                          const { label, dslLines } = mobileFullPlanDayPresentation(day);
+                          return (
+                            <li key={dayIndex} className="hra-agenda-ribbon-day">
+                              <span className="hra-agenda-ribbon-date">
+                                <span className="hra-agenda-ribbon-dow">{day.date ? instanceDayDateLabel(day.date) : `D${day.day}${day.suffix ?? ""}`}</span>
+                              </span>
+                              <span className="hra-agenda-ribbon-body">
+                                <span className="hra-agenda-ribbon-label">
+                                  {label && <span className="hra-agenda-ribbon-label-text">{label}</span>}
+                                  {day.needs_review && (
+                                    <span title={t("runplan.accordion.needsReviewBadge", "Needs review")} className="hra-text-warning inline-flex items-center shrink-0">
+                                      <AlertTriangle size={12} />
+                                    </span>
+                                  )}
+                                </span>
+                                {dslLines.length > 0 && (
+                                  <span className="hra-agenda-ribbon-dsl">
+                                    {dslLines.map((line, i) => <span key={i} className="hra-agenda-ribbon-dsl-line">{line}</span>)}
+                                  </span>
+                                )}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    </AccordionCard>
+                  );
+                })}
+              </div>
+            </AccordionCard>
+          );
+        })}
+      </div>
+    );
+  }
+
   function renderMobileInstancePreview(inst: PlanInstance, progress: InstanceProgress | null) {
     const template = templates?.find(tpl => tpl.id === inst.template_id);
     const plan = parsePlan(template);
@@ -1226,29 +1354,30 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
           </span>
         )}
 
-        {mobileWeekOpen && renderMobileCurrentWeek(inst, progress)}
+        {renderMobileCurrentWeek(inst, progress)}
 
+        {mobileFullPlanOpen && renderMobileFullPlanView(inst)}
+
+        {/* HRA-298 (review round 2): "Apri nell'agenda" only ever appears for
+            the active, currently in-progress plan — the one case where the
+            real Agenda tab (which always shows whichever plan is active
+            today, with no per-instance targeting) is guaranteed to represent
+            THIS plan's current week. Hidden, not disabled, for every other
+            state; "Vedi piano" is promoted to the primary action there
+            instead, since it's the only always-truthful action left. */}
         <div className="flex flex-wrap gap-2">
+          {progress?.state === "in_progress" && (
+            <button type="button" className="hra-btn" data-variant="accent" onClick={onNavigateToAgenda}>
+              {t("manage.planInstances.mobilePreview.openInAgenda", "Open in agenda")}
+            </button>
+          )}
           <button
             type="button"
             className="hra-btn"
-            data-variant="accent"
-            disabled={progress?.state !== "in_progress"}
-            title={progress?.state !== "in_progress" ? t("manage.planInstances.mobilePreview.openInAgendaDisabled", "Only available while this plan is in progress.") : undefined}
-            onClick={onNavigateToAgenda}
+            data-variant={progress?.state === "in_progress" ? undefined : "accent"}
+            onClick={() => setMobileFullPlanOpen(!mobileFullPlanOpen)}
           >
-            {t("manage.planInstances.mobilePreview.openInAgenda", "Open in agenda")}
-          </button>
-          <button
-            type="button"
-            className="hra-btn"
-            onClick={() => {
-              const next = !mobileWeekOpen;
-              setMobileWeekOpen(next);
-              if (next) ensureMobileInstanceDaysLoaded(inst.id);
-            }}
-          >
-            {mobileWeekOpen
+            {mobileFullPlanOpen
               ? t("manage.planInstances.mobilePreview.hidePlan", "Hide plan")
               : t("manage.planInstances.mobilePreview.viewPlan", "View plan")}
           </button>

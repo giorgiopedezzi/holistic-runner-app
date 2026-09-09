@@ -618,7 +618,6 @@
   "manage.planInstances.mobilePreview.completedNoWeek": "Questo piano è già stato completato.",
   "manage.planInstances.mobilePreview.noCurrentWeek": "Nessuna settimana corrente da mostrare per questo piano.",
   "manage.planInstances.mobilePreview.openInAgenda": "Apri nell'agenda",
-  "manage.planInstances.mobilePreview.openInAgendaDisabled": "Disponibile solo mentre il piano è in corso.",
   "manage.planInstances.mobilePreview.viewPlan": "Vedi piano",
   "manage.planInstances.mobilePreview.hidePlan": "Nascondi piano",
   "manage.planInstances.restoreConfirmBody": "Ci sono modifiche non salvate — vuoi ripristinare i valori precedenti?",
