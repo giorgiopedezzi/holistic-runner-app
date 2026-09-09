@@ -89,7 +89,7 @@ type InstanceUpdateBody = Partial<{
 // "today", never trusted from the client); start_date/pace_overrides are
 // both optional, falling back to the instance's own current value for
 // whichever is omitted.
-type RegenerateBody = Partial<{ start_date: string; pace_overrides: Record<string, string>; effective_from: string }>;
+type RegenerateBody = Partial<{ start_date: string; pace_overrides: Record<string, string>; effective_from: string; confirm_overwrite: boolean }>;
 // HRA-149: PATCH /api/v1/plan-instances/:id/days/:dayId — a smaller, more
 // honest write than the bulk days-replace above: one field's worth of edit
 // on one already-existing day. All optional (at least one required); dsl is
@@ -502,6 +502,11 @@ export function createPlanTemplatesController(ctx: AppContext) {
           // NULL reads as the 08:00 display default until set via the
           // per-day PATCH.
           scheduled_time: null,
+          // HRA-299: a wholesale days replace is a full re-declaration of
+          // every day's raw dsl text, not a single-day edit or swap — same
+          // "out of scope: bulk editing" boundary the Story itself draws.
+          // Every row it produces starts uncustomized.
+          customized_at: null,
         });
       }
       if (flagged.length > 0) {
@@ -826,6 +831,25 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     } else if (instance.pace_overrides) {
       paceOverrides = JSON.parse(instance.pace_overrides) as PacePolicy;
+    }
+
+    // HRA-299: preflight — detect every currently-persisted day inside the
+    // requested range that already carries a customization marker, BEFORE
+    // any mutation runs. A non-empty result blocks the regenerate until the
+    // caller explicitly confirms overwrite (`confirm_overwrite: true`),
+    // naming every affected day so the confirmation is genuinely informed —
+    // never a silent overwrite (this Story's own "Product decision").
+    const customizedDays = instancesRepo.customizedDaysFrom(id, body.effective_from);
+    if (customizedDays.length > 0 && body.confirm_overwrite !== true) {
+      throw conflict(
+        `Regenerating from ${body.effective_from} would overwrite ${customizedDays.length} customized day${customizedDays.length > 1 ? "s" : ""}.`,
+        {
+          customized_days: customizedDays.map(d => ({
+            id: d.id, date: d.date, section_name: d.section_name, week_number: d.week_number, day: d.day,
+            workout_type: d.workout_type, notes: d.notes,
+          })),
+        },
+      );
     }
 
     const { instance: updated, days } = instancesService.regenerateFrom(id, plan, { startDate, paceOverrides }, body.effective_from);

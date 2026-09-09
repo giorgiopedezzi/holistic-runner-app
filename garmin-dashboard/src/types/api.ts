@@ -183,6 +183,9 @@ export interface PlanInstanceDay {
   // HRA-149: HH:MM 24-hour, or null (display default 08:00 — never persisted
   // as the literal string, so a day the user hasn't touched stays null).
   scheduled_time:        string | null;
+  // HRA-299: non-null means this day's workout content was individually
+  // edited or swapped after creation — see docs/schema.md.
+  customized_at:         string | null;
 }
 
 export interface PlanInstanceWithDays extends PlanInstance {

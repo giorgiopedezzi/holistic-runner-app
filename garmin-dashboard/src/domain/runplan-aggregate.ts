@@ -431,6 +431,11 @@ export interface DayView {
   // HH:MM 24-hour or undefined/null (display default 08:00).
   id?: number;
   scheduled_time?: string | null;
+  // HRA-299: passthrough of ResolvedDay's own customized_at (only ever set
+  // on the instance path, same reasoning as id/scheduled_time above) — the
+  // "Modificato" badge on race-plan/Agenda rows derives from this being
+  // non-null.
+  customized_at?: string | null;
   // HRA-229: the day's raw parsed segments — only ever set on the template
   // path (buildTemplateSectionView). Instance days carry ResolvedSegment,
   // a different (already pace-resolved) shape out of this Story's scope, so
@@ -702,7 +707,7 @@ export function buildInstanceSectionView(
       metrics: computeResolvedDayMetrics(day),
       trainingLoadCategory: classifyResolvedDay(day, classificationContext),
       paceTargetBands: buildPaceTargetBandModel(day.segments),
-      id: day.id, scheduled_time: day.scheduled_time,
+      id: day.id, scheduled_time: day.scheduled_time, customized_at: day.customized_at,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,

@@ -132,6 +132,10 @@ interface CalendarEvent {
   // scheduled_time (HRA-150) this is threaded from.
   dayId?: number;
   scheduledTime?: string | null;
+  // HRA-299: passthrough of DayView's own customized_at — non-null means
+  // this day was individually edited or swapped, driving the same
+  // "Modificato" badge the List view shows.
+  customizedAt?: string | null;
   // HRA-262: true only for a synthesized entry standing in for a recorded
   // activity that has no plan day on this date at all — see
   // actualOnlyEventsFromActivities below. Every other (plan-derived) field
@@ -250,6 +254,7 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
           title, start, end, allDay: !timed, workoutType: day.workout_type,
           trainingLoadCategory: day.trainingLoadCategory, needsReview: day.needs_review, metrics: day.metrics,
           dayId: day.id, scheduledTime: day.scheduled_time, notes: day.notes,
+          customizedAt: day.customized_at,
         });
       }
     }
@@ -494,6 +499,14 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
             <AlertTriangle size={12} />
           </span>
         )}
+        {event.customizedAt != null && (
+          <span
+            title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
+            className="hra-text-secondary text-meta shrink-0"
+          >
+            {t("runplan.accordion.customizedBadge", "Modified")}
+          </span>
+        )}
         <ActualActivityBadge activity={matchedActivity} />
       </span>
 
@@ -605,13 +618,21 @@ function WeekRowCard({ event, matchedActivity, dragProps, isDragOver }: {
       {...dragProps}
     >
       <span className="hra-agenda-rowcard-row1">{rowOneLabel}</span>
-      {(PlanIcon || hasActual) && (
+      {(PlanIcon || hasActual || (hasPlan && event.customizedAt != null)) && (
         <span className="hra-agenda-rowcard-row2">
           {PlanIcon ? (
             <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
               <PlanIcon size={13} />
             </span>
           ) : <span />}
+          {hasPlan && event.customizedAt != null && (
+            <span
+              title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
+              className="hra-text-secondary text-meta shrink-0"
+            >
+              {t("runplan.accordion.customizedBadge", "Modified")}
+            </span>
+          )}
           <ActualActivityBadge activity={matchedActivity} />
         </span>
       )}

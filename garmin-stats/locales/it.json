@@ -461,6 +461,8 @@
   "runplan.accordion.workoutTypeOther": "Altro",
   "runplan.accordion.needsReview": "Questo giorno richiede una revisione prima di poter essere salvato.",
   "runplan.accordion.needsReviewBadge": "Richiede revisione",
+  "runplan.accordion.customizedBadge": "Modificato",
+  "runplan.accordion.customizedBadgeTitle": "Modificato o scambiato singolarmente — la rigenerazione chiederà conferma prima di sovrascriverlo",
   "runplan.accordion.stateRestLabel": "Giorno di riposo",
   "runplan.accordion.stateOtherLabel": "Altro",
   "runplan.accordion.stateTodoLabel": "Da pianificare",

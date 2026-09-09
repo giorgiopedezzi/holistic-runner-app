@@ -409,6 +409,19 @@ function UnsavedBadge({ t }: { t: Translate }) {
   );
 }
 
+// HRA-299: a subtle, translated indicator that this day's own persisted
+// content (not just an in-progress local edit — see UnsavedBadge above) was
+// individually edited or swapped after creation, so a desktop regeneration
+// would need explicit confirmation to overwrite it. Plain secondary text,
+// deliberately not a warning color — this is provenance, not a problem.
+function CustomizedBadge({ t }: { t: Translate }) {
+  return (
+    <span className="hra-text-secondary text-meta"  title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}>
+      {t("runplan.accordion.customizedBadge", "Modified")}
+    </span>
+  );
+}
+
 // HRA-232: the field JSX HRA-229/HRA-230 already established for a single
 // continuous/interval segment, factored out so the new per-"Segment N"-card
 // rendering (multi-segment days) reuses the exact same fields instead of
@@ -702,6 +715,7 @@ function InstanceDayRow({
           {fmtDistance(day.distance, t)}
           {dirty && <UnsavedBadge t={t} />}
           {day.needs_review && <WarningBadge t={t} />}
+          {day.customized_at != null && <CustomizedBadge t={t} />}
         </span>
 
         {/* run/rest/other switch — "directly below the date pill" (HRA-163

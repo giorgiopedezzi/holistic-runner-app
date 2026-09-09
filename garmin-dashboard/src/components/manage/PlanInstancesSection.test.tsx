@@ -307,6 +307,61 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     await waitFor(() => expect(regenerateCalls).toBe(1));
   });
 
+  // HRA-299: the server-side customization preflight (independent of the
+  // client-only manualEditCount check the test above covers) blocks a
+  // regenerate whose range would silently overwrite a persisted marker —
+  // no local dsl edit here, so onRegenerateClick's own manualEditCount is 0
+  // and doRegenerate() calls the server directly on the first click.
+  it("Regenerate customization conflict: 409 names the affected day, confirming retries with confirm_overwrite", async () => {
+    const days = [day1(), day2()];
+    let regenerateCalls = 0;
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
+      "POST /api/v1/plan-instances/10/regenerate": ({ body }: { body: { confirm_overwrite?: boolean } }) => {
+        regenerateCalls++;
+        const confirmed = body.confirm_overwrite === true;
+        if (!confirmed) {
+          return json({
+            type: "about:blank", title: "Conflict", status: 409,
+            detail: "Regenerating from 2026-09-01 would overwrite 1 customized day.",
+            customized_days: [{ id: 100, date: "2026-09-01", section_name: "Base", week_number: 1, day: 1, workout_type: "run", notes: null }],
+          }, 409);
+        }
+        return json({ ...planInstance(), days });
+      },
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+
+    fireEvent.click(screen.getByRole("button", { name: "RG" })); // dirty the regenerate-bucket only
+    fireEvent.click(screen.getByRole("button", { name: /Regenerate from/ }));
+
+    const title = "Regenerating will overwrite 1 customized day(s):";
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(regenerateCalls).toBe(1);
+
+    fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Overwrite and regenerate" }));
+    await waitFor(() => expect(regenerateCalls).toBe(2));
+    expect(screen.queryByText(title)).not.toBeInTheDocument();
+  });
+
+  // HRA-299: the "Modificato"/"Modified" badge in List view derives directly
+  // from a day's own persisted customized_at, independent of any local edit
+  // state (UnsavedBadge/WarningBadge cover those separately).
+  it("List view shows the Modified badge only for a day with customized_at set", async () => {
+    const days = [day1({ customized_at: "2026-08-25T10:00:00Z" }), day2()];
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+
+    expect(await screen.findAllByText("Modified")).toHaveLength(1);
+  });
+
   it("Restore: open, cancel, confirm", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));

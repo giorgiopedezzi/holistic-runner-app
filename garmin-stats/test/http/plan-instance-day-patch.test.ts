@@ -104,6 +104,38 @@ test("PATCH .../days/:dayId rejects an invalid scheduled_time format", async () 
   }
 });
 
+// HRA-299: a dsl save is "an instantiated workout DSL saved" — the Story's
+// own trigger for the persisted customization marker.
+test("PATCH .../days/:dayId with dsl sets customized_at, and it survives a reload", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, dayId } = await setUp(server);
+    const res = await patchDay(server, instanceId, dayId, { dsl: "D1: 8km @ RG" });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    assert.ok((res.json as any).customized_at, "dsl save must set customized_at");
+
+    const reloaded = await server.api(`/api/v1/plan-instances/${instanceId}`);
+    const day = (reloaded.json as any).days.find((d: any) => d.id === dayId);
+    assert.ok(day.customized_at, "customized_at must persist across a reload");
+  } finally {
+    await server.close();
+  }
+});
+
+test("PATCH .../days/:dayId with only notes or scheduled_time does NOT set customized_at", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, dayId } = await setUp(server);
+    const notesRes = await patchDay(server, instanceId, dayId, { notes: "feeling good" });
+    assert.equal((notesRes.json as any).customized_at, null);
+
+    const timeRes = await patchDay(server, instanceId, dayId, { scheduled_time: "06:30" });
+    assert.equal((timeRes.json as any).customized_at, null);
+  } finally {
+    await server.close();
+  }
+});
+
 test("PATCH .../days/:dayId clears scheduled_time via explicit null", async () => {
   const server = await startTestServer();
   try {

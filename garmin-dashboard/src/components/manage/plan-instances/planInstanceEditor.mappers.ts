@@ -20,6 +20,7 @@ export interface ApiPlanInstanceDayLike {
   needs_review: number | boolean;
   id?: number | null;
   scheduled_time?: string | null;
+  customized_at?: string | null;
 }
 
 export function apiDaysToResolvedDays(days: ApiPlanInstanceDayLike[]): ResolvedDay[] {
@@ -38,6 +39,7 @@ export function apiDaysToResolvedDays(days: ApiPlanInstanceDayLike[]): ResolvedD
     needs_review: d.needs_review === true || d.needs_review === 1,
     id: d.id ?? undefined,
     scheduled_time: d.scheduled_time,
+    customized_at: d.customized_at,
   }));
 }
 

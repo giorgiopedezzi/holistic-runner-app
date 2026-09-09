@@ -757,7 +757,12 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   // Counts days in the CURRENT `sections` (not the persisted baseline) whose
   // date falls on/after `cutover` and whose dsl has diverged from
   // `persistedDsl` — i.e. days a regenerate call would silently discard.
-  async function doRegenerate() {
+  // confirmOverwrite is only ever true on the retry from confirmPendingAction's
+  // "regenerate-customization-conflict" case below (HRA-299) — the initial
+  // call always omits it, letting the server-side preflight run fresh every
+  // time (covers a marker set since this row was last loaded, e.g. by
+  // another session, not just this session's own local manualEditCount check).
+  async function doRegenerate(confirmOverwrite = false) {
     if (editingId == null) return;
     setRegenerateLoading(true); setEditError(null);
     try {
@@ -765,6 +770,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         start_date: startDate,
         pace_overrides: buildPaceOverridesForRegenerate(),
         effective_from: effectiveFrom,
+        ...(confirmOverwrite ? { confirm_overwrite: true } : {}),
       });
       const built = apiDaysToSections(updated.days);
       setSections(built);
@@ -787,7 +793,14 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       await refreshInstances();
       notify(t("manage.planInstances.regenerateSucceeded", `Instance regenerated — days from ${effectiveFrom} onward were updated.`, { date: effectiveFrom }));
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : t("manage.planInstances.regenerateFailed", "Failed to regenerate instance"));
+      // HRA-299: the server-side customization preflight blocked this
+      // regenerate — show the affected days and let the user explicitly
+      // confirm overwrite, instead of the generic error banner.
+      if (e instanceof ApiError && e.status === 409 && e.customizedDays) {
+        setConfirmation({ type: "regenerate-customization-conflict", days: e.customizedDays });
+      } else {
+        setEditError(e instanceof Error ? e.message : t("manage.planInstances.regenerateFailed", "Failed to regenerate instance"));
+      }
     }
     setRegenerateLoading(false);
   }
@@ -882,6 +895,12 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       // block has no "Activate anyway" override, so this just dismisses.
       case "activation-conflict":
         setConfirmation(null);
+        break;
+      // HRA-299: user explicitly confirmed overwriting the named customized
+      // days — retry regenerate with confirm_overwrite: true.
+      case "regenerate-customization-conflict":
+        setConfirmation(null);
+        void doRegenerate(true);
         break;
     }
   }

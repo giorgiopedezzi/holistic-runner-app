@@ -206,6 +206,110 @@ test("POST .../regenerate clears approval, same gate-2 rule as every other insta
   }
 });
 
+// HRA-299: regeneration must warn before silently overwriting a day whose
+// workout content was individually saved (PATCH .../days/:dayId's dsl
+// branch) — the "explicit warn-before-overwrite" required safe baseline.
+test("POST .../regenerate 409s when a customized day falls inside the range, naming it, and never mutates on that response", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, originalDays } = await setUp(server);
+    const effectiveFrom = addDays(today, 30);
+    const customizedDay = originalDays.find(d => d.date >= effectiveFrom && d.day === 1);
+    assert.ok(customizedDay, "fixture must have an in-range D1 day to customize");
+
+    const patchRes = await server.api(`/api/v1/plan-instances/${instanceId}/days/${customizedDay.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dsl: "D1: 8km @ RG" }),
+    });
+    assert.equal(patchRes.status, 200, JSON.stringify(patchRes.json));
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/regenerate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ effective_from: effectiveFrom }),
+    });
+    assert.equal(res.status, 409, JSON.stringify(res.json));
+    const days = (res.json as any).customized_days as any[];
+    assert.equal(days.length, 1);
+    assert.equal(days[0].id, customizedDay.id);
+    assert.equal(days[0].date, customizedDay.date);
+
+    // No mutation happened — the day is still there, still customized, under its original id.
+    const reloaded = await server.api(`/api/v1/plan-instances/${instanceId}`);
+    const stillThere = (reloaded.json as any).days.find((d: any) => d.id === customizedDay.id);
+    assert.ok(stillThere, "the 409 must not have deleted the customized day");
+    assert.ok(stillThere.customized_at, "the 409 must not have cleared the marker");
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../regenerate with confirm_overwrite:true proceeds and clears the marker on the overwritten day", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, originalDays } = await setUp(server);
+    const effectiveFrom = addDays(today, 30);
+    const customizedDay = originalDays.find(d => d.date >= effectiveFrom && d.day === 1);
+
+    await server.api(`/api/v1/plan-instances/${instanceId}/days/${customizedDay.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dsl: "D1: 8km @ RG" }),
+    });
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/regenerate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ effective_from: effectiveFrom, confirm_overwrite: true }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const days = (res.json as any).days as any[];
+    for (const d of days) assert.equal(d.customized_at, null, `regenerated day ${d.date} must start uncustomized`);
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../regenerate proceeds without confirm_overwrite when no customized day falls in range", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId } = await setUp(server);
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/regenerate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ effective_from: addDays(today, 30) }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+  } finally {
+    await server.close();
+  }
+});
+
+// HRA-299: a customized day BEFORE the cutover is never touched by
+// regenerate at all (same "protects already-logged history" guarantee
+// HRA-155 already established) — it must not block a regenerate whose range
+// doesn't reach it, and it must survive completely untouched.
+test("POST .../regenerate ignores a customized day outside the requested range", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, originalDays } = await setUp(server);
+    const effectiveFrom = addDays(today, 30);
+    const outsideRangeDay = originalDays.find(d => d.date < effectiveFrom && d.day === 1);
+    assert.ok(outsideRangeDay, "fixture must have an out-of-range D1 day to customize");
+
+    await server.api(`/api/v1/plan-instances/${instanceId}/days/${outsideRangeDay.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dsl: "D1: 8km @ RG" }),
+    });
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/regenerate`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ effective_from: effectiveFrom }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const day = (res.json as any).days.find((d: any) => d.id === outsideRangeDay.id);
+    assert.ok(day.customized_at, "the out-of-range customization must survive completely untouched");
+  } finally {
+    await server.close();
+  }
+});
+
 test("POST .../regenerate 404s for an unknown instance id", async () => {
   const server = await startTestServer();
   try {

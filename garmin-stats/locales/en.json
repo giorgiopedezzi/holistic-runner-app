@@ -461,6 +461,8 @@
   "runplan.accordion.workoutTypeOther": "Other",
   "runplan.accordion.needsReview": "This day needs review before it can be saved.",
   "runplan.accordion.needsReviewBadge": "Needs review",
+  "runplan.accordion.customizedBadge": "Modified",
+  "runplan.accordion.customizedBadgeTitle": "Individually edited or swapped — regenerating will ask before overwriting it",
   "runplan.accordion.stateRestLabel": "Rest day",
   "runplan.accordion.stateOtherLabel": "Other",
   "runplan.accordion.stateTodoLabel": "Not yet planned",

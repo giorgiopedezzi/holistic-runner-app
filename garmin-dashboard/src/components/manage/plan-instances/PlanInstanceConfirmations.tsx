@@ -4,7 +4,7 @@ import { ConfirmModal } from "@/components/ui";
 import { DAY_PREFIX_RE, type DayRef, type WeekRef } from "@/components/TrainingPlanAccordion";
 import { weekDateRange, type DayView, type SectionView } from "@/domain/runplan-aggregate";
 import { instanceDayDateLabel } from "@/utils/fmt";
-import type { PlanInstanceOverlaps } from "@/api/client";
+import type { PlanInstanceCustomizedDay, PlanInstanceOverlaps } from "@/api/client";
 import type { WorkoutTypeChange } from "./usePlanDayEditor";
 
 export type PlanInstanceConfirmation =
@@ -19,6 +19,12 @@ export type PlanInstanceConfirmation =
   // HRA-249: an activation-blocking overlap — single acknowledgement only,
   // no "Activate anyway" override, so onConfirm/onCancel both just dismiss.
   | { type: "activation-conflict"; overlaps: PlanInstanceOverlaps }
+  // HRA-299: regenerate's own preflight found one or more customized days in
+  // range — unlike activation-conflict above, this DOES have a real
+  // "confirm to overwrite" action (onConfirm re-issues the regenerate with
+  // confirm_overwrite: true), matching the Story's "explicit confirmation...
+  // regenerate only after explicit confirmation" contract.
+  | { type: "regenerate-customization-conflict"; days: PlanInstanceCustomizedDay[] }
   | null;
 
 interface Props {
@@ -219,6 +225,42 @@ export function PlanInstanceConfirmations({ confirmation, sections, onConfirm, o
           }
           confirmLabel={t("manage.planInstances.activationConflictAck", "OK")}
           singleAction
+          onConfirm={onConfirm}
+          onCancel={onCancel}
+        />
+      );
+    }
+
+    case "regenerate-customization-conflict": {
+      const { days } = confirmation;
+      return (
+        <ConfirmModal
+          open
+          maxWidth={440}
+          title={
+            <>
+              <div className="hra-text-primary text-label font-semibold mb-2">
+                {t(
+                  "manage.planInstances.regenerateCustomizedTitle",
+                  `Regenerating will overwrite ${days.length} customized day(s):`,
+                  { count: days.length },
+                )}
+              </div>
+              <ul className="hra-text-secondary text-meta leading-normal mb-4 pl-4">
+                {days.map(d => (
+                  <li key={d.id}>
+                    {t(
+                      "manage.planInstances.regenerateCustomizedLine",
+                      `${instanceDayDateLabel(d.date)} — ${d.notes ?? d.workout_type}`,
+                      { date: instanceDayDateLabel(d.date), body: d.notes ?? d.workout_type },
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
+          }
+          confirmLabel={t("manage.planInstances.regenerateCustomizedConfirm", "Overwrite and regenerate")}
+          variant="danger"
           onConfirm={onConfirm}
           onCancel={onCancel}
         />

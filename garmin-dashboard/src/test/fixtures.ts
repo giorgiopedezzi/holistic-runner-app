@@ -212,5 +212,6 @@ export const planInstanceDay = (overrides: Partial<PlanInstanceDay> = {}): PlanI
   notes: null,
   needs_review: 0,
   scheduled_time: null,
+  customized_at: null,
   ...overrides,
 });
