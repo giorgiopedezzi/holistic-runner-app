@@ -32,7 +32,8 @@ import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui
 import { TrainingPlanAccordion, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { PlanTemplateAgendaView } from "@/components/manage/PlanTemplateAgendaView";
-import { aggregateDayViews, buildTemplateSectionView, type DayView, type SectionView } from "@/domain/runplan-aggregate";
+import { aggregateDayViews, buildTemplateSectionView, summarizeTemplatePlan, type DayView, type SectionView } from "@/domain/runplan-aggregate";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import {
   buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, recomposeDayLine, replaceSpan, replaceWithinSpan,
   serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
@@ -196,6 +197,16 @@ interface Props {
 export function PlanTemplatesSection({ templates, templatesError, refreshTemplates }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const isPhone = useIsPhone();
+
+  // HRA-296: which row's compact mobile card is expanded — entirely separate
+  // from `activeKey`/the desktop editor below. Templates are strictly
+  // read-only on mobile (HRA-294's mobile boundary), so a mobile row must
+  // never route into the authoring AccordionCard `renderEditorFields()`
+  // opens on desktop; expanding just reveals the one static
+  // desktop-only-editing notice. HRA-297 owns building the real read-only
+  // preview this will eventually show instead.
+  const [mobileExpandedId, setMobileExpandedId] = useState<number | null>(null);
 
   // HRA-140: which row is expanded — an existing template's id, "new" for
   // the unsaved-draft row, or null (every row collapsed). Replaces the old
@@ -1276,6 +1287,64 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   }
 
   const newDraftPending = activeKey === "new" || drafts["new"] != null;
+
+  // HRA-296: on phone, the whole authoring card (title/description/"How to
+  // use it"/"New template"/AccordionCard editor/Delete overlay) is replaced
+  // by a flat list of read-only summary rows — PlansTab.tsx owns the shared
+  // segmented Modelli/Piani gara control and page-level contextual help this
+  // card's own header used to carry. Desktop's return below is untouched.
+  if (isPhone) {
+    return (
+      <div className="flex flex-col gap-2">
+        {templatesError && <ErrorBanner message={templatesError} />}
+        {templates === null ? (
+          <div className="hra-text-muted text-meta">{t("common.loading", "Loading…")}</div>
+        ) : templates.length === 0 ? (
+          <div className="hra-text-muted text-meta">{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
+        ) : (
+          templates.map(tpl => {
+            const summary = summarizeTemplatePlan(tpl.parsed_plan);
+            const expanded = mobileExpandedId === tpl.id;
+            return (
+              <AccordionCard
+                key={tpl.id}
+                title={
+                  <span className="flex flex-col gap-0.5 flex-1 min-w-0 py-0.5 text-left">
+                    <span className="overflow-hidden text-ellipsis text-wrap break-words hra-text-primary text-body font-semibold">
+                      {tpl.name}
+                    </span>
+                    <span className="flex items-center gap-2 flex-wrap">
+                      {tpl.event && <span className="hra-text-secondary text-meta">{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
+                      {summary && (
+                        <span className="hra-text-secondary text-meta">
+                          {t(
+                            "manage.planTemplates.mobileWeekCount",
+                            summary.weekCount === 1 ? "1 week" : `${summary.weekCount} weeks`,
+                            { count: summary.weekCount },
+                          )}
+                        </span>
+                      )}
+                      {summary && <span className="hra-text-secondary text-meta">{summary.unit}</span>}
+                      <Badge
+                        label={tpl.approved_at ? t("manage.planTemplates.approved", "Activated") : t("manage.planTemplates.notApproved", "Not activated")}
+                        color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
+                      />
+                    </span>
+                  </span>
+                }
+                expanded={expanded}
+                onToggle={() => setMobileExpandedId(expanded ? null : tpl.id)}
+              >
+                <div className="hra-text-secondary text-meta">
+                  {t("manage.plans.advancedEditingDesktopOnly", "Advanced editing is available from desktop.")}
+                </div>
+              </AccordionCard>
+            );
+          })
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card>

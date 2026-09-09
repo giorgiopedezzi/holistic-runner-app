@@ -13,7 +13,7 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { beforeAll, describe, it, expect } from "vitest";
+import { afterEach, beforeAll, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { PlanTemplatesSection } from "./PlanTemplatesSection";
@@ -625,5 +625,53 @@ describe("PlanTemplatesSection — English/Italian label parity for the new pipe
     expect(enLocale["manage.planTemplates.aiPrompt.saveAsButton"]).toBe("Save prompt as…");
     expect(itLocale["manage.planTemplates.aiPrompt.copyButton"]).toBe("Copia prompt");
     expect(itLocale["manage.planTemplates.aiPrompt.saveAsButton"]).toBe("Salva prompt come…");
+  });
+});
+
+// HRA-296: same stubPhoneWidth pattern ActivityRow.test.tsx/ManageTab.test.tsx
+// already use for useIsPhone's matchMedia query.
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+describe("PlanTemplatesSection — mobile compact list (HRA-296)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("shows a read-only summary row with no Delete button and no 'New template' button", async () => {
+    stubPhoneWidth(true);
+    installFetch({});
+    render(<PlanTemplatesSection {...mountProps()} />);
+
+    await screen.findByText("5K Base");
+    expect(screen.getByText("5k")).toBeInTheDocument();
+    // Templates are strictly read-only on mobile (HRA-294) — no authoring or
+    // deletion action anywhere in the render tree.
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New template" })).not.toBeInTheDocument();
+  });
+
+  it("expanding a row never opens the desktop editor (no Name field, no Save button)", async () => {
+    stubPhoneWidth(true);
+    installFetch({});
+    render(<PlanTemplatesSection {...mountProps()} />);
+    const row = await screen.findByText("5K Base");
+
+    fireEvent.click(row.closest('[role="button"]')!);
+    expect(await screen.findByText("Advanced editing is available from desktop.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state with no 'How to use it' description paragraph", async () => {
+    stubPhoneWidth(true);
+    installFetch({});
+    render(<PlanTemplatesSection {...mountProps({ templates: [] })} />);
+
+    expect(await screen.findByText("No templates saved yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "How to use it" })).not.toBeInTheDocument();
   });
 });

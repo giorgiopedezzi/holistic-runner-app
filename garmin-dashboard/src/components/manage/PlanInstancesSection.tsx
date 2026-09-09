@@ -7,7 +7,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
-import { Card, ErrorBanner, WarningBanner, AccordionCard } from "@/components/ui";
+import { Card, ErrorBanner, WarningBanner, AccordionCard, Badge } from "@/components/ui";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 import { TrainingPlanAccordion, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
@@ -16,9 +16,14 @@ import { PlanInstanceAnchorTable } from "@/components/manage/PlanInstanceAnchorT
 import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFields";
 import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
 import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
-import { collectPlanAnchors, resolveIntensityPaceSecPerKm, type DayView, type SectionView, type WeekView } from "@/domain/runplan-aggregate";
+import { PlanInstanceMobileActionsMenu } from "@/components/manage/PlanInstanceMobileActionsMenu";
+import {
+  collectPlanAnchors, resolveIntensityPaceSecPerKm, summarizeInstanceProgress, summarizeTemplatePlan,
+  type DayView, type SectionView, type WeekView,
+} from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
+import { fmtDate } from "@/utils/fmt";
 import type { PlanTemplate, PlanInstance } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, RunPlan } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
@@ -86,6 +91,12 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
   // same "always resets on open" treatment PlanTemplatesSection.tsx gives its
   // own viewMode.
   const isPhone = useIsPhone();
+  // HRA-296: the compact mobile list's own expand state — deliberately not
+  // `activeKey`, since a mobile row must never open the desktop editor
+  // (anchor table, regenerate, structured week/day editing — all
+  // HRA-294-forbidden on mobile). Expanding just shows the one static
+  // desktop-only-editing notice; HRA-298 owns the real read-only summary.
+  const [mobileExpandedId, setMobileExpandedId] = useState<number | null>(null);
   const [identityExpanded, setIdentityExpanded] = useState(true);
   const [pacingExpanded, setPacingExpanded] = useState(false);
   const [weeksExpanded, setWeeksExpanded] = useState(false);
@@ -1074,6 +1085,86 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
   }
 
   const newDraftPending = activeKey === "new" || drafts["new"] != null;
+
+  // HRA-296: on phone, replace the whole authoring card (title/description/
+  // instantiate form/accordion editor/Delete overlay) with a flat list of
+  // read-only summary rows — creation is desktop-only for now (the
+  // simplified mobile flow is HRA-302's own Story), and PlansTab.tsx owns
+  // the shared segmented Modelli/Piani gara control and page-level
+  // contextual help this card's header used to carry. Desktop's return
+  // below is untouched.
+  if (isPhone) {
+    const today = isoToday();
+    return (
+      <div className="flex flex-col gap-2">
+        {listError && <ErrorBanner message={listError} />}
+        {instances === null ? (
+          <div className="hra-text-muted text-meta">{t("manage.planInstances.loading", "Loading…")}</div>
+        ) : instances.length === 0 ? (
+          <div className="hra-text-muted text-meta">{t("manage.planInstances.empty", "No instances created yet.")}</div>
+        ) : (
+          instances.map(inst => {
+            const template = templates?.find(tpl => tpl.id === inst.template_id);
+            const templateSummary = template ? summarizeTemplatePlan(template.parsed_plan) : null;
+            const progress = templateSummary
+              ? summarizeInstanceProgress(templateSummary.weekCount, daysBetween(inst.start_date, today))
+              : null;
+            const expanded = mobileExpandedId === inst.id;
+            return (
+              <div key={inst.id} className="relative">
+                <AccordionCard
+                  title={
+                    <span className="flex flex-col gap-0.5 flex-1 min-w-0 py-0.5 pr-8 text-left">
+                      <span className="overflow-hidden text-ellipsis text-wrap break-words hra-text-primary text-body font-semibold">
+                        {inst.name ?? t("manage.planInstances.untitled", "Untitled race plan")}
+                      </span>
+                      <span className="flex items-center gap-2 flex-wrap">
+                        {inst.race_name && <span className="hra-text-secondary text-meta">{inst.race_name}</span>}
+                        {inst.event && <span className="hra-text-secondary text-meta">{t(`manage.planTemplates.event.${inst.event}`, inst.event)}</span>}
+                      </span>
+                      <span className="flex items-center gap-2 flex-wrap">
+                        {inst.race_date && <span className="hra-text-secondary text-meta">{fmtDate(inst.race_date)}</span>}
+                        <Badge
+                          label={inst.approved_at ? t("manage.planInstances.approved", "Activated") : t("manage.planInstances.notApproved", "Not activated")}
+                          color={inst.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
+                        />
+                        {progress?.state === "in_progress" && (
+                          <span className="hra-text-secondary text-meta">
+                            {t("manage.planInstances.mobileCurrentWeek", `Week ${progress.week} of ${progress.totalWeeks}`, { week: progress.week, total: progress.totalWeeks })}
+                          </span>
+                        )}
+                        {progress?.state === "completed" && (
+                          <span className="hra-text-secondary text-meta">{t("manage.planInstances.mobileCompleted", "Completed")}</span>
+                        )}
+                        {progress?.state === "not_started" && (
+                          <span className="hra-text-secondary text-meta">{t("manage.planInstances.mobileNotStarted", "Not started")}</span>
+                        )}
+                      </span>
+                    </span>
+                  }
+                  expanded={expanded}
+                  onToggle={() => setMobileExpandedId(expanded ? null : inst.id)}
+                >
+                  <div className="hra-text-secondary text-meta">
+                    {t("manage.plans.advancedEditingDesktopOnly", "Advanced editing is available from desktop.")}
+                  </div>
+                </AccordionCard>
+                <div className="hra-card-delete-action absolute">
+                  <PlanInstanceMobileActionsMenu onRequestDelete={() => setConfirmation({ type: "delete", instanceId: inst.id })} />
+                </div>
+              </div>
+            );
+          })
+        )}
+        <PlanInstanceConfirmations
+          confirmation={confirmation}
+          sections={sections}
+          onConfirm={confirmPendingAction}
+          onCancel={() => setConfirmation(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <Card className="hra-instantiate-form">

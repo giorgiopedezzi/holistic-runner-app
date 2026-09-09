@@ -595,3 +595,64 @@ describe("PlanInstancesSection — activation conflict (HRA-249)", () => {
     expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled(); // never locked
   });
 });
+
+// HRA-296: same stubPhoneWidth pattern ActivityRow.test.tsx/ManageTab.test.tsx
+// already use for useIsPhone's matchMedia query.
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+describe("PlanInstancesSection — mobile compact list (HRA-296)", () => {
+  it("shows a read-only summary row with no inline Delete/edit button, only the overflow menu", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+
+    await screen.findByText("My Plan");
+    // Desktop's own inline Delete icon button (aria-label "Delete") must be
+    // absent — only the overflow trigger exposes it, per AC4's "never a bare
+    // trash icon" and the Product boundary's mobile action gate.
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Race plan actions" })).toBeInTheDocument();
+  });
+
+  it("deletes through the overflow menu's confirm modal", async () => {
+    stubPhoneWidth(true);
+    let removed = false;
+    installFetch(mountRoutes({
+      "DELETE /api/v1/plan-instances/10": () => { removed = true; return json(null); },
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    await screen.findByText("My Plan");
+
+    fireEvent.click(screen.getByRole("button", { name: "Race plan actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+    await waitFor(() => expect(removed).toBe(true));
+  });
+
+  it("expanding a row never opens the desktop editor (no Template picker, no Save button)", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    const row = await screen.findByText("My Plan");
+
+    fireEvent.click(row.closest('[role="button"]')!);
+    expect(await screen.findByText("Advanced editing is available from desktop.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state with no 'Create race plan' button", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances": paginated([]) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+
+    expect(await screen.findByText("No instances created yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create race plan" })).not.toBeInTheDocument();
+  });
+});
