@@ -1930,6 +1930,56 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-accordion-trigger[data-expanded="true"] { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
 .hra-accordion-chevron { color: var(--text-muted); font-size: var(--text-meta); }
 .hra-accordion-panel { padding: 18px; }
+/* HRA-303 corrective round, section 2: the mobile Classification disclosure
+   is "one horizontal row... no surrounding rounded card" collapsed, and
+   "plain structured text separated by subtle dividers" expanded — not
+   AccordionCard's normal `.card` chrome (which is correct everywhere ELSE
+   AccordionCard is used — Settings, TrainingPlanAccordion, the secondary
+   metric charts below — so this can't be a blanket phone-width override on
+   .hra-accordion-trigger/.hra-accordion-panel themselves). Scoped to the one
+   call site that opts in via this class (ActivityDetailBody.tsx, isPhone
+   only): flat background/border/radius/shadow, a thin top border on the
+   panel as the one "subtle divider" between the row and its expanded
+   content. */
+.hra-activity-classification-mobile .hra-accordion-trigger,
+.hra-activity-classification-mobile .hra-accordion-trigger[data-expanded="true"],
+.hra-activity-classification-mobile .hra-accordion-panel {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+.hra-activity-classification-mobile .hra-accordion-trigger { padding-top: 12px; padding-bottom: 12px; font-size: var(--text-label); font-weight: 500; }
+.hra-activity-classification-mobile .hra-accordion-panel { padding-top: 12px; padding-bottom: 12px; border-top: 1px solid var(--border); }
+.hra-activity-classification-mobile { margin-bottom: 0; border-bottom: 1px solid var(--border); }
+
+/* HRA-303 corrective round, section 3: two-column metrics grid, phone only
+   (ActivityDetailBody.tsx). Row dividers via border-top on cells 3-6 (row 2
+   and row 3 — row 1 needs none, the grid's own border-top already opens
+   it); the column divider is a border-right on every left-column (odd)
+   cell. Value-first-dominant + a short trailing label on the SAME line
+   (text-heading vs text-meta, not stacked) — matches the reference
+   mockup's "34:22  in movimento" shape, not a label-above-value stat card. */
+.hra-activity-metrics-grid-mobile {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.hra-activity-metrics-grid-cell {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  padding: 10px 8px;
+  min-height: 44px;
+  min-width: 0;
+}
+.hra-activity-metrics-grid-cell > span { min-width: 0; overflow-wrap: break-word; }
+.hra-activity-metrics-grid-cell:nth-child(odd) { border-right: 1px solid var(--border); }
+.hra-activity-metrics-grid-cell:nth-child(n+3) { border-top: 1px solid var(--border); }
 
 .hra-badge {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 20px;
@@ -2879,7 +2929,29 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    the existing .hra-row-wrap flex-wrap on each cluster, wraps within) that
    width instead. */
 @media (max-width: 767px) {
-  .hra-activity-row { grid-template-columns: 1fr; position: relative; }
+  /* HRA-303 corrective round: the rejected round left the row + its
+     expanded panel visually joined into one continuous large rounded
+     Activity card (`.card` on both, `border-radius: 16px 16px 0 0` /
+     `hra-card-joined-bottom` sharing the seam) — exactly what "Do not wrap
+     all these sections in one large rounded Activity card" and "Use the
+     page background and subtle full-width separators as the primary
+     grouping mechanism" rule out. Flattened here: no background/border/
+     shadow/radius, a plain bottom divider instead — one line that both
+     separates this row from the next item in the list AND (when expanded)
+     separates the identity block from Classification below it, since the
+     panel starts immediately after this border with no card seam of its
+     own (see .hra-activity-row-panel below). Desktop's `.card` treatment
+     (base rule above this media query) is completely untouched. */
+  .hra-activity-row {
+    grid-template-columns: 1fr;
+    position: relative;
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .hra-activity-row[data-expanded="true"] { border-radius: 0; }
   /* HRA-282: column 1's own "open detail" button (badge/date/name/distance)
      renders at ~20px tall (content-height, no padding) — well under the
      44px minimum, despite already being full-width. Desktop is untouched;
@@ -2906,6 +2978,20 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
     right: 14px;
   }
   .hra-activity-row-mobile-top { padding-right: 48px; }
+  /* The expanded panel loses its own card chrome for the same reason as
+     the row above — flat, no seam, no radius. Horizontal padding stays (the
+     panel's sections still need side insets) but vertical padding drops to
+     0 since each child section (Classification row, metrics grid, Analisi)
+     now owns its own spacing/divider rather than sharing one card's
+     padding. */
+  .hra-activity-row-panel {
+    background: none;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
 }
 .hra-activity-row-action { width: 177px; height: 30px; }
 /* HRA-282: both the type Select (--activity-action-height above) and this
@@ -2952,6 +3038,56 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   margin-bottom: var(--section-gap);
   padding-block: 4px;
 }
+/* HRA-303 corrective round, section 4 — phone-only analysis composition
+   (ActivityChartSection.tsx's isPhone branch). A compact heading, ONE
+   control row (both segmented switches + the settings-sheet trigger,
+   wrapping only if truly needed at the narrowest supported width), then ONE
+   legend row of compact dot-and-label chips — never the desktop 3-column
+   selector grid. */
+.hra-activity-analysis-heading { margin-bottom: 8px; }
+.hra-activity-analysis-controls-mobile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.hra-activity-analysis-controls-mobile .hra-filter-trigger { margin-left: auto; }
+.hra-activity-legend-row-mobile {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: var(--section-gap);
+}
+/* Compact dot-and-label legend chip (section 4/6: "compact dot-and-label
+   legend items", no separate chart-icon button — see MetricLegendChip.tsx's
+   `compact` prop). Solid dot + normal-weight label when active; a hollow
+   ring + muted label when not — two non-color differentiators (shape,
+   weight) on top of the color itself, per the Accessibility section's
+   "color cannot be the only indicator of ... selection state". */
+.hra-legend-chip-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 4px 2px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-label);
+  cursor: pointer;
+}
+.hra-legend-chip-compact[data-active="true"] { color: var(--text-primary); font-weight: 600; }
+.hra-legend-chip-compact:disabled { cursor: not-allowed; opacity: 0.4; }
+.hra-legend-chip-compact-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  background: transparent;
+  border: 1.5px solid var(--legend-color, var(--text-muted));
+}
+.hra-legend-chip-compact[data-active="true"] .hra-legend-chip-compact-dot {
+  background: var(--legend-color, var(--accent));
+}
 .hra-activity-metric-card { margin-top: var(--section-gap); }
 .hra-activity-metric-controls { padding-inline: 8px; }
 .hra-activity-chart-controls {
@@ -2959,6 +3095,35 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding-left: var(--chart-controls-left);
   padding-right: var(--chart-controls-right);
 }
+/* HRA-303 corrective round, section 5 — phone's merged summary+replay row
+   (ActivityChartSection.tsx's isPhone controlsRow branch). Plain flex, no
+   left/right chart-plot inset — unlike desktop's own .hra-activity-chart-controls,
+   this row doesn't need to align with the plot's axis-inset width, only to
+   read as one compact line. */
+.hra-activity-chart-controls-mobile { padding: 0 8px; }
+/* HRA-303 corrective round, section 7 — ONE disclosure group container for
+   every active secondary metric (ActivityChartSection.tsx's isPhone
+   branch), replacing one independent AccordionCard (a real .card each) per
+   metric. Flat: page background, a border-top opening the group and a
+   border-bottom under every row (including the last, which is also the
+   group's own closing edge) — never a surrounding card, never a card
+   around an individual row's expanded chart either. */
+.hra-activity-secondary-group-mobile { border-top: 1px solid var(--border); margin-top: var(--section-gap); }
+.hra-activity-secondary-row-mobile { border-bottom: 1px solid var(--border); }
+.hra-activity-secondary-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 44px;
+  padding: 10px 4px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font-size: var(--text-label);
+  font-weight: 500;
+}
+.hra-activity-secondary-row-body { padding: 0 0 12px; }
 /* HRA-271: both rows above are CSS grids (not flex), so their `auto`/`1fr`
    tracks size to content and don't wrap onto new lines the way a flex-wrap
    row does — at 375px the three side-by-side groups (view-mode switches /
@@ -2975,41 +3140,21 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   .hra-activity-chart-controls {
     grid-template-columns: 1fr;
   }
-  /* HRA-303 AC10: "the standard analysis controls consume no more than two
-     rows before the primary chart." Stacking all three children to one
-     column (the pre-HRA-303 rule, shared with .hra-activity-chart-controls
-     above) gave three rows on phone — segments, then the settings-sheet
-     trigger alone, then the legend chips — because the settings trigger sat
-     between them as its own DOM child. It now shares row 2 with the legend
-     chips instead (2 columns, 2 rows: segments spans both columns on row 1;
-     chips sit left, the settings trigger right, on row 2) via named grid
-     areas assigned to each child below (see their own classes in
-     ActivityChartSection.tsx). Desktop's own `1fr auto 1fr` (the base rule
-     above the media query) is unaffected — this override is phone-only. */
-  .hra-activity-chart-selectors {
-    grid-template-columns: 1fr auto;
-    grid-template-areas: "segments segments" "chips settings";
-    row-gap: 8px;
-  }
-  .hra-chart-selector-segments { grid-area: segments; }
-  .hra-activity-metric-controls { grid-area: chips; justify-content: flex-start; }
-  .hra-chart-selector-settings { grid-area: settings; }
-  /* HRA-292 AC: "summary values placed above the plot instead of floating
-     cards" — .hra-graph-kpi's bordered/shadowed chrome (index.css, "Main
-     graph header's compact KPI cards") reads as a tappable box on a touch
-     screen even though it isn't (mobile-responsive-web: "drop box/card
-     chrome along with the label" for a non-interactive stat display at
-     mobile widths). Scoped to THIS chart section's own KPI row only — every
-     other GraphKpiCard call site (Overview, etc.) is untouched. */
+  /* HRA-303 corrective round: .hra-activity-chart-selectors (the desktop
+     1fr/auto/1fr selector grid) and the plain, non-compact .hra-legend-chip/
+     .hra-metric-legend-row/.hra-metric-detail-toggle pill-legend it hosts no
+     longer render at phone width at all — ActivityChartSection.tsx's isPhone
+     branch renders a genuinely different composition instead
+     (.hra-activity-analysis-controls-mobile + .hra-activity-legend-row-mobile,
+     below), so the phone-specific overrides that used to retrofit that
+     desktop markup were removed rather than kept as dead CSS. Desktop's own
+     base rules for those classes (above this media query) are unaffected.
+     .hra-activity-chart-kpis stays in this media query — the merged
+     KPI+replay summary row (section 5) still reuses that exact class for
+     its KPI sub-group, so this flat-on-mobile override remains live. */
   .hra-activity-chart-kpis .hra-graph-kpi {
     background: none; border: none; padding: 0; min-width: 0;
   }
-  /* Legend chips and their detail-toggle button are real tap targets on
-     mobile, not just a compact desktop label (mobile-responsive-web: 44px
-     touch-target floor, 8px minimum spacing between adjacent targets). */
-  .hra-metric-legend-row { gap: 8px; }
-  .hra-activity-metric-controls .hra-legend-chip { min-height: 44px; display: inline-flex; align-items: center; }
-  .hra-metric-detail-toggle { width: 44px; height: 44px; }
 }
 .hra-runner-row { height: var(--runner-row-height); }
 .hra-activity-chart-placeholder { height: var(--activity-chart-placeholder-height); }

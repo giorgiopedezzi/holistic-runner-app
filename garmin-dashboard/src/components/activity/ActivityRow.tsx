@@ -272,7 +272,14 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
         )}
       </div>
       {expanded && expandedContent && (
-        <div className="card hra-card-joined-bottom py-4 px-3.5">
+        // HRA-303 corrective round: `.hra-activity-row-panel` neutralizes
+        // this card's chrome at phone width (index.css) — the row above and
+        // this panel together used to read as one continuous large rounded
+        // Activity card in the rejected round; flat page background + a
+        // border-bottom on the row itself (see .hra-activity-row's own
+        // phone rule) is the grouping mechanism there now. Desktop keeps
+        // this exact card treatment untouched.
+        <div className="card hra-card-joined-bottom hra-activity-row-panel py-4 px-3.5">
           {expandedContent}
         </div>
       )}

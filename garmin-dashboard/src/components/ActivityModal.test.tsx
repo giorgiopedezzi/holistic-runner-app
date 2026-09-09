@@ -85,8 +85,8 @@ function stubPhoneWidth(isPhone: boolean) {
   }));
 }
 
-describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291)", () => {
-  it("renders KPIs as text rows, not bordered mini-cards, at phone width", async () => {
+describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291, revised HRA-303)", () => {
+  it("renders metrics as a two-column grid with concise labels, not bordered mini-cards, at phone width", async () => {
     stubPhoneWidth(true);
     installFetch({
       [`GET /api/v1/activities/${ID}`]: activity(),
@@ -95,11 +95,16 @@ describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291)", 
     });
     const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
 
-    await waitFor(() => expect(container.querySelector(".hra-fact-row-stat")).toBeInTheDocument());
-    const maxHrRow = screen.getByText("Max HR").closest(".hra-fact-row-stat");
-    expect(maxHrRow).toHaveTextContent("171");
-    expect(maxHrRow).toHaveTextContent("bpm");
+    await waitFor(() => expect(container.querySelector(".hra-activity-metrics-grid-mobile")).toBeInTheDocument());
+    // HRA-303 corrective round section 3: a fixed 3-row/2-column grid (6
+    // cells), value-first with a short trailing label on the same line —
+    // not Stat's label-first row layout, and not the bordered StatGrid.
+    const cells = container.querySelectorAll(".hra-activity-metrics-grid-cell");
+    expect(cells).toHaveLength(6);
+    const maxHrCell = screen.getByText("max HR").closest(".hra-activity-metrics-grid-cell");
+    expect(maxHrCell).toHaveTextContent("171");
     expect(container.querySelector(".hra-stat-grid")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-fact-row-stat")).not.toBeInTheDocument();
   });
 
   it("collapses the popup header's type/rename/delete controls into one overflow menu at phone width", async () => {
