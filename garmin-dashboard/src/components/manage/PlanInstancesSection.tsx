@@ -25,7 +25,7 @@ import {
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
 import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
-import type { PlanTemplate, PlanInstance, PlanInstanceWithDays } from "@/types/api";
+import type { PlanTemplate, PlanInstance, PlanInstanceDay, PlanInstanceWithDays } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, RunPlan } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
 import {
@@ -142,6 +142,22 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
     api.planInstances.getById(id)
       .then(full => setMobileInstanceDays(prev => ({ ...prev, [id]: full })))
       .catch(() => setMobileInstanceDays(prev => ({ ...prev, [id]: "error" })));
+  }
+  // HRA-300: the mobile full-screen editor's own Save persists through its
+  // own PATCH .../days/:dayId call (independent of this component's
+  // whole-instance bulk-save flow) — this merges its response into the
+  // SAME mobileInstanceDays state renderMobileCurrentWeek/
+  // renderMobileFullPlanView both already read from, so both mobile views
+  // refresh from one write, no network refetch needed.
+  function patchMobileInstanceDay(instanceIdVal: number, updated: PlanInstanceDay) {
+    setMobileInstanceDays(prev => {
+      const current = prev[instanceIdVal];
+      if (current == null || current === "loading" || current === "error") return prev;
+      return {
+        ...prev,
+        [instanceIdVal]: { ...current, days: current.days.map(d => (d.id === updated.id ? updated : d)) },
+      };
+    });
   }
   // HRA-298 (review round 2): the current-week ribbon is no longer gated
   // behind "Vedi piano" — it renders as soon as the row expands (AC1) — and
@@ -1213,6 +1229,12 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
           onDaySwap={mobileNoop}
           initialDate={new Date()}
           onNavigateToActivity={onNavigateToActivity}
+          // HRA-300: this row's own workout-row entry point for the mobile
+          // full-screen DSL editor — see patchMobileInstanceDay above for
+          // how its Save result reaches both this ribbon and the full-plan
+          // view below.
+          instanceId={inst.id}
+          onDayPersisted={updated => patchMobileInstanceDay(inst.id, updated)}
         />
       </>
     );

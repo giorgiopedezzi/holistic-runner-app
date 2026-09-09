@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, recomposeDayLine, replaceSegmentInDayLine, replaceSpan, replaceWithinSpan,
+  buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, nextWorkoutTypeDsl, recomposeDayLine, replaceSegmentInDayLine, replaceSpan, replaceWithinSpan,
   serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
 } from "./runplan-patch";
 
@@ -91,6 +91,27 @@ describe("swapDayContent (HRA-127)", () => {
   });
   it("leaves both lines unchanged when either doesn't match the D-line grammar", () => {
     expect(swapDayContent("not a day line", "D2: REST")).toEqual(["not a day line", "D2: REST"]);
+  });
+});
+
+describe("nextWorkoutTypeDsl (HRA-163, extracted HRA-300)", () => {
+  it("clears the body for \"run\", keeping the D-line prefix", () => {
+    expect(nextWorkoutTypeDsl("D3: REST", undefined, "run")).toBe("D3: ");
+  });
+  it("replaces the body with the bare REST token", () => {
+    expect(nextWorkoutTypeDsl("D3: 5km @ RG", undefined, "rest")).toBe("D3: REST");
+  });
+  it("replaces the body with the bare OTHER token", () => {
+    expect(nextWorkoutTypeDsl("D3: 5km @ RG", undefined, "other")).toBe("D3: OTHER");
+  });
+  it("preserves a suffix/tag prefix", () => {
+    expect(nextWorkoutTypeDsl("D6a [long]: 12mi @ AEROBIC", undefined, "rest")).toBe("D6a [long]: REST");
+  });
+  it("re-attaches the given note", () => {
+    expect(nextWorkoutTypeDsl("D3: 5km @ RG # easy", "easy", "rest")).toBe("D3: REST # easy");
+  });
+  it("treats a null note the same as undefined (drops it)", () => {
+    expect(nextWorkoutTypeDsl("D3: 5km @ RG # easy", null, "other")).toBe("D3: OTHER");
   });
 });
 

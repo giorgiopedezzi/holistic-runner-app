@@ -9,7 +9,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgendaTab } from "./AgendaTab";
-import { installFetch, paginated, problem, type Routes } from "@/test/api-stub";
+import { installFetch, json, paginated, problem, type Routes } from "@/test/api-stub";
 import { activity, planInstance, planInstanceDay } from "@/test/fixtures";
 import { isoToday } from "@/utils/date";
 
@@ -24,6 +24,22 @@ beforeAll(() => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+// HRA-300: same phone-width stub PlanInstanceCalendar.test.tsx's own
+// "phone-tier day ribbon" tests use — the mobile editor only opens under
+// this same useIsPhone() branch.
+function stubPhoneViewport() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query.includes("max-width: 767px"),
+    media: query,
+    onchange: null,
+    addListener: () => {},
+    removeListener: () => {},
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    dispatchEvent: () => false,
+  }));
+}
 
 const TODAY = isoToday();
 
@@ -107,5 +123,32 @@ describe("AgendaTab — an active plan covers today", () => {
       expect(summary?.textContent).toMatch(/1\s*rest/);
     });
     expect(screen.queryByText("There is no active plan today.")).not.toBeInTheDocument();
+  });
+
+  // HRA-300: Agenda's own workout-row entry point for the mobile full-screen
+  // DSL editor — the same PlanInstanceCalendar component Manage → Plans uses
+  // (AC2's "same editor" requirement), now wired with the active instance's
+  // own id so a Save persists and this tab refreshes from the same active-
+  // plan fetch every other Agenda state already reads from.
+  it("opens the mobile full-screen editor for today's workout, and refetches the active plan after a successful save", async () => {
+    stubPhoneViewport();
+    const instance = {
+      ...planInstance({ name: "Boston Build" }),
+      days: [planInstanceDay({ date: TODAY, day: 1, workout_type: "run" })],
+    };
+    let activeCalls = 0;
+    installFetch({
+      "GET /api/v1/plan-instances/active": () => { activeCalls++; return json(instance); },
+      "GET /api/v1/activities": paginated([]),
+      "POST /api/v1/plan-instances/10/days/100/validate": json({ needs_review: true, warnings: [] }),
+    });
+    render(<AgendaTab onNavigateToPlans={() => {}} onNavigateToActivity={() => {}} />);
+
+    await screen.findByText(/Boston Build/);
+    fireEvent.click(await screen.findByText(/5km/));
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toBeInTheDocument();
+    expect(activeCalls).toBe(1);
   });
 });

@@ -2917,6 +2917,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   .hra-modal-backdrop { padding: 12px; }
   .hra-activity-modal { padding: 16px; }
 }
+
+/* HRA-300: MobileWorkoutEditor's sticky Save/Cancel footer stays reachable
+   above a phone's own home-indicator safe area — same env()-behind-a-class
+   pattern .hra-sheet-content above uses (the whole padding shorthand owned
+   by this class, not mixed with a Tailwind p-* utility on the same element,
+   since the two would then fight over which sets padding-bottom last). */
+.hra-mobile-workout-editor-actions { padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 .hra-activity-type-action {
   width: var(--activity-action-width, auto);
   height: var(--activity-action-height, auto);

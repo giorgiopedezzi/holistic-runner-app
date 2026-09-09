@@ -253,15 +253,19 @@ export const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 // buttons, so a day whose real type isn't run/rest folds into "other" for
 // display (never silently shows "run").
 export type WorkoutTypeSwitchValue = "run" | "rest" | "other";
-const WORKOUT_TYPE_SWITCH_ICONS: Record<WorkoutTypeSwitchValue, (props: { size?: number }) => ReactNode> = {
+// Exported HRA-300: the mobile full-screen editor (MobileWorkoutEditor) reuses
+// this exact icon/label/fold-to-"other" mapping for its own run/rest/other
+// switch, rather than a second copy — "no parallel type state" per that
+// Story's own instruction extends to not parallel-defining its presentation.
+export const WORKOUT_TYPE_SWITCH_ICONS: Record<WorkoutTypeSwitchValue, (props: { size?: number }) => ReactNode> = {
   run: Play, rest: Bed, other: CircleHelp,
 };
-const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, string]> = {
+export const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, string]> = {
   run: ["runplan.accordion.workoutTypeRun", "Run"],
   rest: ["runplan.accordion.workoutTypeRest", "Rest"],
   other: ["runplan.accordion.workoutTypeOther", "Other"],
 };
-function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
+export function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
   return workoutType === "run" || workoutType === "rest" ? workoutType : "other";
 }
 

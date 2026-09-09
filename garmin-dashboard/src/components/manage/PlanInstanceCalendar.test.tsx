@@ -390,4 +390,28 @@ describe("PlanInstanceCalendar — phone-tier day ribbon", () => {
     await waitFor(() => expect(container.querySelectorAll(".hra-agenda-ribbon-day")).toHaveLength(7));
     window.history.replaceState({}, "", "/?planCalendarView=month");
   });
+
+  // HRA-300
+  it("opens the full-screen mobile editor (not DayEditModal) when instanceId is supplied, regardless of readOnlyDays", async () => {
+    stubPhoneViewport();
+    installFetch({
+      "GET /api/v1/activities": paginated([]),
+      "POST /api/v1/plan-instances/10/days/501/validate": () => new Response(JSON.stringify({ needs_review: true, warnings: [] }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    });
+    render(
+      <PlanInstanceCalendar
+        sections={sections()} readOnlyDays onScheduledTimeEdit={noop} onDaySwap={noop}
+        instanceId={10} onDayPersisted={noop}
+      />,
+    );
+
+    await waitFor(() => expect(screen.getByText("5km @ RG")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("5km @ RG"));
+
+    // MobileWorkoutEditor's own dialog + editable DSL field — not
+    // DayEditModal's read-only text (which readOnlyDays alone would render).
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByLabelText("Workout plan text (DSL)")).toBeInTheDocument();
+    window.history.back(); // consume MobileWorkoutEditor's own pushed history entry
+  });
 });

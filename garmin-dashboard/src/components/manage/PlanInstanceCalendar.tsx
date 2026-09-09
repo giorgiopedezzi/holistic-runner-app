@@ -57,7 +57,9 @@ import { fmtElapsedClock } from "@/domain/activity-chart";
 import { fmtBpm, fmtPace } from "@/utils/fmt";
 import type { DayView, SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
 import { DayEditModal } from "@/components/manage/DayEditModal";
+import { MobileWorkoutEditor } from "@/components/manage/plan-instances/MobileWorkoutEditor";
 import type { WorkoutType } from "@/types/runplan";
+import type { PlanInstanceDay } from "@/types/api";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, paceUnitLabel, speedUnitLabel } from "@/utils/units";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 import {
@@ -1083,11 +1085,25 @@ interface Props {
   // threaded down from App.tsx, mirroring AgendaTab's existing
   // onNavigateToPlans callback pattern.
   onNavigateToActivity?: (activityId: number) => void;
+  // HRA-300: when supplied AND the viewport is phone-width (useIsPhone),
+  // clicking a planned-only day opens MobileWorkoutEditor (a genuinely
+  // different full-screen surface, persisting immediately through its own
+  // PATCH .../days/:dayId call) instead of DayEditModal — DayEditModal stays
+  // the desktop behavior unconditionally, unchanged. Omitted at any call
+  // site not yet wired for it (none today — every caller passes it), which
+  // falls back to the pre-existing DayEditModal path so this stays additive.
+  instanceId?: number;
+  onDayPersisted?: (updated: PlanInstanceDay) => void;
 }
 
 export function PlanInstanceCalendar({
   sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
+  instanceId, onDayPersisted,
 }: Props) {
+  // HRA-300: read once, near the top, since both the ribbon-vs-grid branch
+  // further down AND the mobile-editor-vs-DayEditModal choice above it need
+  // the same value.
+  const isPhone = useIsPhone();
   const events = useMemo(() => eventsFromSections(sections), [sections]);
   // HRA-151: AgendaDateHeader gets one calendar Date per render (react-big-
   // calendar's own dateHeader contract) with no direct link back to "this
@@ -1316,13 +1332,30 @@ export function PlanInstanceCalendar({
     // Otherwise: an empty day (no plan day, no recorded activity) — no-op.
   }
   const editingDay = editingDayId != null ? dayViewsById.get(editingDayId) : undefined;
+  // HRA-300: on phone, with an instanceId to persist through, a planned day
+  // opens the full-screen mobile editor instead — independent of
+  // readOnlyDays (that flag only ever gated the desktop bulk-save flow's
+  // inline dsl/notes fields; this editor persists immediately through its
+  // own per-day PATCH, so it's available from Agenda too, not just the
+  // editable desktop instance view). Every other combination (desktop, or
+  // phone with no instanceId supplied) keeps the exact pre-existing
+  // DayEditModal behavior.
   const dayEditModal = editingDay && (
-    <DayEditModal
-      day={editingDay}
-      readOnlyDays={readOnlyDays}
-      onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
-      onClose={() => setEditingDayId(null)}
-    />
+    isPhone && instanceId != null ? (
+      <MobileWorkoutEditor
+        day={editingDay}
+        instanceId={instanceId}
+        onSaved={updated => onDayPersisted?.(updated)}
+        onClose={() => setEditingDayId(null)}
+      />
+    ) : (
+      <DayEditModal
+        day={editingDay}
+        readOnlyDays={readOnlyDays}
+        onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
+        onClose={() => setEditingDayId(null)}
+      />
+    )
   );
 
   // Phone tier: the ribbon (see AgendaDayRibbon above) replaces the grid
@@ -1354,7 +1387,6 @@ export function PlanInstanceCalendar({
     return map;
   }, [calendarEvents]);
 
-  const isPhone = useIsPhone();
   if (isPhone) {
     return (
       <div className="hra-agenda-ribbon-root">
