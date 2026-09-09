@@ -241,6 +241,30 @@ describe("ActivityRow phone-width overflow menu (HRA-291)", () => {
   });
 });
 
+describe("ActivityRow mobile identity hierarchy (HRA-303 section 3/AC7)", () => {
+  it("shows type·date, distance as the primary value, duration/pace/HR combined into one secondary line, and source as a tertiary line — with no separate metrics row or empty actions row", () => {
+    stubPhoneWidth(true);
+    installFetch({ "GET /api/v1/activity-types": paginated([]) });
+    const { container } = render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+
+    expect(screen.getByText("running")).toBeInTheDocument();
+    expect(screen.getByText("10.00 km")).toBeInTheDocument();
+    // Duration, pace, and HR joined into one "·"-separated secondary line —
+    // column 3 (.hra-activity-row-metrics) no longer renders at all on
+    // phone, so this is the only place they appear.
+    expect(container.querySelector(".hra-activity-row-metrics")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-activity-row-open")?.textContent).toContain("·");
+    expect(screen.getByText(/152 bpm/)).toBeInTheDocument();
+    expect(screen.getByText("Garmin")).toBeInTheDocument();
+    // The overflow trigger is still present, independently — just no longer
+    // its own near-empty row (see .hra-activity-row-actions' phone rule).
+    expect(screen.getByRole("button", { name: "Activity actions" })).toBeInTheDocument();
+  });
+});
+
 describe("ActivitySportLegend", () => {
   it("gives every workout-type color a visible text alternative, not just the swatch (HRA-280 AC3)", () => {
     render(<ActivitySportLegend />);

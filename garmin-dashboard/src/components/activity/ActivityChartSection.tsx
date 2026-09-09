@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { useTranslation } from "react-i18next";
 import { MapPin, Gauge, Heart, AlertTriangle, SlidersHorizontal } from "lucide-react";
 import {
-  axisDomainMinMax, distanceTicks, timeTicks,
+  axisDomainMinMax, distanceTicks, timeTicks, fmtElapsedClock,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
 import type { PaceTargetBandModel } from "@/domain/planned-workout";
@@ -20,7 +20,7 @@ import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
 import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPlayButton";
-import { nearestHr, clusterByProximity } from "@/domain/pauses";
+import { nearestHr, clusterByProximity, fmtPauseDuration } from "@/domain/pauses";
 import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 
 // How far the actual plotted line sits from this section's own outer edge,
@@ -635,7 +635,7 @@ export function ActivityChartSection({
           groups are, which justify-content: space-between can't guarantee
           for a 3-child row. */}
       <div className="hra-activity-chart-selectors grid items-center gap-4">
-        <div className="hra-row-wrap gap-4">
+        <div className="hra-row-wrap gap-4 hra-chart-selector-segments">
           <div className="hra-segment">
             {(["distance", "time"] as XMode[]).map(m => (
               <button key={m} onClick={() => setXMode(m)}
@@ -661,7 +661,11 @@ export function ActivityChartSection({
           </div>
         </div>
         {isPhone ? (
-          <div className="hra-row-wrap gap-4 justify-center">
+          // HRA-303 AC10: shares row 2 with the legend chips below (grid-area
+          // "settings", see the phone media rule on .hra-activity-chart-selectors)
+          // instead of stacking as its own third row — "the standard analysis
+          // controls consume no more than two rows before the primary chart".
+          <div className="hra-row-wrap gap-4 justify-center hra-chart-selector-settings">
             <Sheet>
               <SheetTrigger className="hra-filter-trigger" aria-label={chartOptionsLabel}>
                 <SlidersHorizontal size={18} aria-hidden="true" />
@@ -677,7 +681,13 @@ export function ActivityChartSection({
           </div>
         )}
         <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
-          {OPTIONAL_METRIC_ORDER.map(key => (
+          {/* HRA-303 AC14/section 6: "Include heart rate, cadence, and power
+              only when the activity contains those data" — an unavailable
+              metric's chip is omitted outright now, not shown disabled (the
+              pre-Story behavior MetricLegendChip's own `available`/disabled
+              path still supports, for any future caller that doesn't
+              pre-filter). */}
+          {OPTIONAL_METRIC_ORDER.filter(key => availableMetrics[key]).map(key => (
             <MetricLegendChip
               key={key}
               color={METRIC_DEFS[key].color}
@@ -859,6 +869,47 @@ export function ActivityChartSection({
         </div>
       )}
       </ChartCard>
+
+      {/* HRA-303 Accessibility: "Chart information must have a non-visual
+          accessible representation" / section 8: "Provide an accessible
+          equivalent for every event." PauseFlagShape/HrRecoveryFlagShape
+          now render compact SVG dots with no permanent text (see their own
+          comments) — a screen reader has nothing to read from the chart
+          itself for these events, since Recharts' plain <circle> shapes
+          carry no accessible name and the hover/tap reveal (RunnerReadout,
+          TrackTooltip) is pointer-driven. This sr-only list is the
+          non-visual equivalent: every pause and HR-recovery event, in
+          order, independent of hover state. */}
+      {(() => {
+        const pauseEvents = chartData.filter((r): r is ChartRow & { pauseDurationSec: number } => typeof r.pauseDurationSec === "number");
+        const recoveryEvents = hrRecoveryChartData.filter((r): r is typeof r & { hrRecoveryDelta: number } => typeof r.hrRecoveryDelta === "number");
+        if (pauseEvents.length === 0 && recoveryEvents.length === 0) return null;
+        return (
+          <ul className="sr-only">
+            {pauseEvents.map((r, i) => {
+              const duration = fmtPauseDuration(r.pauseDurationSec);
+              const at = xMode === "time" ? fmtElapsedClock(r.realX ?? 0) : fmtKm(r.realX ?? 0);
+              return (
+                <li key={`pause-${i}`}>
+                  {t("activity.chart.pauseEventSr", `Pause ${i + 1} of ${pauseEvents.length}: ${duration} at ${at}`,
+                    { index: i + 1, total: pauseEvents.length, duration, at })}
+                </li>
+              );
+            })}
+            {recoveryEvents.map((r, i) => {
+              const sign = r.hrRecoveryDelta > 0 ? "−" : r.hrRecoveryDelta < 0 ? "+" : "±";
+              const bpm = `${sign}${Math.abs(Math.round(r.hrRecoveryDelta))} bpm`;
+              const at = xMode === "time" ? fmtElapsedClock(r.realX ?? 0) : fmtKm(r.realX ?? 0);
+              return (
+                <li key={`recovery-${i}`}>
+                  {t("activity.chart.hrRecoveryEventSr", `Heart rate recovery ${i + 1} of ${recoveryEvents.length}: ${bpm} at ${at}`,
+                    { index: i + 1, total: recoveryEvents.length, bpm, at })}
+                </li>
+              );
+            })}
+          </ul>
+        );
+      })()}
 
       {/* HRA-208: the planned-workout card — first under the main chart,
           ahead of every metric card, while the "Card" toggle above is on. */}

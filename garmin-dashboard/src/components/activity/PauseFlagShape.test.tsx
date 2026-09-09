@@ -1,10 +1,14 @@
 /**
- * PauseFlagShape.test.tsx  (HRA-293)
- * Pins the mobile dense-cluster behavior: a cluster's non-anchor members
- * render as a plain dot (no label, no overlap), the anchor renders one
- * aggregated pill for the whole cluster, and an isolated pause (or any
- * point on desktop, where ActivityChartSection never sets cluster fields)
- * renders exactly as before HRA-293 — a single labeled pill.
+ * PauseFlagShape.test.tsx  (HRA-293, revised HRA-303)
+ * HRA-303 section 8: pause markers must never permanently render a
+ * duration pill ("Do not permanently render every pause or recovery value
+ * as a pill above the line") — the actual duration is revealed on
+ * hover/tap instead (RunnerReadout / TrackTooltip), not baked into the SVG.
+ * This now pins: no row ever renders text/rect, an isolated pause and a
+ * cluster's anchor member both render exactly one circle, a non-anchor
+ * cluster member renders a visibly smaller circle than an anchor (so
+ * clustered markers still visually aggregate per the same section's "allow
+ * clustered markers to aggregate" requirement).
  */
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
@@ -23,11 +27,11 @@ describe("PauseFlagShape", () => {
     expect(container.querySelector("rect, circle")).toBeNull();
   });
 
-  it("an isolated pause (no cluster fields — desktop, or a mobile pause with no close neighbors) renders its own labeled pill", () => {
+  it("an isolated pause (no cluster fields — desktop, or a mobile pause with no close neighbors) renders one compact marker, never a text pill", () => {
     const { container } = renderInSvg(<PauseFlagShape cx={50} cy={20} payload={{ pauseDurationSec: 125 }} />);
-    const rect = container.querySelector("rect");
-    expect(rect).not.toBeNull();
-    expect(container.querySelector("text")?.textContent).toBe("2m5s");
+    expect(container.querySelectorAll("circle")).toHaveLength(1);
+    expect(container.querySelector("rect")).toBeNull();
+    expect(container.querySelector("text")).toBeNull();
   });
 
   it("a cluster's non-anchor member renders a plain dot, no text", () => {
@@ -39,11 +43,19 @@ describe("PauseFlagShape", () => {
     expect(container.querySelector("text")).toBeNull();
   });
 
-  it("a cluster's anchor renders one aggregated pill combining every member's duration", () => {
-    const { container } = renderInSvg(
+  it("a cluster's anchor renders one marker, larger than a non-anchor member's, and still no text pill", () => {
+    const { container: anchorC } = renderInSvg(
       <PauseFlagShape cx={50} cy={20} payload={{ pauseDurationSec: 60, pauseClusterSize: 3, pauseClusterAnchor: 1, pauseClusterTotalSec: 180 }} />,
     );
-    expect(container.querySelectorAll("rect")).toHaveLength(1);
-    expect(container.querySelector("text")?.textContent).toBe("3× 3m");
+    expect(anchorC.querySelectorAll("circle")).toHaveLength(1);
+    expect(anchorC.querySelector("rect, text")).toBeNull();
+    const anchorRadius = Number(anchorC.querySelector("circle")?.getAttribute("r"));
+
+    const { container: memberC } = renderInSvg(
+      <PauseFlagShape cx={50} cy={20} payload={{ pauseDurationSec: 40, pauseClusterSize: 3, pauseClusterAnchor: 0, pauseClusterTotalSec: 180 }} />,
+    );
+    const memberRadius = Number(memberC.querySelector("circle")?.getAttribute("r"));
+
+    expect(anchorRadius).toBeGreaterThan(memberRadius);
   });
 });

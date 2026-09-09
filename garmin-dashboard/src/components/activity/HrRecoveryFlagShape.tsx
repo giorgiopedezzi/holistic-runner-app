@@ -17,29 +17,22 @@ interface HrRecoveryFlagShapeProps {
   };
 }
 
-function fmtDelta(delta: number): string {
-  return `${delta > 0 ? "−" : delta < 0 ? "+" : "±"}${Math.abs(Math.round(delta))} bpm`;
-}
-
 // Same "real prop type instead of props: unknown" fix as PauseFlagShape
 // (HRA-75) — see its comment for why the narrower interface still
 // satisfies Recharts' shape prop.
+//
+// HRA-303 section 8: a compact marker only, uniformly — see
+// PauseFlagShape's own comment for the full rationale (the permanent pill
+// is the defect being fixed, not a mobile-only concern; the actual delta is
+// revealed on hover/tap instead, via TrackTooltip's own hrRecoveryDelta
+// branch now that the standalone Heart rate card is the only place this
+// shape renders).
 export function HrRecoveryFlagShape({ cx, cy, payload }: HrRecoveryFlagShapeProps): React.ReactElement | null {
   if (cx == null || cy == null || payload?.hrRecoveryDelta == null) return null;
   const clusterSize = payload.hrRecoveryClusterSize ?? 1;
-  // Dense mobile clusters (HRA-293): mirrors PauseFlagShape's own anchor +
-  // dot pattern — see its comment for the rationale.
-  if (clusterSize > 1 && !payload.hrRecoveryClusterAnchor) {
-    return <circle cx={cx} cy={cy} r={2.5} fill={magnitudeColor(Math.abs(payload.hrRecoveryDelta), HR_RECOVERY_COLOR_CAP)} />;
-  }
-  const delta = clusterSize > 1 ? (payload.hrRecoveryClusterAvg ?? payload.hrRecoveryDelta) : payload.hrRecoveryDelta;
-  const text = clusterSize > 1 ? `${clusterSize}× ${fmtDelta(delta)} avg` : fmtDelta(delta);
+  const isAnchor = clusterSize > 1 && !!payload.hrRecoveryClusterAnchor;
+  const delta = isAnchor ? (payload.hrRecoveryClusterAvg ?? payload.hrRecoveryDelta) : payload.hrRecoveryDelta;
   const color = magnitudeColor(Math.abs(delta), HR_RECOVERY_COLOR_CAP);
-  const w = Math.max(36, text.length * 6 + 10);
-  return (
-    <g transform={`translate(${cx - w / 2}, ${cy - 7})`}>
-      <rect width={w} height={14} rx={7} fill={color} />
-      <text x={w / 2} y={10.5} textAnchor="middle" fontSize={9} fill="#1a1a1a">{text}</text>
-    </g>
-  );
+  const r = isAnchor ? 4.5 : 2.5;
+  return <circle cx={cx} cy={cy} r={r} fill={color} />;
 }

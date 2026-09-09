@@ -24,11 +24,14 @@
      replaced that header with a sidebar, so the content column's own top
      edge was flush with its scroll container and this was 0 — exactly the
      "future header-like element above <main>" this comment anticipated:
-     the sticky feedback ribbon (App.tsx's FeedbackBanner) now occupies that
-     space again, so .hra-sticky-summary's own sticky content needs to clear
-     it rather than sit underneath it. Kept as a single named value (not
-     inlined into .hra-feedback-banner's own height) precisely so the two
-     stay in sync at one place. */
+     the sticky feedback ribbon (App.tsx's FeedbackBanner) occupies that
+     space on desktop/tablet, so .hra-sticky-summary's own sticky content
+     needs to clear it rather than sit underneath it. Kept as a single named
+     value (not inlined into .hra-feedback-banner's own height) precisely so
+     the two stay in sync at one place. HRA-303: on phone, the banner is no
+     longer sticky (it must scroll out of view there) — the sticky element
+     above <main> is .hra-mobile-header instead, so the phone media query
+     below repoints this same token at THAT element's own rendered height. */
   --header-height:  36px;
 
   /* Graphite — the primary/default palette (dashboard design-system
@@ -2444,19 +2447,25 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   margin-bottom: var(--section-gap);
 }
 
-/* Sticky feedback ribbon (direct feedback — "make sure people actually
-   notice the feedback page") — pinned to the top of the content column's
-   own scroll container (a sibling of <main>, not inside it), so it stays
-   visible while the tab content scrolls underneath. --header-height above
-   is this rule's own rendered height, kept in sync there for
-   .hra-sticky-summary's benefit. Hidden entirely on the Feedback tab itself
-   (App.tsx) rather than just disabling the link, since pointing at the page
-   you're already on is dead chrome, not a safety issue worth a disabled
-   state. */
+/* Sticky feedback ribbon on desktop/tablet (direct feedback — "make sure
+   people actually notice the feedback page") — pinned to the top of the
+   content column's own scroll container (a sibling of <main>, not inside
+   it), so it stays visible while the tab content scrolls underneath.
+   --header-height above is this rule's own rendered height there, kept in
+   sync for .hra-sticky-summary's benefit. Hidden entirely on the Feedback
+   tab itself (App.tsx) rather than just disabling the link, since pointing
+   at the page you're already on is dead chrome, not a safety issue worth a
+   disabled state. HRA-303: on phone, this is overridden to `position:
+   static` below — the banner must scroll out of view there, never stay
+   pinned over content (it used to sit under the old fixed hamburger
+   button, which visually overlapped it — see .hra-mobile-header). */
 .hra-feedback-banner {
   position: sticky;
   top: 0;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 16px;
   text-align: center;
   color: var(--text-secondary);
@@ -2465,12 +2474,73 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
 }
+.hra-feedback-banner-text { flex: 1; min-width: 0; }
 .hra-feedback-banner-link {
   background: none; border: none; padding: 0; margin: 0;
   font: inherit; color: var(--accent); text-decoration: underline;
   cursor: pointer;
 }
 .hra-feedback-banner-link:hover { color: var(--text-primary); }
+/* Dismiss control (HRA-303 AC2/AC3) — a small icon button at rest; its
+   phone-only 44x44 hit area below grows the tap target, not the visible
+   icon, per the Story's explicit "even if its visible icon is smaller". */
+.hra-feedback-banner-dismiss {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.hra-feedback-banner-dismiss:hover { color: var(--text-primary); }
+@media (max-width: 767px) {
+  :root { --header-height: var(--mobile-header-height); }
+  .hra-feedback-banner { position: static; padding: 8px 12px; }
+  .hra-feedback-banner-dismiss { width: 44px; height: 44px; }
+}
+
+/* In-flow application header, phone tier only (HRA-303) — replaces the old
+   `position: fixed` hamburger button, which floated on top of the feedback
+   banner below it (z-index 46 over the banner's 10) rather than sharing a
+   column with it. Sticky at the top of the content column's own scroll
+   container, same mechanism the desktop/tablet feedback ribbon already
+   uses, so the nav trigger stays reachable while content scrolls without
+   ever visually overlapping the banner underneath it (normal document
+   flow, not a second overlapping layer). --mobile-header-height feeds
+   --header-height's own phone override above, so .hra-sticky-summary
+   (Overview tab) clears this header's real rendered height instead of the
+   desktop banner's. */
+:root { --mobile-header-height: 56px; }
+.hra-mobile-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  padding-top: calc(6px + env(safe-area-inset-top, 0px));
+  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+.hra-mobile-header-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+}
 
 .hra-sidebar {
   width: 232px;
@@ -2512,18 +2582,11 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   position: fixed; inset: 0; z-index: 45;
   background: color-mix(in srgb, black 45%, transparent);
 }
-/* Fixed opener, shown only while the phone drawer is hidden (App.tsx gates
-   this on viewportTier/sidebarMode, not a media query, since the toggle
-   behavior itself is already tier-aware in JS). */
-.hra-sidebar-hamburger {
-  position: fixed; top: 12px; left: 12px; z-index: 46;
-  display: flex; align-items: center; justify-content: center;
-  width: 40px; height: 40px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-surface) 90%, transparent);
-  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-  color: var(--text-primary); cursor: pointer;
-}
+/* The phone-tier opener used to live here as a `position: fixed` button
+   (.hra-sidebar-hamburger) shown only while the drawer is hidden. HRA-303
+   moved it into .hra-mobile-header (in-flow, sticky, App.tsx's content
+   column) because the fixed version floated on top of the feedback banner
+   below it — the drawer/backdrop's own z-index stack above is unaffected. */
 /* Top row: brand + language picker side by side (moved out of the old
    bottom footer per explicit feedback). Expanded brand reads at
    --text-body — the original --text-heading size (same combo
@@ -2816,22 +2879,33 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    the existing .hra-row-wrap flex-wrap on each cluster, wraps within) that
    width instead. */
 @media (max-width: 767px) {
-  .hra-activity-row { grid-template-columns: 1fr; }
+  .hra-activity-row { grid-template-columns: 1fr; position: relative; }
   /* HRA-282: column 1's own "open detail" button (badge/date/name/distance)
      renders at ~20px tall (content-height, no padding) — well under the
      44px minimum, despite already being full-width. Desktop is untouched;
      this row already reads fine there at its natural content height. */
   .hra-activity-row-open { min-height: 44px; }
-  /* HRA-291: reorders the row's three stacked columns at phone width only —
-     primary result (info) first, secondary metrics (duration/HR/pace)
-     right after it, the overflow actions menu last — instead of the DOM
-     order (info, actions, metrics) the 3-column desktop grid needs. Pure
-     CSS `order`, same elements, so desktop's own column order stays
-     untouched (this rule is scoped to the same media query as the grid
-     collapse above). */
-  .hra-activity-row-info { order: 1; }
-  .hra-activity-row-metrics { order: 2; }
-  .hra-activity-row-actions { order: 3; }
+  /* HRA-303 section 3: "Use a single overflow action in the top row" /
+     "Remove the empty row currently occupied by the isolated
+     vertical-ellipsis control" — HRA-291 had already collapsed the row's
+     type/rename/delete cluster into one overflow-menu button
+     (ActivityActionsMenu) at phone width, but it still rendered as its own
+     near-empty full-width row (`order: 3`, see HRA-291's original comment
+     here). It's absolutely positioned over column 1's own top-right corner
+     instead now — a genuine sibling of column 1's button in the DOM (still
+     independently focusable, still not nested inside it, see
+     ActivityRow.test.tsx's HRA-280 AC1/AC2 coverage), just visually
+     overlaid rather than occupying its own row. Column 1's own top line
+     (badge+date, see ActivityRow.tsx's hra-activity-row-mobile-top) reserves
+     right-padding so its text never runs under this icon. Column 3
+     (duration/HR/pace) no longer renders at all on phone — that data now
+     lives in column 1's own hierarchy — so no `order` is needed for it. */
+  .hra-activity-row-actions {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+  }
+  .hra-activity-row-mobile-top { padding-right: 48px; }
 }
 .hra-activity-row-action { width: 177px; height: 30px; }
 /* HRA-282: both the type Select (--activity-action-height above) and this
@@ -2898,10 +2972,28 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    docs/frontend.md's "chart must never shrink or widen" note, which is
    about the axis-width RESERVATION staying constant, not the container. */
 @media (max-width: 767px) {
-  .hra-activity-chart-selectors,
   .hra-activity-chart-controls {
     grid-template-columns: 1fr;
   }
+  /* HRA-303 AC10: "the standard analysis controls consume no more than two
+     rows before the primary chart." Stacking all three children to one
+     column (the pre-HRA-303 rule, shared with .hra-activity-chart-controls
+     above) gave three rows on phone — segments, then the settings-sheet
+     trigger alone, then the legend chips — because the settings trigger sat
+     between them as its own DOM child. It now shares row 2 with the legend
+     chips instead (2 columns, 2 rows: segments spans both columns on row 1;
+     chips sit left, the settings trigger right, on row 2) via named grid
+     areas assigned to each child below (see their own classes in
+     ActivityChartSection.tsx). Desktop's own `1fr auto 1fr` (the base rule
+     above the media query) is unaffected — this override is phone-only. */
+  .hra-activity-chart-selectors {
+    grid-template-columns: 1fr auto;
+    grid-template-areas: "segments segments" "chips settings";
+    row-gap: 8px;
+  }
+  .hra-chart-selector-segments { grid-area: segments; }
+  .hra-activity-metric-controls { grid-area: chips; justify-content: flex-start; }
+  .hra-chart-selector-settings { grid-area: settings; }
   /* HRA-292 AC: "summary values placed above the plot instead of floating
      cards" — .hra-graph-kpi's bordered/shadowed chrome (index.css, "Main
      graph header's compact KPI cards") reads as a tappable box on a touch

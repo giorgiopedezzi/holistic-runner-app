@@ -67,6 +67,9 @@ afterEach(() => {
   // post-HRA-253) — reset it so a later test doesn't inherit an earlier
   // test's collapsed state.
   localStorage.removeItem("hra-sidebar-collapsed");
+  // HRA-303: same reasoning — the feedback banner's dismissal choice
+  // persists to localStorage too, and must not leak into a later test.
+  localStorage.removeItem("hra-feedback-banner-dismissed-v1");
   // HRA-267: restore jsdom's own default viewport so a test that changed it
   // doesn't leak a non-desktop tier into the next test's initial mount.
   Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true, writable: true });
@@ -268,6 +271,8 @@ describe("responsive 3-state sidebar (HRA-267)", () => {
     // Outside-tap (the backdrop) closes it again.
     fireEvent.click(backdrop as Element);
     expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+    // HRA-303 AC4: focus returns to the trigger once the drawer closes.
+    expect(screen.getByRole("button", { name: "Open navigation" })).toHaveFocus();
 
     // Picking a nav item closes it too.
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
@@ -275,6 +280,7 @@ describe("responsive 3-state sidebar (HRA-267)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
     await screen.findByText("Not connected to Strava");
     expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+    expect(screen.getByRole("button", { name: "Open navigation" })).toHaveFocus();
   });
 
   it("AC4: crossing a tier boundary re-resolves to the new tier's default, discarding a manual choice made in the old tier", async () => {
@@ -299,6 +305,43 @@ describe("responsive 3-state sidebar (HRA-267)", () => {
     setViewportWidth(1280);
     expect(sidebar()).toHaveAttribute("data-collapsed", "true");
     expect(sidebar()).toHaveAttribute("data-tier", "desktop");
+  });
+});
+
+describe("feedback banner (HRA-303)", () => {
+  it("dismisses and stays dismissed across a remount, leaving no residual element", async () => {
+    installFetch(appRoutes());
+    const { container, unmount } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    expect(screen.getByRole("button", { name: "Close feedback message" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close feedback message" }));
+    expect(screen.queryByRole("button", { name: "Close feedback message" })).not.toBeInTheDocument();
+    // No residual empty spacer once dismissed — the banner element itself
+    // is gone, not just visually hidden.
+    expect(container.querySelector(".hra-feedback-banner")).toBeNull();
+
+    unmount();
+    installFetch(appRoutes());
+    render(<App />);
+    await screen.findByText("There is no active plan today.");
+    expect(screen.queryByRole("button", { name: "Close feedback message" })).not.toBeInTheDocument();
+  });
+
+  it("at phone width, is not sticky and renders below the in-flow mobile header carrying the nav trigger", async () => {
+    setViewportWidth(500);
+    installFetch(appRoutes());
+    const { container } = render(<App />);
+    await screen.findByText("There is no active plan today.");
+
+    const header = container.querySelector(".hra-mobile-header");
+    const banner = container.querySelector(".hra-feedback-banner");
+    expect(header).not.toBeNull();
+    expect(banner).not.toBeNull();
+    // The header carries the nav trigger and comes first in document order,
+    // directly above the banner — normal flow, not an overlapping layer.
+    expect(header?.contains(screen.getByRole("button", { name: "Open navigation" }))).toBe(true);
+    expect(header?.compareDocumentPosition(banner as Element)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 });
 

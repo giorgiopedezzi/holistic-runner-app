@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { api } from "@/api/client";
-import { Card, ErrorBanner } from "@/components/ui";
+import { ErrorBanner } from "@/components/ui";
 import {
   type Activity, type ClassificationMethod, type CorrectionReason, type WorkoutClassification,
   CORRECTION_REASONS, WORKOUT_CLASSIFICATIONS, WORKOUT_CLASSIFICATION_KEY, classificationStatus,
@@ -252,8 +252,14 @@ export function ClassificationCard({ activity, onUpdate, splitMeters: splitMeter
   const setSplitMeters = onSplitMetersChange ?? setSplitMetersState;
   const status = classificationStatus(activity);
 
+  // No <Card> chrome here (HRA-303 AC8/section 10: "avoid card-inside-card
+  // presentation") — the sole caller (ActivityDetailBody) already renders
+  // this inside an AccordionCard's own panel, which is itself `.card`
+  // (see ui/AccordionCard.tsx); a second nested .card here doubled the
+  // border/background for no reason. A plain div carries the same bottom
+  // margin the removed Card gave the section below it.
   return (
-    <Card className="mb-4">
+    <div className="mb-4">
       <div className="hra-control-row gap-2.5 mb-2.5" >
         {status === "confirmed" && activity.final_classification ? (
           <span className="hra-classification-pill hra-classification-status hra-dyn-border hra-dyn-color inline-block text-meta font-semibold uppercase" data-status={status}>
@@ -284,6 +290,6 @@ export function ClassificationCard({ activity, onUpdate, splitMeters: splitMeter
         <MethodResultCard activity={activity} method="ai" splitMeters={splitMeters} onUpdate={onUpdate} />
         <MethodResultCard activity={activity} method="statistical" splitMeters={splitMeters} onUpdate={onUpdate} />
       </div>
-    </Card>
+    </div>
   );
 }

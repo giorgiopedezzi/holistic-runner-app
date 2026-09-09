@@ -146,23 +146,56 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
           onClick={onClick}
           aria-expanded={expandIndicator === "accordion" ? expanded : undefined}
         >
-          <Badge label={a.sport ?? "other"} color={color} icon={<SportIcon size={12} aria-hidden="true" />} />
-          <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
-          {a.activity_name && (
-            // Ellipsized, not wrapped — a long race name now truncates
-            // within its own budget instead of pushing the row taller (or,
-            // before the fr fix above, wider than the card). `title` is the
-            // plain native tooltip so the full name is still one hover away.
-            <span
-              className="hra-text-secondary italic text-label max-w-40 truncate"
-              title={a.activity_name}
-            >
-              {a.activity_name}
+          {isPhone ? (
+            // HRA-303 section 3 — the expanded/list identity hierarchy: type·date
+            // (with room reserved on the right for the absolutely-positioned
+            // overflow menu, see .hra-activity-row-mobile-top), distance as the
+            // primary value, duration/pace/HR combined into one secondary line,
+            // source as tertiary metadata. Replaces the flat single-line wrap
+            // desktop still uses (else branch) — folding column 3's own
+            // duration/HR/pace content in here too, so phone renders no
+            // separate metrics row (see the !isPhone gate around column 3 below).
+            <span className="flex flex-col gap-1 min-w-0 w-full">
+              <span className="hra-row-wrap gap-2 items-center hra-activity-row-mobile-top">
+                <Badge label={a.sport ?? "other"} color={color} icon={<SportIcon size={12} aria-hidden="true" />} />
+                <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
+              </span>
+              <span className="text-display">{fmtKm(a.distance_m)}</span>
+              <span className="hra-text-secondary text-label">
+                {[
+                  fmtDuration(a.duration_sec),
+                  a.avg_pace_minkm != null ? `${fmtPace(a.avg_pace_minkm)}/${distanceUnitLabel()}` : null,
+                  a.avg_hr != null ? `${a.avg_hr} bpm` : null,
+                ].filter(Boolean).join(" · ")}
+              </span>
+              {a.activity_name && (
+                <span className="hra-text-secondary italic text-label truncate" title={a.activity_name}>
+                  {a.activity_name}
+                </span>
+              )}
+              {a.source && <span className="hra-text-muted text-meta">{fmtSource(a.source)}</span>}
             </span>
-          )}
-          <span className="font-semibold">{fmtKm(a.distance_m)}</span>
-          {a.source && (
-            <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(a.source)}`, { source: fmtSource(a.source) })}</span>
+          ) : (
+            <>
+              <Badge label={a.sport ?? "other"} color={color} icon={<SportIcon size={12} aria-hidden="true" />} />
+              <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
+              {a.activity_name && (
+                // Ellipsized, not wrapped — a long race name now truncates
+                // within its own budget instead of pushing the row taller (or,
+                // before the fr fix above, wider than the card). `title` is the
+                // plain native tooltip so the full name is still one hover away.
+                <span
+                  className="hra-text-secondary italic text-label max-w-40 truncate"
+                  title={a.activity_name}
+                >
+                  {a.activity_name}
+                </span>
+              )}
+              <span className="font-semibold">{fmtKm(a.distance_m)}</span>
+              {a.source && (
+                <span className="hra-text-muted text-meta">{t("activity.detail.viaSource", `via ${fmtSource(a.source)}`, { source: fmtSource(a.source) })}</span>
+              )}
+            </>
           )}
         </button>
 
@@ -173,11 +206,12 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             also triggering the row's open-detail action. */}
         <div className="hra-activity-row-actions hra-row-wrap gap-2 min-w-0">
           {isPhone ? (
-            // HRA-291: type change/rename/delete collapse into one overflow
-            // menu at phone width, reordered (via CSS, see
-            // .hra-activity-row-actions' media rule) after the secondary
-            // metrics column so the primary result surfaces first. Desktop
-            // (below) keeps the always-visible inline cluster unchanged.
+            // HRA-291 (type change/rename/delete collapsed into one overflow
+            // menu at phone width) + HRA-303 (that menu is now the row's one
+            // top-right overflow action, per section 3 — absolutely positioned
+            // over column 1's identity block via this same class's phone media
+            // rule, rather than rendered as its own near-empty full-width row
+            // the way the earlier reordering-only fix left it).
             <ActivityActionsMenu activity={a} onUpdate={onUpdate} onDelete={onDelete} />
           ) : (
             <>
@@ -223,13 +257,19 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             column 1's button. The trailing glyph is a decorative expand/
             open-in-modal status marker, not its own control — its state is
             already exposed to assistive tech via column 1's aria-expanded,
-            so it's aria-hidden here to avoid announcing a redundant symbol. */}
-        <div className="hra-activity-row-metrics hra-row-wrap gap-3 justify-end min-w-0">
-          <span className="hra-text-secondary text-label">{fmtDuration(a.duration_sec)}</span>
-          {a.avg_hr         && <span className="hra-text-danger text-label">♥ {a.avg_hr}</span>}
-          {a.avg_pace_minkm && <span className="hra-text-muted text-label">{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
-          <span className="hra-text-muted text-meta" aria-hidden="true">{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
-        </div>
+            so it's aria-hidden here to avoid announcing a redundant symbol.
+            Desktop only (HRA-303) — this same duration/pace/HR data is
+            already folded into column 1's own secondary hierarchy line on
+            phone (see the isPhone branch above), so repeating it here would
+            just duplicate it in a second, now-empty-looking row. */}
+        {!isPhone && (
+          <div className="hra-activity-row-metrics hra-row-wrap gap-3 justify-end min-w-0">
+            <span className="hra-text-secondary text-label">{fmtDuration(a.duration_sec)}</span>
+            {a.avg_hr         && <span className="hra-text-danger text-label">♥ {a.avg_hr}</span>}
+            {a.avg_pace_minkm && <span className="hra-text-muted text-label">{fmtPace(a.avg_pace_minkm)}/{distanceUnitLabel()}</span>}
+            <span className="hra-text-muted text-meta" aria-hidden="true">{expandIndicator === "accordion" ? (expanded ? "▲" : "▼") : "→"}</span>
+          </div>
+        )}
       </div>
       {expanded && expandedContent && (
         <div className="card hra-card-joined-bottom py-4 px-3.5">
