@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Filter } from "lucide-react";
+import { SlidersHorizontal } from "lucide-react";
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
 import { defaultCompareRange, type CompareRangeState } from "@/hooks/useCompareRange";
 import { DatePicker, Select, Sheet, SheetContent, SheetTrigger, Switch } from "@/components/ui";
@@ -96,11 +96,15 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
       ? t("dateRange.filtersActive", `${filtersLabel} (${activeFilterCount} active)`, { n: activeFilterCount })
       : filtersLabel;
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
         <span className="hra-filter-summary text-body hra-text-primary">{summaryLabel}</span>
         <Sheet>
+          {/* Same icon/class as ActivityChartSection's "Chart options" sheet
+              trigger (SlidersHorizontal, .hra-filter-trigger) — one visual
+              language for "open a settings sheet" app-wide, not a
+              differently-shaped Filter icon just for this one. */}
           <SheetTrigger className="hra-filter-trigger" aria-label={triggerLabel}>
-            <Filter size={18} aria-hidden="true" />
+            <SlidersHorizontal size={18} aria-hidden="true" />
             {activeFilterCount > 0 && <span className="hra-filter-badge" aria-hidden="true">{activeFilterCount}</span>}
           </SheetTrigger>
           <SheetContent title={filtersLabel}>

@@ -137,6 +137,39 @@ export function ActivityChartSection({
   // by the phone branch below. Local to this component — no other consumer
   // needs it.
   const [expandedCards, setExpandedCards] = useState<Partial<Record<MetricKey, boolean>>>({ heart_rate: true });
+
+  // Pause-threshold text input — a local, uncontrolled-feeling buffer
+  // (allows an empty string mid-edit) separate from `pauseThreshold` itself,
+  // which is expensive downstream: ActivityDetailBody's `pauses` useMemo
+  // re-runs `detectPauses(track, pauseThreshold)` over the full track, then
+  // `chartData` rebuilds, on every change. Committing `setPauseThreshold`
+  // straight from onChange (the pre-fix behavior) did two things wrong at
+  // once: (1) a controlled numeric input whose value is `Math.max(0, ...)`
+  // of whatever's currently typed snaps back to "0" the instant the field is
+  // cleared to backspace-and-retype, since `Number("") === 0` — the field
+  // can never actually go empty; (2) every keystroke re-ran the full
+  // pause-detection + chart-rebuild pass, not just the final value — visibly
+  // slow on a real track. This buffer fixes both: typing updates only local
+  // state (so the field can be cleared/edited freely), and the expensive
+  // `setPauseThreshold` commit is debounced.
+  const [pauseThresholdInput, setPauseThresholdInput] = useState(String(pauseThreshold));
+  const pauseThresholdTimerRef = useRef<number | null>(null);
+  useEffect(() => setPauseThresholdInput(String(pauseThreshold)), [pauseThreshold]);
+  useEffect(() => () => { if (pauseThresholdTimerRef.current != null) clearTimeout(pauseThresholdTimerRef.current); }, []);
+  function commitPauseThreshold(raw: string) {
+    const n = Number(raw);
+    setPauseThreshold(Number.isFinite(n) && raw.trim() !== "" ? Math.max(0, n) : 0);
+  }
+  function handlePauseThresholdChange(raw: string) {
+    setPauseThresholdInput(raw);
+    if (pauseThresholdTimerRef.current != null) clearTimeout(pauseThresholdTimerRef.current);
+    pauseThresholdTimerRef.current = window.setTimeout(() => commitPauseThreshold(raw), 400);
+  }
+  function flushPauseThreshold() {
+    if (pauseThresholdTimerRef.current != null) { clearTimeout(pauseThresholdTimerRef.current); pauseThresholdTimerRef.current = null; }
+    commitPauseThreshold(pauseThresholdInput);
+  }
+
   // ── Mouse-follow runner (icon in its own row above the chart, readout
   // pinned below the chart's vertical center) ────────────────────────────
   // Both RunnerIcon and RunnerReadout hold their OWN local hover state,
@@ -686,8 +719,9 @@ export function ActivityChartSection({
     <>
       <label className="hra-text-muted flex items-center gap-1.5 text-meta">
         {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
-        <input type="number" min={5} step={5} value={pauseThreshold}
-          onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
+        <input type="number" min={5} step={5} value={pauseThresholdInput}
+          onChange={e => handlePauseThresholdChange(e.target.value)}
+          onBlur={flushPauseThreshold}
           className="w-14 text-meta py-0.5 px-1.5" />
         sec
       </label>

@@ -1603,7 +1603,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-popover-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
   border-radius: var(--radius-md); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  padding: 8px; z-index: 50;
+  padding: 8px; z-index: 110;
 }
 
 /* HelpDisclosure trigger (HRA-276) — fixed 44x44 CSS px tap target,
@@ -1662,7 +1662,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-select-content {
   background: var(--bg-card); border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.35);
-  overflow: hidden; z-index: 50;
+  overflow: hidden; z-index: 110;
 }
 .hra-select-item {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -1678,9 +1678,15 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 /* Toast notifications (utils/toast.ts, components/ui/ToastContainer.tsx) —
    the app-wide feedback for a CTA with no other direct UI impact (a save,
    an approve, a background action). Fixed bottom-right, above everything
-   else (.hra-select-content tops out at z-index 50). */
+   else — including a Select/Popover nested inside a Sheet (HRA-303 fix:
+   .hra-select-content/.hra-popover-content used to top out at z-index 50,
+   BELOW .hra-sheet-content's 101, so a DateRangeBar Select/DatePicker
+   opened from inside the mobile filter Sheet rendered its own dropdown
+   visually behind the sheet — present in the DOM, but neither visible nor
+   clickable, which read as "can't select a race or named range." Both are
+   110 now; this stack stays the one layer above even that. */
 .hra-toast-stack {
-  position: fixed; bottom: 20px; right: 20px; z-index: 100;
+  position: fixed; bottom: 20px; right: 20px; z-index: 120;
   display: flex; flex-direction: column; gap: 8px;
   max-width: min(360px, calc(100vw - 40px));
 }
