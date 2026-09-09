@@ -50,7 +50,7 @@ describe("PlansTab — desktop (regression)", () => {
   it("keeps both sections stacked under their own titles, no segmented control", async () => {
     stubViewport(false);
     installFetch(mountRoutes());
-    render(<PlansTab onNavigateToActivity={() => {}} />);
+    render(<PlansTab onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     expect(await screen.findByRole("heading", { name: "Plan templates" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Race plans" })).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe("PlansTab — mobile information architecture (HRA-296)", () => {
   it("shows a compact header with one contextual-help action and a Modelli/Piani gara segmented control, defaulting to templates", async () => {
     stubViewport(true);
     installFetch(mountRoutes());
-    render(<PlansTab onNavigateToActivity={() => {}} />);
+    render(<PlansTab onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     expect(await screen.findByText("Training plans")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Help" })).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe("PlansTab — mobile information architecture (HRA-296)", () => {
   it("switches to the Piani gara tab and back, without losing either section's fetch", async () => {
     stubViewport(true);
     installFetch(mountRoutes());
-    render(<PlansTab onNavigateToActivity={() => {}} />);
+    render(<PlansTab onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     await screen.findByText("5K Base");
 
     fireEvent.click(screen.getByRole("button", { name: "Race plans" }));
@@ -91,7 +91,7 @@ describe("PlansTab — mobile information architecture (HRA-296)", () => {
   it("the contextual-help disclosure surfaces both sections' explanatory copy", async () => {
     stubViewport(true);
     installFetch(mountRoutes());
-    render(<PlansTab onNavigateToActivity={() => {}} />);
+    render(<PlansTab onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     await screen.findByText("5K Base");
 
     fireEvent.click(screen.getByRole("button", { name: "Help" }));

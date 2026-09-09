@@ -23,11 +23,15 @@ interface Props {
   // HRA-265: threaded from App.tsx, mirroring AgendaTab's existing
   // onNavigateToPlans callback — see PlanInstanceCalendar.tsx's own prop.
   onNavigateToActivity: (activityId: number) => void;
+  // HRA-298: mirrors the same App.tsx setTab pattern AgendaTab's own
+  // onNavigateToPlans callback uses, in reverse — the mobile instance
+  // preview's "Apri nell'agenda" button switches to the real Agenda tab.
+  onNavigateToAgenda: () => void;
 }
 
 type MobileView = "templates" | "instances";
 
-export function PlansTab({ onNavigateToActivity }: Props) {
+export function PlansTab({ onNavigateToActivity, onNavigateToAgenda }: Props) {
   const { t } = useTranslation();
   const isPhone = useIsPhone();
   // HRA-296: persisted via the URL, same convention App.tsx's own top-level
@@ -79,7 +83,7 @@ export function PlansTab({ onNavigateToActivity }: Props) {
         </div>
         {mobileView === "templates"
           ? <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
-          : <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} />}
+          : <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} onNavigateToAgenda={onNavigateToAgenda} />}
       </>
     );
   }
@@ -90,7 +94,7 @@ export function PlansTab({ onNavigateToActivity }: Props) {
       <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
 
       <SectionTitle>{t("manage.planInstancesSectionTitle", "Race plans")}</SectionTitle>
-      <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} />
+      <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} onNavigateToAgenda={onNavigateToAgenda} />
     </>
   );
 }

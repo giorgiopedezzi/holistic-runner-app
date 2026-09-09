@@ -19,12 +19,12 @@ import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
 import { PlanInstanceMobileActionsMenu } from "@/components/manage/PlanInstanceMobileActionsMenu";
 import {
   collectPlanAnchors, resolveIntensityPaceSecPerKm, summarizeInstanceProgress, summarizeTemplatePlan,
-  type DayView, type SectionView, type WeekView,
+  type DayView, type InstanceProgress, type SectionView, type WeekView,
 } from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
 import { fmtDate } from "@/utils/fmt";
-import type { PlanTemplate, PlanInstance } from "@/types/api";
+import type { PlanTemplate, PlanInstance, PlanInstanceWithDays } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, RunPlan } from "@/types/runplan";
 import { isoToday } from "@/utils/date";
 import {
@@ -67,9 +67,13 @@ interface Props {
   // AgendaTab's existing onNavigateToPlans callback — see
   // PlanInstanceCalendar.tsx's own prop of the same name.
   onNavigateToActivity: (activityId: number) => void;
+  // HRA-298: mobile-only "Apri nell'agenda" primary action — switches
+  // App.tsx's own top-level tab, same setTab mechanism onNavigateToActivity
+  // already threads through.
+  onNavigateToAgenda: () => void;
 }
 
-export function PlanInstancesSection({ templates, onNavigateToActivity }: Props) {
+export function PlanInstancesSection({ templates, onNavigateToActivity, onNavigateToAgenda }: Props) {
   const { t } = useTranslation();
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
@@ -94,9 +98,51 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
   // HRA-296: the compact mobile list's own expand state — deliberately not
   // `activeKey`, since a mobile row must never open the desktop editor
   // (anchor table, regenerate, structured week/day editing — all
-  // HRA-294-forbidden on mobile). Expanding just shows the one static
-  // desktop-only-editing notice; HRA-298 owns the real read-only summary.
-  const [mobileExpandedId, setMobileExpandedId] = useState<number | null>(null);
+  // HRA-294-forbidden on mobile). Expanding shows HRA-298's real read-only
+  // summary. Persisted via the URL (same useUrlState convention PlansTab's
+  // own Modelli/Piani gara switch already uses) — a round trip through
+  // "Apri nell'agenda" and back must restore both the Piani gara tab (already
+  // covered by that switch's own URL param) AND which plan/week were
+  // expanded here, per this Story's own explicit AC; a plain useState would
+  // be lost on that navigation, since App.tsx's tab switch really unmounts
+  // this component (see AGENTS.md's "no keeping tabs mounted" rule).
+  const [rawMobileExpandedId, setRawMobileExpandedId] = useUrlState("planInstanceExpanded", "");
+  const mobileExpandedId = rawMobileExpandedId === "" ? null : Number(rawMobileExpandedId);
+  function setMobileExpandedId(id: number | null) {
+    setRawMobileExpandedId(id == null ? "" : String(id));
+    // Any user-driven change of which row is expanded (closing it, or
+    // opening a different one) starts that row's "Vedi piano" disclosure
+    // collapsed again — only a same-row round trip through "Apri
+    // nell'agenda" (which never calls this setter) should restore it.
+    setMobileWeekOpen(false);
+  }
+  // HRA-298: "Vedi piano" — a second disclosure level inside the expanded
+  // row, revealing the actual current-week Agenda ribbon (lazily fetched,
+  // see ensureMobileInstanceDaysLoaded below) rather than mounting it
+  // unconditionally on every row expand. Same URL-persistence reasoning as
+  // mobileExpandedId above ("the previously expanded week" survives the
+  // Agenda round trip too).
+  const [rawMobileWeekOpen, setMobileWeekOpenRaw] = useUrlState("planInstanceWeekOpen", "");
+  const mobileWeekOpen = rawMobileWeekOpen === "1";
+  function setMobileWeekOpen(open: boolean) {
+    setMobileWeekOpenRaw(open ? "1" : "");
+  }
+  const [mobileInstanceDays, setMobileInstanceDays] = useState<Record<number, PlanInstanceWithDays | "loading" | "error">>({});
+  function ensureMobileInstanceDaysLoaded(id: number) {
+    if (mobileInstanceDays[id] != null) return;
+    setMobileInstanceDays(prev => ({ ...prev, [id]: "loading" }));
+    api.planInstances.getById(id)
+      .then(full => setMobileInstanceDays(prev => ({ ...prev, [id]: full })))
+      .catch(() => setMobileInstanceDays(prev => ({ ...prev, [id]: "error" })));
+  }
+  // A round trip through "Apri nell'agenda" restores mobileWeekOpen from the
+  // URL before this row's days have ever been fetched in this mount — make
+  // sure the fetch actually happens rather than showing a permanently empty
+  // ribbon.
+  useEffect(() => {
+    if (isPhone && mobileExpandedId != null && mobileWeekOpen) ensureMobileInstanceDaysLoaded(mobileExpandedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPhone, mobileExpandedId, mobileWeekOpen]);
   const [identityExpanded, setIdentityExpanded] = useState(true);
   const [pacingExpanded, setPacingExpanded] = useState(false);
   const [weeksExpanded, setWeeksExpanded] = useState(false);
@@ -1086,6 +1132,135 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
 
   const newDraftPending = activeKey === "new" || drafts["new"] != null;
 
+  // HRA-298: the mobile row's own read-only compact race-plan summary —
+  // name/race type/date/status already render in the row's own
+  // (always-visible) title above (HRA-296/297), so this only covers what
+  // the title doesn't: source template, current-week/days-to-race framing,
+  // the resolved-pace block, and the two actions.
+  // PlanInstanceCalendar's onScheduledTimeEdit/onDaySwap are required props,
+  // but readOnlyDays={true} below gates every internal call site that would
+  // invoke them — same real-no-op reasoning AgendaTab.tsx's own noop uses.
+  function mobileNoop() {}
+
+  function mobileResolvedPaceEntries(inst: PlanInstance, plan: RunPlan): { anchor: string; secPerKm: number | null }[] {
+    let overrides: PacePolicy = {};
+    if (inst.pace_overrides) {
+      try { overrides = JSON.parse(inst.pace_overrides) as PacePolicy; } catch { overrides = {}; }
+    }
+    const mergedPolicy: PacePolicy = { ...plan.metadata.pace_policy, ...overrides };
+    return collectPlanAnchors(plan).map(anchor => ({
+      anchor, secPerKm: resolveIntensityPaceSecPerKm({ kind: "anchor", anchor, raw: anchor }, mergedPolicy),
+    }));
+  }
+
+  function renderMobileCurrentWeek(inst: PlanInstance, progress: InstanceProgress | null) {
+    if (progress?.state !== "in_progress") {
+      return (
+        <div className="hra-text-secondary text-meta">
+          {progress?.state === "not_started"
+            ? t("manage.planInstances.mobilePreview.notStartedNoWeek", `This plan starts on ${fmtDate(inst.start_date)}.`, { date: fmtDate(inst.start_date) })
+            : progress?.state === "completed"
+              ? t("manage.planInstances.mobilePreview.completedNoWeek", "This plan is already completed.")
+              : t("manage.planInstances.mobilePreview.noCurrentWeek", "No current week to show for this plan.")}
+        </div>
+      );
+    }
+    const detail = mobileInstanceDays[inst.id];
+    if (detail == null || detail === "loading") {
+      return <div className="hra-text-secondary text-meta">{t("manage.planInstances.loading", "Loading…")}</div>;
+    }
+    if (detail === "error") {
+      return <ErrorBanner message={t("manage.planInstances.loadFailed", "Failed to load instances")} />;
+    }
+    const weekSections = apiDaysToSections(detail.days);
+    return (
+      <>
+        <CategoryLegend />
+        <PlanInstanceCalendar
+          sections={weekSections}
+          readOnlyDays
+          onScheduledTimeEdit={mobileNoop}
+          onDaySwap={mobileNoop}
+          initialDate={new Date()}
+          onNavigateToActivity={onNavigateToActivity}
+        />
+      </>
+    );
+  }
+
+  function renderMobileInstancePreview(inst: PlanInstance, progress: InstanceProgress | null) {
+    const template = templates?.find(tpl => tpl.id === inst.template_id);
+    const plan = parsePlan(template);
+    const today = isoToday();
+    const daysUntilRace = inst.race_date ? daysBetween(today, inst.race_date) : null;
+    const paces = plan ? mobileResolvedPaceEntries(inst, plan) : null;
+    const allPacesResolved = paces != null && paces.every(p => p.secPerKm != null);
+
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="hra-text-secondary text-meta flex flex-col gap-0.5">
+          {template && (
+            <span>{t("manage.planInstances.mobilePreview.sourceTemplate", `Based on: ${template.name}`, { name: template.name })}</span>
+          )}
+          {inst.race_date == null && (
+            <span>{t("manage.planInstances.mobilePreview.missingRaceDate", "No race date set.")}</span>
+          )}
+          {daysUntilRace != null && (
+            daysUntilRace >= 0
+              ? (
+                <span>
+                  {t("manage.planInstances.mobilePreview.daysUntilRace", daysUntilRace === 1 ? "1 day to race" : `${daysUntilRace} days to race`, { count: daysUntilRace })}
+                </span>
+              )
+              : <span>{t("manage.planInstances.mobilePreview.raceDatePast", "Race date has passed.")}</span>
+          )}
+        </div>
+
+        {paces == null ? (
+          <div className="hra-text-secondary text-meta">{t("manage.planInstances.mobilePreview.noTemplate", "This plan's template could not be read.")}</div>
+        ) : !allPacesResolved ? (
+          <div className="hra-text-secondary text-meta">{t("manage.planInstances.mobilePreview.unresolvedPaces", "Paces to complete from desktop")}</div>
+        ) : paces.length > 0 && (
+          <span className="hra-text-secondary text-meta break-words">
+            {paces.map(p => `${p.anchor} ${formatPaceSecPerKm(p.secPerKm!)}`).join(" · ")}
+          </span>
+        )}
+
+        {mobileWeekOpen && renderMobileCurrentWeek(inst, progress)}
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="hra-btn"
+            data-variant="accent"
+            disabled={progress?.state !== "in_progress"}
+            title={progress?.state !== "in_progress" ? t("manage.planInstances.mobilePreview.openInAgendaDisabled", "Only available while this plan is in progress.") : undefined}
+            onClick={onNavigateToAgenda}
+          >
+            {t("manage.planInstances.mobilePreview.openInAgenda", "Open in agenda")}
+          </button>
+          <button
+            type="button"
+            className="hra-btn"
+            onClick={() => {
+              const next = !mobileWeekOpen;
+              setMobileWeekOpen(next);
+              if (next) ensureMobileInstanceDaysLoaded(inst.id);
+            }}
+          >
+            {mobileWeekOpen
+              ? t("manage.planInstances.mobilePreview.hidePlan", "Hide plan")
+              : t("manage.planInstances.mobilePreview.viewPlan", "View plan")}
+          </button>
+        </div>
+
+        <div className="hra-text-secondary text-meta">
+          {t("manage.plans.advancedEditingDesktopOnly", "Advanced editing is available from desktop.")}
+        </div>
+      </div>
+    );
+  }
+
   // HRA-296: on phone, replace the whole authoring card (title/description/
   // instantiate form/accordion editor/Delete overlay) with a flat list of
   // read-only summary rows — creation is desktop-only for now (the
@@ -1145,9 +1320,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity }: Props)
                   expanded={expanded}
                   onToggle={() => setMobileExpandedId(expanded ? null : inst.id)}
                 >
-                  <div className="hra-text-secondary text-meta">
-                    {t("manage.plans.advancedEditingDesktopOnly", "Advanced editing is available from desktop.")}
-                  </div>
+                  {expanded ? renderMobileInstancePreview(inst, progress) : null}
                 </AccordionCard>
                 <div className="hra-card-delete-action absolute">
                   <PlanInstanceMobileActionsMenu onRequestDelete={() => setConfirmation({ type: "delete", instanceId: inst.id })} />

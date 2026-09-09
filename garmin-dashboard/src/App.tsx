@@ -525,7 +525,9 @@ function AppShell() {
             <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
           )}
           {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
-          {tab === "plans"      && <PlansTab onNavigateToActivity={navigateToActivity} />}
+          {tab === "plans"      && (
+            <PlansTab onNavigateToActivity={navigateToActivity} onNavigateToAgenda={() => guardedAction(() => setTab("agenda"))} />
+          )}
           {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
           {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
           {tab === "settings"   && <SettingsTab appearance={appearance} />}
