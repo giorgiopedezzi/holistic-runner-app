@@ -178,7 +178,19 @@ the per-day sibling of the bulk `PATCH /api/v1/plan-instances/:id`'s wholesale `
 smaller, more honest write for editing one field on one already-existing day. That endpoint's body,
 `{dsl?, notes?, scheduled_time?}`, validates each field independently and is rejected with 409 once
 the instance is approved, mirroring HRA-126's intended "editable only until approved" lock, which the
-earlier Story enforced client-side only).
+earlier Story enforced client-side only), `customized_at` (TEXT, nullable timestamp — HRA-299: a
+day-level customization provenance marker, same "NULL means not set" gate convention as
+`plan_templates.approved_at`/`plan_instances.approved_at`. Set by `PATCH .../days/:dayId`'s `dsl`
+branch only — a notes-only or scheduled_time-only patch never sets it, since neither touches the
+day's actual workout content — and intended to also be set on both sides of a day swap once a swap
+mutation exists (currently none does; the existing desktop swap is local-only until the whole-day
+bulk Save, see below). Every row a bulk `days` replace or a `/regenerate` call produces starts back
+at `NULL` regardless of what the row it replaces carried — both recreate the row from scratch via
+`deleteDayByIdentity`/`deleteDaysByInstance` + a fresh insert, so "customized" is only ever
+meaningful relative to a day's own currently-persisted row, never carried forward through either of
+those two wholesale-replace paths (bulk editing is explicitly out of this Story's scope). `POST
+.../regenerate`'s own preflight (below) is what protects a customized day from silently reaching
+that fresh-insert path without confirmation).
 
 **Week-date derivation rule** (confirmed at Refinement for HRA-112, amended HRA-124): `week.start_date
 = trueMonday + (week.number - 1) × 7 days`, **unless** that week already carries an explicit
@@ -206,6 +218,17 @@ duplicate rows for the same day. `garmin-stats/src/jobs/cleanup-plan-instance-da
 corrupted by this bug (and by the pre-HRA-122 bug above) at the time it was fixed — safe to rerun
 (it's idempotent: recomputes each day's correct date from the template + instance's own `start_date`
 and only touches rows that actually disagree), but not part of any regular sync/migration path.
+
+**Regenerate preflight/confirm gate (HRA-299):** before the delete+recreate above runs, the
+controller queries every currently-persisted day in `[effective_from, end]` that carries a
+`customized_at` marker (`plan-instances.repo.ts`'s `customizedDaysFrom`) — if any exist and the
+request's `confirm_overwrite` isn't `true`, it 409s (naming every affected day's id/date/section/
+week/day/workout_type/notes on the problem body's `customized_days` field) instead of proceeding.
+The "explicit warn-before-overwrite" contract this Story requires as a hard floor: a customized day
+outside the requested range is never touched and never blocks anything (same "protects
+already-logged history" reasoning `deleteDayByIdentity` above already established for dates), and a
+confirmed regenerate clears every marker it overwrites for free — every regenerated row is a fresh
+insert, which always starts `customized_at NULL` regardless of what it replaces.
 
 **Auto-filled rest days (HRA-124):** any
 D-number 1-7 a week doesn't declare is generated as an extra `workout_type: "rest"` row for that

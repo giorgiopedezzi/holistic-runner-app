@@ -110,6 +110,10 @@ export interface ResolvedDay {
   // addresses; scheduled_time is HH:MM 24-hour or null (display default 08:00).
   id?: number;
   scheduled_time?: string | null;
+  // HRA-299: non-null means this day's workout content was individually
+  // edited or swapped after creation, mirroring PlanInstanceDay's own
+  // customized_at (types/api.ts).
+  customized_at?: string | null;
 }
 
 export type EventType = "5k" | "10k" | "half" | "marathon" | "custom";

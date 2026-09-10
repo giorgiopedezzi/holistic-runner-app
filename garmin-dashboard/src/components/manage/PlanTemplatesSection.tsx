@@ -29,10 +29,14 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, Save, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
-import { TrainingPlanAccordion, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
+import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { PlanTemplateAgendaView } from "@/components/manage/PlanTemplateAgendaView";
-import { aggregateDayViews, buildTemplateSectionView, type DayView, type SectionView } from "@/domain/runplan-aggregate";
+import {
+  aggregateDayViews, buildTemplateSectionView, summarizeTemplatePlan,
+  type AggregateTotals, type DayView, type SectionView,
+} from "@/domain/runplan-aggregate";
+import { useIsPhone } from "@/hooks/useIsPhone";
 import {
   buildRestDayLine, findSectionSpan, findWeekSpan, insertDayLine, recomposeDayLine, replaceSpan, replaceWithinSpan,
   serializeSectionHeader, serializeWeekHeader, splitNote, swapDayContent,
@@ -40,7 +44,7 @@ import {
 import { getUnitSystem } from "@/utils/units";
 import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
-import type { EventType, OffsetUnit, ParseWarning } from "@/types/runplan";
+import type { EventType, OffsetUnit, ParseWarning, RunPlan } from "@/types/runplan";
 import { useDemoMode } from "@/hooks/useDemoMode";
 // HRA-200: frontend-owned copy of docs/utils/template-generator-AI-prompt.txt
 // (the already-tested base prompt) — kept in sync manually, see that file's
@@ -160,6 +164,82 @@ function findRaceDayDistanceMeters(sections: SectionView[]): number | undefined 
   return undefined;
 }
 
+// HRA-297: mobile read-only preview — a small type for the t() shape the
+// helpers below need, so they stay plain functions (not hooks) callable from
+// the render function further down without threading react-i18next's own
+// generic TFunction type through this file.
+type MobileT = (key: string, defaultValue: string, options?: Record<string, unknown>) => string;
+
+type MobileDslState = "valid" | "invalid" | "missing";
+
+// A saved template only ever reaches the record with zero warnings (Save is
+// disabled until generate() succeeds — see canSave above), so in practice
+// this almost always resolves "valid"; invalid/missing are defensive reads
+// of a stale or hand-edited record, per this Story's own explicit AC to
+// cover all three states rather than assume "valid" always.
+function mobileTemplateDslState(tpl: PlanTemplate): MobileDslState {
+  if (!tpl.dsl_source || tpl.dsl_source.trim() === "") return "missing";
+  try {
+    const plan = JSON.parse(tpl.parsed_plan) as RunPlan;
+    return Array.isArray(plan?.sections) ? "valid" : "invalid";
+  } catch {
+    return "invalid";
+  }
+}
+
+function buildMobilePreviewSections(plan: RunPlan): SectionView[] {
+  return plan.sections.map(section => buildTemplateSectionView(section, plan.metadata.pace_policy));
+}
+
+function sumAggregateTotals(sections: SectionView[]): AggregateTotals {
+  return sections.reduce<AggregateTotals>((acc, s) => ({
+    totalDays: acc.totalDays + s.totals.totalDays,
+    activeDays: acc.activeDays + s.totals.activeDays,
+    runningDays: acc.runningDays + s.totals.runningDays,
+    restDays: acc.restDays + s.totals.restDays,
+    otherDays: acc.otherDays + s.totals.otherDays,
+    distance: {
+      meters: acc.distance.meters + s.totals.distance.meters,
+      approximate: acc.distance.approximate || s.totals.distance.approximate,
+    },
+  }), { totalDays: 0, activeDays: 0, runningDays: 0, restDays: 0, otherDays: 0, distance: { meters: 0, approximate: false } });
+}
+
+// AC5: never show a duration-derived ("invented") distance conversion — only
+// a total built entirely from real distance targets is shown at all; a plan
+// mixing in any duration-only work simply omits this line rather than
+// silently including an invented figure. Deliberately narrower than the
+// desktop accordion's own compactTotals/fmtDistance (TrainingPlanAccordion.tsx),
+// which shows an approximate total with a "~" prefix — this Story's own AC
+// asks for the stricter mobile-only behavior, not a change to desktop.
+function mobileDistanceLabel(totals: AggregateTotals, t: MobileT): string | null {
+  if (totals.distance.approximate || totals.distance.meters <= 0) return null;
+  const km = (totals.distance.meters / 1000).toFixed(1);
+  return t("runplan.accordion.distance", `${km} km`, { km });
+}
+
+// Same label precedence PlanInstanceCalendar.tsx's RibbonDay uses for its own
+// compact day row (the "existing mobile Agenda day-row treatment" this
+// Story's own description says to reuse rather than reimplement) — notes
+// first, then a type-specific label, then the DSL text itself for a real
+// workout. Template days have no TrainingLoadCategory (that needs a resolved
+// instance's pace data), so there's no category-label fallback here.
+function mobileDayPresentation(day: DayView, t: MobileT): { label: string; dslLines: string[] } {
+  const isTimedWorkout = day.workout_type === "run" || day.workout_type === "cross" || day.workout_type === "strength";
+  let label = "";
+  if (day.notes) label = day.notes;
+  else if (day.workout_type === "todo") label = t("runplan.accordion.stateTodoLabel", "Not yet planned");
+  else if (day.workout_type === "other") label = t("runplan.accordion.stateOtherLabel", "Other");
+  else if (day.workout_type === "rest") label = t("runplan.accordion.stateRestLabel", "Rest day");
+  else if (day.workout_type === "cross") label = t("manage.planInstances.category.crossTraining", "Cross training");
+  else if (day.workout_type === "strength") label = t("manage.planTemplates.mobilePreview.workoutTypeStrength", "Strength");
+  const stripped = day.dsl.replace(DAY_PREFIX_RE, "");
+  const dslLines = isTimedWorkout
+    ? stripped.split(";").map(s => s.trim()).filter(Boolean).filter(line => !(day.notes && line.startsWith("#")))
+    : [];
+  return { label, dslLines };
+}
+
 function hasOutstandingWarnings(editor: EditorState, planWarnings: ParseWarning[]): boolean {
   if (planWarnings.length > 0) return true;
   return editor.sections.some(s => s.weeks.some(w => w.days.some(d => d.needs_review)));
@@ -196,6 +276,24 @@ interface Props {
 export function PlanTemplatesSection({ templates, templatesError, refreshTemplates }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const isPhone = useIsPhone();
+
+  // HRA-296: which row's compact mobile card is expanded — entirely separate
+  // from `activeKey`/the desktop editor below. Templates are strictly
+  // read-only on mobile (HRA-294's mobile boundary), so a mobile row must
+  // never route into the authoring AccordionCard `renderEditorFields()`
+  // opens on desktop; expanding just reveals the one static
+  // desktop-only-editing notice. HRA-297 owns building the real read-only
+  // preview this will eventually show instead.
+  const [mobileExpandedId, setMobileExpandedId] = useState<number | null>(null);
+  // HRA-297: progressive disclosure inside the mobile preview — which
+  // section index is open (revealing its weeks) and which week (a
+  // "sectionIndex-weekIndex" key) is open (revealing its days). Reset
+  // together whenever the row itself opens/closes (see onToggle below) so a
+  // freshly opened row always shows exactly one meaningful level, never a
+  // stale expansion left over from a previously viewed template.
+  const [mobileExpandedSection, setMobileExpandedSection] = useState<number | null>(null);
+  const [mobileExpandedWeek, setMobileExpandedWeek] = useState<string | null>(null);
 
   // HRA-140: which row is expanded — an existing template's id, "new" for
   // the unsaved-draft row, or null (every row collapsed). Replaces the old
@@ -1276,6 +1374,237 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   }
 
   const newDraftPending = activeKey === "new" || drafts["new"] != null;
+
+  // HRA-297: the mobile row's own read-only progressive-disclosure preview —
+  // built from the same SectionView tree buildTemplateSectionView already
+  // produces for the desktop editor (Section -> Week -> Day, each carrying
+  // its own AggregateTotals), so the counts/distance math here is identical
+  // to the desktop accordion's, never a second implementation of it. Name,
+  // active/inactive status, race type and unit already render in the row's
+  // own (always-visible) title above — see the title span this replaces the
+  // body of, just below — so this only covers what the title doesn't.
+  function renderMobileTemplatePreview(tpl: PlanTemplate) {
+    const dslState = mobileTemplateDslState(tpl);
+    if (dslState !== "valid") {
+      return (
+        <div className="flex flex-col gap-3">
+          <div className="hra-text-secondary text-meta">
+            {dslState === "missing"
+              ? t("manage.planTemplates.mobilePreview.dslMissing", "No plan text has been generated for this template yet.")
+              : t("manage.planTemplates.mobilePreview.dslInvalid", "This template's plan text could not be read.")}
+          </div>
+          <div className="hra-text-secondary text-meta">
+            {t("manage.plans.advancedEditingDesktopOnly", "Advanced editing is available from desktop.")}
+          </div>
+        </div>
+      );
+    }
+
+    // mobileTemplateDslState already confirmed this parses to a real RunPlan
+    // with a sections array — safe to parse again rather than threading the
+    // parsed value back out of that check.
+    const plan = JSON.parse(tpl.parsed_plan) as RunPlan;
+    const sections = buildMobilePreviewSections(plan);
+    const weekCount = sections.reduce((sum, s) => sum + s.weeks.length, 0);
+    const totals = sumAggregateTotals(sections);
+    const distanceLabel = mobileDistanceLabel(totals, t);
+
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="hra-text-secondary text-meta flex flex-col gap-0.5">
+          <span>
+            {t("runplan.accordion.totalDays", totals.totalDays === 1 ? "1 day" : `${totals.totalDays} days`, { count: totals.totalDays })}
+            {" · "}
+            {t("manage.planTemplates.mobilePreview.sectionCount", sections.length === 1 ? "1 section" : `${sections.length} sections`, { count: sections.length })}
+            {" · "}
+            {t("manage.planTemplates.mobileWeekCount", weekCount === 1 ? "1 week" : `${weekCount} weeks`, { count: weekCount })}
+          </span>
+          <span>
+            {t("runplan.accordion.runningDays", `${totals.runningDays} running`, { n: totals.runningDays })}
+            {" · "}
+            {t("runplan.accordion.restDays", `${totals.restDays} rest`, { n: totals.restDays })}
+            {totals.otherDays > 0 && <> · {t("runplan.accordion.otherDays", `${totals.otherDays} other`, { n: totals.otherDays })}</>}
+            {" · "}
+            {t("runplan.accordion.activeDays", `${totals.activeDays} active`, { n: totals.activeDays })}
+          </span>
+          {distanceLabel && (
+            <span>{t("manage.planTemplates.mobilePreview.estimatedDistance", `Estimated distance: ${distanceLabel}`, { distance: distanceLabel })}</span>
+          )}
+          <span>{t("manage.planTemplates.mobilePreview.dslStatusValid", "Plan text is valid.")}</span>
+        </div>
+
+        {sections.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            {sections.map((section, sectionIndex) => {
+              const sectionExpanded = mobileExpandedSection === sectionIndex;
+              return (
+                <AccordionCard
+                  key={sectionIndex}
+                  title={
+                    <span className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="hra-text-primary text-body font-semibold overflow-hidden text-ellipsis">{section.name}</span>
+                      <span className="hra-text-secondary text-meta">
+                        {t("manage.planTemplates.mobileWeekCount", section.weeks.length === 1 ? "1 week" : `${section.weeks.length} weeks`, { count: section.weeks.length })}
+                      </span>
+                    </span>
+                  }
+                  expanded={sectionExpanded}
+                  onToggle={() => {
+                    setMobileExpandedSection(sectionExpanded ? null : sectionIndex);
+                    setMobileExpandedWeek(null);
+                  }}
+                >
+                  <div className="flex flex-col gap-1.5">
+                    {section.weeks.map((week, weekIndex) => {
+                      const weekKey = `${sectionIndex}-${weekIndex}`;
+                      const weekExpanded = mobileExpandedWeek === weekKey;
+                      return (
+                        <AccordionCard
+                          key={weekKey}
+                          title={
+                            <span className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="hra-text-primary text-body">{t("runplan.accordion.weekTitle", `Week ${week.number}`, { n: week.number })}</span>
+                              <span className="hra-text-secondary text-meta">
+                                {t("runplan.accordion.runningDays", `${week.totals.runningDays} running`, { n: week.totals.runningDays })}
+                                {" · "}
+                                {t("runplan.accordion.restDays", `${week.totals.restDays} rest`, { n: week.totals.restDays })}
+                              </span>
+                            </span>
+                          }
+                          expanded={weekExpanded}
+                          onToggle={() => setMobileExpandedWeek(weekExpanded ? null : weekKey)}
+                        >
+                          {/* Reuses PlanInstanceCalendar.tsx's RibbonDay CSS
+                              classes (the "existing mobile Agenda day-row
+                              treatment" this Story's own description says to
+                              reuse) — same compact label/dsl-line/wrap
+                              behavior, just keyed by day-of-plan (D<n>) here
+                              rather than a real calendar date. */}
+                          <ol className="hra-agenda-ribbon" aria-label={t("manage.planTemplates.mobilePreview.workoutsLabel", "Workouts")}>
+                            {week.days.map((day, dayIndex) => {
+                              const { label, dslLines } = mobileDayPresentation(day, t);
+                              return (
+                                <li key={dayIndex} className="hra-agenda-ribbon-day">
+                                  <span className="hra-agenda-ribbon-date">
+                                    <span className="hra-agenda-ribbon-dow">{t("manage.planTemplates.mobilePreview.dayAbbrev", "Day")}</span>
+                                    <span className="hra-agenda-ribbon-num">{day.day}{day.suffix ?? ""}</span>
+                                  </span>
+                                  <span className="hra-agenda-ribbon-body">
+                                    <span className="hra-agenda-ribbon-label">
+                                      {label && <span className="hra-agenda-ribbon-label-text">{label}</span>}
+                                      {day.needs_review && (
+                                        <span title={t("runplan.accordion.needsReviewBadge", "Needs review")} className="hra-text-warning inline-flex items-center shrink-0">
+                                          <AlertTriangle size={12} />
+                                        </span>
+                                      )}
+                                    </span>
+                                    {dslLines.length > 0 && (
+                                      <span className="hra-agenda-ribbon-dsl">
+                                        {dslLines.map((line, i) => <span key={i} className="hra-agenda-ribbon-dsl-line">{line}</span>)}
+                                      </span>
+                                    )}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ol>
+                        </AccordionCard>
+                      );
+                    })}
+                  </div>
+                </AccordionCard>
+              );
+            })}
+          </div>
+        )}
+
+        {/* AC6/AC7: HRA-302 (the simplified race-creation contract this
+            button hands off into) doesn't exist yet — feature-gated as
+            disabled rather than omitted, so the row still communicates the
+            action exists, without opening any broken/partial/desktop-shaped
+            flow in the meantime. */}
+        <button
+          type="button"
+          className="hra-btn"
+          data-variant="accent"
+          disabled
+          title={t("manage.planTemplates.mobilePreview.useForRaceComingSoon", "Race-plan creation from a template isn't available yet.")}
+        >
+          {t("manage.planTemplates.mobilePreview.useForRace", "Use for a race")}
+        </button>
+
+        <div className="hra-text-secondary text-meta">
+          {t("manage.plans.advancedEditingDesktopOnly", "Advanced editing is available from desktop.")}
+        </div>
+      </div>
+    );
+  }
+
+  // HRA-296: on phone, the whole authoring card (title/description/"How to
+  // use it"/"New template"/AccordionCard editor/Delete overlay) is replaced
+  // by a flat list of read-only summary rows — PlansTab.tsx owns the shared
+  // segmented Modelli/Piani gara control and page-level contextual help this
+  // card's own header used to carry. Desktop's return below is untouched.
+  if (isPhone) {
+    return (
+      <div className="flex flex-col gap-2">
+        {templatesError && <ErrorBanner message={templatesError} />}
+        {templates === null ? (
+          <div className="hra-text-muted text-meta">{t("common.loading", "Loading…")}</div>
+        ) : templates.length === 0 ? (
+          <div className="hra-text-muted text-meta">{t("manage.planTemplates.empty", "No templates saved yet.")}</div>
+        ) : (
+          templates.map(tpl => {
+            const summary = summarizeTemplatePlan(tpl.parsed_plan);
+            const expanded = mobileExpandedId === tpl.id;
+            return (
+              <AccordionCard
+                key={tpl.id}
+                title={
+                  <span className="flex flex-col gap-0.5 flex-1 min-w-0 py-0.5 text-left">
+                    <span className="overflow-hidden text-ellipsis text-wrap break-words hra-text-primary text-body font-semibold">
+                      {tpl.name}
+                    </span>
+                    <span className="flex items-center gap-2 flex-wrap">
+                      {tpl.event && <span className="hra-text-secondary text-meta">{t(`manage.planTemplates.event.${tpl.event}`, tpl.event)}</span>}
+                      {summary && (
+                        <span className="hra-text-secondary text-meta">
+                          {t(
+                            "manage.planTemplates.mobileWeekCount",
+                            summary.weekCount === 1 ? "1 week" : `${summary.weekCount} weeks`,
+                            { count: summary.weekCount },
+                          )}
+                        </span>
+                      )}
+                      {summary && <span className="hra-text-secondary text-meta">{summary.unit}</span>}
+                      <Badge
+                        label={tpl.approved_at ? t("manage.planTemplates.approved", "Activated") : t("manage.planTemplates.notApproved", "Not activated")}
+                        color={tpl.approved_at ? "var(--accent-green)" : "var(--text-muted)"}
+                      />
+                    </span>
+                  </span>
+                }
+                expanded={expanded}
+                onToggle={() => {
+                  const next = expanded ? null : tpl.id;
+                  setMobileExpandedId(next);
+                  // Reset progressive disclosure on every open/close so a
+                  // freshly opened row never inherits a stale section/week
+                  // expansion left over from a previously viewed template —
+                  // opening reveals exactly one meaningful level (the first
+                  // section) by default, per this Story's own AC.
+                  setMobileExpandedSection(next != null ? 0 : null);
+                  setMobileExpandedWeek(null);
+                }}
+              >
+                {expanded ? renderMobileTemplatePreview(tpl) : null}
+              </AccordionCard>
+            );
+          })
+        )}
+      </div>
+    );
+  }
 
   return (
     <Card>

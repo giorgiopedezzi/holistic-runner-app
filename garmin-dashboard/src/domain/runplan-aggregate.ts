@@ -82,6 +82,48 @@ export function collectPlanAnchors(plan: RunPlan): string[] {
   return [...names].sort();
 }
 
+// ── compact mobile summaries (HRA-296) ──────────────────────────────────────
+// Cheap structural facts a compact mobile list row needs (week count, unit)
+// without running the full generate/preview pipeline templates use on
+// desktop — that pipeline is authoring-only (HRA-294's mobile boundary), so
+// the mobile row must derive its summary from data already on the record.
+
+export interface TemplatePlanSummary { weekCount: number; unit: RunPlan["metadata"]["unit"] }
+
+// `parsedPlanJson` is a PlanTemplate's own `parsed_plan` column — already a
+// full RunPlan JSON string. Returns null on anything unparseable rather than
+// throwing, same "tolerate a stale/malformed record" stance
+// resolvePersistedDistanceValue (PlanTemplatesSection.tsx) already takes for
+// the same column.
+export function summarizeTemplatePlan(parsedPlanJson: string): TemplatePlanSummary | null {
+  try {
+    const plan = JSON.parse(parsedPlanJson) as RunPlan;
+    const weekCount = plan.sections.reduce((sum, section) => sum + section.weeks.length, 0);
+    return { weekCount, unit: plan.metadata.unit };
+  } catch {
+    return null;
+  }
+}
+
+export type InstanceProgress =
+  | { state: "not_started" }
+  | { state: "in_progress"; week: number; totalWeeks: number }
+  | { state: "completed" };
+
+// A plan instance's own list-row payload carries no day-level data (see
+// PlanInstance in types/api.ts), so "current week" is derived from the
+// linked template's week count plus plain calendar math from start_date —
+// the same Monday-anchored week-1 assumption editorWeek1AnchorMismatch
+// (planInstanceEditor.selectors.ts) already relies on elsewhere in this
+// domain. Returns null when there's nothing meaningful to show (no linked
+// template, or the template's own plan doesn't parse).
+export function summarizeInstanceProgress(totalWeeks: number, daysSinceStart: number): InstanceProgress | null {
+  if (totalWeeks <= 0) return null;
+  if (daysSinceStart < 0) return { state: "not_started" };
+  const week = Math.floor(daysSinceStart / 7) + 1;
+  return week > totalWeeks ? { state: "completed" } : { state: "in_progress", week, totalWeeks };
+}
+
 // ── distance ─────────────────────────────────────────────────────────────
 
 export interface DistanceTotal { meters: number; approximate: boolean }
@@ -389,6 +431,11 @@ export interface DayView {
   // HH:MM 24-hour or undefined/null (display default 08:00).
   id?: number;
   scheduled_time?: string | null;
+  // HRA-299: passthrough of ResolvedDay's own customized_at (only ever set
+  // on the instance path, same reasoning as id/scheduled_time above) — the
+  // "Modificato" badge on race-plan/Agenda rows derives from this being
+  // non-null.
+  customized_at?: string | null;
   // HRA-229: the day's raw parsed segments — only ever set on the template
   // path (buildTemplateSectionView). Instance days carry ResolvedSegment,
   // a different (already pace-resolved) shape out of this Story's scope, so
@@ -660,7 +707,7 @@ export function buildInstanceSectionView(
       metrics: computeResolvedDayMetrics(day),
       trainingLoadCategory: classifyResolvedDay(day, classificationContext),
       paceTargetBands: buildPaceTargetBandModel(day.segments),
-      id: day.id, scheduled_time: day.scheduled_time,
+      id: day.id, scheduled_time: day.scheduled_time, customized_at: day.customized_at,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,

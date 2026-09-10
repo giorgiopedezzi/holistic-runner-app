@@ -253,15 +253,19 @@ export const DAY_PREFIX_RE = /^D\d+[a-c]?(?:\s*\[[^\]]+\])?\s*:\s*/;
 // buttons, so a day whose real type isn't run/rest folds into "other" for
 // display (never silently shows "run").
 export type WorkoutTypeSwitchValue = "run" | "rest" | "other";
-const WORKOUT_TYPE_SWITCH_ICONS: Record<WorkoutTypeSwitchValue, (props: { size?: number }) => ReactNode> = {
+// Exported HRA-300: the mobile full-screen editor (MobileWorkoutEditor) reuses
+// this exact icon/label/fold-to-"other" mapping for its own run/rest/other
+// switch, rather than a second copy — "no parallel type state" per that
+// Story's own instruction extends to not parallel-defining its presentation.
+export const WORKOUT_TYPE_SWITCH_ICONS: Record<WorkoutTypeSwitchValue, (props: { size?: number }) => ReactNode> = {
   run: Play, rest: Bed, other: CircleHelp,
 };
-const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, string]> = {
+export const WORKOUT_TYPE_SWITCH_LABEL_KEYS: Record<WorkoutTypeSwitchValue, [string, string]> = {
   run: ["runplan.accordion.workoutTypeRun", "Run"],
   rest: ["runplan.accordion.workoutTypeRest", "Rest"],
   other: ["runplan.accordion.workoutTypeOther", "Other"],
 };
-function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
+export function workoutTypeSwitchValue(workoutType: string): WorkoutTypeSwitchValue {
   return workoutType === "run" || workoutType === "rest" ? workoutType : "other";
 }
 
@@ -405,6 +409,19 @@ function UnsavedBadge({ t }: { t: Translate }) {
   return (
     <span className="hra-text-warning inline-flex items-center"  title={t("manage.planInstances.unsavedChanges", "Unsaved changes")}>
       <AlertTriangle size={12} />
+    </span>
+  );
+}
+
+// HRA-299: a subtle, translated indicator that this day's own persisted
+// content (not just an in-progress local edit — see UnsavedBadge above) was
+// individually edited or swapped after creation, so a desktop regeneration
+// would need explicit confirmation to overwrite it. Plain secondary text,
+// deliberately not a warning color — this is provenance, not a problem.
+function CustomizedBadge({ t }: { t: Translate }) {
+  return (
+    <span className="hra-text-secondary text-meta"  title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}>
+      {t("runplan.accordion.customizedBadge", "Modified")}
     </span>
   );
 }
@@ -702,6 +719,7 @@ function InstanceDayRow({
           {fmtDistance(day.distance, t)}
           {dirty && <UnsavedBadge t={t} />}
           {day.needs_review && <WarningBadge t={t} />}
+          {day.customized_at != null && <CustomizedBadge t={t} />}
         </span>
 
         {/* run/rest/other switch — "directly below the date pill" (HRA-163

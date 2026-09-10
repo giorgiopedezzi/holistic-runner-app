@@ -57,6 +57,11 @@
               "candidate": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": ["string", "null"] }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" } } },
               "conflicts": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "integer" }, "name": { "type": ["string", "null"] }, "start_date": { "type": "string", "format": "date" }, "end_date": { "type": "string", "format": "date" }, "overlap_start": { "type": "string", "format": "date" }, "overlap_end": { "type": "string", "format": "date" } } } }
             }
+          },
+          "customized_days": {
+            "type": "array",
+            "description": "HRA-299: only on POST .../plan-instances/{id}/regenerate's 409 — every day in the requested range that already carries a customization marker and would be silently overwritten without confirm_overwrite: true.",
+            "items": { "type": "object", "properties": { "id": { "type": "integer" }, "date": { "type": "string", "format": "date" }, "section_name": { "type": "string" }, "week_number": { "type": "integer" }, "day": { "type": "integer" }, "workout_type": { "type": "string" }, "notes": { "type": ["string", "null"] } } }
           }
         },
         "required": ["type", "title", "status"]
@@ -315,7 +320,8 @@
           "segments": { "type": "array", "items": { "$ref": "#/components/schemas/ResolvedSegment" } },
           "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] },
           "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] },
-          "scheduled_time": { "type": ["string", "null"], "description": "HRA-149: HH:MM, nullable — NULL reads as the 08:00 default at display time, never backfilled." }
+          "scheduled_time": { "type": ["string", "null"], "description": "HRA-149: HH:MM, nullable — NULL reads as the 08:00 default at display time, never backfilled." },
+          "customized_at": { "type": ["string", "null"], "format": "date-time", "description": "HRA-299: nullable timestamp — non-null means this day's workout content was individually edited (PATCH .../days/{dayId}'s dsl branch) or swapped after creation. Always NULL on a freshly created/regenerated row." }
         }
       },
       "PlanInstanceDayEdit": {
@@ -341,6 +347,7 @@
           "activity_target": { "type": ["object", "null"] }, "activity_description": { "type": ["string", "null"] },
           "notes": { "type": ["string", "null"] }, "needs_review": { "type": "integer", "enum": [0, 1] },
           "scheduled_time": { "type": ["string", "null"] },
+          "customized_at": { "type": ["string", "null"], "format": "date-time" },
           "instance_name": { "type": ["string", "null"], "description": "The owning plan_instances.name — nullable only for the same legacy-migration reason PlanInstance.name is (HRA-114)." }
         }
       },
@@ -744,10 +751,10 @@
     "/api/v1/plan-instances/{id}/regenerate": {
       "post": {
         "tags": ["plan-templates"], "summary": "Regenerate an instance's days from a cutover date onward (HRA-132)",
-        "description": "effective_from is required and server-floored to today — never trusted from the client. Days with date < effective_from are never modified or deleted. Days with date >= effective_from are fully regenerated from the template's own DSL (via instantiatePlan, not from the instance's already-resolved days — those already discarded each day's original symbolic pace anchor) using start_date/pace_overrides, falling back to the instance's own current value for whichever is omitted. pace_overrides, when supplied, is the instance's new COMPLETE override map (same semantics as /instantiate's own field), not a partial merge on top of what was stored before. Existing manual edits on days >= effective_from are discarded (documented behavior, not a bug). Clears approved_at, same gate-2 rule as the instance PUT.",
+        "description": "effective_from is required and server-floored to today — never trusted from the client. Days with date < effective_from are never modified or deleted. Days with date >= effective_from are fully regenerated from the template's own DSL (via instantiatePlan, not from the instance's already-resolved days — those already discarded each day's original symbolic pace anchor) using start_date/pace_overrides, falling back to the instance's own current value for whichever is omitted. pace_overrides, when supplied, is the instance's new COMPLETE override map (same semantics as /instantiate's own field), not a partial merge on top of what was stored before. Existing manual edits on days >= effective_from are discarded (documented behavior, not a bug). Clears approved_at, same gate-2 rule as the instance PUT. HRA-299: before mutating, a preflight checks every currently-persisted day in [effective_from, end] for a customization marker (set by PATCH .../days/{dayId}'s dsl branch, or a swap) — if any are found and confirm_overwrite isn't true, 409s naming every affected day instead of silently discarding them; retry with confirm_overwrite: true to proceed.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["effective_from"], "properties": { "start_date": { "type": "string", "format": "date", "description": "Optional — defaults to the instance's own current start_date." }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional — the instance's new COMPLETE override map, anchor -> pace value string. Defaults to the instance's own currently-stored overrides when omitted." }, "effective_from": { "type": "string", "format": "date", "description": "The cutover date. Must not be before today (422 otherwise, enforced server-side)." } } } } } },
-        "responses": { "200": { "description": "The updated instance, with its regenerated days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["effective_from"], "properties": { "start_date": { "type": "string", "format": "date", "description": "Optional — defaults to the instance's own current start_date." }, "pace_overrides": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Optional — the instance's new COMPLETE override map, anchor -> pace value string. Defaults to the instance's own currently-stored overrides when omitted." }, "effective_from": { "type": "string", "format": "date", "description": "The cutover date. Must not be before today (422 otherwise, enforced server-side)." }, "confirm_overwrite": { "type": "boolean", "description": "HRA-299: required (true) to proceed once the preflight finds any customized day in range. Ignored/unnecessary when none are found." } } } } } },
+        "responses": { "200": { "description": "The updated instance, with its regenerated days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/locales/{lang}": {

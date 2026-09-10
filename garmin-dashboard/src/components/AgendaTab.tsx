@@ -42,7 +42,7 @@ interface Props {
 export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const { t } = useTranslation();
   const date = isoToday();
-  const { state } = useQuery(() => api.planInstances.active(date), [date]);
+  const { state, refetch } = useQuery(() => api.planInstances.active(date), [date]);
   // HRA-263: called unconditionally (rules of hooks) even though its result
   // is only used once `state` itself has resolved below — decides whether
   // today specifically has neither a plan day nor a recorded activity, which
@@ -94,6 +94,16 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
         onDaySwap={noop}
         initialDate={new Date()}
         onNavigateToActivity={onNavigateToActivity}
+        // HRA-300: Agenda's own workout-row entry point for the mobile
+        // full-screen DSL editor — same component, same save command as the
+        // race-plan detail view (PlanInstancesSection's current-week
+        // ribbon), per that Story's "does not create a second Agenda
+        // implementation" instruction. instance is only non-null once
+        // `state` has resolved successfully, matching this render's own
+        // `instance` derivation below.
+        instanceId={instance?.id}
+        onDayPersisted={() => refetch()}
+        raceDate={instance?.race_date}
       />
     </>
   );

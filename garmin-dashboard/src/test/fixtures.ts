@@ -114,6 +114,22 @@ export const shortTrack = (): TrackPoint[] =>
     power: null,
   }));
 
+// A longer track (>5 points) so ActivityDetailBody renders the real
+// ActivityChartSection (Recharts + the analysis controls), not the "not
+// enough data" message shortTrack() above is for.
+export const longTrack = (n = 20): TrackPoint[] =>
+  Array.from({ length: n }, (_, i) => ({
+    elapsed_sec: i * 5,
+    timestamp_unix: 1_785_832_000 + i * 5,
+    distance_m: i * 15,
+    heart_rate: 150 + (i % 10),
+    speed_ms: 3.3,
+    cadence: 170,
+    altitude_m: 12,
+    temperature: 20,
+    power: null,
+  }));
+
 export const dateRange = (overrides: Partial<DateRange> = {}): DateRange => ({
   min_date: "2025-01-01",
   max_date: "2026-08-14",
@@ -196,5 +212,6 @@ export const planInstanceDay = (overrides: Partial<PlanInstanceDay> = {}): PlanI
   notes: null,
   needs_review: 0,
   scheduled_time: null,
+  customized_at: null,
   ...overrides,
 });

@@ -57,7 +57,10 @@ import { fmtElapsedClock } from "@/domain/activity-chart";
 import { fmtBpm, fmtPace } from "@/utils/fmt";
 import type { DayView, SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
 import { DayEditModal } from "@/components/manage/DayEditModal";
+import { MobileWorkoutEditor } from "@/components/manage/plan-instances/MobileWorkoutEditor";
+import { MobileWorkoutSwap } from "@/components/manage/plan-instances/MobileWorkoutSwap";
 import type { WorkoutType } from "@/types/runplan";
+import type { PlanInstanceDay } from "@/types/api";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, paceUnitLabel, speedUnitLabel } from "@/utils/units";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 import {
@@ -132,6 +135,10 @@ interface CalendarEvent {
   // scheduled_time (HRA-150) this is threaded from.
   dayId?: number;
   scheduledTime?: string | null;
+  // HRA-299: passthrough of DayView's own customized_at — non-null means
+  // this day was individually edited or swapped, driving the same
+  // "Modificato" badge the List view shows.
+  customizedAt?: string | null;
   // HRA-262: true only for a synthesized entry standing in for a recorded
   // activity that has no plan day on this date at all — see
   // actualOnlyEventsFromActivities below. Every other (plan-derived) field
@@ -250,6 +257,7 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
           title, start, end, allDay: !timed, workoutType: day.workout_type,
           trainingLoadCategory: day.trainingLoadCategory, needsReview: day.needs_review, metrics: day.metrics,
           dayId: day.id, scheduledTime: day.scheduled_time, notes: day.notes,
+          customizedAt: day.customized_at,
         });
       }
     }
@@ -494,6 +502,14 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
             <AlertTriangle size={12} />
           </span>
         )}
+        {event.customizedAt != null && (
+          <span
+            title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
+            className="hra-text-secondary text-meta shrink-0"
+          >
+            {t("runplan.accordion.customizedBadge", "Modified")}
+          </span>
+        )}
         <ActualActivityBadge activity={matchedActivity} />
       </span>
 
@@ -605,13 +621,21 @@ function WeekRowCard({ event, matchedActivity, dragProps, isDragOver }: {
       {...dragProps}
     >
       <span className="hra-agenda-rowcard-row1">{rowOneLabel}</span>
-      {(PlanIcon || hasActual) && (
+      {(PlanIcon || hasActual || (hasPlan && event.customizedAt != null)) && (
         <span className="hra-agenda-rowcard-row2">
           {PlanIcon ? (
             <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
               <PlanIcon size={13} />
             </span>
           ) : <span />}
+          {hasPlan && event.customizedAt != null && (
+            <span
+              title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
+              className="hra-text-secondary text-meta shrink-0"
+            >
+              {t("runplan.accordion.customizedBadge", "Modified")}
+            </span>
+          )}
           <ActualActivityBadge activity={matchedActivity} />
         </span>
       )}
@@ -1062,11 +1086,31 @@ interface Props {
   // threaded down from App.tsx, mirroring AgendaTab's existing
   // onNavigateToPlans callback pattern.
   onNavigateToActivity?: (activityId: number) => void;
+  // HRA-300: when supplied AND the viewport is phone-width (useIsPhone),
+  // clicking a planned-only day opens MobileWorkoutEditor (a genuinely
+  // different full-screen surface, persisting immediately through its own
+  // PATCH .../days/:dayId call) instead of DayEditModal — DayEditModal stays
+  // the desktop behavior unconditionally, unchanged. Omitted at any call
+  // site not yet wired for it (none today — every caller passes it), which
+  // falls back to the pre-existing DayEditModal path so this stays additive.
+  instanceId?: number;
+  onDayPersisted?: (updated: PlanInstanceDay) => void;
+  // HRA-301: the instance's own race_date (undefined at every call site that
+  // doesn't have it handy, e.g. the current-week-only mobile preview ribbon)
+  // — feeds MobileWorkoutSwap's own "race day can't be a swap target" rule.
+  // Omitted entirely disables that one rule (never a false positive), never
+  // blocks the swap entry point itself.
+  raceDate?: string | null;
 }
 
 export function PlanInstanceCalendar({
   sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
+  instanceId, onDayPersisted, raceDate,
 }: Props) {
+  // HRA-300: read once, near the top, since both the ribbon-vs-grid branch
+  // further down AND the mobile-editor-vs-DayEditModal choice above it need
+  // the same value.
+  const isPhone = useIsPhone();
   const events = useMemo(() => eventsFromSections(sections), [sections]);
   // HRA-151: AgendaDateHeader gets one calendar Date per render (react-big-
   // calendar's own dateHeader contract) with no direct link back to "this
@@ -1098,6 +1142,10 @@ export function PlanInstanceCalendar({
     return map;
   }, [sections]);
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
+  // HRA-301: the day currently in the explicit mobile swap flow — mutually
+  // exclusive with editingDayId (MobileWorkoutEditor's own "Swap with…"
+  // button closes the editor and opens this instead, see dayEditModal below).
+  const [swappingDayId, setSwappingDayId] = useState<number | null>(null);
 
   const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
   // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
@@ -1295,12 +1343,50 @@ export function PlanInstanceCalendar({
     // Otherwise: an empty day (no plan day, no recorded activity) — no-op.
   }
   const editingDay = editingDayId != null ? dayViewsById.get(editingDayId) : undefined;
+  // HRA-300: on phone, with an instanceId to persist through, a planned day
+  // opens the full-screen mobile editor instead — independent of
+  // readOnlyDays (that flag only ever gated the desktop bulk-save flow's
+  // inline dsl/notes fields; this editor persists immediately through its
+  // own per-day PATCH, so it's available from Agenda too, not just the
+  // editable desktop instance view). Every other combination (desktop, or
+  // phone with no instanceId supplied) keeps the exact pre-existing
+  // DayEditModal behavior.
   const dayEditModal = editingDay && (
-    <DayEditModal
-      day={editingDay}
-      readOnlyDays={readOnlyDays}
-      onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
-      onClose={() => setEditingDayId(null)}
+    isPhone && instanceId != null ? (
+      <MobileWorkoutEditor
+        day={editingDay}
+        instanceId={instanceId}
+        onSaved={updated => onDayPersisted?.(updated)}
+        onClose={() => setEditingDayId(null)}
+        // HRA-301: "Swap with…" hands off from the editor to the explicit
+        // swap flow for the same day — the two full-screen surfaces are
+        // mutually exclusive (editingDayId/swappingDayId never both set).
+        onSwap={() => { setSwappingDayId(editingDay.id!); setEditingDayId(null); }}
+      />
+    ) : (
+      <DayEditModal
+        day={editingDay}
+        readOnlyDays={readOnlyDays}
+        onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
+        onClose={() => setEditingDayId(null)}
+      />
+    )
+  );
+
+  // HRA-301: the explicit swap flow's own mount point, alongside
+  // dayEditModal above — instanceId != null is the same precondition
+  // MobileWorkoutEditor's own persistence needs, so both full-screen mobile
+  // surfaces share it.
+  const swappingDay = swappingDayId != null ? dayViewsById.get(swappingDayId) : undefined;
+  const swapModal = swappingDay && instanceId != null && (
+    <MobileWorkoutSwap
+      source={swappingDay}
+      sections={sections}
+      instanceId={instanceId}
+      raceDate={raceDate}
+      hasActivity={dateKey => activitiesByDateKey.has(dateKey)}
+      onClose={() => setSwappingDayId(null)}
+      onSwapped={(a, b) => { onDayPersisted?.(a); onDayPersisted?.(b); }}
     />
   );
 
@@ -1333,7 +1419,6 @@ export function PlanInstanceCalendar({
     return map;
   }, [calendarEvents]);
 
-  const isPhone = useIsPhone();
   if (isPhone) {
     return (
       <div className="hra-agenda-ribbon-root">
@@ -1350,6 +1435,7 @@ export function PlanInstanceCalendar({
           onSelect={handleSelectEvent}
         />
         {dayEditModal}
+        {swapModal}
       </div>
     );
   }
@@ -1387,6 +1473,7 @@ export function PlanInstanceCalendar({
         <ShadcnBigCalendar {...calendarProps} />
       )}
       {dayEditModal}
+      {swapModal}
     </div>
   );
 }

@@ -26,6 +26,23 @@ export function TrackTooltip({ active, payload, xMode, metrics, speedMode }: {
       </div>
     );
   }
+  // HRA-303 section 8: the standalone Heart rate card's own recovery flags
+  // (HrRecoveryFlagShape) no longer render a permanent pill with the delta
+  // baked into the SVG — this on-hover/on-tap tooltip (Recharts' native
+  // <Tooltip>, which already fires on touch as well as mouse) is now the
+  // only place that value is revealed. `hrRecoveryDelta` reaches this row
+  // via ChartRow's own index signature (added ad hoc by
+  // ActivityDetailBody's hrRecoveryChartData map), not a declared field.
+  if (typeof row.hrRecoveryDelta === "number") {
+    const delta = row.hrRecoveryDelta;
+    const sign = delta > 0 ? "−" : delta < 0 ? "+" : "±";
+    const bpm = `${sign}${Math.abs(Math.round(delta))} bpm`;
+    return (
+      <div className="hra-chart-tooltip">
+        <div className="py-1.5 px-2.5">{t("activity.chart.hrRecoveryTooltip", `HR recovery: ${bpm}`, { bpm })}</div>
+      </div>
+    );
+  }
   if (row.realX == null) return null;
 
   return (

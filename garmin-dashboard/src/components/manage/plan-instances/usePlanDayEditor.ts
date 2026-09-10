@@ -1,7 +1,7 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import type { TFunction } from "i18next";
 import { api } from "@/api/client";
-import { DAY_PREFIX_RE, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
+import type { DayRef, EditedRef, WeekRef, WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import {
   aggregateDayViews,
   computeResolvedDayDistance,
@@ -9,7 +9,7 @@ import {
   type SectionView,
   type WeekView,
 } from "@/domain/runplan-aggregate";
-import { recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
+import { nextWorkoutTypeDsl, recomposeDayLine, splitNote, swapDayContent } from "@/domain/runplan-patch";
 import type { WorkoutType } from "@/types/runplan";
 import { notify } from "@/utils/toast";
 
@@ -230,9 +230,7 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
     const day = sections[sectionIndex]?.weeks[weekIndex]?.days[dayIndex];
     if (!day) return;
 
-    const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
-    const newBody = workoutType === "rest" ? "REST" : workoutType === "other" ? "OTHER" : "";
-    const newDsl = recomposeDayLine(`${dayPrefix}${newBody}`, { notes: day.notes });
+    const newDsl = nextWorkoutTypeDsl(day.dsl, day.notes, workoutType);
     onDayEdit(sectionIndex, weekIndex, dayIndex, { dsl: newDsl });
     patchLocalDayResolved(sectionIndex, weekIndex, dayIndex, {
       workout_type: workoutType as WorkoutType,

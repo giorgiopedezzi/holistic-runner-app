@@ -4,7 +4,7 @@ import "@/i18n";
 import {
   CalendarDays, ListTodo, TrendingUp, Activity as ActivityIcon,
   HeartPulse, RefreshCw, Settings as SettingsIcon, MessageSquare,
-  PanelLeftClose, PanelLeftOpen, Menu,
+  PanelLeftClose, PanelLeftOpen, Menu, X,
 } from "lucide-react";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
@@ -72,6 +72,22 @@ const COMPARE_URL_KEYS = { from: "compareFrom", to: "compareTo", enabled: "compa
 // reasonable choice for that specific need).
 const SIDEBAR_COLLAPSED_KEY = "hra-sidebar-collapsed";
 
+// Same reasoning/precedent as SIDEBAR_COLLAPSED_KEY above — dismissing the
+// feedback ribbon is a pure client-side UI preference (HRA-303's own
+// fallback instruction: "if none exists, use local storage with a
+// versioned key"), not something that needs to sync across devices via the
+// backend settings table. Versioned so a future change to the banner's own
+// message/purpose can re-surface it to someone who dismissed an older one.
+const FEEDBACK_BANNER_DISMISSED_KEY = "hra-feedback-banner-dismissed-v1";
+
+function readBannerDismissed(): boolean {
+  try {
+    return localStorage.getItem(FEEDBACK_BANNER_DISMISSED_KEY) === "1";
+  } catch {
+    return false; // storage unavailable — banner just shows every time
+  }
+}
+
 // HRA-267: 3-state responsive sidebar. `open`/`icon` are the two desktop
 // states the collapse toggle already had; `hidden` is the new phone-tier
 // state (off-canvas, reopened as an overlay via the hamburger). Breakpoints
@@ -100,26 +116,40 @@ function readPersistedDesktopCollapse(): boolean {
   }
 }
 
-// Sticky feedback ribbon, pinned above the content column's own scroll area
-// (direct feedback — "make sure people actually notice the feedback page").
-// The clickable word lives inside the translated sentence itself, not
-// bolted on before/after it, so its position stays natural in every
-// language: the default string carries a "((feedback))" marker translators
-// can move anywhere, and this splits on that marker to insert a real
-// <button> (never a translated whole sentence baked into two separate keys,
-// which would fight word order in languages that don't put the link where
+// Sticky feedback ribbon on desktop/tablet, in normal document flow on
+// phone (HRA-303: it must scroll out of view there, not stay pinned over
+// content — see .hra-feedback-banner's own phone media rule) — pinned above
+// the content column's own scroll area at the wider tiers (direct feedback
+// — "make sure people actually notice the feedback page"). The clickable
+// word lives inside the translated sentence itself, not bolted on
+// before/after it, so its position stays natural in every language: the
+// default string carries a "((feedback))" marker translators can move
+// anywhere, and this splits on that marker to insert a real <button>
+// (never a translated whole sentence baked into two separate keys, which
+// would fight word order in languages that don't put the link where
 // English does).
-function FeedbackBanner({ onNavigate }: { onNavigate: () => void }) {
+function FeedbackBanner({ onNavigate, onDismiss }: { onNavigate: () => void; onDismiss: () => void }) {
   const { t } = useTranslation();
   const raw = t("banner.feedbackPrompt", "Your anonymous ((feedback)) is my most valuable asset if you want this app to keep improving.");
   const [before, linkWord, after] = raw.split(/\(\((.+?)\)\)/);
   return (
     <div className="hra-feedback-banner text-label">
-      {before}
-      <button type="button" className="hra-feedback-banner-link" onClick={onNavigate}>
-        {linkWord ?? t("nav.feedback", "Feedback")}
+      <span className="hra-feedback-banner-text">
+        {before}
+        <button type="button" className="hra-feedback-banner-link" onClick={onNavigate}>
+          {linkWord ?? t("nav.feedback", "Feedback")}
+        </button>
+        {after}
+      </span>
+      <button
+        type="button"
+        className="hra-feedback-banner-dismiss hra-nav-hover"
+        onClick={onDismiss}
+        aria-label={t("banner.dismiss", "Close feedback message")}
+        title={t("banner.dismiss", "Close feedback message")}
+      >
+        <X size={14} aria-hidden="true" />
       </button>
-      {after}
     </div>
   );
 }
@@ -191,6 +221,15 @@ function AppShell() {
     });
   }
   const [online, setOnline] = useState<boolean | null>(null);
+  const [bannerDismissed, setBannerDismissed] = useState(readBannerDismissed);
+  function dismissBanner() {
+    setBannerDismissed(true);
+    try {
+      localStorage.setItem(FEEDBACK_BANNER_DISMISSED_KEY, "1");
+    } catch {
+      // storage unavailable — dismissal still applies for this session
+    }
+  }
   const [viewportTier, setViewportTier] = useState<ViewportTier>(() =>
     resolveViewportTier(window.innerWidth)
   );
@@ -251,6 +290,26 @@ function AppShell() {
   function closeSidebarOverlay() {
     if (viewportTier === "phone") setSidebarMode("hidden");
   }
+
+  // HRA-303 AC4: focus must return to the hamburger trigger once the phone
+  // drawer closes. The trigger button only exists in the DOM while
+  // sidebarMode === "hidden" (it unmounts while the drawer is open, same as
+  // before this Story), so a plain onClick handler on the backdrop/nav-item
+  // can't call .focus() on it directly — this effect watches for the
+  // hidden transition instead and focuses the just-remounted button once
+  // React has committed it. Guarded by drawerWasOpenRef so mounting
+  // straight into "hidden" (first load, or crossing tiers into phone) never
+  // steals focus that was never inside the drawer to begin with.
+  const hamburgerRef = useRef<HTMLButtonElement>(null);
+  const drawerWasOpenRef = useRef(false);
+  useEffect(() => {
+    if (viewportTier !== "phone") return;
+    if (sidebarMode === "open") { drawerWasOpenRef.current = true; return; }
+    if (sidebarMode === "hidden" && drawerWasOpenRef.current) {
+      drawerWasOpenRef.current = false;
+      hamburgerRef.current?.focus();
+    }
+  }, [sidebarMode, viewportTier]);
 
   useEffect(() => {
     fetch("/api/v1/range")
@@ -360,17 +419,6 @@ function AppShell() {
       {viewportTier === "phone" && sidebarMode === "open" && (
         <div className="hra-sidebar-backdrop" onClick={closeSidebarOverlay} />
       )}
-      {viewportTier === "phone" && sidebarMode === "hidden" && (
-        <button
-          type="button"
-          className="hra-sidebar-hamburger hra-nav-hover"
-          onClick={toggleSidebar}
-          aria-label={t("nav.openSidebar", "Open navigation")}
-          title={t("nav.openSidebar", "Open navigation")}
-        >
-          <Menu size={18} aria-hidden="true" />
-        </button>
-      )}
       <aside
         className="hra-sidebar"
         data-collapsed={sidebarMode === "icon" ? "true" : sidebarMode === "hidden" ? "hidden" : "false"}
@@ -426,7 +474,31 @@ function AppShell() {
 
       {/* ── content column ──────────────────────────────────────────────── */}
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
-        {tab !== "feedback" && <FeedbackBanner onNavigate={() => guardedAction(() => setTab("feedback"))} />}
+        {/* HRA-303: the phone-tier nav trigger now lives in its own in-flow
+            application header, sticky at the very top of this scroll
+            container — replacing the old `position: fixed` floating button,
+            which sat on top of (overlapped) the feedback banner below it.
+            The banner (next sibling) renders directly underneath, in normal
+            flow, so the two can never overlap by construction. Only shown
+            while the drawer itself is hidden, same condition the old fixed
+            button used. */}
+        {viewportTier === "phone" && sidebarMode === "hidden" && (
+          <header className="hra-mobile-header">
+            <button
+              ref={hamburgerRef}
+              type="button"
+              className="hra-mobile-header-trigger hra-nav-hover"
+              onClick={toggleSidebar}
+              aria-label={t("nav.openSidebar", "Open navigation")}
+              title={t("nav.openSidebar", "Open navigation")}
+            >
+              <Menu size={18} aria-hidden="true" />
+            </button>
+          </header>
+        )}
+        {tab !== "feedback" && !bannerDismissed && (
+          <FeedbackBanner onNavigate={() => guardedAction(() => setTab("feedback"))} onDismiss={dismissBanner} />
+        )}
         <main className="hra-app-main flex-1">
 
           {online === false && (
@@ -453,7 +525,9 @@ function AppShell() {
             <OverviewTab range={range} compareRange={compareRange} savedRanges={savedRanges} />
           )}
           {tab === "activities" && <ActivitiesTab from={range.from} to={range.to} />}
-          {tab === "plans"      && <PlansTab onNavigateToActivity={navigateToActivity} />}
+          {tab === "plans"      && (
+            <PlansTab onNavigateToActivity={navigateToActivity} onNavigateToAgenda={() => guardedAction(() => setTab("agenda"))} />
+          )}
           {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
           {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
           {tab === "settings"   && <SettingsTab appearance={appearance} />}

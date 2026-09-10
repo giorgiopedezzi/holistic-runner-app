@@ -21,6 +21,19 @@ export interface PlanInstanceOverlap {
   overlap_end: string;
 }
 
+// HRA-299: one customized day a regenerate call would silently overwrite —
+// carried on a 409 from POST .../plan-instances/:id/regenerate so the
+// frontend can name every affected day without a second round trip.
+export interface PlanInstanceCustomizedDay {
+  id: number;
+  date: string;
+  section_name: string;
+  week_number: number;
+  day: number;
+  workout_type: string;
+  notes: string | null;
+}
+
 export interface Problem {
   type: string;
   title: string;
@@ -32,6 +45,7 @@ export interface Problem {
     candidate: { id: number; name: string | null; start_date: string; end_date: string };
     conflicts: PlanInstanceOverlap[];
   };
+  customized_days?: PlanInstanceCustomizedDay[];
 }
 
 export class ApiProblem extends Error {

@@ -16,10 +16,10 @@
  * still-real popup path.
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { ActivityDetailBody } from "./ActivityModal";
 import { installFetch, json, problem } from "@/test/api-stub";
-import { activity, shortTrack, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
+import { activity, shortTrack, longTrack, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
 
 afterEach(() => {
@@ -85,8 +85,8 @@ function stubPhoneWidth(isPhone: boolean) {
   }));
 }
 
-describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291)", () => {
-  it("renders KPIs as text rows, not bordered mini-cards, at phone width", async () => {
+describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291, revised HRA-303)", () => {
+  it("renders metrics as a two-column grid with concise labels, not bordered mini-cards, at phone width", async () => {
     stubPhoneWidth(true);
     installFetch({
       [`GET /api/v1/activities/${ID}`]: activity(),
@@ -95,11 +95,16 @@ describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291)", 
     });
     const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
 
-    await waitFor(() => expect(container.querySelector(".hra-fact-row-stat")).toBeInTheDocument());
-    const maxHrRow = screen.getByText("Max HR").closest(".hra-fact-row-stat");
-    expect(maxHrRow).toHaveTextContent("171");
-    expect(maxHrRow).toHaveTextContent("bpm");
+    await waitFor(() => expect(container.querySelector(".hra-activity-metrics-grid-mobile")).toBeInTheDocument());
+    // HRA-303 corrective round section 3: a fixed 3-row/2-column grid (6
+    // cells), value-first with a short trailing label on the same line —
+    // not Stat's label-first row layout, and not the bordered StatGrid.
+    const cells = container.querySelectorAll(".hra-activity-metrics-grid-cell");
+    expect(cells).toHaveLength(6);
+    const maxHrCell = screen.getByText("max HR").closest(".hra-activity-metrics-grid-cell");
+    expect(maxHrCell).toHaveTextContent("171");
     expect(container.querySelector(".hra-stat-grid")).not.toBeInTheDocument();
+    expect(container.querySelector(".hra-fact-row-stat")).not.toBeInTheDocument();
   });
 
   it("collapses the popup header's type/rename/delete controls into one overflow menu at phone width", async () => {
@@ -123,5 +128,39 @@ describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291)", 
 
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
     expect(onClose).toHaveBeenCalled();
+  });
+});
+
+describe("ActivityChartSection pause-threshold input (fix: could not clear, no debounce)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("can be cleared to an empty field instead of snapping back to 0, and debounces the expensive commit", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: longTrack(),
+      "GET /api/v1/settings": settings(),
+    });
+    render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
+
+    const input = await screen.findByDisplayValue("30") as HTMLInputElement;
+
+    // The pre-fix input was `value={pauseThreshold}` with
+    // `onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}`
+    // — clearing it computed Number("") === 0, which the very next render
+    // fed straight back in as the controlled value, so the field could never
+    // actually go empty. It must now be able to.
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.value).toBe("");
+
+    // Typing continues to reflect immediately in the field...
+    fireEvent.change(input, { target: { value: "45" } });
+    expect(input.value).toBe("45");
+
+    // ...but the expensive commit (ActivityDetailBody's `pauses` useMemo,
+    // which re-scans the whole track) is debounced, not fired per keystroke
+    // — advancing past the debounce window is what actually commits it.
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    await waitFor(() => expect((screen.getByDisplayValue("45") as HTMLInputElement).value).toBe("45"));
   });
 });

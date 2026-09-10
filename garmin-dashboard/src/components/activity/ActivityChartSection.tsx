@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Gauge, Heart, AlertTriangle, SlidersHorizontal } from "lucide-react";
+import { MapPin, Gauge, Heart, AlertTriangle, SlidersHorizontal, Info } from "lucide-react";
 import {
-  axisDomainMinMax, distanceTicks, timeTicks,
+  axisDomainMinMax, distanceTicks, timeTicks, fmtElapsedClock,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
 import type { PaceTargetBandModel } from "@/domain/planned-workout";
@@ -12,7 +12,7 @@ import { fmtKm, fmtPace, fmtSpeed } from "@/utils/fmt";
 import { speedUnitLabel, paceUnitLabel } from "@/utils/units";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { METRIC_DEFS, OPTIONAL_METRIC_ORDER, hrRunnerColor, AXIS_WIDTH, MARGIN_LEFT, MARGIN_RIGHT, RIGHT_AXES_WIDTH, PLAYBACK_DURATION_MS, PAUSE_DWELL_MS, MOBILE_LABEL_CLUSTER_GAP_FRACTION, xToPixel } from "./shared";
-import { AccordionCard, ChartCard, Checkbox, GraphKpiCard, Label, LoadingSpinner, Select, Sheet, SheetContent, SheetTrigger, splitUnit } from "@/components/ui";
+import { ChartCard, Checkbox, GraphKpiCard, Label, LoadingSpinner, Select, Sheet, SheetContent, SheetTrigger, splitUnit } from "@/components/ui";
 import { MetricRow } from "./MetricRow";
 import { MetricLegendChip } from "./MetricLegendChip";
 import { MainOverlayChart, MetricStandaloneCard } from "./OverlayCharts";
@@ -20,7 +20,7 @@ import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
 import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPlayButton";
-import { nearestHr, clusterByProximity } from "@/domain/pauses";
+import { nearestHr, clusterByProximity, fmtPauseDuration } from "@/domain/pauses";
 import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 
 // How far the actual plotted line sits from this section's own outer edge,
@@ -127,16 +127,49 @@ export function ActivityChartSection({
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
   const isPhone = useIsPhone();
-  // HRA-293: each secondary chart's own AccordionCard disclosure — the
-  // "detail chart" chip toggle (MetricLegendChip, HRA-292) decides WHETHER a
-  // metric's card exists at all (showCard); this decides whether that card
-  // starts open or closed once it does. Heart rate defaults open (it's
-  // already the one optional metric active by default — see
-  // ActivityDetailBody's showCard initial state comment); every other
-  // metric's card starts collapsed, matching the Classification accordion
-  // above it (AccordionCard is the same reuse target, per the Story). Local
-  // to this component — no other consumer needs this disclosure state.
+  // Per-metric expand/collapse state for the secondary-charts disclosure —
+  // phone only (HRA-303 corrective round): one row inside the single
+  // .hra-activity-secondary-group-mobile container (section 7), collapsed
+  // by default except heart rate (it's already the one optional metric
+  // active by default — see ActivityDetailBody's showCard initial state
+  // comment). Desktop never collapses (its cards, gated by `showCard`
+  // instead, always render in full once shown), so this state is read only
+  // by the phone branch below. Local to this component — no other consumer
+  // needs it.
   const [expandedCards, setExpandedCards] = useState<Partial<Record<MetricKey, boolean>>>({ heart_rate: true });
+
+  // Pause-threshold text input — a local, uncontrolled-feeling buffer
+  // (allows an empty string mid-edit) separate from `pauseThreshold` itself,
+  // which is expensive downstream: ActivityDetailBody's `pauses` useMemo
+  // re-runs `detectPauses(track, pauseThreshold)` over the full track, then
+  // `chartData` rebuilds, on every change. Committing `setPauseThreshold`
+  // straight from onChange (the pre-fix behavior) did two things wrong at
+  // once: (1) a controlled numeric input whose value is `Math.max(0, ...)`
+  // of whatever's currently typed snaps back to "0" the instant the field is
+  // cleared to backspace-and-retype, since `Number("") === 0` — the field
+  // can never actually go empty; (2) every keystroke re-ran the full
+  // pause-detection + chart-rebuild pass, not just the final value — visibly
+  // slow on a real track. This buffer fixes both: typing updates only local
+  // state (so the field can be cleared/edited freely), and the expensive
+  // `setPauseThreshold` commit is debounced.
+  const [pauseThresholdInput, setPauseThresholdInput] = useState(String(pauseThreshold));
+  const pauseThresholdTimerRef = useRef<number | null>(null);
+  useEffect(() => setPauseThresholdInput(String(pauseThreshold)), [pauseThreshold]);
+  useEffect(() => () => { if (pauseThresholdTimerRef.current != null) clearTimeout(pauseThresholdTimerRef.current); }, []);
+  function commitPauseThreshold(raw: string) {
+    const n = Number(raw);
+    setPauseThreshold(Number.isFinite(n) && raw.trim() !== "" ? Math.max(0, n) : 0);
+  }
+  function handlePauseThresholdChange(raw: string) {
+    setPauseThresholdInput(raw);
+    if (pauseThresholdTimerRef.current != null) clearTimeout(pauseThresholdTimerRef.current);
+    pauseThresholdTimerRef.current = window.setTimeout(() => commitPauseThreshold(raw), 400);
+  }
+  function flushPauseThreshold() {
+    if (pauseThresholdTimerRef.current != null) { clearTimeout(pauseThresholdTimerRef.current); pauseThresholdTimerRef.current = null; }
+    commitPauseThreshold(pauseThresholdInput);
+  }
+
   // ── Mouse-follow runner (icon in its own row above the chart, readout
   // pinned below the chart's vertical center) ────────────────────────────
   // Both RunnerIcon and RunnerReadout hold their OWN local hover state,
@@ -494,13 +527,20 @@ export function ActivityChartSection({
   // didn't have this problem) was working correctly — the standalone HR
   // card (shown by default) was the one still re-rendering on every
   // Play/Pause click.
+  // HRA-303 corrective round: computed for every active metric unconditionally
+  // now, not gated on `showCard` — phone's secondary-charts group (below)
+  // shows every ACTIVE metric's card, not just the ones `showCard` (a
+  // desktop-only concept there) happens to have on. Cheap either way (a
+  // domain scan, not a chart render), so no perf concern computing a few
+  // unused entries on desktop, where the `showCard` filter still gates what
+  // actually renders.
   const cardDomains = useMemo(() => {
     const domains: Partial<Record<MetricKey, [number, number]>> = {};
     for (const key of effectiveActive) {
-      if (showCard[key]) domains[key] = axisDomainMinMax(displayTrack, key, speedMode);
+      domains[key] = axisDomainMinMax(displayTrack, key, speedMode);
     }
     return domains;
-  }, [effectiveActive, showCard, displayTrack, speedMode]);
+  }, [effectiveActive, displayTrack, speedMode]);
 
   // HRA-293: mobile-only pause/HR-recovery label clustering — phone-only
   // (Epic AC: "Desktop is pixel/behavior-unchanged"), so `mainChartData`/
@@ -598,6 +638,77 @@ export function ActivityChartSection({
   // takes the model directly rather than the toggle state.
   const plannedOverlay = plannedShown ? plannedModel : null;
 
+  // The planned-workout pill + card toggle, the Actual/Planned legend while
+  // the overlay is actually shown, then the same-day scheduled-workout
+  // picker when there's more than one candidate — unchanged content, shared
+  // by desktop's own controlsRow middle column and phone's summary-row
+  // follow-up line (HRA-303 corrective round: the corrective spec doesn't
+  // address this conditional, desktop-parity feature at all, so it's kept
+  // functionally identical on phone, just repositioned below the compact
+  // summary+replay row instead of occupying a permanent middle column).
+  const plannedControls = (
+    <>
+      {plannedModel && (
+        <MetricRow
+          color="var(--data-pace)"
+          label={t("activity.plannedWorkout.legendPlanned", "Planned")}
+          state={{ active: plannedShown, available: true, cardOn: plannedCardShown }}
+          onToggle={field => (field === "active" ? setPlannedShown(!plannedShown) : setPlannedCardShown(!plannedCardShown))}
+        />
+      )}
+      {plannedOverlay && (
+        // Same shared swatch classes/`--legend-color` hook
+        // SportTrendOverlapChart's own current-vs-compare legend
+        // uses (docs/frontend.md) — scoped longer here
+        // (.hra-activity-plan-legend, index.css) so they read clearly
+        // next to the pill. Solid line swatch = the real activity's
+        // line (speed/pace's own data-pace token, its own scale);
+        // translucent fill swatch = the planned band's area-only fill
+        // on the chart (no border line there any more either).
+        // `text-meta` sits on the inner spans, not this row div —
+        // index.css's `div.text-meta { margin-bottom: 4px }` (a
+        // typography rule for text-meta used as a caption) would
+        // otherwise nudge this row down off-center from the pill
+        // beside it, which has no such margin. */}
+        <div className="hra-activity-plan-legend hra-text-muted flex gap-3.5 items-center flex-wrap">
+          <span className="hra-row-inline gap-1.5 text-meta">
+            <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
+              <span className="hra-series-swatch--line" />
+            </span>
+            {t("activity.plannedWorkout.legendActual", "Actual")}
+          </span>
+          <span className="hra-row-inline gap-1.5 text-meta">
+            <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
+              <span className="hra-series-swatch--fill" />
+            </span>
+            {t("activity.plannedWorkout.legendPlanned", "Planned")}
+          </span>
+        </div>
+      )}
+      {plannedDays.length >= 2 && (
+        <div className="hra-row-inline gap-2 items-center">
+          <span className="hra-text-secondary text-label">{t("activity.plannedWorkout.pickerLabel", "Compare to plan")}</span>
+          <Select
+            value={String(selectedPlannedDayId)}
+            onValueChange={v => setSelectedPlannedDayId(Number(v))}
+            options={plannedDays.map(d => ({
+              value: String(d.id),
+              label: d.instance_name ?? t("activity.plannedWorkout.unnamedInstance", "Unnamed plan"),
+            }))}
+          />
+        </div>
+      )}
+    </>
+  );
+  const plannedShortNote = plannedOverlay && plannedOverlay.totalDistanceM > (chartData[chartData.length - 1]?.x ?? 0) && (
+    <span className="hra-activity-plan-note hra-text-warning text-meta italic mt-2">
+      <AlertTriangle size={12} />
+      {t("activity.plannedWorkout.animationShortNote",
+        `Actual distance ${fmtKm(distanceM)} instead of the planned ${fmtKm(plannedOverlay.totalDistanceM)}.`,
+        { actual: fmtKm(distanceM), planned: fmtKm(plannedOverlay.totalDistanceM) })}
+    </span>
+  );
+
   // HRA-292 scope: "move pause-threshold, anomaly-removal and other
   // technical settings into a 'Chart options' disclosure using Story 1's
   // Sheet primitive" — phone-only (desktop stays pixel-unchanged, Epic AC).
@@ -608,8 +719,9 @@ export function ActivityChartSection({
     <>
       <label className="hra-text-muted flex items-center gap-1.5 text-meta">
         {t("activity.chart.highlightPauses", "Highlight pauses ≥")}
-        <input type="number" min={5} step={5} value={pauseThreshold}
-          onChange={e => setPauseThreshold(Math.max(0, Number(e.target.value)))}
+        <input type="number" min={5} step={5} value={pauseThresholdInput}
+          onChange={e => handlePauseThresholdChange(e.target.value)}
+          onBlur={flushPauseThreshold}
           className="w-14 text-meta py-0.5 px-1.5" />
         sec
       </label>
@@ -634,34 +746,34 @@ export function ActivityChartSection({
           centers the middle column independent of how wide the two side
           groups are, which justify-content: space-between can't guarantee
           for a 3-child row. */}
-      <div className="hra-activity-chart-selectors grid items-center gap-4">
-        <div className="hra-row-wrap gap-4">
-          <div className="hra-segment">
-            {(["distance", "time"] as XMode[]).map(m => (
-              <button key={m} onClick={() => setXMode(m)}
-                className="hra-segment-item" data-active={xMode === m}>
-                {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
-              </button>
-            ))}
+      {isPhone ? (
+        // HRA-303 corrective round, section 4: a genuinely different phone
+        // composition, not the desktop 3-column grid restyled — an "Analisi"
+        // heading, ONE control row (both segments + the settings icon
+        // sharing it), then ONE compact dot-and-label legend row. Order
+        // matches the approved mockup: Ritmo before Velocità (a display-order
+        // swap only — speedMode's own default/behavior is untouched).
+        <>
+          <div className="hra-activity-analysis-heading text-label font-semibold hra-text-primary">
+            {t("activity.chart.analysisHeading", "Analysis")}
           </div>
-          {/* Speed/Pace: always active, axis always visible (mandatory
-              metric — no on/off toggle, unlike the optional metrics below).
-              Tinted to the metric's own color via --segment-color rather
-              than the app accent — the one switch app-wide with a
-              per-instance tint. */}
-          <div className="hra-speed-segment hra-segment">
-            {(["speed", "pace"] as SpeedMode[]).map(m => (
-              <button key={m} onClick={() => setSpeedMode(m)}
-                className="hra-segment-item" data-active={speedMode === m}>
-                {m === "speed"
-                  ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
-                  : t("activity.chart.paceUnit", "Pace (mm:ss)")}
-              </button>
-            ))}
-          </div>
-        </div>
-        {isPhone ? (
-          <div className="hra-row-wrap gap-4 justify-center">
+          <div className="hra-activity-analysis-controls-mobile">
+            <div className="hra-segment">
+              {(["distance", "time"] as XMode[]).map(m => (
+                <button key={m} onClick={() => setXMode(m)}
+                  className="hra-segment-item" data-active={xMode === m}>
+                  {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
+                </button>
+              ))}
+            </div>
+            <div className="hra-speed-segment hra-segment">
+              {(["pace", "speed"] as SpeedMode[]).map(m => (
+                <button key={m} onClick={() => setSpeedMode(m)}
+                  className="hra-segment-item" data-active={speedMode === m}>
+                  {m === "speed" ? t("activity.chart.speedShort", "Speed") : t("activity.chart.paceShort", "Pace")}
+                </button>
+              ))}
+            </div>
             <Sheet>
               <SheetTrigger className="hra-filter-trigger" aria-label={chartOptionsLabel}>
                 <SlidersHorizontal size={18} aria-hidden="true" />
@@ -671,30 +783,79 @@ export function ActivityChartSection({
               </SheetContent>
             </Sheet>
           </div>
-        ) : (
+          <div className="hra-activity-legend-row-mobile">
+            {OPTIONAL_METRIC_ORDER.filter(key => availableMetrics[key]).map(key => (
+              <MetricLegendChip
+                key={key}
+                compact
+                color={METRIC_DEFS[key].color}
+                label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+                state={{
+                  active:    activeMetrics.includes(key),
+                  available: availableMetrics[key],
+                  cardOn:    showCard[key],
+                }}
+                onToggle={field => { if (field === "active") toggleMetric(key); }}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="hra-activity-chart-selectors grid items-center gap-4">
+          <div className="hra-row-wrap gap-4 hra-chart-selector-segments">
+            <div className="hra-segment">
+              {(["distance", "time"] as XMode[]).map(m => (
+                <button key={m} onClick={() => setXMode(m)}
+                  className="hra-segment-item" data-active={xMode === m}>
+                  {m === "distance" ? t("activity.chart.distance", "Distance") : t("activity.chart.time", "Time")}
+                </button>
+              ))}
+            </div>
+            {/* Speed/Pace: always active, axis always visible (mandatory
+                metric — no on/off toggle, unlike the optional metrics below).
+                Tinted to the metric's own color via --segment-color rather
+                than the app accent — the one switch app-wide with a
+                per-instance tint. */}
+            <div className="hra-speed-segment hra-segment">
+              {(["speed", "pace"] as SpeedMode[]).map(m => (
+                <button key={m} onClick={() => setSpeedMode(m)}
+                  className="hra-segment-item" data-active={speedMode === m}>
+                  {m === "speed"
+                    ? t("activity.chart.speedUnit", `Speed (${speedUnitLabel()})`, { unit: speedUnitLabel() })
+                    : t("activity.chart.paceUnit", "Pace (mm:ss)")}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="hra-row-wrap gap-4 justify-center">
             {chartOptionsFields}
           </div>
-        )}
-        <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
-          {OPTIONAL_METRIC_ORDER.map(key => (
-            <MetricLegendChip
-              key={key}
-              color={METRIC_DEFS[key].color}
-              label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
-              state={{
-                active:    activeMetrics.includes(key),
-                available: availableMetrics[key],
-                cardOn:    showCard[key],
-              }}
-              onToggle={field => {
-                if (field === "active") toggleMetric(key);
-                else toggleCard(key);
-              }}
-            />
-          ))}
+          <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
+            {/* HRA-303 AC14/section 6: "Include heart rate, cadence, and power
+                only when the activity contains those data" — an unavailable
+                metric's chip is omitted outright now, not shown disabled (the
+                pre-Story behavior MetricLegendChip's own `available`/disabled
+                path still supports, for any future caller that doesn't
+                pre-filter). */}
+            {OPTIONAL_METRIC_ORDER.filter(key => availableMetrics[key]).map(key => (
+              <MetricLegendChip
+                key={key}
+                color={METRIC_DEFS[key].color}
+                label={t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+                state={{
+                  active:    activeMetrics.includes(key),
+                  available: availableMetrics[key],
+                  cardOn:    showCard[key],
+                }}
+                onToggle={field => {
+                  if (field === "active") toggleMetric(key);
+                  else toggleCard(key);
+                }}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Play/Stop moved inside the graph's own controlsRow (dashboard
           design-system rework) — pinned left, badges pinned right via
@@ -707,6 +868,43 @@ export function ActivityChartSection({
           the terrain/graph lines"). */}
       <ChartCard
         controlsRow={
+        isPhone ? (
+          // HRA-303 corrective round, section 5: "one compact summary row
+          // with three metrics and the replay control... placed at the
+          // right of the summary... when replay is idle, do not show a
+          // separate Stop button." RunnerPlayButton already IS the single
+          // control that changes state (play → pause → replay icon, see its
+          // own comment) — the only change needed here is not rendering
+          // RunnerStopButton at all while idle/finished, instead of
+          // rendering it disabled. Planned-workout controls (a conditional,
+          // desktop-parity feature the corrective spec doesn't address)
+          // follow as their own line only when a scheduled workout is
+          // actually selected — never an empty reserved row.
+          <div className="hra-activity-chart-controls-mobile">
+            <div className="flex items-center justify-between gap-2">
+              <div className="hra-activity-chart-kpis hra-row-wrap gap-2">
+                <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
+                  value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
+                <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
+                  value={speedPaceKpi.value} unit={speedPaceKpi.unit} label={speedPaceKpi.label} />
+                {avgHr != null && (
+                  <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(avgHr)} />} iconColor={hrRunnerColor(avgHr)}
+                    valueColor={hrRunnerColor(avgHr)} value={`${avgHr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
+                {stopEnabled && <RunnerStopButton disabled={false} onClick={handleStopClick} />}
+              </div>
+            </div>
+            {plannedModel && (
+              <div className="hra-row-wrap gap-3 items-center mt-2">
+                {plannedControls}
+              </div>
+            )}
+            {plannedShortNote}
+          </div>
+        ) : (
         <div className="hra-activity-chart-controls grid items-center gap-3" style={{
           "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
           "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
@@ -721,14 +919,7 @@ export function ActivityChartSection({
               <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
               <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
             </div>
-            {plannedOverlay && plannedOverlay.totalDistanceM > (chartData[chartData.length - 1]?.x ?? 0) && (
-              <span className="hra-activity-plan-note hra-text-warning text-meta italic mt-2">
-                <AlertTriangle size={12} />
-                {t("activity.plannedWorkout.animationShortNote",
-                  `Actual distance ${fmtKm(distanceM)} instead of the planned ${fmtKm(plannedOverlay.totalDistanceM)}.`,
-                  { actual: fmtKm(distanceM), planned: fmtKm(plannedOverlay.totalDistanceM) })}
-              </span>
-            )}
+            {plannedShortNote}
           </div>
           {/* Middle column: the planned-workout pill + card toggle, the
               Actual/Planned legend while the overlay is actually shown, then
@@ -739,56 +930,7 @@ export function ActivityChartSection({
               Overlap/Distinct switch this replaces is gone; the pill IS the
               on/off control now. */}
           <div className="hra-row-wrap gap-3 justify-center items-center">
-            {plannedModel && (
-              <MetricRow
-                color="var(--data-pace)"
-                label={t("activity.plannedWorkout.legendPlanned", "Planned")}
-                state={{ active: plannedShown, available: true, cardOn: plannedCardShown }}
-                onToggle={field => (field === "active" ? setPlannedShown(!plannedShown) : setPlannedCardShown(!plannedCardShown))}
-              />
-            )}
-            {plannedOverlay && (
-              // Same shared swatch classes/`--legend-color` hook
-              // SportTrendOverlapChart's own current-vs-compare legend
-              // uses (docs/frontend.md) — scoped longer here
-              // (.hra-activity-plan-legend, index.css) so they read clearly
-              // next to the pill. Solid line swatch = the real activity's
-              // line (speed/pace's own data-pace token, its own scale);
-              // translucent fill swatch = the planned band's area-only fill
-              // on the chart (no border line there any more either).
-              // `text-meta` sits on the inner spans, not this row div —
-              // index.css's `div.text-meta { margin-bottom: 4px }` (a
-              // typography rule for text-meta used as a caption) would
-              // otherwise nudge this row down off-center from the pill
-              // beside it, which has no such margin. */}
-              <div className="hra-activity-plan-legend hra-text-muted flex gap-3.5 items-center flex-wrap">
-                <span className="hra-row-inline gap-1.5 text-meta">
-                  <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
-                    <span className="hra-series-swatch--line" />
-                  </span>
-                  {t("activity.plannedWorkout.legendActual", "Actual")}
-                </span>
-                <span className="hra-row-inline gap-1.5 text-meta">
-                  <span className="hra-row-inline" style={{ "--legend-color": "var(--data-pace)" } as CSSProperties}>
-                    <span className="hra-series-swatch--fill" />
-                  </span>
-                  {t("activity.plannedWorkout.legendPlanned", "Planned")}
-                </span>
-              </div>
-            )}
-            {plannedDays.length >= 2 && (
-              <div className="hra-row-inline gap-2 items-center">
-                <span className="hra-text-secondary text-label">{t("activity.plannedWorkout.pickerLabel", "Compare to plan")}</span>
-                <Select
-                  value={String(selectedPlannedDayId)}
-                  onValueChange={v => setSelectedPlannedDayId(Number(v))}
-                  options={plannedDays.map(d => ({
-                    value: String(d.id),
-                    label: d.instance_name ?? t("activity.plannedWorkout.unnamedInstance", "Unnamed plan"),
-                  }))}
-                />
-              </div>
-            )}
+            {plannedControls}
           </div>
           <div className="hra-activity-chart-kpis hra-row-wrap gap-2 justify-end">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
@@ -801,6 +943,7 @@ export function ActivityChartSection({
             )}
           </div>
         </div>
+        )
       }>
       {/* The runner row: terrain silhouette + the roaming glyph. Same width
           as the chart below it (both direct children of ChartCard, same
@@ -860,62 +1003,141 @@ export function ActivityChartSection({
       )}
       </ChartCard>
 
+      {/* HRA-303 Accessibility: "Chart information must have a non-visual
+          accessible representation" / section 8: "Provide an accessible
+          equivalent for every event." PauseFlagShape/HrRecoveryFlagShape
+          now render compact SVG dots with no permanent text (see their own
+          comments) — a screen reader has nothing to read from the chart
+          itself for these events, since Recharts' plain <circle> shapes
+          carry no accessible name and the hover/tap reveal (RunnerReadout,
+          TrackTooltip) is pointer-driven. This sr-only list is the
+          non-visual equivalent: every pause and HR-recovery event, in
+          order, independent of hover state. */}
+      {(() => {
+        const pauseEvents = chartData.filter((r): r is ChartRow & { pauseDurationSec: number } => typeof r.pauseDurationSec === "number");
+        const recoveryEvents = hrRecoveryChartData.filter((r): r is typeof r & { hrRecoveryDelta: number } => typeof r.hrRecoveryDelta === "number");
+        if (pauseEvents.length === 0 && recoveryEvents.length === 0) return null;
+        return (
+          <ul className="sr-only">
+            {pauseEvents.map((r, i) => {
+              const duration = fmtPauseDuration(r.pauseDurationSec);
+              const at = xMode === "time" ? fmtElapsedClock(r.realX ?? 0) : fmtKm(r.realX ?? 0);
+              return (
+                <li key={`pause-${i}`}>
+                  {t("activity.chart.pauseEventSr", `Pause ${i + 1} of ${pauseEvents.length}: ${duration} at ${at}`,
+                    { index: i + 1, total: pauseEvents.length, duration, at })}
+                </li>
+              );
+            })}
+            {recoveryEvents.map((r, i) => {
+              const sign = r.hrRecoveryDelta > 0 ? "−" : r.hrRecoveryDelta < 0 ? "+" : "±";
+              const bpm = `${sign}${Math.abs(Math.round(r.hrRecoveryDelta))} bpm`;
+              const at = xMode === "time" ? fmtElapsedClock(r.realX ?? 0) : fmtKm(r.realX ?? 0);
+              return (
+                <li key={`recovery-${i}`}>
+                  {t("activity.chart.hrRecoveryEventSr", `Heart rate recovery ${i + 1} of ${recoveryEvents.length}: ${bpm} at ${at}`,
+                    { index: i + 1, total: recoveryEvents.length, bpm, at })}
+                </li>
+              );
+            })}
+          </ul>
+        );
+      })()}
+
       {/* HRA-208: the planned-workout card — first under the main chart,
           ahead of every metric card, while the "Card" toggle above is on. */}
       {plannedModel && plannedCardShown && (
         <PlannedPaceTargetChart model={plannedModel} className="hra-activity-metric-card" />
       )}
 
-      {effectiveActive.filter(key => showCard[key]).map(key => {
-        const domain = cardDomains[key]!;
-        // Pause flags render only on the main overlay chart above —
-        // repeating them on every standalone card was noise. The
-        // one exception is Heart rate, which gets its own
-        // recovery-delta flag instead (a different signal: HR drop
-        // across the pause, not the pause's duration).
-        const cardData = key === "heart_rate" ? hrRecoveryCardData : chartData;
-        const cardLabel = (
-          <>
-            {key === "speed"
-              ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
-              : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
-            {key === "heart_rate" && <span className="ml-2 font-normal normal-case tracking-normal">{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
-          </>
-        );
-        const card = (
-          <MetricStandaloneCard
-            metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}
-            mainChartData={chartData}
-          />
-        );
-        // HRA-293: on phone only — Epic AC ("Desktop is pixel/behavior-
-        // unchanged"), same isPhone gate Story 3's own Sheet disclosure
-        // uses above — each secondary chart becomes its own AccordionCard
-        // (the natural reuse target, same collapsible pattern the
-        // Classification section already uses), collapsed by default except
-        // Heart rate (see expandedCards' own comment). AccordionCard only
-        // mounts `children` while `expanded` (ui/AccordionCard.tsx), so
-        // MetricStandaloneCard's Recharts tree isn't built at all for a
-        // collapsed section (AC2: no chart-rendering work before expansion).
-        // Desktop keeps the exact pre-HRA-293 markup: a plain label above an
-        // always-rendered card, no accordion chrome, no collapse state.
-        return isPhone ? (
-          <AccordionCard
-            key={key}
-            className="hra-activity-metric-card"
-            expanded={!!expandedCards[key]}
-            onToggle={() => setExpandedCards(prev => ({ ...prev, [key]: !prev[key] }))}
-            title={<Label className="mb-0">{cardLabel}</Label>}
-          >
-            {card}
-          </AccordionCard>
-        ) : (
-          <div key={key} className="hra-activity-metric-card">
-            <Label className="mb-1">{cardLabel}</Label>
-            {card}
+      {isPhone ? (
+        // HRA-303 corrective round, section 7: ONE lightweight disclosure
+        // GROUP for every active optional metric — not each its own
+        // independent AccordionCard (still a real card each, i.e. still
+        // "cards inside this disclosure container" the corrective spec
+        // rules out). A metric's row exists here purely because it's
+        // ACTIVE (the legend row above already controls that; there's no
+        // separate `showCard`/"card toggle" concept on phone any more —
+        // section 9: "Do not repeat controls already available in the
+        // legend"), not because of the desktop-only `showCard` state.
+        activeMetrics.length > 0 && (
+          <div className="hra-activity-secondary-group-mobile">
+            {activeMetrics.map(key => {
+              const domain = cardDomains[key]!;
+              const cardData = key === "heart_rate" ? hrRecoveryCardData : chartData;
+              const expanded = !!expandedCards[key];
+              function toggle() { setExpandedCards(prev => ({ ...prev, [key]: !prev[key] })); }
+              return (
+                <div key={key} className="hra-activity-secondary-row-mobile">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={expanded}
+                    onClick={toggle}
+                    onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } }}
+                    className="hra-activity-secondary-row-header"
+                  >
+                    <span className="hra-row-inline gap-1.5 items-center">
+                      <span
+                        className="hra-legend-chip-compact-dot"
+                        data-active="true"
+                        style={{ "--legend-color": METRIC_DEFS[key].color } as CSSProperties}
+                        aria-hidden="true"
+                      />
+                      {t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+                      {/* Section 9: "Move explanatory copy ... into a help
+                          tooltip" instead of a permanently-visible paragraph
+                          — same decorative info-icon-with-native-tooltip
+                          pattern as the Classification row above. */}
+                      {key === "heart_rate" && (
+                        <span className="hra-text-muted inline-flex" title={t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}>
+                          <Info size={13} aria-hidden="true" />
+                        </span>
+                      )}
+                    </span>
+                    <span className="hra-accordion-chevron" aria-hidden="true">{expanded ? "▲" : "▼"}</span>
+                  </div>
+                  {expanded && (
+                    <div className="hra-activity-secondary-row-body">
+                      <MetricStandaloneCard
+                        metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}
+                        mainChartData={chartData}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        );
-      })}
+        )
+      ) : (
+        effectiveActive.filter(key => showCard[key]).map(key => {
+          const domain = cardDomains[key]!;
+          // Pause flags render only on the main overlay chart above —
+          // repeating them on every standalone card was noise. The
+          // one exception is Heart rate, which gets its own
+          // recovery-delta flag instead (a different signal: HR drop
+          // across the pause, not the pause's duration).
+          const cardData = key === "heart_rate" ? hrRecoveryCardData : chartData;
+          const cardLabel = (
+            <>
+              {key === "speed"
+                ? (speedMode === "speed" ? t("activity.metric.speedLabel", "Speed") : t("activity.metric.paceLabel", "Pace"))
+                : t(`activity.metric.${key}`, METRIC_DEFS[key].label)}
+              {key === "heart_rate" && <span className="ml-2 font-normal normal-case tracking-normal">{t("activity.chart.hrRecoveryFlagsNote", "flags show HR recovery across each pause")}</span>}
+            </>
+          );
+          return (
+            <div key={key} className="hra-activity-metric-card">
+              <Label className="mb-1">{cardLabel}</Label>
+              <MetricStandaloneCard
+                metricKey={key} cardData={cardData} domain={domain} xTicks={xTicks} xMode={xMode} speedMode={speedMode}
+                mainChartData={chartData}
+              />
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

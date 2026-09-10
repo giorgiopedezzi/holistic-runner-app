@@ -92,4 +92,9 @@ describe("ClassificationCard flows", () => {
     // Server reset user_feedback to null → the confirmed indicator is gone.
     expect(screen.queryByTitle(VERDICT_TITLE)).not.toBeInTheDocument();
   });
+
+  it("renders no .card chrome of its own (HRA-303 AC8) — its sole caller already wraps it in an AccordionCard panel, itself a .card", () => {
+    const { container } = render(<Harness initial={activity()} />);
+    expect(container.querySelector(".card")).not.toBeInTheDocument();
+  });
 });

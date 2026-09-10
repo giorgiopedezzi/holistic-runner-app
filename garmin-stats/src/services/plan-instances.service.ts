@@ -54,6 +54,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           // HRA-149: never backfilled at creation — NULL reads as the 08:00
           // display default until explicitly set via the per-day PATCH.
           scheduled_time: null,
+          // HRA-299: a freshly instantiated day has never been individually
+          // edited or swapped.
+          customized_at: null,
         });
       }
       db.exec("COMMIT");
@@ -120,6 +123,11 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     try {
       if (dslFields) {
         instances.updateDayFromDsl(dayId, { ...dslFields, notes: notes !== undefined ? notes : dslFields.notes });
+        // HRA-299: a dsl write is "an instantiated workout DSL saved" — the
+        // Story's own trigger for the customization marker. Notes-only or
+        // scheduled-time-only patches (the branches below/after this one)
+        // don't touch the day's actual workout content, so they never set it.
+        instances.markDayCustomized(dayId);
       } else if (notes !== undefined) {
         instances.updateDayNotes(dayId, notes);
       }
@@ -182,6 +190,12 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           // HRA-149: never backfilled at creation — NULL reads as the 08:00
           // display default until explicitly set via the per-day PATCH.
           scheduled_time: null,
+          // HRA-299: regeneration always recreates the row from scratch —
+          // a day just regenerated from the template's own DSL has no
+          // customization of its own, regardless of what the row it
+          // replaces carried (the preflight below is what protects a
+          // customized day from reaching this point without confirmation).
+          customized_at: null,
         });
       }
       instances.updateStartDateAndPaceOverrides(

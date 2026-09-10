@@ -101,6 +101,20 @@ export function replaceSegmentInDayLine(currentFullLine: string, segmentIndex: n
   return note ? `${newMain} # ${note}` : newMain;
 }
 
+// HRA-163, extracted HRA-300: the run/rest/other switch's DSL mutation —
+// clears the body for "run" (the user types a fresh workout), replaces it
+// with the bare REST/OTHER token otherwise, preserving the day's own D-line
+// prefix and current note untouched. Shared by usePlanDayEditor's desktop
+// applyWorkoutTypeChange (List/Agenda's inline switch) and the mobile
+// full-screen editor (MobileWorkoutEditor) — one mutation, so a future
+// change to this rule can't silently drift between the two surfaces ("no
+// parallel type state" per HRA-300's own instruction).
+export function nextWorkoutTypeDsl(dsl: string, notes: string | null | undefined, workoutType: "run" | "rest" | "other"): string {
+  const dayPrefix = DAY_LINE_RE.exec(dsl)?.[1] ?? "";
+  const newBody = workoutType === "rest" ? "REST" : workoutType === "other" ? "OTHER" : "";
+  return recomposeDayLine(`${dayPrefix}${newBody}`, { notes: notes ?? undefined });
+}
+
 // HRA-283: the Week view's own "materialize an undeclared slot" line — a
 // bare REST day, no suffix/tag (those only ever exist on a day the user
 // already declared). Mirrors reconstructDslFromResolvedDay's own

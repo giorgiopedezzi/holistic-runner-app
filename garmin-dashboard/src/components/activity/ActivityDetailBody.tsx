@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain } from "lucide-react";
+import { Timer, Clock, Flame, Footprints, HeartPulse, Mountain, Info } from "lucide-react";
 import { api } from "@/api/client";
 import { useSettings } from "@/hooks/useSettings";
 import { useIsPhone } from "@/hooks/useIsPhone";
@@ -335,11 +335,33 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 ? t("activity.classify.confirmedShort", "Confirmed")
                 : status === "pending" ? t("activity.classify.pendingReview", "Pending review")
                 : t("activity.classify.notYetClassified", "Not yet classified");
+              // HRA-303 corrective round, section 2: the default mobile state
+              // is ONE compact disclosure row — type/date-style label, an
+              // info hint, the single resolved value on the right, collapsed
+              // by default. The previous round's verbose AI/Statistical/
+              // Sampling summary (still used on desktop, `title` below) is
+              // exactly the "expanded nested Classification card shown by
+              // default" the corrective spec calls out — it's gone from the
+              // mobile collapsed row entirely, not just restyled.
+              const collapsedValue = status === "confirmed" && activity.final_classification
+                ? classificationLabel(activity.final_classification)
+                : statusLabel;
               return (
                 <AccordionCard
                   expanded={classificationExpanded}
                   onToggle={() => setClassificationExpanded(e => !e)}
-                  title={
+                  className={isPhone ? "hra-activity-classification-mobile" : undefined}
+                  title={isPhone ? (
+                    <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
+                      <span className="hra-row-inline gap-1.5 items-center">
+                        {t("activity.classify.title", "Classification")}
+                        <span className="hra-text-muted inline-flex" title={t("activity.classify.infoTooltip", "AI and statistical analysis of this workout's pace/HR pattern")}>
+                          <Info size={14} aria-hidden="true" />
+                        </span>
+                      </span>
+                      <span className="hra-text-secondary text-label">{collapsedValue}</span>
+                    </div>
+                  ) : (
                     <div className="hra-row-wrap gap-3.5">
                       <span>{t("activity.classify.title", "Classification")}</span>
                       {/* Collapsed summary — sized/weighted as meta text
@@ -356,7 +378,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                         </span>
                       </span>
                     </div>
-                  }
+                  )}
                 >
                   <ClassificationCard activity={activity} onUpdate={applyActivityUpdate} splitMeters={splitMeters} onSplitMetersChange={setSplitMeters} />
                 </AccordionCard>
@@ -379,13 +401,42 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 width — only the row INSIDE the graph card itself narrows in
                 to the chart's actual plot width, see
                 ActivityChartSection.tsx's CHART_HEADER_EXTRA_LEFT/RIGHT). */}
-            {(() => {
-              // HRA-291: wires Stat's existing layout="row" text variant
-              // (HRA-279, never previously called) into this KPI section —
-              // at phone width, plain divider rows replace the bordered
-              // mini-cards; the same show-gates that used to skip an
-              // absent metric's <Stat/> entirely (no empty card, no
-              // misleading zero) carry over unchanged to the row layout.
+            {isPhone ? (() => {
+              // HRA-303 corrective round, section 3: "exactly three rows and
+              // two columns... value first and visually dominant... short
+              // secondary label beside or immediately after the value" — a
+              // real two-column CSS grid with concise labels, replacing the
+              // rejected round's six full-width Stat rows. A fixed 3x2 shape
+              // (never fewer cells), so a missing value shows the same "—"
+              // unavailable state Story section 5 already requires instead
+              // of collapsing the grid.
+              const UNAVAILABLE = "—";
+              const elevationValue = (() => {
+                if (activity.ascent_m == null && activity.descent_m == null) return UNAVAILABLE;
+                const ascent = activity.ascent_m != null ? fmtElevation(activity.ascent_m) : null;
+                const descent = activity.descent_m != null ? fmtElevation(activity.descent_m) : null;
+                if (ascent && descent) return `+${ascent.replace(/\s*[a-z]+$/i, "")} / −${descent}`;
+                return ascent ? `+${ascent}` : `−${descent}`;
+              })();
+              const cells: Array<{ key: string; value: string; label: string }> = [
+                { key: "moving", value: activity.moving_time_sec != null ? fmtDuration(activity.moving_time_sec) : UNAVAILABLE, label: t("activity.stat.movingShort", "moving") },
+                { key: "duration", value: fmtDuration(activity.duration_sec), label: t("activity.stat.durationShort", "duration") },
+                { key: "calories", value: activity.calories != null ? String(activity.calories) : UNAVAILABLE, label: "kcal" },
+                { key: "cadence", value: activity.avg_cadence != null ? String(activity.avg_cadence) : UNAVAILABLE, label: t("activity.stat.cadenceShort", "avg cadence") },
+                { key: "elevation", value: elevationValue, label: t("activity.stat.elevationShort", "elevation") },
+                { key: "maxHr", value: activity.max_hr != null ? String(activity.max_hr) : UNAVAILABLE, label: t("activity.stat.maxHrShort", "max HR") },
+              ];
+              return (
+                <div className="hra-activity-metrics-grid-mobile">
+                  {cells.map(c => (
+                    <div key={c.key} className="hra-activity-metrics-grid-cell">
+                      <span className="text-heading">{c.value}</span>
+                      <span className="hra-text-muted text-meta">{c.label}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })() : (() => {
               const kpis: Array<{ key: string; show: boolean; icon: ReactNode; label: string; value: string; accent?: string }> = [
                 { key: "movingTime", show: activity.moving_time_sec != null, icon: <Timer size={18} color="var(--accent)" />, label: t("activity.stat.movingTime", "Moving time"), value: fmtDuration(activity.moving_time_sec) },
                 { key: "duration", show: true, icon: <Clock size={18} color="var(--accent)" />, label: t("activity.stat.duration", "Duration"), value: fmtDuration(activity.duration_sec) },
@@ -407,11 +458,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 },
               ];
               const visible = kpis.filter(k => k.show);
-              return isPhone ? (
-                <div className="flex flex-col">
-                  {visible.map(k => <Stat key={k.key} layout="row" icon={k.icon} label={k.label} value={k.value} accent={k.accent} />)}
-                </div>
-              ) : (
+              return (
                 <StatGrid>
                   {visible.map(k => <Stat key={k.key} icon={k.icon} label={k.label} value={k.value} accent={k.accent} />)}
                 </StatGrid>

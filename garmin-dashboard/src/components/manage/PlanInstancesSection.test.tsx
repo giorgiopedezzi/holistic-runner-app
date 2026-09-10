@@ -111,7 +111,7 @@ describe("PlanInstancesSection — row expand/collapse", () => {
     installFetch(mountRoutes({
       "GET /api/v1/plan-instances/10": () => { getByIdCalls++; return json({ ...planInstance(), days: [day1(), day2()] }); },
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     const toggle = (await screen.findByText("My Plan")).closest('[role="button"]')!;
     fireEvent.click(toggle);
@@ -128,7 +128,7 @@ describe("PlanInstancesSection — row expand/collapse", () => {
 
   it("collapsing and reopening a CLEAN 'new instance' row resets to fresh state", async () => {
     installFetch(mountRoutes());
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
     await pickTemplate("5K Base");
@@ -151,7 +151,7 @@ describe("PlanInstancesSection — draft stash-on-collapse / restore-on-reopen",
       "GET /api/v1/plan-instances/10": () => { getByIdCalls++; return json({ ...planInstance(), days: [day1(), day2()] }); },
       "GET /api/v1/plan-instances/11": () => json({ ...other, days: [] }),
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     const toggleA = (await screen.findByText("My Plan")).closest('[role="button"]')!;
     fireEvent.click(toggleA);
@@ -184,7 +184,7 @@ describe("PlanInstancesSection — dirty-bucket-driven button enablement", () =>
     installFetch(mountRoutes({
       "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days: [day1(), day2()] }),
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
   }
@@ -217,7 +217,7 @@ describe("PlanInstancesSection — dirty-bucket-driven button enablement", () =>
       "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
       "POST /api/v1/plan-instances/10/regenerate": () => json({ ...planInstance(), days }),
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -235,7 +235,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
       "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
       "PATCH /api/v1/plan-instances/10": () => json({ ...planInstance({ name: "Renamed" }), days }),
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -257,7 +257,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
   it("Template switch: open, cancel, confirm", async () => {
     const templateB = planTemplate({ id: 2, name: "10K Build" });
     installFetch(mountRoutes({ "GET /api/v1/plan-instances": paginated([]) }));
-    render(<PlanInstancesSection templates={[TEMPLATE, templateB]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE, templateB]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
     await pickTemplate("5K Base");
@@ -284,7 +284,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
       "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
       "POST /api/v1/plan-instances/10/regenerate": () => { regenerateCalls++; return json({ ...planInstance(), days }); },
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -307,10 +307,65 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     await waitFor(() => expect(regenerateCalls).toBe(1));
   });
 
+  // HRA-299: the server-side customization preflight (independent of the
+  // client-only manualEditCount check the test above covers) blocks a
+  // regenerate whose range would silently overwrite a persisted marker —
+  // no local dsl edit here, so onRegenerateClick's own manualEditCount is 0
+  // and doRegenerate() calls the server directly on the first click.
+  it("Regenerate customization conflict: 409 names the affected day, confirming retries with confirm_overwrite", async () => {
+    const days = [day1(), day2()];
+    let regenerateCalls = 0;
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
+      "POST /api/v1/plan-instances/10/regenerate": ({ body }: { body: { confirm_overwrite?: boolean } }) => {
+        regenerateCalls++;
+        const confirmed = body.confirm_overwrite === true;
+        if (!confirmed) {
+          return json({
+            type: "about:blank", title: "Conflict", status: 409,
+            detail: "Regenerating from 2026-09-01 would overwrite 1 customized day.",
+            customized_days: [{ id: 100, date: "2026-09-01", section_name: "Base", week_number: 1, day: 1, workout_type: "run", notes: null }],
+          }, 409);
+        }
+        return json({ ...planInstance(), days });
+      },
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+
+    fireEvent.click(screen.getByRole("button", { name: "RG" })); // dirty the regenerate-bucket only
+    fireEvent.click(screen.getByRole("button", { name: /Regenerate from/ }));
+
+    const title = "Regenerating will overwrite 1 customized day(s):";
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(regenerateCalls).toBe(1);
+
+    fireEvent.click(within(modalFor(title)).getByRole("button", { name: "Overwrite and regenerate" }));
+    await waitFor(() => expect(regenerateCalls).toBe(2));
+    expect(screen.queryByText(title)).not.toBeInTheDocument();
+  });
+
+  // HRA-299: the "Modificato"/"Modified" badge in List view derives directly
+  // from a day's own persisted customized_at, independent of any local edit
+  // state (UnsavedBadge/WarningBadge cover those separately).
+  it("List view shows the Modified badge only for a day with customized_at set", async () => {
+    const days = [day1({ customized_at: "2026-08-25T10:00:00Z" }), day2()];
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+
+    expect(await screen.findAllByText("Modified")).toHaveLength(1);
+  });
+
   it("Restore: open, cancel, confirm", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -336,7 +391,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
   it("Restore: disabled on a clean row, enabled once dirty", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -348,7 +403,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
   it("Workout-type change: open, cancel, confirm", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(screen.getByRole("button", { name: "List" })); // HRA-261: Agenda is now default
@@ -376,7 +431,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
   it("Day swap: open, cancel, confirm", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(screen.getByRole("button", { name: "List" })); // HRA-261: Agenda is now default
@@ -414,7 +469,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
   it("Week swap: open, cancel, confirm", async () => {
     const days = [day1(), day2(), week2Day1(), week2Day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(screen.getByRole("button", { name: "List" })); // HRA-261: Agenda is now default
@@ -449,7 +504,7 @@ describe("PlanInstancesSection — confirm-modal flows", () => {
     installFetch(mountRoutes({
       "DELETE /api/v1/plan-instances/10": () => { removed = true; return json(null); },
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     await screen.findByText("My Plan");
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
@@ -486,7 +541,7 @@ describe("PlanInstancesSection — happy path", () => {
         return json({ ...created, race_name: "Boston", approved_at: "2026-08-27T00:00:00Z" });
       },
     });
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
     await pickTemplate("5K Base");
@@ -524,7 +579,7 @@ describe("PlanInstancesSection — List/Agenda view toggle", () => {
   it("renders consistently from the same underlying sections data", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    const { container } = render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    const { container } = render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -546,7 +601,7 @@ describe("PlanInstancesSection — just-edited-row highlight (HRA-249)", () => {
   it("editing a day's DSL text highlights that day's row", async () => {
     const days = [day1(), day2()];
     installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
     fireEvent.click(screen.getByRole("button", { name: "List" })); // HRA-261: Agenda is now default
@@ -577,7 +632,7 @@ describe("PlanInstancesSection — activation conflict (HRA-249)", () => {
         },
       }, 409),
     }));
-    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} />);
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
     fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
     await screen.findByRole("button", { name: "Save" });
 
@@ -593,5 +648,197 @@ describe("PlanInstancesSection — activation conflict (HRA-249)", () => {
     fireEvent.click(within(modal).getByRole("button", { name: "OK" }));
     expect(screen.queryByText(title)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled(); // never locked
+  });
+});
+
+// HRA-296: same stubPhoneWidth pattern ActivityRow.test.tsx/ManageTab.test.tsx
+// already use for useIsPhone's matchMedia query.
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+describe("PlanInstancesSection — mobile compact list (HRA-296)", () => {
+  it("shows a read-only summary row with no inline Delete/edit button, only the overflow menu", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+
+    await screen.findByText("My Plan");
+    // Desktop's own inline Delete icon button (aria-label "Delete") must be
+    // absent — only the overflow trigger exposes it, per AC4's "never a bare
+    // trash icon" and the Product boundary's mobile action gate.
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Race plan actions" })).toBeInTheDocument();
+  });
+
+  it("deletes through the overflow menu's confirm modal", async () => {
+    stubPhoneWidth(true);
+    let removed = false;
+    installFetch(mountRoutes({
+      "DELETE /api/v1/plan-instances/10": () => { removed = true; return json(null); },
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    fireEvent.click(screen.getByRole("button", { name: "Race plan actions" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes, delete" }));
+    await waitFor(() => expect(removed).toBe(true));
+  });
+
+  it("expanding a row never opens the desktop editor (no Template picker, no Save button)", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    const row = await screen.findByText("My Plan");
+
+    fireEvent.click(row.closest('[role="button"]')!);
+    expect(await screen.findByText("Advanced editing is available from desktop.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  });
+
+  it("shows the empty state with no 'Create race plan' button", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances": paginated([]) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+
+    expect(await screen.findByText("No instances created yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create race plan" })).not.toBeInTheDocument();
+  });
+});
+
+// HRA-298: a template with real weeks (the default TEMPLATE/planTemplate()
+// fixture has sections: [], i.e. weekCount 0 — summarizeInstanceProgress
+// short-circuits to null for that, so every progress-dependent state below
+// needs a template that actually carries weeks).
+function templateWithWeeks(weekCount: number, paceOverrides: Partial<{ metadata: Record<string, unknown> }> = {}) {
+  return planTemplate({
+    // Same id as the default TEMPLATE/planTemplate() fixture (1) — these
+    // tests replace the whole `templates` array with just this one, and
+    // planInstance()'s own default template_id is 1.
+    parsed_plan: JSON.stringify({
+      metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: { RG: { kind: "absolute", pace_sec_per_km: 330 } }, ...paceOverrides.metadata },
+      sections: [{
+        name: "Base", week_spec: "*", raw_dsl: "", pace_policy: {},
+        weeks: Array.from({ length: weekCount }, (_, i) => ({ number: i + 1, raw_dsl: `WEEK ${i + 1}`, pace_policy: {}, days: [] })),
+      }],
+    }),
+  });
+}
+
+describe("PlanInstancesSection — mobile compact race-plan summary (HRA-298)", () => {
+  afterEach(() => vi.useRealTimers());
+
+  function openRow() {
+    fireEvent.click(screen.getByText("My Plan").closest('[role="button"]')!);
+  }
+
+  it("shows the resolved-pace block as one compact wrapping line, sourced from the template + instance overrides", async () => {
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(2);
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    expect(await screen.findByText("RG 5:30/km")).toBeInTheDocument();
+    expect(screen.getByText("Based on: 5K Base")).toBeInTheDocument();
+  });
+
+  it("shows a generic desktop-required message, never an anchor name, when a pace is unresolved", async () => {
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(1, { metadata: { pace_policy: { RG: { kind: "offset", anchor: "BASE", offset_sec_per_km: 10 } } } });
+    installFetch(mountRoutes());
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    expect(await screen.findByText("Paces to complete from desktop")).toBeInTheDocument();
+    expect(screen.queryByText(/RG/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/BASE/)).not.toBeInTheDocument();
+  });
+
+  it("shows the current week's ribbon immediately on expand (no extra tap); 'Apri nell'agenda' shows only while in progress", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(2);
+    let getByIdCalls = 0;
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances/10": () => {
+        getByIdCalls++;
+        return json({ ...planInstance(), days: [day1({ date: "2026-09-05" })] });
+      },
+    }));
+    const onNavigateToAgenda = vi.fn();
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={onNavigateToAgenda} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    // AC1: the current week shows as soon as the row opens — no "View plan" tap needed.
+    expect(await screen.findByText("5km @ 5:30/km")).toBeInTheDocument();
+    await waitFor(() => expect(getByIdCalls).toBe(1));
+
+    const openBtn = screen.getByRole("button", { name: "Open in agenda" });
+    fireEvent.click(openBtn);
+    expect(onNavigateToAgenda).toHaveBeenCalledTimes(1);
+
+    // "View plan" opens the COMPLETE plan (every week, progressive disclosure) —
+    // a distinct surface from the always-visible current-week ribbon above.
+    fireEvent.click(screen.getByRole("button", { name: "View plan" }));
+    expect(await screen.findByText("Base")).toBeInTheDocument(); // the section name, from the full-plan view
+    fireEvent.click(screen.getByText("Base"));
+    expect(await screen.findByText("Week 1")).toBeInTheDocument();
+    expect(getByIdCalls).toBe(1); // the full-plan view reuses the same already-fetched days, no second fetch
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide plan" }));
+    expect(screen.queryByText("Week 1")).not.toBeInTheDocument();
+    expect(screen.getByText("5km @ 5:30/km")).toBeInTheDocument(); // the current-week ribbon is unaffected by hiding the full plan
+  });
+
+  it("hides 'Apri nell'agenda' (never disables it) and promotes 'View plan' for a not-yet-started plan", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
+    stubPhoneWidth(true);
+    const template = templateWithWeeks(2);
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances": paginated([planInstance({ start_date: "2026-09-20" })]),
+      "GET /api/v1/plan-instances/10": () => json({ ...planInstance({ start_date: "2026-09-20" }), days: [] }),
+    }));
+    render(<PlanInstancesSection templates={[template]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+
+    openRow();
+    expect(await screen.findByText("This plan starts on 20 Sep 2026.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open in agenda" })).not.toBeInTheDocument();
+    const viewPlanBtn = screen.getByRole("button", { name: "View plan" });
+    expect(viewPlanBtn).toHaveAttribute("data-variant", "accent"); // promoted to primary
+  });
+
+  it("shows days-to-race, missing-race-date and race-date-passed framing", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-09-05T12:00:00Z"));
+    stubPhoneWidth(true);
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances": paginated([planInstance({ race_date: "2026-09-10" })]),
+    }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+    openRow();
+    expect(await screen.findByText("5 days to race")).toBeInTheDocument();
+  });
+
+  it("shows 'no race date set' when the instance has none", async () => {
+    stubPhoneWidth(true);
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances": paginated([planInstance({ race_date: null })]) }));
+    render(<PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
+    await screen.findByText("My Plan");
+    openRow();
+    expect(await screen.findByText("No race date set.")).toBeInTheDocument();
   });
 });

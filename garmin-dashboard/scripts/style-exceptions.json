@@ -59,8 +59,8 @@
       "properties": [
         "--legend-color"
       ],
-      "count": 2,
-      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+      "count": 3,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule. HRA-303 corrective round added a third occurrence — the secondary-charts disclosure group's own per-row dot (phone only), same pattern as the other two."
     },
     {
       "file": "src/components/activity/ActivityTypePicker.tsx",
@@ -579,8 +579,8 @@
       "properties": [
         "--legend-color"
       ],
-      "count": 1,
-      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule."
+      "count": 2,
+      "rationale": "A runtime semantic data or state color crosses into a named CSS custom-property hook; the class owns the visual rule. HRA-303 corrective round added the `compact` variant's own button (a second occurrence of the same hook, not a new pattern)."
     },
     {
       "file": "src/components/ui/Checkbox.tsx",

@@ -13,6 +13,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { AccordionCard, Badge } from "@/components/ui";
 import type { PlanInstance } from "@/types/api";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { fmtDate } from "@/utils/fmt";
 
 interface Props {
   instance: PlanInstance | null; // null = the "new" draft row
@@ -50,7 +51,7 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
     <span className="flex items-center gap-2 flex-1 min-w-0">
       <span className="overflow-hidden text-ellipsis whitespace-nowrap">{instance.name ?? t("manage.planInstances.untitled", "Untitled race plan")}</span>
       {instance.event && <span className="hra-text-muted text-meta" >{t(`manage.planTemplates.event.${instance.event}`, instance.event)}</span>}
-      <span className="hra-text-muted text-meta" >{instance.start_date}</span>
+      <span className="hra-text-muted text-meta" >{fmtDate(instance.start_date)}</span>
       <Badge
         label={instance.approved_at ? t("manage.planInstances.approved", "Activated") : t("manage.planInstances.notApproved", "Not activated")}
         color={instance.approved_at ? "var(--accent-green)" : "var(--text-muted)"}

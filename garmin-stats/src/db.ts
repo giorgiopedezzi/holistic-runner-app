@@ -411,7 +411,17 @@ export function initSchema(db: DatabaseSync): void {
       needs_review          INTEGER NOT NULL DEFAULT 0,
       -- HRA-149: per-day scheduled time (HH:MM), nullable — NULL reads as the
       -- 08:00 default at display time, never backfilled onto existing rows.
-      scheduled_time        TEXT
+      scheduled_time        TEXT,
+      -- HRA-299: day-level customization provenance marker, nullable
+      -- timestamp (mirrors approved_at's own "NULL means not set" gate
+      -- convention) — set whenever this day's workout content is edited
+      -- individually (PATCH .../days/:dayId's dsl branch) or swapped, so a
+      -- later desktop regeneration can warn before silently overwriting it.
+      -- Never set at creation/instantiation, and always reset to NULL on a
+      -- fresh row (a bulk days-replace or a regeneration both recreate the
+      -- row from scratch) — a day is only ever "customized" relative to its
+      -- own currently-persisted row.
+      customized_at         TEXT
     );
 
     -- Anonymous visitor feedback (HRA-226): one row per submission, no
@@ -656,6 +666,13 @@ export function initSchema(db: DatabaseSync): void {
     db.exec("ALTER TABLE plan_instance_days ADD COLUMN scheduled_time TEXT");
   }
 
+  // HRA-299: customization marker, added after plan_instance_days already
+  // existed. Nullable, no backfill — no pre-existing row has ever been
+  // individually edited or swapped through the mechanism this column tracks.
+  if (!planInstanceDayCols.some(c => c.name === "customized_at")) {
+    db.exec("ALTER TABLE plan_instance_days ADD COLUMN customized_at TEXT");
+  }
+
   // Feedback app-type poll — added after the feedback table already existed.
   const feedbackCols = db.prepare("PRAGMA table_info(feedback)").all() as { name: string }[];
   if (!feedbackCols.some(c => c.name === "app_type_choice")) {
@@ -817,6 +834,10 @@ export interface PlanInstanceDayRow {
   // HRA-149: HH:MM, nullable — a null reads as the 08:00 default at display
   // time, never backfilled.
   scheduled_time: string | null;
+  // HRA-299: nullable timestamp — non-null means this day's workout content
+  // was individually edited or swapped after creation (see the CREATE TABLE
+  // comment above).
+  customized_at: string | null;
 }
 
 export interface WithingsTokenRow {

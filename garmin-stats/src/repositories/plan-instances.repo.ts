@@ -9,7 +9,7 @@ import { prepareLive } from "../db.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
 const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, created_at FROM plan_instances";
-const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time FROM plan_instance_days";
+const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time, customized_at FROM plan_instance_days";
 
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
@@ -52,7 +52,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const findDaysByDateAndWorkoutTypeStmt = prepareLive(`
     SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
            pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
-           pid.scheduled_time, pi.name AS instance_name
+           pid.scheduled_time, pid.customized_at, pi.name AS instance_name
     FROM plan_instance_days pid
     JOIN plan_instances pi ON pi.id = pid.instance_id
     WHERE pid.date = ? AND pid.workout_type = ?
@@ -92,6 +92,20 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   `);
   const updateDayNotesStmt = prepareLive("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
   const updateDayScheduledTimeStmt = prepareLive("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
+  // HRA-299: sets the customization provenance marker on one day — called
+  // whenever that day's workout content is individually edited or swapped
+  // (never for a notes-only or scheduled_time-only patch, and never for a
+  // bulk days-replace/regenerate, both of which recreate the row from
+  // scratch with this column left NULL — see the schema comment in db.ts).
+  const markDayCustomizedStmt = prepareLive("UPDATE plan_instance_days SET customized_at = datetime('now') WHERE id = ?");
+  // HRA-299: every day of an instance, from `effective_from` onward, that
+  // still carries a customization marker — the regenerate preflight's own
+  // detection query, run against the CURRENTLY persisted rows before any
+  // mutation. Text comparison on ISO YYYY-MM-DD dates sorts chronologically,
+  // same reasoning as instanceDateRangeStmt/overlappingApprovedStmt above.
+  const customizedDaysFromStmt = prepareLive(`
+    SELECT ${DAY_FIELDS} WHERE instance_id = ? AND date >= ? AND customized_at IS NOT NULL ORDER BY date ASC, day ASC
+  `);
   // HRA-155: replaces the earlier HRA-132 `deleteDaysFromDate` (a raw
   // `date >= fromDate` threshold) — that comparison silently broke whenever
   // `start_date` changed as part of the same regenerate call, since the OLD
@@ -213,6 +227,9 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     },
     updateDayNotes: (dayId: number, notes: string | null) => { updateDayNotesStmt.run(notes, dayId); },
     updateDayScheduledTime: (dayId: number, scheduledTime: string | null) => { updateDayScheduledTimeStmt.run(scheduledTime, dayId); },
+    markDayCustomized: (dayId: number) => { markDayCustomizedStmt.run(dayId); },
+    customizedDaysFrom: (instanceId: number, effectiveFrom: string): PlanInstanceDayRow[] =>
+      customizedDaysFromStmt.all(instanceId, effectiveFrom) as unknown as PlanInstanceDayRow[],
     approve: (id: number): PlanInstanceRow => {
       approveStmt.run(id);
       return findInstanceById.get(id) as unknown as PlanInstanceRow;

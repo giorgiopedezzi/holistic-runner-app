@@ -39,12 +39,30 @@ export interface PlanInstanceOverlaps {
   conflicts: PlanInstanceOverlapConflict[];
 }
 
+// HRA-299: the structured conflict body on POST .../plan-instances/:id/regenerate's
+// 409 — every currently-persisted day in the requested range that already
+// carries a customization marker and would be silently overwritten without
+// confirm_overwrite: true, mirroring problem.ts's Problem.customized_days.
+export interface PlanInstanceCustomizedDay {
+  id: number;
+  date: string;
+  section_name: string;
+  week_number: number;
+  day: number;
+  workout_type: string;
+  notes: string | null;
+}
+
 // Error carrying the HTTP status (0 = the request never reached the server), so
 // callers can branch on it if they need to. Its message is already human — see
 // buildApiError. (HRA-43) `overlaps` is set only for a plan-instance activation
-// conflict (HRA-249) — every other caller leaves it undefined.
+// conflict (HRA-249); `customizedDays` (HRA-299) only for a regenerate
+// customization-overwrite conflict — every other caller leaves both undefined.
 export class ApiError extends Error {
-  constructor(public readonly status: number, message: string, public readonly overlaps?: PlanInstanceOverlaps) {
+  constructor(
+    public readonly status: number, message: string,
+    public readonly overlaps?: PlanInstanceOverlaps, public readonly customizedDays?: PlanInstanceCustomizedDay[],
+  ) {
     super(message);
     this.name = "ApiError";
   }
@@ -78,9 +96,11 @@ async function buildApiError(res: Response, path: string): Promise<ApiError> {
       `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`,
       { status: res.status }));
   }
-  const problem = (await res.json().catch(() => null)) as { detail?: string; title?: string; overlaps?: PlanInstanceOverlaps } | null;
+  const problem = (await res.json().catch(() => null)) as {
+    detail?: string; title?: string; overlaps?: PlanInstanceOverlaps; customized_days?: PlanInstanceCustomizedDay[];
+  } | null;
   const message = problem?.detail ?? problem?.title ?? await translate("api.genericError", `API error ${res.status}: ${path}`, { status: res.status, path });
-  return new ApiError(res.status, message, problem?.overlaps);
+  return new ApiError(res.status, message, problem?.overlaps, problem?.customized_days);
 }
 
 async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
@@ -312,7 +332,10 @@ export const api = {
     // always sends both explicitly (the editor's own live values). Returns
     // the updated instance with its regenerated days, same shape update()
     // above returns.
-    regenerate: (id: number, body: { start_date: string; pace_overrides?: Record<string, string>; effective_from: string }) =>
+    // HRA-299: confirm_overwrite is required (true) once the server-side
+    // preflight finds a customized day in range — see the 409 handling in
+    // PlanInstancesSection.tsx's doRegenerate.
+    regenerate: (id: number, body: { start_date: string; pace_overrides?: Record<string, string>; effective_from: string; confirm_overwrite?: boolean }) =>
       request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}/regenerate`, "POST", undefined, body),
     remove: (id: number) => request<null>(`/api/v1/plan-instances/${id}`, "DELETE"),
     // PATCH /api/v1/plan-instances/:id/days/:dayId (HRA-149) — a single day's
