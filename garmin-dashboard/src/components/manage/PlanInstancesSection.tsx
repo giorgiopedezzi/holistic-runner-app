@@ -1235,6 +1235,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
           // view below.
           instanceId={inst.id}
           onDayPersisted={updated => patchMobileInstanceDay(inst.id, updated)}
+          raceDate={inst.race_date}
         />
       </>
     );

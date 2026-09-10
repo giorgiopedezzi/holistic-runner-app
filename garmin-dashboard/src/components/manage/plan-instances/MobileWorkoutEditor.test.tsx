@@ -179,6 +179,22 @@ describe("MobileWorkoutEditor", () => {
     await advanceDebounce();
   });
 
+  it("omits the swap entry point when no onSwap is supplied", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installFetch({});
+    render(<MobileWorkoutEditor day={dayViewFor()} instanceId={INSTANCE_ID} onClose={vi.fn()} onSaved={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: /Swap with/ })).not.toBeInTheDocument();
+  });
+
+  it("HRA-301: the shared workout action model exposes a swap entry point that calls onSwap", () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    installFetch({});
+    const onSwap = vi.fn();
+    render(<MobileWorkoutEditor day={dayViewFor()} instanceId={INSTANCE_ID} onClose={vi.fn()} onSaved={vi.fn()} onSwap={onSwap} />);
+    fireEvent.click(screen.getByRole("button", { name: /Swap with/ }));
+    expect(onSwap).toHaveBeenCalled();
+  });
+
   it("an accidental browser/hardware back while dirty is intercepted and asks to discard, rather than exiting silently", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const onClose = vi.fn();

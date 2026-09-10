@@ -58,6 +58,7 @@ import { fmtBpm, fmtPace } from "@/utils/fmt";
 import type { DayView, SectionView, ResolvedDayMetrics, TrainingLoadCategory } from "@/domain/runplan-aggregate";
 import { DayEditModal } from "@/components/manage/DayEditModal";
 import { MobileWorkoutEditor } from "@/components/manage/plan-instances/MobileWorkoutEditor";
+import { MobileWorkoutSwap } from "@/components/manage/plan-instances/MobileWorkoutSwap";
 import type { WorkoutType } from "@/types/runplan";
 import type { PlanInstanceDay } from "@/types/api";
 import { distanceUnitLabel, getUnitSystem, kmToMi, kmhToMph, paceUnitLabel, speedUnitLabel } from "@/utils/units";
@@ -1094,11 +1095,17 @@ interface Props {
   // falls back to the pre-existing DayEditModal path so this stays additive.
   instanceId?: number;
   onDayPersisted?: (updated: PlanInstanceDay) => void;
+  // HRA-301: the instance's own race_date (undefined at every call site that
+  // doesn't have it handy, e.g. the current-week-only mobile preview ribbon)
+  // — feeds MobileWorkoutSwap's own "race day can't be a swap target" rule.
+  // Omitted entirely disables that one rule (never a false positive), never
+  // blocks the swap entry point itself.
+  raceDate?: string | null;
 }
 
 export function PlanInstanceCalendar({
   sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
-  instanceId, onDayPersisted,
+  instanceId, onDayPersisted, raceDate,
 }: Props) {
   // HRA-300: read once, near the top, since both the ribbon-vs-grid branch
   // further down AND the mobile-editor-vs-DayEditModal choice above it need
@@ -1135,6 +1142,10 @@ export function PlanInstanceCalendar({
     return map;
   }, [sections]);
   const [editingDayId, setEditingDayId] = useState<number | null>(null);
+  // HRA-301: the day currently in the explicit mobile swap flow — mutually
+  // exclusive with editingDayId (MobileWorkoutEditor's own "Swap with…"
+  // button closes the editor and opens this instead, see dayEditModal below).
+  const [swappingDayId, setSwappingDayId] = useState<number | null>(null);
 
   const [date, setDate] = useState<Date>(() => initialDate ?? events[0]?.start ?? new Date());
   // Backed by the URL's `planCalendarView` param (HRA-195, reusing HRA-193's
@@ -1347,6 +1358,10 @@ export function PlanInstanceCalendar({
         instanceId={instanceId}
         onSaved={updated => onDayPersisted?.(updated)}
         onClose={() => setEditingDayId(null)}
+        // HRA-301: "Swap with…" hands off from the editor to the explicit
+        // swap flow for the same day — the two full-screen surfaces are
+        // mutually exclusive (editingDayId/swappingDayId never both set).
+        onSwap={() => { setSwappingDayId(editingDay.id!); setEditingDayId(null); }}
       />
     ) : (
       <DayEditModal
@@ -1356,6 +1371,23 @@ export function PlanInstanceCalendar({
         onClose={() => setEditingDayId(null)}
       />
     )
+  );
+
+  // HRA-301: the explicit swap flow's own mount point, alongside
+  // dayEditModal above — instanceId != null is the same precondition
+  // MobileWorkoutEditor's own persistence needs, so both full-screen mobile
+  // surfaces share it.
+  const swappingDay = swappingDayId != null ? dayViewsById.get(swappingDayId) : undefined;
+  const swapModal = swappingDay && instanceId != null && (
+    <MobileWorkoutSwap
+      source={swappingDay}
+      sections={sections}
+      instanceId={instanceId}
+      raceDate={raceDate}
+      hasActivity={dateKey => activitiesByDateKey.has(dateKey)}
+      onClose={() => setSwappingDayId(null)}
+      onSwapped={(a, b) => { onDayPersisted?.(a); onDayPersisted?.(b); }}
+    />
   );
 
   // Phone tier: the ribbon (see AgendaDayRibbon above) replaces the grid
@@ -1403,6 +1435,7 @@ export function PlanInstanceCalendar({
           onSelect={handleSelectEvent}
         />
         {dayEditModal}
+        {swapModal}
       </div>
     );
   }
@@ -1440,6 +1473,7 @@ export function PlanInstanceCalendar({
         <ShadcnBigCalendar {...calendarProps} />
       )}
       {dayEditModal}
+      {swapModal}
     </div>
   );
 }

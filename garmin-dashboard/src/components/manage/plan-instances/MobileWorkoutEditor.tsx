@@ -23,6 +23,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { ArrowLeftRight } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import { ConfirmModal } from "@/components/ui";
 import {
@@ -46,9 +47,14 @@ interface Props {
   instanceId: number;
   onClose: () => void;
   onSaved: (updated: PlanInstanceDay) => void;
+  // HRA-301: opens the explicit mobile day-swap flow (MobileWorkoutSwap) for
+  // this same day — omitted where the caller has no full-plan `sections` to
+  // build a cross-week target list from (the mobile current-week-only
+  // preview ribbon), in which case no swap entry point is offered there.
+  onSwap?: () => void;
 }
 
-export function MobileWorkoutEditor({ day, instanceId, onClose, onSaved }: Props) {
+export function MobileWorkoutEditor({ day, instanceId, onClose, onSaved, onSwap }: Props) {
   const { t } = useTranslation();
   const dayId = day.id!;
   const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
@@ -218,6 +224,17 @@ export function MobileWorkoutEditor({ day, instanceId, onClose, onSaved }: Props
             );
           })}
         </div>
+
+        {onSwap && (
+          <button
+            type="button"
+            className="hra-btn flex items-center justify-center gap-2"
+            onClick={onSwap}
+          >
+            <ArrowLeftRight size={16} aria-hidden="true" />
+            {t("manage.planInstances.mobileEditor.swapButton", "Swap with…")}
+          </button>
+        )}
 
         <label className="hra-text-secondary text-meta flex flex-col gap-1">
           {t("runplan.accordion.dslLabel", "Workout plan text (DSL)")}

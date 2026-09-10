@@ -103,6 +103,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
         // `instance` derivation below.
         instanceId={instance?.id}
         onDayPersisted={() => refetch()}
+        raceDate={instance?.race_date}
       />
     </>
   );
