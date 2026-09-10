@@ -32,6 +32,7 @@ import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { PlanTemplateAgendaView } from "@/components/manage/PlanTemplateAgendaView";
+import { MobileRacePlanCreation } from "@/components/manage/plan-instances/MobileRacePlanCreation";
 import {
   aggregateDayViews, buildTemplateSectionView, summarizeTemplatePlan,
   type AggregateTotals, type DayView, type SectionView,
@@ -293,6 +294,10 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // freshly opened row always shows exactly one meaningful level, never a
   // stale expansion left over from a previously viewed template.
   const [mobileExpandedSection, setMobileExpandedSection] = useState<number | null>(null);
+  // HRA-302: which template's simplified mobile race-plan creation flow is
+  // open — the "Use for a race" button's target, one at a time (same
+  // single-overlay pattern as deleteConfirmId below).
+  const [racePlanCreationTemplate, setRacePlanCreationTemplate] = useState<PlanTemplate | null>(null);
   const [mobileExpandedWeek, setMobileExpandedWeek] = useState<string | null>(null);
 
   // HRA-140: which row is expanded — an existing template's id, "new" for
@@ -1518,17 +1523,11 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           </div>
         )}
 
-        {/* AC6/AC7: HRA-302 (the simplified race-creation contract this
-            button hands off into) doesn't exist yet — feature-gated as
-            disabled rather than omitted, so the row still communicates the
-            action exists, without opening any broken/partial/desktop-shaped
-            flow in the meantime. */}
         <button
           type="button"
           className="hra-btn"
           data-variant="accent"
-          disabled
-          title={t("manage.planTemplates.mobilePreview.useForRaceComingSoon", "Race-plan creation from a template isn't available yet.")}
+          onClick={() => setRacePlanCreationTemplate(tpl)}
         >
           {t("manage.planTemplates.mobilePreview.useForRace", "Use for a race")}
         </button>
@@ -1698,6 +1697,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             </div>
           </div>
         </div>
+      )}
+
+      {racePlanCreationTemplate && (
+        <MobileRacePlanCreation
+          template={racePlanCreationTemplate}
+          onClose={() => setRacePlanCreationTemplate(null)}
+          onCreated={() => setRacePlanCreationTemplate(null)}
+        />
       )}
     </Card>
   );

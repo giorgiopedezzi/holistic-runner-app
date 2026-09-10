@@ -7,7 +7,12 @@ import type { Intensity, PacePolicy, RunPlan, Section, Week } from "./types.ts";
 
 export type PaceResolutionResult =
   | { ok: true; pace_sec_per_km: number }
-  | { ok: false; error: string };
+  // anchor (HRA-302): the specific anchor name that failed to resolve (unknown
+  // or unbound), when the failure traces to one — absent for a circular
+  // reference, which has no single "the" anchor to blame. Lets a caller (e.g.
+  // mobile-eligibility.ts) classify *which* anchor a template still needs
+  // without re-deriving this resolver's own chain-walking.
+  | { ok: false; error: string; anchor?: string };
 
 // Shallow merge by anchor name — child scopes override parent scopes.
 export function getEffectivePacePolicy(plan: RunPlan, section: Section, week: Week): PacePolicy {
@@ -28,13 +33,13 @@ function resolveAnchor(anchor: string, policy: PacePolicy, visited: Set<string>)
   }
   const value = policy[anchor];
   if (!value) {
-    return { ok: false, error: `Unknown pace anchor: ${anchor}` };
+    return { ok: false, error: `Unknown pace anchor: ${anchor}`, anchor };
   }
   if (value.kind === "absolute") {
     return { ok: true, pace_sec_per_km: value.pace_sec_per_km };
   }
   if (value.kind === "unbound") {
-    return { ok: false, error: `Pace anchor "${anchor}" is marked TBD — provide a value when instantiating.` };
+    return { ok: false, error: `Pace anchor "${anchor}" is marked TBD — provide a value when instantiating.`, anchor };
   }
   const base = resolveAnchor(value.anchor, policy, new Set(visited).add(anchor));
   if (!base.ok) return base;

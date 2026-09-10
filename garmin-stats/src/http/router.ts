@@ -90,6 +90,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/activity-types")            return await activityTypes.list(req, res, url);
         if (route === "/api/v1/plan-templates")             return await planTemplates.list(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))    return await planTemplates.getById(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+\/mobile-eligibility$/.test(route)) return await planTemplates.mobileEligibility(req, res, url);
         if (route === "/api/v1/plan-instances")             return await planTemplates.listInstances(req, res, url);
         if (route === "/api/v1/plan-instances/active")      return await planTemplates.activeForDate(req, res, url);
         if (route === "/api/v1/plan-instance-days")         return await planTemplates.daysByDate(req, res, url);
@@ -152,6 +153,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/plan-templates/generate")    return await planTemplates.generate(req, res, url);
         if (route === "/api/v1/plan-templates")             return await planTemplates.create(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await demo(planTemplates.instantiate)(req, res, url);
+        if (/^\/api\/v1\/plan-templates\/\d+\/instantiate\/preview$/.test(route)) return await planTemplates.instantiatePreview(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveTemplate)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await demo(planTemplates.regenerateInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveInstance)(req, res, url);

@@ -289,6 +289,23 @@ export const api = {
       goal_time?: string; race_pace_anchor?: string; distance_m?: number; target_activity_id?: number | null;
       race_name?: string; race_date?: string; race_url?: string; rest_day_label?: string;
     }) => request<PlanInstanceWithDays>(`/api/v1/plan-templates/${templateId}/instantiate`, "POST", undefined, body),
+    // GET /api/v1/plan-templates/:id/mobile-eligibility (HRA-302) — read-only
+    // structural check feeding the mobile simplified race-plan creation
+    // entry point. race_pace_anchor is the one anchor a goal time must
+    // resolve, or null when either no anchor is needed or the template isn't
+    // eligible (see reason).
+    mobileEligibility: (templateId: number) => request<{
+      eligible: boolean; race_pace_anchor: string | null; distance_m: number | null;
+      reason: "already-resolved" | "ambiguous-anchors" | "unresolvable" | null;
+    }>(`/api/v1/plan-templates/${templateId}/mobile-eligibility`, "GET"),
+    // POST /api/v1/plan-templates/:id/instantiate/preview (HRA-302) — same
+    // goal_time -> pace conversion as instantiate above, but never persists.
+    // Feeds the mobile review step's derived start date + resolved paces.
+    instantiatePreview: (templateId: number, body: {
+      start_date: string; goal_time?: string; race_pace_anchor?: string; distance_m?: number; rest_day_label?: string;
+    }) => request<{
+      start_date: string; race_pace_anchor: string | null; resolved_paces: Record<string, number>; needs_review: boolean;
+    }>(`/api/v1/plan-templates/${templateId}/instantiate/preview`, "POST", undefined, body),
   },
   planInstances: {
     // template_id is optional — HRA-118's own list card can show all

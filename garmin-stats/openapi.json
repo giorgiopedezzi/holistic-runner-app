@@ -653,6 +653,23 @@
         "responses": { "200": { "description": "The updated template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
+    "/api/v1/plan-templates/{id}/mobile-eligibility": {
+      "get": {
+        "tags": ["plan-templates"], "summary": "Structural check: can this template use mobile simplified race-plan creation? (HRA-302)",
+        "description": "Read-only, never persists. Reuses instantiatePlan/pace.ts's own resolver (domain/runplan/mobile-eligibility.ts) rather than re-deriving anchor/offset logic: eligible when the template's own pace policy leaves at most one anchor symbolic and supplying any value for it makes every day resolve with needs_review false. race_pace_anchor is that single anchor name, or null when either no anchor is needed (already fully resolvable) or the template is not eligible. reason is one of already-resolved, ambiguous-anchors, unresolvable, or null when eligible with an anchor.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "Eligibility result.", "content": { "application/json": { "schema": { "type": "object", "properties": { "eligible": { "type": "boolean" }, "race_pace_anchor": { "type": ["string", "null"] }, "distance_m": { "type": ["number", "null"] }, "reason": { "type": ["string", "null"], "enum": ["already-resolved", "ambiguous-anchors", "unresolvable", null] } }, "required": ["eligible", "race_pace_anchor", "distance_m"] } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/plan-templates/{id}/instantiate/preview": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Parse-only preview of an instantiation, never persists (HRA-302)",
+        "description": "Mirrors POST .../instantiate's goal_time -> pace_overrides conversion and instantiatePlan resolution, but never writes a plan_instances row. Feeds the mobile simplified-creation review step: shows the derived start_date and every resolved plan-level anchor pace before the runner commits to the real Create action. needs_review is true if any resolved day still needs review (e.g. an unsupported anchor, or the template turns out not to be fully resolvable) — the caller must not proceed to the real instantiate call when true.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["start_date"], "properties": { "start_date": { "type": "string", "format": "date" }, "goal_time": { "type": "string", "description": "HH:MM:SS — alternate input for race_pace_anchor's value, converted via distance." }, "race_pace_anchor": { "type": "string", "description": "Which anchor goal_time resolves to. Required whenever goal_time is supplied." }, "distance_m": { "type": "number" }, "rest_day_label": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "The preview.", "content": { "application/json": { "schema": { "type": "object", "properties": { "start_date": { "type": "string", "format": "date" }, "race_pace_anchor": { "type": ["string", "null"] }, "resolved_paces": { "type": "object", "additionalProperties": { "type": "number" }, "description": "anchor -> resolved pace in sec/km." }, "needs_review": { "type": "boolean" } }, "required": ["start_date", "race_pace_anchor", "resolved_paces", "needs_review"] } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/plan-templates/{id}/instantiate": {
       "post": {
         "tags": ["plan-templates"], "summary": "Resolve a template for one race: override pace anchors + a start date, persist the result",
