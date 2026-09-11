@@ -7,12 +7,29 @@ model_reasoning_effort = "medium"
 model_reasoning_summary = "concise"
 model_verbosity = "low"
 
-# Keep the human in the loop for commands that need escalation.
+# Keep the human in the loop for operations outside the Story workspace.
 approval_policy = "on-request"
-sandbox_mode = "workspace-write"
+default_permissions = "holistic-runner-story"
 
-[sandbox_workspace_write]
-network_access = false
+# Project-scoped permissions for Codex 0.138.0+.
+# The built-in workspace profile protects Git metadata by default; this repo's
+# mandatory Story lifecycle needs local branch, staging, and commit writes.
+[permissions.holistic-runner-story]
+description = "Edit this repository and complete its local Story Git lifecycle"
+extends = ":workspace"
+
+[permissions.holistic-runner-story.filesystem.":workspace_roots"]
+"." = "write"
+".git" = "write"
+
+[permissions.holistic-runner-story.network]
+enabled = false
+
+# The elevated Windows sandbox runs as a different account, which caused this
+# user-owned checkout to fail Git ownership and NTFS checks. Unelevated still
+# uses the native sandbox, but derives it from the current Windows user.
+[windows]
+sandbox = "unelevated"
 
 # Jira / Confluence via Atlassian Rovo MCP.
 # OAuth credentials are stored outside the repo by Codex.

@@ -46,6 +46,10 @@ The workflow is the authority for Jira mechanics, effort classification, ADF che
 
 Before any Story implementation or resume, also read and follow `.agents/workflows/story-jira-gate.md`.
 
+### End-to-end completion
+
+Once implementation starts, continue through the full authorized Story workflow: implementation, consumer wiring, verification, verified AC updates, explicit staging, commit, Actual thinking effort, In Review transition, and review comment. A progress update such as "logic updated; wiring remains" is not a terminal state. Stop early only for a human gate required by this file or a concrete tool/environment error that has actually occurred; never report "waiting for approval" unless an approval request was successfully surfaced to the human.
+
 ### Tracked AI refinement prompts
 
 A Jira **Research/Spike** labeled `ai-prompt` is an immutable source-intent artifact.
@@ -73,6 +77,8 @@ Both Story refinement/creation and Story implementation must follow:
 `.agents/workflows/jira-acceptance-criteria.md`
 
 Never degrade Jira action items into markdown checkboxes.
+
+A Jira read result rendered as flattened Markdown is only a transport/display representation. It is not evidence that the source ADF task items are unavailable or unsafe to update. Never leave verified ACs unchecked for that reason alone: follow the ADF workflow, retrieve/use the supported structured representation, and attempt the supported update. Report a blocker only after a concrete Jira read/write error from those workflow methods.
 
 ---
 

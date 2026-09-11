@@ -10,6 +10,8 @@ Repository root:
 
 Always use `git -C <repo-root> ...`. Never use `cd ... && git ...`.
 
+For Codex, use the canonical commands in this workflow exactly. The repository permission profile grants the required local `.git` writes and uses the current Windows user, so do not prepend `git -c safe.directory=...`; that changes the command prefix governed by the repository rules and should not be needed. If a canonical command produces an actual OS-level failure, surface the concrete error and use the harness's native permission path. Never enter or report an approval wait unless the approval request was successfully presented to the human.
+
 ## 1. Before editing: establish a clean Story branch
 
 After the Jira status Gate 1 and the Agent / Model / Planned-effort gates pass, but **before any source edit**:
@@ -98,6 +100,8 @@ Ignored/generated runtime files do not count as Story changes.
 The required end-of-Story order is:
 
 `implement → verify → update verified AC taskItems → stage explicit files → inspect staged diff → commit → record commit hash → Actual thinking effort → In Review → review comment → STOP`
+
+After implementation has begun, an intermediate status update must not terminate the run while any authorized step in this sequence remains. Continue automatically unless a human gate or concrete, demonstrated blocker applies.
 
 The In Review comment must include:
 
