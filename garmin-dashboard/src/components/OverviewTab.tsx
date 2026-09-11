@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   ComposedChart, Bar, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer,
 } from "recharts";
-import { MapPin, Timer, Flame, Gauge, Heart } from "lucide-react";
+import { MapPin, Timer, Flame, Gauge, Heart, SlidersHorizontal } from "lucide-react";
 import { RunnerGlyph } from "@/components/activity/RunnerGlyph";
 import { useQuery } from "@/hooks/useQuery";
 import { useIsPhone } from "@/hooks/useIsPhone";
@@ -16,7 +16,8 @@ import { api } from "@/api/client";
 import {
   Card, ChartCard, chartGrid, chartTick,
   Stat, SectionTitle, Empty, ErrorBanner, LoadingSpinner, Badge, RangeEmpty,
-  splitUnit, GraphKpiCard,
+  splitUnit, GraphKpiCard, Checkbox, HelpDisclosure,
+  Popover, PopoverTrigger, PopoverContent,
 } from "@/components/ui";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { ActivityRow } from "@/components/activity/ActivityRow";
@@ -73,6 +74,17 @@ type TrendViewMode = "overlap" | "distinct";
 //   settle at "distinct".
 type TrendPhase = TrendViewMode | "d2o-move" | "d2o-fade" | "o2d-fade" | "o2d-slide";
 const TREND_PHASE_MS = 1000;
+
+// HRA-308 — mobile series/settings action. Which of the primary graph's
+// three always-computed series (Distance/Avg pace/Avg HR) are currently
+// RENDERED — a pure display toggle, phone-only (see ChartSettingsMenu below);
+// desktop never mounts a control that can change this, so it stays at this
+// default there, which is what keeps desktop pixel-for-pixel unchanged
+// (Story AC). Hiding a series only omits its Bar/Line element — the
+// underlying points/domains/tooltip data are unaffected (AC: "this Story
+// changes disclosure and control composition only").
+interface SeriesVisibility { distance: boolean; avgPace: boolean; avgHr: boolean }
+const ALL_SERIES_VISIBLE: SeriesVisibility = { distance: true, avgPace: true, avgHr: true };
 
 const axisStyle = chartTick;
 const gridStyle = chartGrid;
@@ -138,7 +150,7 @@ function sampleInterval(count: number): number {
 // caller-supplied — computed once from BOTH sides combined, so current and
 // compare's separate charts still share one Y-axis range per measure (the
 // "vertical axis must cover the same range for both" rule).
-function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader }: {
+function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader, seriesVisible = ALL_SERIES_VISIBLE }: {
   sport: string; title: ReactNode;
   points: { label: string; totalKm: number; avgPace: number | null; avgHr: number | null }[];
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
@@ -152,6 +164,9 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
   legend?: ReactNode;
   controlsRow?: ReactNode;
   subHeader?: ReactNode;
+  // HRA-308 — defaults to all-visible so every desktop/non-primary call site
+  // (which never passes this) renders identically to before.
+  seriesVisible?: SeriesVisibility;
 }) {
   const { t } = useTranslation();
   const isSwimming = sport === "swimming";
@@ -226,18 +241,24 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
               );
             }}
           />
-          <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={`url(#${gradId}-bar)`} radius={BAR_RADIUS}
-            activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.4 }} isAnimationActive={false} />
-          <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2.5}
-            className="hra-trend-line-pace"
-            dot={{ r: 2.5, fill: PACE_LINE_COLOR, strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
-            connectNulls isAnimationActive={false} />
-          <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2.5}
-            className="hra-trend-line-hr"
-            dot={{ r: 2.5, fill: hrColor, strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
-            connectNulls isAnimationActive={false} />
+          {seriesVisible.distance && (
+            <Bar yAxisId="km" dataKey="totalKm" name="Distance" fill={`url(#${gradId}-bar)`} radius={BAR_RADIUS}
+              activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.4 }} isAnimationActive={false} />
+          )}
+          {seriesVisible.avgPace && (
+            <Line yAxisId="pace" dataKey="avgPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2.5}
+              className="hra-trend-line-pace"
+              dot={{ r: 2.5, fill: PACE_LINE_COLOR, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
+              connectNulls isAnimationActive={false} />
+          )}
+          {seriesVisible.avgHr && (
+            <Line yAxisId="hr" dataKey="avgHr" name="Avg HR" stroke={hrColor} strokeWidth={2.5}
+              className="hra-trend-line-hr"
+              dot={{ r: 2.5, fill: hrColor, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
+              connectNulls isAnimationActive={false} />
+          )}
         </ComposedChart>
       </ResponsiveContainer>
       </ChartCard>
@@ -281,7 +302,7 @@ function makeTwoRowTick(points: OverlapPoint[]) {
 // / `data` array, so their categories/positions compute identically: only
 // elements sharing ONE xAxisId get auto-spaced relative to each other, so
 // putting the compare bar on its own axis stops it being pushed aside.
-function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader }: {
+function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader, seriesVisible = ALL_SERIES_VISIBLE }: {
   sport: string; title: ReactNode; points: OverlapPoint[]; compareEnabled: boolean;
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
   size?: "lg" | "sm";
@@ -292,6 +313,8 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   legend?: ReactNode;
   controlsRow?: ReactNode;
   subHeader?: ReactNode;
+  // HRA-308 — see SportTrendChart's identical prop doc comment.
+  seriesVisible?: SeriesVisibility;
 }) {
   const { t } = useTranslation();
   const isSwimming = sport === "swimming";
@@ -320,10 +343,10 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   const currentCompareLegend = compareEnabled && (
     <div className="hra-text-muted flex gap-3.5 items-center text-meta flex-wrap">
       {([
-        [t("overview.stat.distance", "Distance"), "var(--data-pace)", "bar"],
-        [t("overview.stat.avgPace", "Avg pace"), PACE_LINE_COLOR, "line"],
-        [t("overview.stat.avgHr", "Avg HR"), hrColor, "line"],
-      ] as const).map(([metricLabel, color, kind]) => (
+        [t("overview.stat.distance", "Distance"), "var(--data-pace)", "bar", seriesVisible.distance],
+        [t("overview.stat.avgPace", "Avg pace"), PACE_LINE_COLOR, "line", seriesVisible.avgPace],
+        [t("overview.stat.avgHr", "Avg HR"), hrColor, "line", seriesVisible.avgHr],
+      ] as const).filter(([, , , visible]) => visible).map(([metricLabel, color, kind]) => (
         <span key={metricLabel} className="hra-row-inline gap-1.5">
           {metricLabel}:
           <span className="hra-row-inline" style={{ "--legend-color": color } as CSSProperties} title={t("overview.legend.current", "current")}>
@@ -401,30 +424,36 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
               transparent, on its own hidden axis so it isn't pushed aside
               by the current bar — "always see it," per spec, even fully
               behind current's opaque, narrower bar. */}
-          {compareEnabled && (
+          {seriesVisible.distance && compareEnabled && (
             <Bar xAxisId="xOverlay" yAxisId="km" dataKey="compareKm" name="Compare Distance"
               fill="var(--data-pace)" fillOpacity={0.18} radius={BAR_RADIUS} barSize={24} isAnimationActive={false} />
           )}
-          <Bar xAxisId="xMain" yAxisId="km" dataKey="currentKm" name="Distance" fill={`url(#${gradId}-cur)`} radius={BAR_RADIUS}
-            barSize={14} activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.4 }} isAnimationActive={false} />
-          <Line xAxisId="xMain" yAxisId="pace" dataKey="currentPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2.5}
-            className="hra-trend-line-pace" dot={{ r: 2.5, fill: PACE_LINE_COLOR, strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
-            connectNulls isAnimationActive={false} />
+          {seriesVisible.distance && (
+            <Bar xAxisId="xMain" yAxisId="km" dataKey="currentKm" name="Distance" fill={`url(#${gradId}-cur)`} radius={BAR_RADIUS}
+              barSize={14} activeBar={{ fill: "var(--data-pace)", fillOpacity: 0.4 }} isAnimationActive={false} />
+          )}
+          {seriesVisible.avgPace && (
+            <Line xAxisId="xMain" yAxisId="pace" dataKey="currentPace" name="Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2.5}
+              className="hra-trend-line-pace" dot={{ r: 2.5, fill: PACE_LINE_COLOR, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: PACE_LINE_COLOR, stroke: "var(--bg-card)", strokeWidth: 2 }}
+              connectNulls isAnimationActive={false} />
+          )}
           {/* Muted color only — no dash pattern (explicit feedback: "I
               prefer the mute color being the real representation," i.e. the
               actual chart should match the compact legend's muted swatch,
               not the other way around). */}
-          {compareEnabled && (
+          {seriesVisible.avgPace && compareEnabled && (
             <Line xAxisId="xMain" yAxisId="pace" dataKey="comparePace" name="Compare Avg pace" stroke={PACE_LINE_COLOR} strokeWidth={2}
               strokeOpacity={0.55} dot={{ r: 2, fill: PACE_LINE_COLOR, strokeWidth: 0, fillOpacity: 0.55 }}
               connectNulls isAnimationActive={false} />
           )}
-          <Line xAxisId="xMain" yAxisId="hr" dataKey="currentHr" name="Avg HR" stroke={hrColor} strokeWidth={2.5}
-            className="hra-trend-line-hr" dot={{ r: 2.5, fill: hrColor, strokeWidth: 0 }}
-            activeDot={{ r: 5, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
-            connectNulls isAnimationActive={false} />
-          {compareEnabled && (
+          {seriesVisible.avgHr && (
+            <Line xAxisId="xMain" yAxisId="hr" dataKey="currentHr" name="Avg HR" stroke={hrColor} strokeWidth={2.5}
+              className="hra-trend-line-hr" dot={{ r: 2.5, fill: hrColor, strokeWidth: 0 }}
+              activeDot={{ r: 5, fill: hrColor, stroke: "var(--bg-card)", strokeWidth: 2 }}
+              connectNulls isAnimationActive={false} />
+          )}
+          {seriesVisible.avgHr && compareEnabled && (
             <Line xAxisId="xMain" yAxisId="hr" dataKey="compareHr" name="Compare Avg HR" stroke={hrColor} strokeWidth={2}
               strokeOpacity={0.55} dot={{ r: 2, fill: hrColor, strokeWidth: 0, fillOpacity: 0.55 }}
               connectNulls isAnimationActive={false} />
@@ -473,12 +502,124 @@ function TrendSeriesLegend({ paceUnit }: { paceUnit: string }) {
   );
 }
 
+// HRA-308 — the phone-only "chart settings" action for the primary graph's
+// header. Replaces, at phone width only, the always-visible Overlay/Side by
+// side + Match order/Match by time segmented rows (desktop keeps those
+// exactly as before — see SportTrendPair's isPhone branch) with ONE
+// icon-only trigger (44x44 CSS px via .hra-icon-action's phone rule,
+// aria-label + Radix's own aria-expanded/aria-haspopup wiring for
+// discoverability) that discloses:
+//  - series visibility (Distance/Avg pace/Avg HR) — always offered, even
+//    with comparison off, since it controls the chart's own series, not a
+//    comparison concern;
+//  - the Overlay/Side by side + (when the two periods' point counts differ)
+//    Match order/Match by time controls — ONLY while comparison is active,
+//    so a page with comparison off never exposes comparison-only settings
+//    ("absent from page chrome and from the settings surface" — Story AC).
+// A small numeric badge on the trigger (shape+number, not color alone) and
+// a compact text summary beside it both make the current state visible
+// without opening the menu (Story AC: "selected states remain visible when
+// the disclosure is closed").
+function ChartSettingsMenu({
+  seriesVisible, onSeriesVisibleChange, compareEnabled, viewMode, setViewMode,
+  showAlignToggle, alignMode, setAlignMode,
+}: {
+  seriesVisible: SeriesVisibility;
+  onSeriesVisibleChange: (next: SeriesVisibility) => void;
+  compareEnabled: boolean;
+  viewMode: TrendViewMode;
+  setViewMode: (mode: TrendViewMode) => void;
+  showAlignToggle: boolean;
+  alignMode: AlignMode;
+  setAlignMode: (mode: AlignMode) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const hiddenCount = Object.values(seriesVisible).filter(v => !v).length;
+  const viewLabel = viewMode === "overlap" ? t("overview.view.overlap", "Overlay") : t("overview.view.distinct", "Side by side");
+
+  const seriesRows: [keyof SeriesVisibility, string][] = [
+    ["distance", t("overview.stat.distance", "Distance")],
+    ["avgPace", t("overview.stat.avgPace", "Avg pace")],
+    ["avgHr", t("overview.stat.avgHr", "Avg HR")],
+  ];
+
+  return (
+    <div className="hra-row-inline gap-1.5">
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger
+          aria-label={hiddenCount > 0
+            ? t("overview.settingsMenu.triggerHidden", `Chart settings, ${hiddenCount} series hidden`, { count: hiddenCount })
+            : t("overview.settingsMenu.trigger", "Chart settings")}
+          className="hra-icon-action hra-nav-hover hra-text-muted bg-transparent border-0 cursor-pointer inline-flex items-center justify-center relative"
+        >
+          <SlidersHorizontal size={18} aria-hidden="true" />
+          {hiddenCount > 0 && (
+            <span className="hra-settings-badge" aria-hidden="true">{hiddenCount}</span>
+          )}
+        </PopoverTrigger>
+        <PopoverContent align="start">
+          <div className="flex flex-col gap-3 min-w-48">
+            <div className="flex flex-col gap-1.5">
+              <p className="text-label hra-text-primary font-semibold">{t("overview.settingsMenu.seriesHeading", "Series")}</p>
+              {seriesRows.map(([key, label]) => (
+                <label key={key} className="hra-list-row flex items-center gap-2 cursor-pointer">
+                  <Checkbox checked={seriesVisible[key]} onCheckedChange={v => onSeriesVisibleChange({ ...seriesVisible, [key]: v })} />
+                  <span className="text-body hra-text-secondary">{label}</span>
+                </label>
+              ))}
+            </div>
+            {compareEnabled && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-label hra-text-primary font-semibold">{t("overview.settingsMenu.compareHeading", "Compare view")}</p>
+                <div className="hra-segment">
+                  {(["overlap", "distinct"] as const).map(v => (
+                    <button key={v} className="hra-segment-item" data-active={viewMode === v} onClick={() => setViewMode(v)}>
+                      {v === "overlap" ? t("overview.view.overlap", "Overlay") : t("overview.view.distinct", "Side by side")}
+                    </button>
+                  ))}
+                </div>
+                {showAlignToggle && (
+                  <>
+                    <div className="hra-row-inline gap-1.5">
+                      <p className="text-label hra-text-primary font-semibold">{t("overview.settingsMenu.matchHeading", "Match")}</p>
+                      <HelpDisclosure
+                        label={t("overview.matchHelpLabel", "What do Match order and Match by time mean?")}
+                        heading={t("overview.matchHelpHeading", "How current and compared points are paired")}
+                      >
+                        <p>{t("overview.align.indexHelp", "Match order pairs the 1st current point with the 1st compared point, the 2nd with the 2nd, and so on, regardless of date. Any extra points at the end get their own unpaired slot.")}</p>
+                        <p>{t("overview.align.timeHelp", "Match by time pairs points that fall on the same day count since each period's own start. A point with no same-day match in the other period gets its own slot, in chronological order.")}</p>
+                      </HelpDisclosure>
+                    </div>
+                    <div className="hra-segment">
+                      {(["index", "time"] as const).map(m => (
+                        <button key={m} className="hra-segment-item" data-active={alignMode === m} onClick={() => setAlignMode(m)}>
+                          {m === "index" ? t("overview.align.index", "Match order") : t("overview.align.time", "Match by time")}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </PopoverContent>
+      </Popover>
+      {compareEnabled && <span className="hra-text-muted text-meta">{viewLabel}</span>}
+    </div>
+  );
+}
+
 // Compact KPI card for the main graph's own header row — deliberately
 // smaller/plainer than the shared `Stat` card used by Other key metrics,
 // which is sized to stand on its own in a grid, not to sit inline beside a
-function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSize, compareEnabled, from, to, compareFrom, compareTo, viewMode, primary, headerControls, kpis, compareKpis, otherKeyMetrics, compareOtherKeyMetrics }: {
+function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSize, compareEnabled, from, to, compareFrom, compareTo, viewMode, setViewMode, primary, headerControls, phoneHeaderControls, kpis, compareKpis, otherKeyMetrics, compareOtherKeyMetrics }: {
   sport: string; activities: Activity[]; compareActivities: Activity[]; mode: GroupMode; minGroupSize: number;
   compareEnabled: boolean; from: string; to: string; compareFrom: string; compareTo: string; viewMode: TrendViewMode;
+  // HRA-308 — only needed (and only passed) for the primary graph's own
+  // phone-only ChartSettingsMenu, which changes viewMode itself instead of
+  // TrendsBySport's desktop-only inline segmented control.
+  setViewMode?: (mode: TrendViewMode) => void;
   // Graph-first reorg: the one sport (running) singled out as the page's
   // main/comparison graph pair gets larger charts + the series legend + the
   // mode-toggle controls folded into its own card header, instead of a
@@ -486,6 +627,11 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // exact pre-existing layout (primary/headerControls/kpis all omitted).
   primary?: boolean;
   headerControls?: ReactNode;
+  // HRA-308 — phone-width-only replacement for `headerControls` (grouping
+  // segment + its tap-accessible disabled-mode help; comparison view/match
+  // controls move into ChartSettingsMenu instead). Desktop's `headerControls`
+  // is untouched code/markup — see the isPhone branch below.
+  phoneHeaderControls?: ReactNode;
   // Total distance / Avg pace mini cards for the CURRENT period — rendered
   // into the current/overlap chart's own controls row, only when primary.
   kpis?: ReactNode;
@@ -524,6 +670,16 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // is already a period-relative slot ("week 2 of the period"), so position
   // IS "distance in time" there — no separate alignment choice needed.
   const [alignMode, setAlignMode] = useState<AlignMode>("index");
+
+  // HRA-308 — phone-only series visibility for THIS pair's own primary
+  // graph. Each SportTrendPair instance owns its own copy (non-primary
+  // instances never mount a control that can change it, so theirs stays at
+  // the all-visible default forever — harmless). Not persisted: an
+  // ephemeral, tab-scoped UI flag with no reason to survive a closed tab
+  // (.claude/rules/frontend.md's localStorage exception doesn't even apply
+  // here, since plain React state already satisfies "no reason to persist").
+  const [seriesVisible, setSeriesVisible] = useState<SeriesVisibility>(ALL_SERIES_VISIBLE);
+  const isPhone = useIsPhone();
 
   // Steps `phase` through the choreography (see TrendPhase above) whenever
   // the OWNER's `viewMode` selection changes — `phase` (not `viewMode`)
@@ -656,8 +812,28 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
     // row) even though they've moved up to share this one with the pills.
     <div className="hra-overview-controls-row flex justify-between items-center flex-wrap gap-2" style={{ "--overview-header-right": `${HEADER_EXTRA_RIGHT}px` } as CSSProperties}>
       <div className="hra-row-inline gap-2 flex-wrap">
-        {alignToggle}
-        {headerControls}
+        {/* HRA-308 — phone width swaps the desktop's always-visible
+            Overlap/Distinct + Match order/Match by time pills (alignToggle +
+            headerControls, untouched below) for the compact grouping segment
+            plus ONE settings action (ChartSettingsMenu) that progressively
+            discloses comparison/series settings. setViewMode is only ever
+            passed for the primary instance, so this branch is inert
+            elsewhere. */}
+        {isPhone && setViewMode ? (
+          <>
+            {phoneHeaderControls}
+            <ChartSettingsMenu
+              seriesVisible={seriesVisible} onSeriesVisibleChange={setSeriesVisible}
+              compareEnabled={compareEnabled} viewMode={viewMode} setViewMode={setViewMode}
+              showAlignToggle={countsDiffer} alignMode={alignMode} setAlignMode={setAlignMode}
+            />
+          </>
+        ) : (
+          <>
+            {alignToggle}
+            {headerControls}
+          </>
+        )}
       </div>
       {kpis && <div className="flex gap-2 flex-wrap min-w-0">{kpis}</div>}
     </div>
@@ -721,7 +897,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
       ) : (() => {
         const currentChart = (
           <SportTrendChart sport={sport} title={primary ? graphTitle : `${label} - current`} points={scaledCur}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible}
             size={primary ? "lg" : undefined} controlsRow={graphControlsRow} subHeader={subHeader} />
         );
         // Same size as the current chart, and its own title (with the
@@ -742,12 +918,12 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
           )
         ) : (
           <SportTrendChart sport={sport} title={primary ? compareGraphTitle : `${label} - comparison`} points={scaledCmp}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible}
             size={primary ? "lg" : undefined} controlsRow={compareBadgesRow} />
         );
         const overlapChart = (
           <SportTrendOverlapChart sport={sport} title={primary ? graphTitle : label} points={scaledOverlap} compareEnabled={compareEnabled}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible}
             size={primary ? "lg" : undefined} controlsRow={graphControlsRow} subHeader={subHeader} />
         );
         // "Merged" = compareCard rendered as an absolutely-positioned overlay
@@ -962,11 +1138,36 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
 
   const modeEnabled: Record<GroupMode, boolean> = { single: true, week: weekEnabled, month: monthEnabled };
 
+  // The Single/Week/Month segment, extracted so both the desktop
+  // `modeControls` cluster below AND the phone-only `phoneGroupingControls`
+  // (HRA-308) render the exact same markup — desktop's own composition
+  // (modeControls) is otherwise untouched.
+  const groupingSegment = (
+    // One segmented container (polish pass) — a single joined bar housing
+    // all three modes, rather than three independently-bordered buttons,
+    // so the group reads as one control (dashboard design-system rework:
+    // .hra-segment, same shape every switch app-wide now uses).
+    <div className="hra-segment">
+      {GROUP_MODES.map(m => (
+        <button key={m}
+          className="hra-segment-item" data-active={groupMode === m}
+          onClick={() => setGroupMode(m)}
+          disabled={!modeEnabled[m]}
+          title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}>
+          {t(`overview.group.${m}`, GROUP_LABEL[m])}
+        </button>
+      ))}
+    </div>
+  );
+
   // One shared control cluster (Overlapping/Distinct + Single/Week/Month) —
   // unchanged mechanics, just relocated: it used to sit above the whole
   // sports list as a page-level section header; graph-first reorg moves it
   // into running's own card header (below), the page's one primary graph,
   // since that's the only chart these controls visually belong beside now.
+  // DESKTOP-ONLY as of HRA-308 (SportTrendPair's isPhone branch renders
+  // phoneGroupingControls + ChartSettingsMenu instead) — this JSX/markup is
+  // otherwise byte-for-byte what it always was, so desktop stays unchanged.
   const modeControls = (
     <div className="hra-row gap-2 flex-wrap">
       {compareEnabled && (
@@ -980,21 +1181,30 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
           ))}
         </div>
       )}
-      {/* One segmented container (polish pass) — a single joined bar housing
-          all three modes, rather than three independently-bordered buttons,
-          so the group reads as one control (dashboard design-system rework:
-          .hra-segment, same shape every switch app-wide now uses). */}
-      <div className="hra-segment">
-        {GROUP_MODES.map(m => (
-          <button key={m}
-            className="hra-segment-item" data-active={groupMode === m}
-            onClick={() => setGroupMode(m)}
-            disabled={!modeEnabled[m]}
-            title={modeEnabled[m] ? undefined : t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}>
-            {t(`overview.group.${m}`, GROUP_LABEL[m])}
-          </button>
-        ))}
-      </div>
+      {groupingSegment}
+    </div>
+  );
+
+  // HRA-308 — phone width's directly-visible grouping control (Story AC:
+  // "one compact grouping selector remains directly visible near the chart").
+  // Same segment as desktop's, plus a tap-accessible explanation for any
+  // currently-disabled mode(s) — replacing the hover-only `title` attribute
+  // the segment's own buttons still carry (harmless leftover, ignored by
+  // touch) with an operable HelpDisclosure covering the same ground.
+  const disabledGroupModes = GROUP_MODES.filter(m => !modeEnabled[m]);
+  const phoneGroupingControls = (
+    <div className="hra-row-inline gap-1.5 flex-wrap">
+      {groupingSegment}
+      {disabledGroupModes.length > 0 && (
+        <HelpDisclosure
+          label={t("overview.groupDisabledHelpLabel", "Why are some grouping options unavailable?")}
+          heading={t("overview.groupDisabledHelpHeading", "Not enough data yet")}
+        >
+          {disabledGroupModes.map(m => (
+            <p key={m}>{t("overview.groupDisabledTooltip", `Needs at least ${minGroupSize} ${m}s in the selected range`, { count: minGroupSize, mode: m })}</p>
+          ))}
+        </HelpDisclosure>
+      )}
     </div>
   );
 
@@ -1059,8 +1269,8 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
         <SportTrendPair sport={runningEntry[0]} activities={runningEntry[1]}
           compareActivities={compareBySport.get(runningEntry[0]) ?? []}
           mode={groupMode} minGroupSize={minGroupSize} compareEnabled={compareEnabled}
-          from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} viewMode={viewMode}
-          primary headerControls={modeControls} kpis={runningKpis} compareKpis={compareKpis}
+          from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} viewMode={viewMode} setViewMode={setViewMode}
+          primary headerControls={modeControls} phoneHeaderControls={phoneGroupingControls} kpis={runningKpis} compareKpis={compareKpis}
           otherKeyMetrics={otherKeyMetrics} compareOtherKeyMetrics={compareOtherKeyMetrics} />
       ) : (
         // No running trend chart to sit beside (no running activities this

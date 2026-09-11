@@ -111,11 +111,55 @@ banner/no-obscuring-at-phone-width AC, and the 320–430px/landscape/200%-text-s
 need a live dev-server + viewport pass (this Story's implementation, like the refinement pass, did
 not run one) before those three ACs can be marked DONE in Jira.
 
+## HRA-308 outcome (In Review)
+
+Mobile-width Overview & Trends now keeps the Single/Week/Month grouping segment directly visible
+(unchanged markup, `TrendsBySport`'s `groupingSegment`, shared verbatim with desktop's own
+`modeControls`) while collapsing Overlay/Side-by-side and (when the two periods' point counts
+differ) Match order/Match by time into one new phone-only `ChartSettingsMenu` popover, reached via a
+single icon-only "Chart settings" action (44×44 CSS px via `.hra-icon-action`'s existing phone rule).
+That same menu also exposes, for the first time, per-series visibility (Distance/Avg pace/Avg HR) —
+a new `SeriesVisibility` prop threaded through `SportTrendChart`/`SportTrendOverlapChart`, defaulting
+to all-visible everywhere it isn't explicitly driven, which is what keeps desktop and every
+non-primary sport chart byte-for-byte unchanged. Week/Month's disabled-mode explanation and Match
+order/Match by time both gained a tap-accessible `HelpDisclosure` (existing HRA-276 primitive) instead
+of relying solely on the pre-existing hover-only `title` attribute, which is left in place (harmless,
+ignored by touch) rather than removed. Desktop's `modeControls`/`alignToggle` code paths are
+untouched — SportTrendPair only branches into the new phone composition when `useIsPhone()` is true.
+
+**Domain-audited help copy** (`overview.align.indexHelp`/`overview.align.timeHelp`, en+it, verified
+against `domain/trends.ts`'s `buildOverlapByIndex`/`buildOverlapByTime`): Match order pairs points
+positionally in chronological order (1st with 1st, 2nd with 2nd, …), extra points at the end getting
+their own unpaired slot; Match by time pairs points on the same day-offset from each period's own
+start, via a sorted merge — an exact day match becomes one slot, everything else its own slot in
+chronological order.
+
+Verification: `npm run verify`'s own `tsc --noEmit` step currently fails on a pre-existing,
+out-of-scope error in `MobileRacePlanCreation.test.tsx` (confirmed present on the unmodified
+HRA-306 branch tip too, unrelated to this Story) — ran each verify.sh step individually instead.
+Typecheck of the changed files: clean. Full test suite: 566/568 passing (2 pre-existing failures,
+both reproduced on the unmodified base tip — `OverviewTab.test.tsx`'s "shows dashes…" test-order
+flake and `PlanInstancesSection.test.tsx`'s regenerate-confirm test); 15 new assertions added across
+5 new HRA-308 tests, all passing. `npm run lint`: 0 errors (pre-existing warnings only, none new).
+`npm run style:check`: PASSED, zero drift. `vite build`: succeeds.
+
+**Not verified in this pass** (flagged, not fixed, same caveat as HRA-306): the 320/360/390/412/
+430px + landscape + 200%-text-scaling wrap AC (AC11) needs a live dev-server + viewport pass, not run
+in this implementation session.
+
+**Out-of-scope candidates spotted, not acted on**: `TrendSeriesLegend`'s Avg pace/Avg HR axis-legend
+labels (separate from `SportTrendOverlapChart`'s own current/compare legend, which this Story does
+filter by `seriesVisible`) don't hide their entry when a series is toggled off via the new menu — a
+minor cosmetic mismatch, left alone since it's a pre-existing, unrelated legend component and this
+Story's scope is disclosure/composition, not the axis-legend's own behavior.
+
 ## Exact next step
 
-HRA-306 is In Review — human Gate 2 decides whether it can close, and whether HRA-308 (which depends
-on it) can start. Recommended remaining order once HRA-306 clears: HRA-307 (parallel-safe) → HRA-308
-→ HRA-309 → HRA-310.
+HRA-308 is In Review — human Gate 2 decides whether it can close. HRA-309 (mobile primary chart
+legibility) depends on BOTH HRA-307 and HRA-308; the two were implemented as sibling branches off the
+same HRA-306 tip, so HRA-309's own branch will need both branches' changes combined (a merge/rebase
+decision for whoever starts it, not made here). HRA-306 remains In Review — human Gate 2 decides
+whether it can close, independent of this Story.
 
 **Known anomaly to check before Gate 1:** all 5 generated Stories show `Agent`, `Model`, and
 `Planned thinking effort` already populated (observed: Claude Code / claude-sonnet-5 / Medium) —
