@@ -1621,6 +1621,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* HRA-308 — ChartSettingsMenu's "hidden series" indicator on its icon-only
+   trigger: a small numeral badge, not a bare color dot, so a hidden series
+   is perceivable by shape+number, not color alone (Story AC). */
+.hra-settings-badge {
+  position: absolute; top: 2px; right: 2px;
+  min-width: 14px; height: 14px; padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 9px; font-weight: var(--text-data--font-weight);
+  line-height: 14px; text-align: center;
+}
+
 /* Container-budget rule (HRA-276 scope note, Epic HRA-275): a value gets
    card chrome (`.card`) only when it offers real interaction or groups
    multiple related controls; a plain read-only fact uses `.hra-fact-row`

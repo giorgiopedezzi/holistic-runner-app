@@ -5,7 +5,7 @@
  * never on internal state or chart geometry.
  */
 import { describe, it, expect, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { vi } from "vitest";
 import { OverviewTab } from "./OverviewTab";
 import { installFetch, json, problem, paginated, type StubRequest } from "@/test/api-stub";
@@ -29,17 +29,6 @@ function fakeRange(from: string, to: string): DateRangeState {
 }
 function fakeCompareRange(from: string, to: string): CompareRangeState {
   return { from, to, setFrom: () => {}, setTo: () => {}, enabled: true, setEnabled: () => {} };
-}
-
-// HRA-307: forces useIsPhone() to the phone branch, same helper shape as
-// DateRangeBar.test.tsx's stubPhoneWidth — the default jsdom matchMedia
-// stub (src/test/setup.ts) always reports "no match" (desktop).
-function stubPhoneWidth() {
-  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
-    matches: true,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }));
 }
 
 // HRA-307: deltas (comparison figures) only render in "overlap" view mode
@@ -145,7 +134,7 @@ describe("OverviewTab", () => {
   // GraphKpiCard row + "Other key metrics" sidebar on phone.
   describe("mobile KPI summary", () => {
     it("shows every KPI once, with no duplicated chart-header card row", async () => {
-      stubPhoneWidth();
+      stubPhoneWidth(true);
       installFetch({
         "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
         "GET /api/v1/range": dateRange(),
@@ -169,7 +158,7 @@ describe("OverviewTab", () => {
     });
 
     it("keeps heart-rate deltas neutral (no up/down color) while pace/distance deltas are directional", async () => {
-      stubPhoneWidth();
+      stubPhoneWidth(true);
       stubOverlapView();
       installFetch({
         "GET /api/v1/summary": paginated([sportSummary({ sport: "running", avg_hr: 160 })]),
@@ -196,7 +185,7 @@ describe("OverviewTab", () => {
     });
 
     it("shows both current and previous activity counts when they differ, without a fabricated compare value", async () => {
-      stubPhoneWidth();
+      stubPhoneWidth(true);
       stubOverlapView();
       installFetch({
         "GET /api/v1/summary": paginated([sportSummary({ sport: "running", total_activities: 5 })]),
@@ -222,7 +211,7 @@ describe("OverviewTab", () => {
     });
 
     it("omits a KPI entirely (no fabricated zero) when the metric is missing for the period", async () => {
-      stubPhoneWidth();
+      stubPhoneWidth(true);
       installFetch({
         "GET /api/v1/summary": paginated([sportSummary({ sport: "running", avg_hr: null as unknown as number })]),
         "GET /api/v1/range": dateRange(),
@@ -238,5 +227,152 @@ describe("OverviewTab", () => {
       expect(screen.queryByText("Avg HR")).not.toBeInTheDocument();
       expect(screen.queryByText("0 bpm")).not.toBeInTheDocument();
     });
+  });
+});
+
+// HRA-308 — mobile comparison-settings & grouping disclosure. Same
+// stubPhoneWidth pattern DateRangeBar.test.tsx (HRA-306) already uses for
+// useIsPhone's matchMedia dependency; the default setup.ts stub reports
+// "no match" (desktop), so every OverviewTab test above already exercises
+// the desktop/unchanged code path.
+function stubPhoneWidth(isPhone: boolean) {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: isPhone,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+// A short (9-day) current range keeps the default grouping at "single"
+// (defaultGroupMode), and 2 current vs 1 compare activity both (a) keeps
+// Week/Month disabled (well under min_trend_group_size=5 distinct weeks/
+// months) and (b) makes the current/compare point counts differ, which is
+// what surfaces the Match order/Match by time control. One dataset serves
+// every test below.
+const CURRENT_FROM = "2026-08-01";
+const CURRENT_TO = "2026-08-10";
+const COMPARE_FROM = "2026-07-22";
+const COMPARE_TO = "2026-07-31";
+const currentActivities = [
+  activity({ id: 1, date_only: "2026-08-02", sport: "running" }),
+  activity({ id: 2, date_only: "2026-08-05", sport: "running" }),
+];
+const compareActivities = [activity({ id: 3, date_only: "2026-07-25", sport: "running" })];
+
+function installMobileFixture() {
+  installFetch({
+    "GET /api/v1/summary": paginated([sportSummary({ sport: "running", total_activities: currentActivities.length })]),
+    "GET /api/v1/range": dateRange(),
+    "GET /api/v1/activities": (req: StubRequest) =>
+      json(paginated(req.url.searchParams.get("from") === CURRENT_FROM ? currentActivities : compareActivities)),
+    "GET /api/v1/settings": settings(),
+    "GET /api/v1/date-ranges": paginated([]),
+  });
+}
+
+function renderMobile(compareEnabled = true) {
+  installMobileFixture();
+  const compareRange = { ...fakeCompareRange(COMPARE_FROM, COMPARE_TO), enabled: compareEnabled };
+  return render(<OverviewTab range={fakeRange(CURRENT_FROM, CURRENT_TO)} compareRange={compareRange} savedRanges={[]} />);
+}
+
+describe("OverviewTab mobile comparison-settings & grouping disclosure (HRA-308)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("keeps one grouping selector directly visible and collapses comparison view/match controls into a settings action", async () => {
+    stubPhoneWidth(true);
+    renderMobile(true);
+
+    // Grouping (Single/Week/Month) stays directly visible, not hidden
+    // behind anything — Story AC.
+    expect(await screen.findByRole("button", { name: "By activity" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "By week" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "By month" })).toBeInTheDocument();
+
+    // Overlay/Side by side is NOT a directly-visible button at phone width —
+    // it only exists inside the settings disclosure now.
+    expect(screen.queryByRole("button", { name: "Overlay" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Side by side" })).not.toBeInTheDocument();
+
+    // One icon-only settings action, with an accessible name, reachable
+    // from the chart header.
+    const trigger = screen.getByRole("button", { name: "Chart settings" });
+    expect(trigger).toBeInTheDocument();
+
+    // Its current state (view mode) is visible without opening it.
+    expect(screen.getByText("Side by side")).toBeInTheDocument();
+  });
+
+  it("opens the settings action to reveal series visibility, compare view, and a tap-accessible Match help", async () => {
+    stubPhoneWidth(true);
+    renderMobile(true);
+
+    const trigger = await screen.findByRole("button", { name: "Chart settings" });
+    fireEvent.click(trigger);
+
+    // Series visibility — always offered, even the labels the chart itself
+    // already always renders.
+    expect(screen.getByText("Series")).toBeInTheDocument();
+    const distanceCheckbox = screen.getByRole("checkbox", { name: "Distance" });
+    expect(distanceCheckbox).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Avg pace" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Avg HR" })).toBeInTheDocument();
+
+    // Compare view — progressive disclosure, not a permanent row.
+    expect(screen.getByText("Compare view")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Overlay" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Side by side" })).toBeInTheDocument();
+
+    // Match order/Match by time — shown because current (2) and compare (1)
+    // point counts differ — plus its own tap-accessible help affordance,
+    // not a hover-only title.
+    expect(screen.getByRole("button", { name: "Match order" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Match by time" })).toBeInTheDocument();
+    const helpTrigger = screen.getByRole("button", { name: "What do Match order and Match by time mean?" });
+    fireEvent.click(helpTrigger);
+    expect(screen.getByText(/Match order pairs the 1st current point/)).toBeInTheDocument();
+
+    // Toggling a series off updates the trigger's own accessible state
+    // (perceivable without opening the menu again, and not via color alone).
+    fireEvent.click(distanceCheckbox);
+    expect(screen.getByRole("button", { name: "Chart settings, 1 series hidden" })).toBeInTheDocument();
+  });
+
+  it("hides Overlay/Side by side and Match order/Match by time from the settings surface when comparison is off", async () => {
+    stubPhoneWidth(true);
+    renderMobile(false);
+
+    const trigger = await screen.findByRole("button", { name: "Chart settings" });
+    fireEvent.click(trigger);
+
+    expect(screen.getByText("Series")).toBeInTheDocument();
+    expect(screen.queryByText("Compare view")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Overlay" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Match order" })).not.toBeInTheDocument();
+  });
+
+  it("explains a disabled grouping option through a tap-accessible help affordance, not only a hover title", async () => {
+    stubPhoneWidth(true);
+    renderMobile(true);
+
+    const weekButton = await screen.findByRole("button", { name: "By week" });
+    expect(weekButton).toBeDisabled();
+
+    const helpTrigger = screen.getByRole("button", { name: "Why are some grouping options unavailable?" });
+    fireEvent.click(helpTrigger);
+    expect(screen.getByText(/Needs at least 5 weeks/)).toBeInTheDocument();
+    expect(screen.getByText(/Needs at least 5 months/)).toBeInTheDocument();
+  });
+
+  it("renders the full desktop control row unchanged (no settings action, grouping+view+match inline) at desktop width", async () => {
+    stubPhoneWidth(false);
+    renderMobile(true);
+
+    expect(await screen.findByRole("button", { name: "By activity" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Overlay" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Side by side" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Match order" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Match by time" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chart settings" })).not.toBeInTheDocument();
   });
 });
