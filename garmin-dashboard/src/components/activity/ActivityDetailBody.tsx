@@ -174,6 +174,14 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
   // Speed/Pace is always active — the mandatory first metric.
   const effectiveActive = useMemo((): MetricKey[] => ["speed", ...activeMetrics], [activeMetrics]);
 
+  // HRA-315: stamina has no toggle of its own yet (that's HRA-316's chart/
+  // toggle work) — the readout row shows it unconditionally whenever this
+  // activity's track actually has it, alongside whichever optional metrics
+  // are active. Only affects chartData/RunnerReadout's own metrics array
+  // (below); effectiveActive itself stays untouched since the real chart
+  // axes/toggle system still only knows the real MetricKey union.
+  const staminaAvailable = useMemo(() => track.some(p => p.stamina != null), [track]);
+
   // Outlier filtering only ever touches speed_ms/cadence — every other field
   // (position, timestamps, heart_rate...) passes through unchanged, so pause
   // detection and HR recovery below stay on the raw `track`, not this.
@@ -204,9 +212,14 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
   }, [displayTrack, speedMode]);
 
   const pauses = useMemo(() => detectPauses(track, pauseThreshold), [track, pauseThreshold]);
+  // Widened with "stamina" (MetricKeyWithStamina, not the real MetricKey —
+  // see activity-chart.ts's own comment) only for this call, so
+  // ChartRow.stamina exists for RunnerReadout to render; every other
+  // buildChartData consumer (axes, toggle system) still only ever sees
+  // effectiveActive's real MetricKey values.
   const chartData = useMemo(
-    () => buildChartData(displayTrack, pauses, xMode, effectiveActive, speedMode, speedOutlierMask),
-    [displayTrack, pauses, xMode, effectiveActive, speedMode, speedOutlierMask],
+    () => buildChartData(displayTrack, pauses, xMode, staminaAvailable ? [...effectiveActive, "stamina"] : effectiveActive, speedMode, speedOutlierMask),
+    [displayTrack, pauses, xMode, effectiveActive, speedMode, speedOutlierMask, staminaAvailable],
   );
   const hrRecovery = useMemo(() => computeHrRecovery(track, pauses), [track, pauses]);
   // Aligned 1:1 with `pauses` (both in afterIndex order) — chartData produces

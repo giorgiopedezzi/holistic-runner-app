@@ -133,6 +133,13 @@ export function ActivityChartSection({
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
   const isPhone = useIsPhone();
+  // HRA-315: stamina has no chart toggle yet (HRA-316), so it never joins
+  // effectiveActive — the readout row alone gets it appended, unconditionally
+  // whenever this activity's track actually has it, mirroring
+  // ActivityDetailBody's own staminaAvailable check (chartData needs
+  // "stamina" in its own buildChartData call for ChartRow.stamina to exist;
+  // this is the separate check for the RunnerReadout invocation below).
+  const staminaAvailable = useMemo(() => displayTrack.some(p => p.stamina != null), [displayTrack]);
   // Per-metric expand/collapse state for the secondary-charts disclosure —
   // phone only (HRA-303 corrective round): one row inside the single
   // .hra-activity-secondary-group-mobile container (section 7), collapsed
@@ -981,7 +988,7 @@ export function ActivityChartSection({
             )}
           </div>
           <div ref={plotRef} className="relative">
-          <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
+          <RunnerReadout ref={runnerReadoutRef} xMode={xMode} metrics={staminaAvailable ? [...effectiveActive, "stamina"] : effectiveActive} speedMode={speedMode} pauseHr={pauseHrAt} />
           <MainOverlayChart
             chartData={mainChartData} displayTrack={displayTrack} xTicks={xTicks} xMode={xMode}
             speedDomain={speedDomain} speedMode={speedMode} activeMetrics={activeMetrics} effectiveActive={effectiveActive}

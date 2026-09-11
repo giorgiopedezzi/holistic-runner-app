@@ -26,7 +26,10 @@ export type XMode      = "distance" | "time";
 // independently accept the extra "stamina" key via a union widened only at
 // the call site, so HRA-315 (readout row) can already call them; HRA-316
 // later folds "stamina" into the real MetricKey union for the chart/toggle.
-type MetricKeyWithStamina = MetricKey | "stamina";
+// Exported (HRA-315) so the readout row's own call sites (ActivityDetailBody's
+// buildChartData call, RunnerReadout's metrics prop) share this one widened
+// type instead of each re-declaring `MetricKey | "stamina"` locally.
+export type MetricKeyWithStamina = MetricKey | "stamina";
 
 export function metricUnit(key: MetricKeyWithStamina, speedMode: SpeedMode): string {
   switch (key) {
@@ -136,7 +139,14 @@ export function fmtElapsedClock(sec: number): string {
 export interface ChartRow { x: number; realX: number | null; pauseDurationSec?: number; pauseAfterIndex?: number; [key: string]: number | string | null | undefined; }
 
 export function buildChartData(
-  points: TrackPoint[], pauses: Pause[], xMode: XMode, metrics: MetricKey[], speedMode: SpeedMode,
+  // `metrics` accepts the same widened MetricKeyWithStamina as
+  // metricValue/metricUnit/fmtMetricValue above (HRA-315: the readout row's
+  // caller passes effectiveActive + "stamina" so ChartRow.stamina exists for
+  // RunnerReadout to render) — this row-builder itself is metric-agnostic
+  // (`row[key] = metricValue(...)`), so widening its param here is the same
+  // additive, call-site-only pattern, not a change to the real MetricKey
+  // union or to what the CHART/toggle system (axisDomain*, AXIS_SIDE) uses.
+  points: TrackPoint[], pauses: Pause[], xMode: XMode, metrics: MetricKeyWithStamina[], speedMode: SpeedMode,
   outlierMask: boolean[] = [],
 ): ChartRow[] {
   // Time mode uses real wall-clock elapsed time (timestamp_unix minus the

@@ -340,6 +340,7 @@
   "activity.metricShort.altitude_m": "Alt",
   "activity.metricShort.cadence": "Cad",
   "activity.metricShort.power": "W",
+  "activity.metricShort.stamina": "Res",
   "activity.play.pause": "Pausar",
   "activity.play.replay": "Repetir",
   "activity.play.play": "Reproducir",

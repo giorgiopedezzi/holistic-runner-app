@@ -4,7 +4,7 @@ import { fmtKm } from "@/utils/fmt";
 import { fmtPauseDuration } from "@/domain/pauses";
 import {
   metricUnit, fmtMetricValue, fmtElapsedClock,
-  type ChartRow, type MetricKey, type SpeedMode, type XMode,
+  type ChartRow, type MetricKeyWithStamina, type SpeedMode, type XMode,
 } from "@/domain/activity-chart";
 import { METRIC_DEFS, METRIC_LABEL_SHORT } from "./shared";
 
@@ -15,7 +15,13 @@ export interface RunnerReadoutHandle {
 
 interface RunnerReadoutProps {
   xMode: XMode;
-  metrics: MetricKey[];
+  // MetricKeyWithStamina, not the real MetricKey (HRA-315): stamina isn't
+  // part of MetricKey/METRIC_DEFS/METRIC_LABEL_SHORT yet (HRA-316 folds it
+  // in once it picks a chart color/axis side) — this component only ever
+  // renders whatever ChartRow fields its caller populated, so it can accept
+  // the extra key without touching those Records; see the "stamina" branch
+  // below for the local label/color fallback that keeps this additive.
+  metrics: MetricKeyWithStamina[];
   speedMode: SpeedMode;
   // Resolves a pause break row's HR just before stopping / just after
   // resuming — a function rather than pre-baked fields on ChartRow, since
@@ -80,12 +86,21 @@ export const RunnerReadout = forwardRef<RunnerReadoutHandle, RunnerReadoutProps>
           if (typeof v !== "number") return null;
           const label = key === "speed"
             ? (speedMode === "speed" ? t("activity.readout.speed", "speed") : t("activity.readout.pace", "pace"))
+            // "stamina" short label/color: a local fallback, not an addition
+            // to shared.ts's METRIC_LABEL_SHORT/METRIC_DEFS (Records keyed
+            // off the real MetricKey union — HRA-316's job, not this
+            // Story's, see the metrics prop comment above).
+            : key === "stamina" ? t("activity.metricShort.stamina", "Sta")
             : t(`activity.metricShort.${key}`, METRIC_LABEL_SHORT[key]);
           const unit = key === "heart_rate" ? "" : ` ${metricUnit(key, speedMode)}`;
+          // No validated chart color for stamina yet (HRA-316 picks one) —
+          // reuse the app's own --accent token as a neutral stand-in rather
+          // than inventing an ad-hoc hex value here.
+          const color = key === "stamina" ? "var(--accent)" : METRIC_DEFS[key].color;
           return (
             <span key={key} className="contents">
               <span className="hra-chart-tooltip-sep">·</span>
-              <span className="hra-dyn-color font-semibold" style={{ "--dyn-color": METRIC_DEFS[key].color } as CSSProperties}>
+              <span className="hra-dyn-color font-semibold" style={{ "--dyn-color": color } as CSSProperties}>
                 {label} {fmtMetricValue(key, v, speedMode)}{unit}
               </span>
             </span>

@@ -3478,6 +3478,24 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   font-size: var(--text-meta); font-variant-numeric: tabular-nums;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 6px rgba(0, 0, 0, 0.5);
 }
+/* HRA-315: with Stamina joining the other 4 optional metrics, this row's own
+   intrinsic nowrap width can exceed the width of the chart area it's
+   centered over (plotRef in ActivityChartSection.tsx) at mobile widths —
+   the row itself was never given a fixed width (see the comment above,
+   "nothing left here to overflow"), so the actual constraint is how wide
+   its containing chart area is, not the row. Below the phone breakpoint,
+   cap the row to that container's own width and let it wrap to a 2nd line
+   instead of overflowing past it — `left: 50%`/`translateX(-50%)` above is
+   untouched, so the (now possibly 2-line) box stays centered exactly the
+   same way; only what can render inside it changes. */
+@media (max-width: 767px) {
+  .hra-runner-values {
+    max-width: 100%;
+    white-space: normal;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
 
 /* Runner autoplay — parked on a long pause (RunnerIcon's "bent" pose, >= a
    minute) for its dwell (ActivityChartSection step()) fades the icon in and
