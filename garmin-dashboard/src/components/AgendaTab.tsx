@@ -37,7 +37,8 @@ import { isoToday } from "@/utils/date";
 import { notify } from "@/utils/toast";
 import { swapDayContent } from "@/domain/runplan-patch";
 import type { DayView, SectionView } from "@/domain/runplan-aggregate";
-import { apiDaysToSections } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
+import { apiDaysToSections, racePaceReferenceFromPlan } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
+import type { RunPlan } from "@/types/runplan";
 import { CategoryLegend, PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -70,6 +71,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const { t } = useTranslation();
   const date = isoToday();
   const { state, refetch } = useQuery(() => api.planInstances.active(date), [date]);
+  const { state: templatesState } = useQuery(() => api.planTemplates.list(), []);
   // HRA-263: called unconditionally (rules of hooks) even though its result
   // is only used once `state` itself has resolved below — decides whether
   // today specifically has neither a plan day nor a recorded activity, which
@@ -91,7 +93,14 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   }
 
   const instance = state.data;
-  const sections = instance != null ? apiDaysToSections(instance.days) : [];
+  const template = instance != null && templatesState.status === "success"
+    ? templatesState.data.find(candidate => candidate.id === instance.template_id)
+    : undefined;
+  let racePaceReference = null;
+  if (template != null) {
+    try { racePaceReference = racePaceReferenceFromPlan(JSON.parse(template.parsed_plan) as RunPlan); } catch { /* malformed saved template falls back safely */ }
+  }
+  const sections = instance != null ? apiDaysToSections(instance.days, racePaceReference) : [];
   const instanceLabel = instance?.name ?? t("manage.planTemplates.untitled", "Untitled plan");
 
   async function handleScheduledTimeEdit(dayId: number, scheduledTime: string | null) {

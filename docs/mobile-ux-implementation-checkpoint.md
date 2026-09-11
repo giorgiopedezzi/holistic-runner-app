@@ -1,5 +1,18 @@
 # Mobile UX implementation checkpoint
 
+## HRA-319 outcome (In Review)
+
+Planned-workout classification remains a pure render-time estimate. It uses the
+current plan's target-time-derived canonical race pace to derive the M/HM/10K/5K
+ladder in 15-second/km steps, then evaluates resolved work-block pace, duration
+and structure for Intervals, Threshold, Tempo and Easy/Recovery. Cross training,
+Rest, explicit/inferred Progressive and the unique weekly Long run retain their
+precedence. If no target-time reference is available, the safe fallback is
+repeated work -> Intervals, the unique weekly longest run -> Long run, and every
+other regular run -> Easy/Recovery. No category is persisted; Agenda and
+plan-instance views share the same mapper and recompute after an editable
+workout changes. Verification evidence is recorded in HRA-319's review comment.
+
 Source prompt: HRA-304 ("Overview & Trends — Mobile-first"), refined via `/generate-user-stories`
 per `.agents/workflows/refine-prompt.md`.
 

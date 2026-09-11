@@ -822,18 +822,27 @@ function dayKey(day: ResolvedDay): string {
   return `${day.section_name}::${day.week_number}::${day.day}${day.suffix ?? ""}`;
 }
 
+export interface RacePaceReference {
+  /** Canonical seconds/km pace selected for this race plan. */
+  paceSecPerKm: number;
+  /** The race distance associated with that pace, in metres. */
+  distanceM: number;
+}
+
 export interface DayClassificationContext {
   // Ascending pace_sec_per_km tercile boundaries (fastest → slowest) over
   // the whole plan instance; null when the instance has no resolvable
   // continuous pace at all (every heuristic day then falls to Easy/Recovery).
   paceTercileBounds: { fastBound: number; midBound: number } | null;
+  /** Optional race-plan input. Absence deliberately selects the structural fallback. */
+  racePaceReference: RacePaceReference | null;
   // "section::week" -> the dayKey() of that week's strict-max-volume run
   // day. A tie (no unique outlier) leaves the week absent from the map, so
   // no day gets the overlay that week — safer than guessing a winner.
   weekLongRunDay: Map<string, string>;
 }
 
-export function buildDayClassificationContext(days: ResolvedDay[]): DayClassificationContext {
+export function buildDayClassificationContext(days: ResolvedDay[], racePaceReference: RacePaceReference | null = null): DayClassificationContext {
   const paces = collectContinuousPaces(days).sort((a, b) => a - b);
   const paceTercileBounds = paces.length > 0
     ? { fastBound: linearPercentile(paces, 1 / 3), midBound: linearPercentile(paces, 2 / 3) }
@@ -856,7 +865,64 @@ export function buildDayClassificationContext(days: ResolvedDay[]): DayClassific
     }
     if (bestKey && !tie && bestVolume > 0) weekLongRunDay.set(weekKey, bestKey);
   }
-  return { paceTercileBounds, weekLongRunDay };
+  return { paceTercileBounds, racePaceReference, weekLongRunDay };
+}
+
+const RACE_DISTANCE_STEPS_M = [42195, 21097.5, 10000, 5000] as const;
+const PACE_STEP_SEC_PER_KM = 15;
+const PACE_TOLERANCE_SEC_PER_KM = 1;
+
+function raceReferencePace(reference: RacePaceReference, distanceM: number): number | null {
+  const seedIndex = RACE_DISTANCE_STEPS_M.findIndex(distance => Math.abs(distance - reference.distanceM) < 1);
+  const requestedIndex = RACE_DISTANCE_STEPS_M.findIndex(distance => Math.abs(distance - distanceM) < 1);
+  if (seedIndex < 0 || requestedIndex < 0 || !Number.isFinite(reference.paceSecPerKm)) return null;
+  return reference.paceSecPerKm + (seedIndex - requestedIndex) * PACE_STEP_SEC_PER_KM;
+}
+
+function targetDurationSec(target: Target, paceSecPerKm: number | null): number | null {
+  if (target.kind === "duration") return target.duration_sec;
+  if (target.kind === "distance" && paceSecPerKm != null) return (target.distance_m / 1000) * paceSecPerKm;
+  return null;
+}
+
+function intervalCategory(day: ResolvedDay, reference: RacePaceReference): "intervals" | "threshold" | null {
+  const tenK = raceReferencePace(reference, 10000);
+  if (tenK == null) return null;
+  const intervals = day.segments.filter((segment): segment is Extract<ResolvedSegment, { type: "interval" }> => segment.type === "interval");
+  if (intervals.length === 0) return null;
+  const allShortFast = intervals.every(segment => {
+    const duration = targetDurationSec(segment.work_target, segment.work_resolved_pace_sec_per_km);
+    const distance = segment.work_target.kind === "distance" ? segment.work_target.distance_m : null;
+    return segment.work_resolved_pace_sec_per_km != null
+      && segment.work_resolved_pace_sec_per_km < tenK - PACE_TOLERANCE_SEC_PER_KM
+      && ((duration != null && duration <= 300) || (distance != null && distance >= 200 && distance <= 1500));
+  });
+  if (allShortFast) return "intervals";
+  const allThreshold = intervals.every(segment => {
+    const duration = targetDurationSec(segment.work_target, segment.work_resolved_pace_sec_per_km);
+    const distance = segment.work_target.kind === "distance" ? segment.work_target.distance_m : null;
+    return segment.work_resolved_pace_sec_per_km != null
+      && Math.abs(segment.work_resolved_pace_sec_per_km - (tenK + 10)) <= PACE_TOLERANCE_SEC_PER_KM
+      && ((duration != null && duration >= 360) || (distance != null && distance >= 2000 && distance <= 4000));
+  });
+  return allThreshold ? "threshold" : null;
+}
+
+function continuousCategory(day: ResolvedDay, reference: RacePaceReference): "tempo" | "easy_recovery" | null {
+  if (day.segments.some(segment => segment.type !== "continuous")) return null;
+  const continuous = day.segments as Extract<ResolvedSegment, { type: "continuous" }>[];
+  const tenK = raceReferencePace(reference, 10000);
+  const half = raceReferencePace(reference, 21097.5);
+  const marathon = raceReferencePace(reference, 42195);
+  const qualifyingTempo = continuous.filter(segment => {
+    const duration = targetDurationSec(segment.target, segment.resolved_pace_sec_per_km);
+    return duration != null && duration >= 1200 && segment.resolved_pace_sec_per_km != null
+      && (Math.abs(segment.resolved_pace_sec_per_km - (half ?? Infinity)) <= PACE_TOLERANCE_SEC_PER_KM
+        || Math.abs(segment.resolved_pace_sec_per_km - ((tenK ?? Infinity) + 20)) <= PACE_TOLERANCE_SEC_PER_KM);
+  });
+  if (qualifyingTempo.length === 1) return "tempo";
+  const pace = dayRepresentativePace(day);
+  return marathon != null && pace != null && pace >= marathon + 10 - PACE_TOLERANCE_SEC_PER_KM ? "easy_recovery" : null;
 }
 
 export function classifyResolvedDay(day: ResolvedDay, context: DayClassificationContext): TrainingLoadCategory {
@@ -868,23 +934,30 @@ export function classifyResolvedDay(day: ResolvedDay, context: DayClassification
   if (day.workout_type === "other") return "easy_recovery"; // unparseable free text, no segments — no load info to classify by
 
   const structural = structuralCategory(day);
-  if (structural) return structural;
+  if (structural === "progressive") return structural;
 
   // Evaluated before the pace-tercile/long-run heuristic below (HRA-183) —
   // same early-return shape as structuralCategory above, so an inferred
   // progression also isn't overridden by the week's long-run overlay.
   if (isInferredProgression(day)) return "progressive";
 
-  const pace = dayRepresentativePace(day);
-  let tier: TrainingLoadCategory;
-  if (pace == null || context.paceTercileBounds == null) tier = "easy_recovery";
-  else if (pace <= context.paceTercileBounds.fastBound) tier = "threshold";
-  else if (pace <= context.paceTercileBounds.midBound) tier = "tempo";
-  else tier = "easy_recovery";
+  if (context.racePaceReference != null) {
+    const interval = intervalCategory(day, context.racePaceReference);
+    if (interval != null) return interval;
+  }
+
+  // Without an explicit target time or selected race-pace anchor, deliberately
+  // use the agreed structural fallback rather than inventing a reference pace.
+  if (structural === "intervals") return "intervals";
 
   const weekKey = `${day.section_name}::${day.week_number}`;
   if (context.weekLongRunDay.get(weekKey) === dayKey(day)) return "long_run";
-  return tier;
+
+  if (context.racePaceReference != null) {
+    const continuous = continuousCategory(day, context.racePaceReference);
+    if (continuous != null) return continuous;
+  }
+  return "easy_recovery";
 }
 
 // ── instance day-line reconstruction (HRA-118) ──────────────────────────
@@ -952,7 +1025,9 @@ export function reconstructDslFromResolvedDay(day: ResolvedDay): string {
 // week_number string (docs/schema.md). Groups them into the same SectionView
 // tree buildTemplateSectionView produces, preserving first-seen order
 // (days normally already arrive date-ordered from the backend).
-export function groupResolvedDaysIntoSectionViews(days: (ResolvedDay & { dsl: string })[]): SectionView[] {
+export function groupResolvedDaysIntoSectionViews(
+  days: (ResolvedDay & { dsl: string })[], racePaceReference: RacePaceReference | null = null,
+): SectionView[] {
   const sectionOrder: string[] = [];
   const bySection = new Map<string, Map<number, (ResolvedDay & { dsl: string })[]>>();
   for (const day of days) {
@@ -964,7 +1039,7 @@ export function groupResolvedDaysIntoSectionViews(days: (ResolvedDay & { dsl: st
   // Built once over the WHOLE instance (every section, every week) — HRA-147's
   // pace tercile and long-run overlay are both explicitly instance-scoped, not
   // per-section, so this must happen before splitting into per-section calls below.
-  const classificationContext = buildDayClassificationContext(days);
+  const classificationContext = buildDayClassificationContext(days, racePaceReference);
   return sectionOrder.map(sectionName => {
     const weeks = bySection.get(sectionName)!;
     const weekInputs: InstanceWeekInput[] = [...weeks.keys()].sort((a, b) => a - b)

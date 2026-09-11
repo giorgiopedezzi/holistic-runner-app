@@ -36,7 +36,7 @@ import {
   formatGoalTimeDigits, formatGoalTimeFromSec, formatPaceSecPerKm, goalTimeToSec, pad2,
   parsePaceOverrideInput, paceValueToAnchorRow, sanitizeGoalTimeInput, STANDARD_DISTANCE_M,
 } from "@/components/manage/plan-instances/planInstancePace";
-import { apiDaysToSections, snapshotDsl } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
+import { apiDaysToSections, racePaceReferenceFromPlan, snapshotDsl } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
 import {
   addDaysISO, computeK0, daysBetween, editorWeek1AnchorMismatch, hasEnteredData, manualEditCount,
   mondayBasedWeekday, selectDirtyState,
@@ -481,7 +481,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       setBaselineInstName(created.name ?? "");
       setBaselineRaceName(raceName); setBaselineRaceDate(raceDate); setBaselineRaceUrl(raceUrl);
       setSaveForcedEnabled(false);
-      const built = apiDaysToSections(created.days);
+      const built = apiDaysToSections(created.days, racePaceReferenceFromPlan(selectedPlan));
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       notify(t("manage.planInstances.instantiateSucceeded", "Plan created from template."));
@@ -520,7 +520,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
     setBaselineAnchorRows(loadedAnchorRows);
     try {
       const full = await api.planInstances.getById(instance.id);
-      const built = apiDaysToSections(full.days);
+      const built = apiDaysToSections(full.days, racePaceReferenceFromPlan(plan));
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
     } catch (e) {
@@ -689,7 +689,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       const updated = await api.planInstances.update(editingId, {
         name, race_name: raceName.trim() || null, race_date: raceDate || null, race_url: raceUrl.trim() || null, days,
       });
-      const built = apiDaysToSections(updated.days);
+      const built = apiDaysToSections(updated.days, racePaceReferenceFromPlan(selectedPlan));
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);
@@ -788,7 +788,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         effective_from: effectiveFrom,
         ...(confirmOverwrite ? { confirm_overwrite: true } : {}),
       });
-      const built = apiDaysToSections(updated.days);
+      const built = apiDaysToSections(updated.days, racePaceReferenceFromPlan(selectedPlan));
       setSections(built);
       setPersistedDsl(snapshotDsl(built));
       setEditApprovedAt(updated.approved_at);

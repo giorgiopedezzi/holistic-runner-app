@@ -1,9 +1,25 @@
 import {
   groupResolvedDaysIntoSectionViews,
   reconstructDslFromResolvedDay,
+  type RacePaceReference,
   type SectionView,
 } from "@/domain/runplan-aggregate";
-import type { ResolvedDay, WorkoutType } from "@/types/runplan";
+import type { EventType, ResolvedDay, RunPlan, WorkoutType } from "@/types/runplan";
+
+const standardDistanceM: Partial<Record<EventType, number>> = { "5k": 5000, "10k": 10000, half: 21097.5, marathon: 42195 };
+
+/**
+ * The classification is deliberately render-time only. A target time on the
+ * current plan supplies its canonical race pace; no category is written back
+ * to an instance day.
+ */
+export function racePaceReferenceFromPlan(plan: RunPlan | null | undefined): RacePaceReference | null {
+  const goalTime = plan?.metadata.goal_time_sec;
+  const distanceM = plan?.metadata.distance_m ?? (plan?.metadata.event ? standardDistanceM[plan.metadata.event] : undefined);
+  return goalTime != null && distanceM != null && goalTime > 0 && distanceM > 0
+    ? { paceSecPerKm: goalTime / (distanceM / 1000), distanceM }
+    : null;
+}
 
 export interface ApiPlanInstanceDayLike {
   section_name: string;
@@ -43,9 +59,10 @@ export function apiDaysToResolvedDays(days: ApiPlanInstanceDayLike[]): ResolvedD
   }));
 }
 
-export function apiDaysToSections(days: ApiPlanInstanceDayLike[]): SectionView[] {
+export function apiDaysToSections(days: ApiPlanInstanceDayLike[], racePaceReference: RacePaceReference | null = null): SectionView[] {
   return groupResolvedDaysIntoSectionViews(
     apiDaysToResolvedDays(days).map(d => ({ ...d, dsl: reconstructDslFromResolvedDay(d) })),
+    racePaceReference,
   );
 }
 

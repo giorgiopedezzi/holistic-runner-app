@@ -678,14 +678,14 @@ describe("classifyResolvedDay / buildDayClassificationContext (HRA-147)", () => 
     expect(classifyResolvedDay(resolvedDay({ workout_type: "other" }), ctx)).toBe("easy_recovery"); // HRA-156
   });
 
-  it("buckets a continuous day's resolved pace into a tercile of every resolved pace across the whole instance", () => {
+  it("uses Easy/Recovery for continuous runs when no race reference is available", () => {
     // Six days, paces 200..300s/km in steps of 20 — the population the tercile bounds are computed against.
     const days = [200, 220, 240, 260, 280, 300].map((pace, i) =>
       resolvedDay({ day: i + 1, segments: [continuousSeg(pace)] }));
     const ctx = buildDayClassificationContext(days);
     // fastBound ~= 233.33, midBound ~= 266.67 (linear-interpolated 1/3 and 2/3 percentiles)
-    expect(classifyResolvedDay(days[0], ctx)).toBe("threshold"); // 200 <= fastBound
-    expect(classifyResolvedDay(days[2], ctx)).toBe("tempo"); // 240, between the two bounds
+    expect(classifyResolvedDay(days[0], ctx)).toBe("easy_recovery");
+    expect(classifyResolvedDay(days[2], ctx)).toBe("easy_recovery");
     expect(classifyResolvedDay(days[5], ctx)).toBe("easy_recovery"); // 300, slowest third
   });
 
@@ -708,15 +708,15 @@ describe("classifyResolvedDay / buildDayClassificationContext (HRA-147)", () => 
     const shortDay2 = resolvedDay({ day: 5, segments: [continuousSeg(320, 6000)] });
     const ctx = buildDayClassificationContext([longDay, shortDay1, shortDay2]);
     expect(classifyResolvedDay(longDay, ctx)).toBe("long_run"); // would otherwise be "tempo" by pace alone
-    expect(classifyResolvedDay(shortDay1, ctx)).toBe("threshold"); // not the week's outlier — keeps its own pace tier
+    expect(classifyResolvedDay(shortDay1, ctx)).toBe("easy_recovery");
   });
 
   it("Long-run overlay never fires on a tie for the week's max volume — falls back to the pace tier", () => {
     const dayA = resolvedDay({ day: 1, segments: [continuousSeg(250, 10000)] });
     const dayB = resolvedDay({ day: 3, segments: [continuousSeg(250, 10000)] }); // exact tie
     const ctx = buildDayClassificationContext([dayA, dayB]);
-    expect(classifyResolvedDay(dayA, ctx)).toBe("threshold"); // same pace for both → both fall at the tercile's fastest bound
-    expect(classifyResolvedDay(dayB, ctx)).toBe("threshold");
+    expect(classifyResolvedDay(dayA, ctx)).toBe("easy_recovery");
+    expect(classifyResolvedDay(dayB, ctx)).toBe("easy_recovery");
   });
 
   it("Long-run overlay never overrides a structural category, even on the week's longest day", () => {
@@ -737,6 +737,36 @@ describe("classifyResolvedDay / buildDayClassificationContext (HRA-147)", () => 
     const ctx = buildDayClassificationContext([baseLong, baseShort, peakLong, peakShort]);
     expect(classifyResolvedDay(baseLong, ctx)).toBe("long_run"); // wins its own section's week 1, despite being far shorter than Peak's
     expect(classifyResolvedDay(peakLong, ctx)).toBe("long_run");
+  });
+});
+
+describe("classifyResolvedDay — race-relative references (HRA-319)", () => {
+  function day(overrides: Partial<ResolvedDay>): ResolvedDay {
+    return { section_name: "Base", week_number: 1, date: "2026-09-01", day: 1, workout_type: "run", needs_review: false, segments: [], ...overrides };
+  }
+  const reference = { paceSecPerKm: 298, distanceM: 42195 };
+  const distance = (distance_m: number) => ({ kind: "distance" as const, distance_m, raw: `${distance_m}m` });
+
+  it("derives the full 15-second/km ladder from a Marathon seed", () => {
+    const ctx = buildDayClassificationContext([], reference);
+    const interval: ResolvedSegment = { type: "interval", reps: 3, work_target: distance(2000), work_resolved_pace_sec_per_km: 278, raw: "3x2km" };
+    expect(classifyResolvedDay(day({ segments: [interval] }), ctx)).toBe("threshold");
+  });
+
+  it("classifies short fast repetitions as Intervals and long controlled repetitions as Threshold", () => {
+    const ctx = buildDayClassificationContext([], reference);
+    const short: ResolvedSegment = { type: "interval", reps: 10, work_target: distance(400), work_resolved_pace_sec_per_km: 250, raw: "10x400m" };
+    const cruise: ResolvedSegment = { type: "interval", reps: 3, work_target: distance(2000), work_resolved_pace_sec_per_km: 278, raw: "3x2km" };
+    expect(classifyResolvedDay(day({ segments: [short] }), ctx)).toBe("intervals");
+    expect(classifyResolvedDay(day({ segments: [cruise] }), ctx)).toBe("threshold");
+  });
+
+  it("classifies an uninterrupted 20-minute qualifying block as Tempo and marathon-plus-ten as Easy/Recovery", () => {
+    const ctx = buildDayClassificationContext([], reference);
+    const tempo: ResolvedSegment = { type: "continuous", target: { kind: "duration", duration_sec: 1500, raw: "25min" }, resolved_pace_sec_per_km: 283, raw: "25min" };
+    const easy: ResolvedSegment = { type: "continuous", target: distance(5000), resolved_pace_sec_per_km: 308, raw: "5km" };
+    expect(classifyResolvedDay(day({ segments: [tempo] }), ctx)).toBe("tempo");
+    expect(classifyResolvedDay(day({ segments: [easy] }), ctx)).toBe("easy_recovery");
   });
 });
 
