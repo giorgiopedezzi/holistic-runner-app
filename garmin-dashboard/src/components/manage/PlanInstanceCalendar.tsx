@@ -148,6 +148,14 @@ interface CalendarEvent {
   // card shows this as its Row 1 label when present, ahead of the
   // training-load category fallback every other event type uses.
   notes?: string;
+  // HRA-318 follow-up: true only for a synthetic, rendering-only duplicate
+  // of a real-workout day's own event — see timeSummaryEventsFromEvents
+  // below. Lets a real workout (long_run/progressive/etc.) report "{category}
+  // at {time}" in the exact same slot Rest/Todo/Other already occupy (Month's
+  // compact row; Week's all-day row, alongside the real "Riposo" entries)
+  // without disturbing the real, metrics-bearing event Week's own timed grid
+  // slot and the scaling math elsewhere in this file both depend on.
+  isTimeSummary?: boolean;
 }
 
 function parseLocalDate(dateISO: string): Date {
@@ -274,6 +282,27 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
     }
   }
   return events;
+}
+
+// HRA-318 follow-up: a real workout day (long_run/progressive/etc.) reports
+// "{category} at {time}" in the exact same slot Rest/Todo/Other already
+// occupy — Month's compact row, and Week's own all-day row alongside the
+// real "Riposo"/"To do"/"Other" entries — rather than only inside its
+// detailed, time-grid-positioned card. Deliberately a SEPARATE, rendering-
+// only event (allDay, no metrics) rather than mutating the real one: the
+// real event's metrics/allDay/positioning feed the scaling math above and
+// Week's own timed-grid slot, both of which assume exactly one metrics-
+// bearing, correctly-timed event per workout day (see eventsFromSections'
+// own callers) — folding the summary into that same object would either
+// break those or force it to double as an all-day entry, losing its grid
+// position entirely. Excluded from every other per-day lookup
+// (eventsByDateKey, plannedDateKeys, the scaling `events` list) by only ever
+// being added into the final `calendarEvents` render list, never into
+// `events` itself.
+function timeSummaryEventsFromEvents(events: CalendarEvent[]): CalendarEvent[] {
+  return events
+    .filter(e => isTimedWorkoutType(e.workoutType))
+    .map(e => ({ ...e, allDay: true, isTimeSummary: true }));
 }
 
 // HRA-262: most-recently-started activity per date_only — sport-agnostic,
@@ -409,9 +438,30 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
   activitiesByDateKey: Map<string, Activity>;
 }) {
   const { t } = useTranslation();
-  const drag = useDragSwap(event.dayId, readOnlyDays || dragViaAddon ? undefined : onDaySwap);
+  const drag = useDragSwap(event.dayId, readOnlyDays || dragViaAddon || event.isTimeSummary ? undefined : onDaySwap);
   const dragProps = dayCardDragProps(drag);
   const matchedActivity = activitiesByDateKey.get(toDateKey(event.start));
+
+  // HRA-318 follow-up: the synthetic "reports the scheduled time" duplicate
+  // of a real workout day (see timeSummaryEventsFromEvents) — renders
+  // identically to the compact rest/todo/other row below (same class, same
+  // icon+label shape), in both Month (a second stacked row in the day cell)
+  // and Week (this is the entry react-big-calendar places in the all-day
+  // row, right alongside the real Rest/Todo/Other entries — the actual
+  // metrics-bearing event still gets its own timed grid slot via WeekRowCard
+  // below, untouched). Checked before `weekView` so it never goes through
+  // WeekRowCard's row-based layout, which doesn't apply to it.
+  if (event.isTimeSummary) {
+    const Icon = CATEGORY_ICONS[event.trainingLoadCategory!];
+    const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory!];
+    const categoryLabel = t(key, fallback);
+    return (
+      <span className="hra-agenda-rest-row">
+        <Icon size={13} />
+        {compactRowLabel(t, categoryLabel, event.scheduledTime ?? "08:00")}
+      </span>
+    );
+  }
 
   if (weekView) {
     return (
@@ -500,12 +550,6 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
         <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
           <Icon size={12} />
         </span>
-        {/* HRA-318 follow-up: every workout day reports its scheduled time
-            inline, not just the compact rest/todo/other rows — mirrors
-            AgendaDateHeader's own "08:00" fallback so a workout with no
-            explicit scheduled_time still reports the same effective time
-            shown there, instead of silently reporting nothing. */}
-        <span className="hra-agenda-date-time-chip shrink-0">{event.scheduledTime ?? "08:00"}</span>
         <span className="hra-agenda-event-title">
           {dslSegments.map((segment, i) => (
             <span key={i} className="hra-agenda-event-title-line">{segment}</span>
@@ -641,17 +685,9 @@ function WeekRowCard({ event, matchedActivity, dragProps, isDragOver }: {
       {(PlanIcon || hasActual || (hasPlan && event.customizedAt != null)) && (
         <span className="hra-agenda-rowcard-row2">
           {PlanIcon ? (
-            <>
-              <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
-                <PlanIcon size={13} />
-              </span>
-              {/* HRA-318 follow-up: Week view's own row-card reports the
-                  scheduled time too now, same "08:00" fallback as Month's
-                  card and the date-header chip — this row is the one spot
-                  guaranteed to render for every real workout regardless of
-                  whether Row 1 got overridden by a note. */}
-              <span className="hra-agenda-date-time-chip shrink-0">{event.scheduledTime ?? "08:00"}</span>
-            </>
+            <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+              <PlanIcon size={13} />
+            </span>
           ) : <span />}
           {hasPlan && event.customizedAt != null && (
             <span
@@ -1221,7 +1257,7 @@ export function PlanInstanceCalendar({
   // in alongside them, calendar-rendering only, never fed into the
   // plan-only scaling/summary math below.
   const calendarEvents = useMemo(
-    () => [...events, ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
+    () => [...events, ...timeSummaryEventsFromEvents(events), ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
     [events, activitiesByDateKey, plannedDateKeys],
   );
 
@@ -1352,8 +1388,10 @@ export function PlanInstanceCalendar({
   }
   // HRA-262: an isActualOnly entry has no dayId — there is no plan day to
   // drag/swap, and handleEventDrop already no-ops on dayId == null, so the
-  // Week-view addon shouldn't even offer to pick it up.
-  const draggableAccessor = (event: CalendarEvent) => !readOnlyDays && event.dayId != null;
+  // Week-view addon shouldn't even offer to pick it up. HRA-318 follow-up:
+  // an isTimeSummary entry is a static all-day label, not a real timed
+  // slot — nothing meaningful to drag it to.
+  const draggableAccessor = (event: CalendarEvent) => !readOnlyDays && event.dayId != null && !event.isTimeSummary;
 
   // HRA-265: `onSelectEvent` is react-big-calendar's own click-an-event
   // callback (Month cards, Week's all-day row, and Week's timed slots all
@@ -1443,10 +1481,18 @@ export function PlanInstanceCalendar({
   }
   // Plan days plus the synthetic recorded-activity-only entries, keyed by
   // date — the grid gets the same union as a flat `events` array; the ribbon
-  // looks days up one at a time, so it needs it keyed.
+  // looks days up one at a time, so it needs it keyed. HRA-318 follow-up:
+  // explicitly excludes `isTimeSummary` entries — the phone ribbon stays
+  // untouched by that change, and letting one into this map would let it
+  // silently win the per-date slot over the real, metrics-bearing event
+  // (both share the same date, and this Map.set-per-date pattern only keeps
+  // the last one written).
   const ribbonEventsByDateKey = useMemo(() => {
     const map = new Map<string, CalendarEvent>();
-    for (const e of calendarEvents) map.set(toDateKey(e.start), e);
+    for (const e of calendarEvents) {
+      if (e.isTimeSummary) continue;
+      map.set(toDateKey(e.start), e);
+    }
     return map;
   }, [calendarEvents]);
 
@@ -1485,6 +1531,15 @@ export function PlanInstanceCalendar({
     className: "h-full",
     components: { event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent },
     messages: { noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range.") },
+    // HRA-318 follow-up: without this, react-big-calendar's Week view
+    // defaults scrollToTime to `new Date()` (the real current moment) and
+    // auto-scrolls the time grid to it on mount — so opening the tab in the
+    // afternoon/evening lands already scrolled well past the morning
+    // workouts, reading as "starts from the end of the day". Pinning it to
+    // the grid's own min (5:00, same reference date WEEK_MIN_TIME already
+    // uses) makes every open start at the top, at the day's own start,
+    // regardless of what time it actually is right now.
+    scrollToTime: WEEK_MIN_TIME,
     // Month view ignores min/max (they only affect the Week/Day time grid) —
     // harmless to pass unconditionally rather than branching the prop bag.
     min: WEEK_MIN_TIME,
