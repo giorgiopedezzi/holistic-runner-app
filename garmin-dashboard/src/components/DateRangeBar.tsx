@@ -156,7 +156,7 @@ export function DateRangeBar(props: Props) {
       : `${fmtDate(from)} → ${fmtDate(to)}`;
     const countLabel = currentActivityCount == null ? ""
       : currentActivityCount === 1 ? ` · ${t("dateRange.activityCountOne", "1 activity")}`
-      : ` · ${t("dateRange.activityCount", `${currentActivityCount} activities`)}`;
+      : ` · ${t("dateRange.activityCount", `${currentActivityCount} activities`, { n: currentActivityCount })}`;
 
     // Off the app's shared 30-day default, or off the comparison default,
     // each count as one active filter — a simple, derivable-from-this-
@@ -165,7 +165,7 @@ export function DateRangeBar(props: Props) {
     const activeFilterCount = (isActive(30) ? 0 : 1) + (compare && isCompareOffDefault(from, to, compare) ? 1 : 0);
     const filtersLabel = t("dateRange.filters", "Filters");
     const triggerLabel = activeFilterCount > 0
-      ? t("dateRange.filtersActive", `${filtersLabel} (${activeFilterCount} active)`)
+      ? t("dateRange.filtersActive", `${filtersLabel} (${activeFilterCount} active)`, { n: activeFilterCount })
       : filtersLabel;
 
     function liveDraft(compareEnabledOverride?: boolean): Draft {
@@ -390,7 +390,7 @@ function PhoneDateRangeBar({
 
   const compareCountLabel = compareActivityCount == null ? ""
     : compareActivityCount === 1 ? ` · ${t("dateRange.activityCountOne", "1 activity")}`
-    : ` · ${t("dateRange.activityCount", `${compareActivityCount} activities`)}`;
+    : ` · ${t("dateRange.activityCount", `${compareActivityCount} activities`, { n: compareActivityCount })}`;
   // "Materially unequal" — a 30% relative gap between two known, non-zero-
   // denominator counts. Deliberately coarse (not a statistical test): this
   // is a plain-language nudge, not an analysis, so only a genuinely lopsided
