@@ -295,8 +295,9 @@ describe("OverviewTab mobile comparison-settings & grouping disclosure (HRA-308)
     expect(screen.queryByRole("button", { name: "Side by side" })).not.toBeInTheDocument();
 
     // One icon-only settings action, with an accessible name, reachable
-    // from the chart header.
-    const trigger = screen.getByRole("button", { name: "Chart settings" });
+    // from the chart header. HRA-309: Avg HR is hidden by default on phone,
+    // so the trigger's own hidden-count badge already reads "1" here.
+    const trigger = screen.getByRole("button", { name: "Chart settings, 1 series hidden" });
     expect(trigger).toBeInTheDocument();
 
     // Its current state (view mode) is visible without opening it.
@@ -307,7 +308,8 @@ describe("OverviewTab mobile comparison-settings & grouping disclosure (HRA-308)
     stubPhoneWidth(true);
     renderMobile(true);
 
-    const trigger = await screen.findByRole("button", { name: "Chart settings" });
+    // HRA-309: Avg HR already hidden by default on phone.
+    const trigger = await screen.findByRole("button", { name: "Chart settings, 1 series hidden" });
     fireEvent.click(trigger);
 
     // Series visibility — always offered, even the labels the chart itself
@@ -316,7 +318,9 @@ describe("OverviewTab mobile comparison-settings & grouping disclosure (HRA-308)
     const distanceCheckbox = screen.getByRole("checkbox", { name: "Distance" });
     expect(distanceCheckbox).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Avg pace" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Avg HR" })).toBeInTheDocument();
+    const hrCheckbox = screen.getByRole("checkbox", { name: "Avg HR" });
+    expect(hrCheckbox).toBeInTheDocument();
+    expect(hrCheckbox).not.toBeChecked();
 
     // Compare view — progressive disclosure, not a permanent row.
     expect(screen.getByText("Compare view")).toBeInTheDocument();
@@ -332,17 +336,18 @@ describe("OverviewTab mobile comparison-settings & grouping disclosure (HRA-308)
     fireEvent.click(helpTrigger);
     expect(screen.getByText(/Match order pairs the 1st current point/)).toBeInTheDocument();
 
-    // Toggling a series off updates the trigger's own accessible state
-    // (perceivable without opening the menu again, and not via color alone).
+    // Toggling a second series off updates the trigger's own accessible
+    // state (perceivable without opening the menu again, and not via color
+    // alone) — Avg HR (1) + the newly hidden Distance (2).
     fireEvent.click(distanceCheckbox);
-    expect(screen.getByRole("button", { name: "Chart settings, 1 series hidden" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Chart settings, 2 series hidden" })).toBeInTheDocument();
   });
 
   it("hides Overlay/Side by side and Match order/Match by time from the settings surface when comparison is off", async () => {
     stubPhoneWidth(true);
     renderMobile(false);
 
-    const trigger = await screen.findByRole("button", { name: "Chart settings" });
+    const trigger = await screen.findByRole("button", { name: "Chart settings, 1 series hidden" });
     fireEvent.click(trigger);
 
     expect(screen.getByText("Series")).toBeInTheDocument();
@@ -374,5 +379,42 @@ describe("OverviewTab mobile comparison-settings & grouping disclosure (HRA-308)
     expect(screen.getByRole("button", { name: "Match order" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Match by time" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Chart settings" })).not.toBeInTheDocument();
+  });
+});
+
+// HRA-309 — mobile primary chart legibility: the confirmed 320-390px series
+// default (Distance + Avg pace visible, Avg HR hidden, still directly
+// re-enableable via HRA-308's ChartSettingsMenu) and its "never overwritten
+// by a rerender" persistence.
+describe("OverviewTab mobile primary chart legibility (HRA-309)", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("hides Avg HR by default on initial phone render, with Distance and Avg pace visible", async () => {
+    stubPhoneWidth(true);
+    renderMobile(true);
+
+    const trigger = await screen.findByRole("button", { name: "Chart settings, 1 series hidden" });
+    fireEvent.click(trigger);
+
+    expect(screen.getByRole("checkbox", { name: "Distance" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Avg pace" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Avg HR" })).not.toBeChecked();
+  });
+
+  it("keeps a user-enabled Avg HR series visible after switching compare view mode (no overwrite on rerender)", async () => {
+    stubPhoneWidth(true);
+    renderMobile(true);
+
+    const trigger = await screen.findByRole("button", { name: "Chart settings, 1 series hidden" });
+    fireEvent.click(trigger);
+    const hrCheckbox = screen.getByRole("checkbox", { name: "Avg HR" });
+    expect(hrCheckbox).not.toBeChecked();
+    fireEvent.click(hrCheckbox);
+    expect(hrCheckbox).toBeChecked();
+
+    // Grouping/comparison-view changes (the same menu's own Overlay control)
+    // rerender this pair — the explicit user choice must survive.
+    fireEvent.click(screen.getByRole("button", { name: "Overlay" }));
+    expect(screen.getByRole("checkbox", { name: "Avg HR" })).toBeChecked();
   });
 });

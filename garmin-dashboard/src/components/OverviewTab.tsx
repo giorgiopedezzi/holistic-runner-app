@@ -136,9 +136,13 @@ const HEADER_EXTRA_RIGHT = HR_AXIS_WIDTH - 8;
 // long span) otherwise renders one illegible label per bar. Recharts'
 // XAxis `interval` prop is a skip-count (0 = show every tick), so a numeric
 // interval is derived from the actual point count each render.
+// HRA-309: a narrower phone viewport has less horizontal room per label
+// than desktop, so it gets its own (lower) cap — passed in by the caller,
+// default unchanged for every existing (desktop) call site.
 const MAX_X_LABELS = 8;
-function sampleInterval(count: number): number {
-  return count <= MAX_X_LABELS ? 0 : Math.ceil(count / MAX_X_LABELS) - 1;
+const MAX_X_LABELS_PHONE = 4;
+function sampleInterval(count: number, maxLabels: number = MAX_X_LABELS): number {
+  return count <= maxLabels ? 0 : Math.ceil(count / maxLabels) - 1;
 }
 
 // One side's plain trend chart (Distance/Avg pace/Avg HR, all three ALWAYS
@@ -150,7 +154,7 @@ function sampleInterval(count: number): number {
 // caller-supplied — computed once from BOTH sides combined, so current and
 // compare's separate charts still share one Y-axis range per measure (the
 // "vertical axis must cover the same range for both" rule).
-function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader, seriesVisible = ALL_SERIES_VISIBLE }: {
+function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader, seriesVisible = ALL_SERIES_VISIBLE, isPhone = false }: {
   sport: string; title: ReactNode;
   points: { label: string; totalKm: number; avgPace: number | null; avgHr: number | null }[];
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
@@ -167,6 +171,11 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
   // HRA-308 — defaults to all-visible so every desktop/non-primary call site
   // (which never passes this) renders identically to before.
   seriesVisible?: SeriesVisibility;
+  // HRA-309 — phone-width chart legibility: shorter "lg" height, tighter
+  // x-axis tick sampling and a trimmed plot margin. Defaults false so every
+  // pre-existing (desktop) call site renders pixel-for-pixel unchanged
+  // (Story AC) unless a caller opts in explicitly.
+  isPhone?: boolean;
 }) {
   const { t } = useTranslation();
   const isSwimming = sport === "swimming";
@@ -175,8 +184,12 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
   const distanceUnit = distanceUnitLabel();
   const hrColor = "var(--data-hr)"; // fixed semantic data color (HRA-94/97) — was --accent-red, same hex today
   const gradId = useId();
-  const interval = sampleInterval(points.length);
-  const height = size === "lg" ? 460 : size === "sm" ? 160 : 220;
+  const interval = sampleInterval(points.length, isPhone ? MAX_X_LABELS_PHONE : MAX_X_LABELS);
+  // Only "lg" (the primary/running graph and its compare twin) shrinks on
+  // phone — "sm"/default sizes are already compact enough (160/220px) and
+  // belong to non-primary sport charts, out of this Story's evidenced
+  // problem (the fixed 460px primary height).
+  const height = size === "lg" ? (isPhone ? 280 : 460) : size === "sm" ? 160 : 220;
 
   return (
     <div className="mb-3">
@@ -184,7 +197,7 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
         <div className="hra-overview-header-inset" style={{ "--overview-header-left": `${HEADER_EXTRA_LEFT}px` } as CSSProperties}>{subHeader}</div>
       )}>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={points}>
+        <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 0 } : undefined}>
           <defs>
             <linearGradient id={`${gradId}-bar`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.28} />
@@ -302,7 +315,7 @@ function makeTwoRowTick(points: OverlapPoint[]) {
 // / `data` array, so their categories/positions compute identically: only
 // elements sharing ONE xAxisId get auto-spaced relative to each other, so
 // putting the compare bar on its own axis stops it being pushed aside.
-function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader, seriesVisible = ALL_SERIES_VISIBLE }: {
+function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain, paceDomain, hrDomain, size, legend, controlsRow, subHeader, seriesVisible = ALL_SERIES_VISIBLE, isPhone = false }: {
   sport: string; title: ReactNode; points: OverlapPoint[]; compareEnabled: boolean;
   kmDomain: [number, number]; paceDomain: [number, number]; hrDomain: [number, number];
   size?: "lg" | "sm";
@@ -315,6 +328,8 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   subHeader?: ReactNode;
   // HRA-308 — see SportTrendChart's identical prop doc comment.
   seriesVisible?: SeriesVisibility;
+  // HRA-309 — see SportTrendChart's identical prop doc comment.
+  isPhone?: boolean;
 }) {
   const { t } = useTranslation();
   const isSwimming = sport === "swimming";
@@ -323,9 +338,9 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
   const distanceUnit = distanceUnitLabel();
   const hrColor = "var(--data-hr)";
   const twoRowTick = useMemo(() => makeTwoRowTick(points), [points]);
-  const interval = sampleInterval(points.length);
+  const interval = sampleInterval(points.length, isPhone ? MAX_X_LABELS_PHONE : MAX_X_LABELS);
   const gradId = useId();
-  const height = size === "lg" ? 460 : size === "sm" ? 160 : 220;
+  const height = size === "lg" ? (isPhone ? 280 : 460) : size === "sm" ? 160 : 220;
   // Aligned to the first bar's left edge (explicit feedback) via the SAME
   // HEADER_EXTRA_LEFT the YAxis `width` props below use. Compact: one label
   // per metric, then its two swatches side by side — not six separately
@@ -368,7 +383,7 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
         </div>
       )}>
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={points} margin={{ bottom: 8 }}>
+        <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 4 } : { bottom: 8 }}>
           <defs>
             <linearGradient id={`${gradId}-cur`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.28} />
@@ -671,6 +686,8 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // IS "distance in time" there — no separate alignment choice needed.
   const [alignMode, setAlignMode] = useState<AlignMode>("index");
 
+  const isPhone = useIsPhone();
+
   // HRA-308 — phone-only series visibility for THIS pair's own primary
   // graph. Each SportTrendPair instance owns its own copy (non-primary
   // instances never mount a control that can change it, so theirs stays at
@@ -678,8 +695,25 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
   // ephemeral, tab-scoped UI flag with no reason to survive a closed tab
   // (.claude/rules/frontend.md's localStorage exception doesn't even apply
   // here, since plain React state already satisfies "no reason to persist").
-  const [seriesVisible, setSeriesVisible] = useState<SeriesVisibility>(ALL_SERIES_VISIBLE);
-  const isPhone = useIsPhone();
+  //
+  // HRA-309 (confirmed product decision, HRA-304 refinement 2026-09-10):
+  // the PRIMARY graph's initial mount on a phone-width viewport, with no
+  // prior user choice this session, shows Distance + Avg pace and hides
+  // Avg HR (still directly re-enableable via ChartSettingsMenu — no series
+  // is ever removed from the dataset, only its Bar/Line element is
+  // omitted). Scoped to `primary` only: it's the only instance that ever
+  // mounts a control (ChartSettingsMenu) capable of re-enabling a hidden
+  // series on phone — a non-primary sport chart has no such control, so
+  // defaulting it to all-visible (unchanged) avoids ever hiding a series
+  // the user has no way to bring back. Read once at mount via the
+  // initializer (not a `useEffect` synced to `isPhone`) — a later
+  // resize/rotation must NOT retroactively hide/show anything (Story AC:
+  // "a user's manual choice must not be overwritten by rerenders,
+  // grouping/comparison changes, resize or rotation"); plain React state
+  // that never re-derives from `isPhone` after mount already satisfies
+  // that by construction.
+  const [seriesVisible, setSeriesVisible] = useState<SeriesVisibility>(() =>
+    primary && isPhone ? { distance: true, avgPace: true, avgHr: false } : ALL_SERIES_VISIBLE);
 
   // Steps `phase` through the choreography (see TrendPhase above) whenever
   // the OWNER's `viewMode` selection changes — `phase` (not `viewMode`)
@@ -897,7 +931,7 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
       ) : (() => {
         const currentChart = (
           <SportTrendChart sport={sport} title={primary ? graphTitle : `${label} - current`} points={scaledCur}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible} isPhone={isPhone}
             size={primary ? "lg" : undefined} controlsRow={graphControlsRow} subHeader={subHeader} />
         );
         // Same size as the current chart, and its own title (with the
@@ -918,12 +952,12 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
           )
         ) : (
           <SportTrendChart sport={sport} title={primary ? compareGraphTitle : `${label} - comparison`} points={scaledCmp}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible} isPhone={isPhone}
             size={primary ? "lg" : undefined} controlsRow={compareBadgesRow} />
         );
         const overlapChart = (
           <SportTrendOverlapChart sport={sport} title={primary ? graphTitle : label} points={scaledOverlap} compareEnabled={compareEnabled}
-            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible}
+            kmDomain={kmDomain} paceDomain={paceDomain} hrDomain={hrDomain} seriesVisible={seriesVisible} isPhone={isPhone}
             size={primary ? "lg" : undefined} controlsRow={graphControlsRow} subHeader={subHeader} />
         );
         // "Merged" = compareCard rendered as an absolutely-positioned overlay

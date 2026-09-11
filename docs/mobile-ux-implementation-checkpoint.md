@@ -171,13 +171,99 @@ filter by `seriesVisible`) don't hide their entry when a series is toggled off v
 minor cosmetic mismatch, left alone since it's a pre-existing, unrelated legend component and this
 Story's scope is disclosure/composition, not the axis-legend's own behavior.
 
+## HRA-309 outcome (In Review)
+
+Scoped, Medium-effort slice — not the Story's full 17-AC surface (see "Not done" below).
+
+`SportTrendChart`/`SportTrendOverlapChart` gained an `isPhone` prop (default `false`, so every
+pre-existing desktop call renders byte-for-byte unchanged — Story AC16): on phone it shrinks the
+primary/compare/overlap "lg" chart's fixed height from 460px to 280px, trims the `ComposedChart`
+plot margin, and lowers the x-axis tick-sampling cap from 8 to 4 labels (`MAX_X_LABELS_PHONE`) —
+addressing the Story's evidenced problem (fixed 460px height and width-independent tick sampling)
+without touching axis widths, colors, or any desktop-only chart. `isPhone` is threaded from
+`SportTrendPair`'s existing `useIsPhone()` call (one hook instance, as before) into all three chart
+call sites, primary and non-primary sports alike (AC1's wording isn't primary-scoped) — non-primary
+sport charts keep their existing 220px height regardless (the height reduction only fires for
+`size==="lg"`, which only primary/compare charts ever pass).
+
+**Confirmed series default** (product owner, HRA-304 refinement 2026-09-10): `SportTrendPair`'s
+`seriesVisible` state now initializes to `{ distance: true, avgPace: true, avgHr: false }` when
+`primary && isPhone` at mount (`useState`'s lazy initializer — read once, not re-derived from
+`isPhone` on every render), all-visible everywhere else (every non-primary chart, and primary on
+desktop) — unchanged from HRA-308. Scoped to `primary` only: it's the only instance that ever mounts
+a control (`ChartSettingsMenu`) able to re-enable a hidden series: a non-primary sport chart has no
+such control, so defaulting it to all-visible avoids ever hiding a series the user has no way to
+bring back (AC3). Because the initializer runs once and never re-reads `isPhone`, a user's explicit
+choice already can't be overwritten by a rerender, grouping/comparison change, resize, or rotation
+(AC2/AC3/AC4) — verified by two new tests (default-hidden state, and survives an Overlay/Side-by-side
+switch after the user re-enables Avg HR).
+
+**Not done in this pass** (flagged, not silently absorbed — candidates for a follow-up Story or a
+future HRA-309 continuation, not acted on here):
+- AC5 (412/430px + landscape "verified legibility result" rather than a fixed series count): no live
+  viewport pass was run (same limitation as HRA-306/307/308); the phone default applies uniformly up
+  to the shared 767px `useIsPhone` breakpoint, not narrowed to 320-390px specifically, because
+  introducing a second, Story-local breakpoint would fork the "one exported constant" invariant
+  `useIsPhone.ts` documents. AC5's own "record the observed default/fit in the checkpoint" instruction
+  can't be honestly satisfied without that live pass.
+- AC6 (single viewport-constrained tooltip with explicit current/compare identity): Recharts' default
+  single-active-tooltip behavior is unchanged; no new viewport-boundary clamping or explicit
+  current/compare text label was added.
+- AC7 (overlay differentiation beyond color via explicit labels/line-symbol treatment): unchanged —
+  the existing muted-color-only compare treatment (HRA-296/current legend swatch `title` attrs) is
+  hover-only, not always-visible text.
+- AC8 (empty comparison period) and AC9 (stacked-not-columns, existing scale behavior): already
+  satisfied pre-existing (verified by reading the code, not new work this Story) — distinct mode
+  already renders current/compare charts in plain block flow, never grid columns, and an empty
+  compare side already yields null `compare*` fields that Recharts simply doesn't draw. AC9's
+  "each chart labelled with period, activity count and grouping" sub-clause is NOT met — today's
+  title only carries the period; adding count+grouping safely would require splitting the
+  currently-shared `graphTitle`/`compareGraphTitle`/`subHeader` nodes (reused across overlap AND
+  distinct/transition phases) into phase-specific variants, which was judged too large a change
+  surface for this pass without regression risk to the overlap chart's title and to AC16 (desktop
+  unchanged). Left as a follow-up candidate.
+- AC10/AC11 (zero/one-activity explicit empty-period and no-manufactured-trend-line messaging): not
+  implemented — `tooFew()`'s existing `Empty` message only fires in Single mode; Week/Month modes and
+  the "no running activities at all" page-level fallback do not yet carry an explicit
+  range-identifying empty-period message. Pre-existing gap, not evidenced as this Story's problem
+  statement, flagged as a candidate.
+- AC12 (HR/metric-unavailable identified as unavailable, not zero, with axis space closing): not
+  implemented — `avgHr: null` already renders as "no point" rather than a zero value, but there is no
+  explicit "unavailable" affordance and the HR axis column still reserves its width even when a whole
+  period has no HR data.
+- AC13 (loading/empty/failed visually distinct, stale-data guard on a committed range change): not
+  independently re-verified this pass — believed already satisfied by `useQuery`'s existing
+  status-driven `LoadingSpinner`/`ErrorBanner`/`Empty` states (unchanged by this Story), which already
+  key off `[from, to]`.
+- AC14 (tick skipping affects labels only): verified true by inspection, no code change needed —
+  `sampleInterval`'s `interval` output only ever feeds `XAxis`'s label-skip prop; it never touches
+  `points`/`data` itself.
+- AC17 (320/360/390/412/430px + landscape + 200%-text-scaling live pass, en+it): not run, same
+  limitation as every prior Story in this Epic.
+
+**Verification:** `garmin-dashboard/scripts/verify.sh`'s own `tsc --noEmit` step still fails on the
+same pre-existing, out-of-scope `MobileRacePlanCreation.test.tsx` error confirmed present on the
+unmodified HRA-306 tip (unrelated to this Story) — ran each verify.sh step individually instead.
+Typecheck: clean except that one pre-existing error. Full test suite: 573/574 passing (the same
+single pre-existing `PlanInstancesSection.test.tsx` regenerate-confirm flake HRA-308 already
+documented, reproduced on the unmodified base tip); `OverviewTab.test.tsx`: 16/16 passing, including
+3 new HRA-309 tests and 3 pre-existing HRA-308 tests updated for the new confirmed default (their
+"Chart settings" trigger name now reads "Chart settings, 1 series hidden" by default on phone — a
+direct, expected consequence of this Story's own confirmed decision, not a regression). `npm run
+lint`: 0 errors (3 pre-existing warnings, same lines/cause as before, unrelated to this Story's
+diff). `npm run style:check`: PASSED, zero drift (no new literal styles/typography introduced — the
+height/margin/interval changes are plain numeric chart-geometry props, not CSS style objects).
+`vite build`: succeeds.
+
 ## Exact next step
 
 HRA-306, HRA-307 and HRA-308 are all In Review — human Gate 2 decides whether any can close.
-HRA-309 (mobile primary chart legibility) depends on BOTH HRA-307 and HRA-308, which were
-implemented as sibling branches off the same HRA-306 tip; branch `feature/HRA-309-mobile-primary-
-chart-legibility` was created off HRA-307's tip and merges in HRA-308 (merge commit records the
-resolution) to combine both dependencies before HRA-309's own implementation starts.
+HRA-309 is now also In Review, on branch `feature/HRA-309-mobile-primary-chart-legibility` (built off
+HRA-307's tip with HRA-308 merged in, per this Epic's sequential-chain branching approach). HRA-310
+(accessible non-visual chart alternative) depends on HRA-309 and should branch from this branch's
+tip once HRA-309 is reviewed — see the Jira In Review comment on HRA-309 for the branch/commit and
+full residual-risk list (the "Not done" items above are the authoritative source; this section is a
+pointer, not a duplicate).
 
 **Known anomaly to check before Gate 1:** all 5 generated Stories show `Agent`, `Model`, and
 `Planned thinking effort` already populated (observed: Claude Code / claude-sonnet-5 / Medium) —
