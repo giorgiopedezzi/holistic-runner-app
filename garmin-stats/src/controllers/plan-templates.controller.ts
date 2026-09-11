@@ -17,6 +17,7 @@ import { parseRunPlanDSL, parsePaceValue, parseDayEntry } from "../domain/runpla
 import { instantiatePlan, resolveDay } from "../domain/runplan/instantiate.ts";
 import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
+import { computeMobileEligibility, resolveAllAnchors } from "../domain/runplan/mobile-eligibility.ts";
 import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
 import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
@@ -53,6 +54,12 @@ function parseIdForAction(pathname: string): number {
 function parseInstanceAndDayId(pathname: string): { instanceId: number; dayId: number } {
   const parts = pathname.split("/");
   return { instanceId: Number(parts[4]), dayId: Number(parts[6]) };
+}
+// /api/v1/plan-templates/:id/instantiate/preview — the id is the 3rd-from-last
+// segment (one more suffix segment than parseIdForAction's routes).
+function parseIdForNestedAction(pathname: string): number {
+  const parts = pathname.split("/");
+  return Number(parts[parts.length - 3]);
 }
 
 type TemplateBody = Partial<{ name: string; event: string; distance_m: number; dsl_source: string }>;
@@ -342,6 +349,76 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
     res.setHeader("Location", `/api/v1/plan-instances/${instance.id}`);
     return send(res, { ...instance, days }, 201);
+  };
+
+  // GET /api/v1/plan-templates/:id/mobile-eligibility — HRA-302: read-only,
+  // structural check for the mobile simplified race-plan creation flow.
+  // Never persists, never guesses — reuses instantiatePlan/pace.ts's own
+  // resolver (via domain/runplan/mobile-eligibility.ts) so eligibility is
+  // exactly the same "does every day resolve" contract the real /instantiate
+  // call already enforces, not a second implementation of it. Result depends
+  // only on the template's DSL structure, never on the caller's input, so it
+  // can be shown at template selection (before the runner enters any data).
+  const mobileEligibility: Handler = (_req, res, url) => {
+    const templateId = parseIdForAction(url.pathname);
+    if (!Number.isInteger(templateId)) throw badRequest("Invalid plan template id.");
+    const template = templates.byId(templateId);
+    if (!template) throw notFound(`No plan template with id ${templateId}.`);
+
+    const plan = JSON.parse(template.parsed_plan) as RunPlan;
+    const result = computeMobileEligibility(plan);
+    let distanceM: number | null = null;
+    try {
+      distanceM = resolveGoalConversionDistance(plan, undefined);
+    } catch {
+      distanceM = null;
+    }
+    return send(res, {
+      eligible: result.eligible,
+      race_pace_anchor: result.racePaceAnchor,
+      distance_m: distanceM,
+      reason: result.reason ?? null,
+    });
+  };
+
+  // POST /api/v1/plan-templates/:id/instantiate/preview — HRA-302: the same
+  // goal_time -> pace_overrides conversion and resolution as the real
+  // instantiate handler above, but never persists (mirrors the existing
+  // generate/parse-preview pattern this controller already uses for
+  // templates). Lets the mobile review step show the derived start date and
+  // every resolved pace before the runner commits to Create (AC3), and lets
+  // a failed/ineligible preview leave no trace (AC5/AC11).
+  const instantiatePreview: Handler = async (req, res, url) => {
+    const templateId = parseIdForNestedAction(url.pathname);
+    if (!Number.isInteger(templateId)) throw badRequest("Invalid plan template id.");
+    const template = templates.byId(templateId);
+    if (!template) throw notFound(`No plan template with id ${templateId}.`);
+
+    const body = await readJsonBody<InstantiateBody>(req);
+    if (!body.start_date || !ISO_DATE.test(body.start_date)) {
+      throw unprocessable("start_date is required in YYYY-MM-DD format.");
+    }
+    const plan = JSON.parse(template.parsed_plan) as RunPlan;
+
+    let paceOverrides: PacePolicy | undefined;
+    if (body.goal_time) {
+      const racePaceAnchor = body.race_pace_anchor?.trim();
+      if (!racePaceAnchor) throw unprocessable("race_pace_anchor is required when goal_time is supplied.");
+      const m = GOAL_TIME_RE.exec(body.goal_time);
+      if (!m) throw unprocessable("goal_time must be in HH:MM:SS format.");
+      const goalSec = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseInt(m[3], 10);
+      const distanceM = resolveGoalConversionDistance(plan, body.distance_m);
+      paceOverrides = { [racePaceAnchor]: { kind: "absolute", pace_sec_per_km: goalSec / (distanceM / 1000) } };
+    }
+
+    const days = instantiatePlan(plan, { startDate: body.start_date, paceOverrides, restDayLabel: body.rest_day_label?.trim() || undefined });
+    const overriddenPolicy = { ...plan.metadata.pace_policy, ...paceOverrides };
+    return send(res, {
+      start_date: body.start_date,
+      race_pace_anchor: body.race_pace_anchor ?? null,
+      resolved_paces: resolveAllAnchors(overriddenPolicy),
+      needs_review: days.some(d => d.needs_review),
+    });
   };
 
   // GET /api/v1/plan-instances?template_id=&limit=&offset= — HRA-118's
@@ -907,5 +984,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
     list, getById, generate, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
+    mobileEligibility, instantiatePreview,
   };
 }

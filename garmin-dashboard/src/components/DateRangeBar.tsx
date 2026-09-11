@@ -1,13 +1,13 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Pencil, X } from "lucide-react";
 import { PRESETS, type DateRangeState } from "@/hooks/useDateRange";
 import { defaultCompareRange, type CompareRangeState } from "@/hooks/useCompareRange";
 import { DatePicker, Select, Sheet, SheetContent, SheetTrigger, Switch } from "@/components/ui";
 import { useIsPhone } from "@/hooks/useIsPhone";
-import type { SavedDateRange } from "@/types/api";
+import type { DateRange, SavedDateRange } from "@/types/api";
 import { fmtDate } from "@/utils/fmt";
-import { ALL_SENTINEL } from "@/utils/date";
+import { ALL_SENTINEL, isoAgo, isoToday } from "@/utils/date";
 
 // One shared bar — preset dropdown, manual from/to pickers, and a named-
 // range picker — used everywhere a date range is chosen (Overview & Trends,
@@ -20,20 +20,86 @@ import { ALL_SENTINEL } from "@/utils/date";
 // Select, in the same row; only App.tsx's Activities-tab usage passes one
 // (a "pick a race" dropdown that jumps from/to to that race's own day), so
 // every other consumer of this shared bar is unaffected.
-type Props = DateRangeState & { compare?: CompareRangeState; savedRanges?: SavedDateRange[]; racePicker?: ReactNode };
+type Props = DateRangeState & {
+  compare?: CompareRangeState;
+  savedRanges?: SavedDateRange[];
+  racePicker?: ReactNode;
+  // Overview & Trends only (HRA-306) — the phone-width collapsed summary and
+  // comparison rows show activity counts alongside dates. Every other
+  // DateRangeBar caller (Activities/Body, Manage) has its own count/list
+  // readout nearby and doesn't pass these, so they render with no count
+  // suffix, unchanged.
+  currentActivityCount?: number;
+  // null = not yet known (comparison off, or its fetch hasn't resolved yet)
+  // — distinct from 0, which means comparison is on and the period is
+  // genuinely empty (HRA-306 AC: never substitute the current-period value).
+  compareActivityCount?: number | null;
+  // The entity's overall min/max date (e.g. GET /api/range), for the "All
+  // available data" summary to show its actual observation span instead of
+  // just the semantic label. Omitted (or still loading) — falls back to the
+  // label alone, same as before this Story.
+  allRangeSpan?: DateRange | null;
+};
 
 const NO_NAMED_RANGE = "";
 function savedRangeLabel(r: SavedDateRange): string {
   return `${r.name} (${fmtDate(r.from_date)} → ${fmtDate(r.to_date)})`;
 }
 
-export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, savedRanges = [], racePicker }: Props) {
+function isActiveFor(value: string, days: number): boolean {
+  const target = days >= 9999 ? ALL_SENTINEL : isoAgo(days);
+  return value === target;
+}
+
+// Mirrors useDateRange's own setPreset(days) formula — duplicated here (not
+// imported) because that hook only exposes it bound to its own setFrom/setTo
+// calls, not as a standalone pure function. Used to compute the phone
+// sheet's staged draft without touching real state until Apply.
+function presetRange(days: number): { from: string; to: string } {
+  return { from: days >= 9999 ? ALL_SENTINEL : isoAgo(days), to: isoToday() };
+}
+
+// "Default" comparison state for a given current range — enabled unless
+// current is All (useCompareRange's own initial/reset rule), with the
+// default compare window when enabled. Used only to decide whether the
+// phone summary's non-default badge should count comparison as a deviation.
+function isCompareOffDefault(from: string, to: string, compare: CompareRangeState): boolean {
+  const expectedEnabled = from !== ALL_SENTINEL;
+  if (compare.enabled !== expectedEnabled) return true;
+  if (!compare.enabled) return false;
+  const def = defaultCompareRange(from, to);
+  return compare.from !== def.from || compare.to !== def.to;
+}
+
+// Draft shape staged inside the phone filter sheet (HRA-306) — nothing here
+// touches real state (URL-backed hooks) until Apply commits it in one go;
+// Cancel just discards it. Re-derived from live props every time the sheet
+// opens.
+interface Draft {
+  from: string;
+  to: string;
+  compareEnabled: boolean;
+  compareFrom: string;
+  compareTo: string;
+}
+
+type RangeErrorKind = "current" | "compare" | null;
+
+function rangeErrorKind(d: Draft): RangeErrorKind {
+  if (d.from !== ALL_SENTINEL && d.from > d.to) return "current";
+  if (d.compareEnabled && d.compareFrom > d.compareTo) return "compare";
+  return null;
+}
+
+export function DateRangeBar(props: Props) {
+  const {
+    from, to, setFrom, setTo, setPreset, compare, savedRanges = [], racePicker,
+    currentActivityCount, compareActivityCount, allRangeSpan,
+  } = props;
   const { t } = useTranslation();
   const isPhone = useIsPhone();
   function isActive(days: number) {
-    const target = days >= 9999 ? ALL_SENTINEL
-      : new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
-    return from === target;
+    return isActiveFor(from, days);
   }
   const allSelected = from === ALL_SENTINEL;
   const allAvailableLabel = t("dateRange.allAvailable", "All available data");
@@ -76,64 +142,59 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
     if (r) { compare.setFrom(r.from_date); compare.setTo(r.to_date); }
   }
 
-  // Phone-width compact header (HRA-290): a range summary + a Filter button
-  // opening a Sheet with everything the full row below shows. Deliberately
-  // scoped to !compare — Overview & Trends' two-row Current/Compared-to
-  // layout isn't part of this Story's epic (HRA-289 only covers the
-  // activity list/summary/analysis surfaces), so that usage keeps its
-  // existing desktop-shaped row unchanged at every width.
-  if (isPhone && !compare) {
+  // ── Phone-width compaction (HRA-290, extended to the compare branch by
+  // HRA-306) — a range summary (+ comparison summary, when `compare` is
+  // passed) and a Filter button opening a Sheet with everything the full
+  // row(s) below show. Unlike the desktop row, edits inside the sheet are
+  // staged (Draft) and only committed on Apply; Cancel discards them.
+  if (isPhone) {
     const matchedSaved = savedRanges.find(r => r.from_date === from && r.to_date === to);
-    const summaryLabel = allSelected ? allAvailableLabel
+    const allSpanLabel = allSelected && allRangeSpan?.min_date && allRangeSpan?.max_date
+      ? ` (${fmtDate(allRangeSpan.min_date)} → ${fmtDate(allRangeSpan.max_date)})` : "";
+    const summaryLabel = allSelected ? `${allAvailableLabel}${allSpanLabel}`
       : matchedSaved ? savedRangeLabel(matchedSaved)
       : `${fmtDate(from)} → ${fmtDate(to)}`;
-    // Simple, derivable-from-this-component signal: off the app's shared
-    // 30-day default counts as one active filter. Race selection (an opaque
-    // racePicker ReactNode) isn't introspectable here, so it isn't counted.
-    const activeFilterCount = isActive(30) ? 0 : 1;
+    const countLabel = currentActivityCount == null ? ""
+      : currentActivityCount === 1 ? ` · ${t("dateRange.activityCountOne", "1 activity")}`
+      : ` · ${t("dateRange.activityCount", `${currentActivityCount} activities`)}`;
+
+    // Off the app's shared 30-day default, or off the comparison default,
+    // each count as one active filter — a simple, derivable-from-this-
+    // component signal. Race selection (an opaque racePicker ReactNode)
+    // isn't introspectable here, so it isn't counted.
+    const activeFilterCount = (isActive(30) ? 0 : 1) + (compare && isCompareOffDefault(from, to, compare) ? 1 : 0);
     const filtersLabel = t("dateRange.filters", "Filters");
     const triggerLabel = activeFilterCount > 0
-      ? t("dateRange.filtersActive", `${filtersLabel} (${activeFilterCount} active)`, { n: activeFilterCount })
+      ? t("dateRange.filtersActive", `${filtersLabel} (${activeFilterCount} active)`)
       : filtersLabel;
+
+    function liveDraft(compareEnabledOverride?: boolean): Draft {
+      return {
+        from, to,
+        compareEnabled: compareEnabledOverride ?? compare?.enabled ?? false,
+        compareFrom: compare?.from ?? "",
+        compareTo: compare?.to ?? "",
+      };
+    }
+
     return (
-      <div className="flex items-center justify-between gap-2">
-        <span className="hra-filter-summary text-body hra-text-primary">{summaryLabel}</span>
-        <Sheet>
-          {/* Same icon/class as ActivityChartSection's "Chart options" sheet
-              trigger (SlidersHorizontal, .hra-filter-trigger) — one visual
-              language for "open a settings sheet" app-wide, not a
-              differently-shaped Filter icon just for this one. */}
-          <SheetTrigger className="hra-filter-trigger" aria-label={triggerLabel}>
-            <SlidersHorizontal size={18} aria-hidden="true" />
-            {activeFilterCount > 0 && <span className="hra-filter-badge" aria-hidden="true">{activeFilterCount}</span>}
-          </SheetTrigger>
-          <SheetContent title={filtersLabel}>
-            <Select
-              value={activePreset ? String(activePreset.days) : NO_NAMED_RANGE}
-              onValueChange={v => setPreset(Number(v))}
-              placeholder={t("dateRange.customRange", "Custom range")}
-              triggerClassName="hra-select-full"
-              options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
-            />
-            <div className="hra-date-pair">
-              <DatePicker value={from} max={to} onChange={setFrom} label={allSelected ? allAvailableLabel : undefined} />
-              <span className="hra-text-muted text-meta">→</span>
-              <DatePicker value={to} min={from} onChange={setTo} />
-            </div>
-            <Select
-              value={currentNamedId != null ? String(currentNamedId) : NO_NAMED_RANGE}
-              onValueChange={pickCurrent}
-              placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
-              triggerClassName="hra-select-full"
-              options={[
-                { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
-                ...savedRanges.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
-              ]}
-            />
-            {racePicker}
-          </SheetContent>
-        </Sheet>
-      </div>
+      <PhoneDateRangeBar
+        summaryLabel={summaryLabel}
+        countLabel={countLabel}
+        triggerLabel={triggerLabel}
+        activeFilterCount={activeFilterCount}
+        filtersLabel={filtersLabel}
+        from={from} to={to} setFrom={setFrom} setTo={setTo} setPreset={setPreset}
+        compare={compare}
+        savedRanges={savedRanges}
+        racePicker={racePicker}
+        eligibleForCompare={eligibleForCompare}
+        compareActivityCount={compareActivityCount}
+        currentActivityCount={currentActivityCount}
+        allSelected={allSelected}
+        allAvailableLabel={allAvailableLabel}
+        liveDraft={liveDraft}
+      />
     );
   }
 
@@ -240,6 +301,223 @@ export function DateRangeBar({ from, to, setFrom, setTo, setPreset, compare, sav
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Phone-width filter sheet (HRA-290 pattern, extended by HRA-306) ────────
+// Split out so the desktop return above stays exactly the shape it was
+// (line-for-line unchanged) and the phone form's own staged-draft state is
+// self-contained.
+interface PhoneProps extends DateRangeState {
+  summaryLabel: string;
+  countLabel: string;
+  triggerLabel: string;
+  activeFilterCount: number;
+  filtersLabel: string;
+  compare?: CompareRangeState;
+  savedRanges: SavedDateRange[];
+  racePicker?: ReactNode;
+  eligibleForCompare: SavedDateRange[];
+  compareActivityCount?: number | null;
+  currentActivityCount?: number;
+  allSelected: boolean;
+  allAvailableLabel: string;
+  liveDraft: (compareEnabledOverride?: boolean) => Draft;
+}
+
+function PhoneDateRangeBar({
+  summaryLabel, countLabel, triggerLabel, activeFilterCount, filtersLabel,
+  setFrom, setTo, compare, savedRanges, racePicker,
+  eligibleForCompare, compareActivityCount, currentActivityCount, allAvailableLabel, liveDraft,
+}: PhoneProps) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<Draft>(() => liveDraft());
+
+  function onOpenChange(next: boolean, compareEnabledOverride?: boolean) {
+    if (next) setDraft(liveDraft(compareEnabledOverride));
+    setOpen(next);
+  }
+
+  const errorKind = rangeErrorKind(draft);
+  const error = errorKind === "current" ? t("dateRange.invalidRange", "End date must be on or after the start date.")
+    : errorKind === "compare" ? t("dateRange.invalidCompareRange", "Comparison end date must be on or after the comparison start date.")
+    : null;
+  const draftAllSelected = draft.from === ALL_SENTINEL;
+  const activePresetDraft = PRESETS.find(p => isActiveFor(draft.from, p.days));
+  const currentNamedIdDraft = savedRanges.find(r => r.from_date === draft.from && r.to_date === draft.to)?.id;
+  const compareNamedIdDraft = savedRanges.find(r => r.from_date === draft.compareFrom && r.to_date === draft.compareTo)?.id;
+
+  function handleApply() {
+    if (rangeErrorKind(draft)) return; // invalid — keep the sheet open with the entered values, per AC
+    setFrom(draft.from);
+    setTo(draft.to);
+    // Applying a changed current range and a custom compare pick in the same
+    // Apply inherits useCompareRange's own established reset-on-current-
+    // change rule (its effect fires once `from`/`to` change and reapplies
+    // the default compare window) — the exact same outcome two sequential
+    // desktop edits in that order already produce today; not new behavior.
+    if (compare) {
+      compare.setEnabled(draft.compareEnabled);
+      if (draft.compareEnabled) {
+        compare.setFrom(draft.compareFrom);
+        compare.setTo(draft.compareTo);
+      }
+    }
+    setOpen(false);
+  }
+
+  function pickCurrentDraft(idStr: string) {
+    if (idStr === NO_NAMED_RANGE) { setDraft(d => ({ ...d, ...presetRange(30) })); return; }
+    const r = savedRanges.find(x => String(x.id) === idStr);
+    if (r) setDraft(d => ({ ...d, from: r.from_date, to: r.to_date }));
+  }
+  function pickCompareDraft(idStr: string) {
+    if (idStr === NO_NAMED_RANGE) {
+      const def = defaultCompareRange(draft.from, draft.to);
+      setDraft(d => ({ ...d, compareFrom: def.from, compareTo: def.to }));
+      return;
+    }
+    const r = eligibleForCompare.find(x => String(x.id) === idStr);
+    if (r) setDraft(d => ({ ...d, compareFrom: r.from_date, compareTo: r.to_date }));
+  }
+
+  const compareCountLabel = compareActivityCount == null ? ""
+    : compareActivityCount === 1 ? ` · ${t("dateRange.activityCountOne", "1 activity")}`
+    : ` · ${t("dateRange.activityCount", `${compareActivityCount} activities`)}`;
+  // "Materially unequal" — a 30% relative gap between two known, non-zero-
+  // denominator counts. Deliberately coarse (not a statistical test): this
+  // is a plain-language nudge, not an analysis, so only a genuinely lopsided
+  // pair of samples triggers it.
+  const materiallyUnequal = currentActivityCount != null && compareActivityCount != null
+    && Math.max(currentActivityCount, compareActivityCount) > 0
+    && Math.abs(currentActivityCount - compareActivityCount) / Math.max(currentActivityCount, compareActivityCount) >= 0.3;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="hra-filter-summary text-body hra-text-primary">{summaryLabel}{countLabel}</span>
+        <Sheet open={open} onOpenChange={v => onOpenChange(v)}>
+          {/* Same icon/class as ActivityChartSection's "Chart options" sheet
+              trigger (SlidersHorizontal, .hra-filter-trigger) — one visual
+              language for "open a settings sheet" app-wide, not a
+              differently-shaped Filter icon just for this one. */}
+          <SheetTrigger className="hra-filter-trigger" aria-label={triggerLabel}>
+            <SlidersHorizontal size={18} aria-hidden="true" />
+            {activeFilterCount > 0 && <span className="hra-filter-badge" aria-hidden="true">{activeFilterCount}</span>}
+          </SheetTrigger>
+          <SheetContent title={filtersLabel}>
+            <Select
+              value={activePresetDraft ? String(activePresetDraft.days) : NO_NAMED_RANGE}
+              onValueChange={v => setDraft(d => ({ ...d, ...presetRange(Number(v)) }))}
+              placeholder={t("dateRange.customRange", "Custom range")}
+              triggerClassName="hra-select-full"
+              options={PRESETS.map(p => ({ value: String(p.days), label: t(`common.preset.${p.days}`, p.label) }))}
+            />
+            <div className="hra-date-pair">
+              <DatePicker value={draft.from} max={draft.to} onChange={v => setDraft(d => ({ ...d, from: v }))} label={draftAllSelected ? allAvailableLabel : undefined} />
+              <span className="hra-text-muted text-meta">→</span>
+              <DatePicker value={draft.to} min={draft.from} onChange={v => setDraft(d => ({ ...d, to: v }))} />
+            </div>
+            <Select
+              value={currentNamedIdDraft != null ? String(currentNamedIdDraft) : NO_NAMED_RANGE}
+              onValueChange={pickCurrentDraft}
+              placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
+              triggerClassName="hra-select-full"
+              options={[
+                { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
+                ...savedRanges.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
+              ]}
+            />
+            {racePicker}
+
+            {compare && (
+              <>
+                <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer">
+                  {t("dateRange.enableComparison", "Enable comparison")}
+                  <Switch checked={draft.compareEnabled} onCheckedChange={v => setDraft(d => ({ ...d, compareEnabled: v }))} />
+                </label>
+                {draft.compareEnabled && (
+                  <div className="hra-compare-range" data-enabled="true">
+                    <div className="hra-text-primary text-label font-semibold mb-1.5">{t("dateRange.comparedTo", "Compared to")}</div>
+                    <div className="hra-date-pair">
+                      <DatePicker value={draft.compareFrom} max={draft.compareTo} onChange={v => setDraft(d => ({ ...d, compareFrom: v }))} />
+                      <span className="hra-text-muted text-meta">→</span>
+                      <DatePicker value={draft.compareTo} min={draft.compareFrom} onChange={v => setDraft(d => ({ ...d, compareTo: v }))} />
+                    </div>
+                    <Select
+                      value={compareNamedIdDraft != null ? String(compareNamedIdDraft) : NO_NAMED_RANGE}
+                      onValueChange={pickCompareDraft}
+                      placeholder={t("dateRange.pickNamedRange", "Pick a named date range…")}
+                      triggerClassName="hra-select-full"
+                      options={[
+                        { value: NO_NAMED_RANGE, label: t("dateRange.noneOption", "— none —") },
+                        ...eligibleForCompare.map(r => ({ value: String(r.id), label: savedRangeLabel(r) })),
+                      ]}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {error && <div className="hra-error-banner" role="alert">{error}</div>}
+
+            <div className="hra-sheet-actions">
+              <button type="button" className="hra-confirm-modal-cancel" onClick={() => setOpen(false)}>
+                {t("common.cancel", "Cancel")}
+              </button>
+              <button type="button" className="hra-btn" data-variant="accent" onClick={handleApply} disabled={!!error}>
+                {t("dateRange.apply", "Apply")}
+              </button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+
+      {/* Page-level comparison entry (HRA-306) — collapsed to one
+          consequential action when comparison is off (no form rendered
+          unprompted), or a compact summary with edit/close when it's on.
+          Only rendered at all when `compare` is passed (Overview & Trends). */}
+      {compare && (compare.enabled ? (
+        <div className="hra-fact-row hra-compare-summary">
+          <span className="hra-text-secondary text-meta">
+            {t("dateRange.comparedTo", "Compared to")} {fmtDate(compare.from)} → {fmtDate(compare.to)}{compareCountLabel}
+          </span>
+          {materiallyUnequal && (
+            <div className="hra-text-muted text-meta">
+              {t("dateRange.unevenSamples", "Sample sizes differ — these periods aren't automatically like-for-like.")}
+            </div>
+          )}
+          <div className="hra-compare-summary-actions">
+            <button
+              type="button"
+              className="hra-compare-summary-btn"
+              aria-label={t("dateRange.editComparison", "Edit comparison")}
+              onClick={() => onOpenChange(true, true)}
+            >
+              <Pencil size={15} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="hra-compare-summary-btn"
+              aria-label={t("dateRange.closeComparison", "Close comparison")}
+              onClick={() => compare.setEnabled(false)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          className="hra-btn hra-compare-cta"
+          data-variant="cta"
+          onClick={() => onOpenChange(true, true)}
+        >
+          {t("dateRange.compareWithAnother", "Compare with another period")}
+        </button>
+      ))}
     </div>
   );
 }

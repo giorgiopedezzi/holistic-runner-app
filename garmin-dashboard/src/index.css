@@ -1621,6 +1621,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
+/* HRA-308 — ChartSettingsMenu's "hidden series" indicator on its icon-only
+   trigger: a small numeral badge, not a bare color dot, so a hidden series
+   is perceivable by shape+number, not color alone (Story AC). */
+.hra-settings-badge {
+  position: absolute; top: 2px; right: 2px;
+  min-width: 14px; height: 14px; padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent); color: var(--on-accent);
+  font-size: 9px; font-weight: var(--text-data--font-weight);
+  line-height: 14px; text-align: center;
+}
+
 /* Container-budget rule (HRA-276 scope note, Epic HRA-275): a value gets
    card chrome (`.card`) only when it offers real interaction or groups
    multiple related controls; a plain read-only fact uses `.hra-fact-row`
@@ -1641,6 +1653,21 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 }
 .hra-fact-row-stat-values { display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; white-space: nowrap; }
 .hra-fact-row-stat .hra-stat-delta { margin-top: 0; }
+
+/* Mobile graph-header KPI summary (HRA-307) — the dominant total-distance
+   row (own bigger .hra-kpi-value, label above value like the graph-header
+   GraphKpiCard convention, instead of Stat row's label-left/value-right
+   shape) and a two-column grid for the remaining secondary metrics, both
+   built from the same `.hra-fact-row`/`.hra-stat-delta` typographic
+   language as everything else on this container-budget row (no card
+   chrome). Divider convention mirrors HRA-303's activity-metrics grid:
+   column divider on the left cell, row divider from the second row on. */
+.hra-fact-row-hero { display: flex; flex-direction: column; gap: 2px; }
+.hra-overview-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.hra-overview-kpi-grid > .hra-fact-row { border-top: none; padding: 8px; min-width: 0; }
+.hra-overview-kpi-grid > .hra-fact-row:nth-child(odd) { border-right: 1px solid var(--border); padding-left: 0; }
+.hra-overview-kpi-grid > .hra-fact-row:nth-child(even) { padding-right: 0; }
+.hra-overview-kpi-grid > .hra-fact-row:nth-child(n+3) { border-top: 1px solid var(--border); }
 
 .hra-select-trigger {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
@@ -2082,6 +2109,26 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-radius: 999px; background: var(--accent); color: var(--on-accent);
   font-size: 10px; line-height: 1; font-weight: 600;
 }
+
+/* Sheet Apply/Cancel row (HRA-306) — Cancel plain, Apply the solid accent
+   button; both scroll with the body (same reachability contract as every
+   other sheet control) rather than a separate sticky footer. */
+.hra-sheet-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+/* Page-level comparison entry (HRA-306, phone width) — the "Compare with
+   another period" CTA when off, or the compact summary + edit/close icon
+   actions when on. Icon actions sized as real 44px targets, same recipe as
+   .hra-sheet-close. */
+.hra-compare-cta { width: 100%; }
+.hra-compare-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.hra-compare-summary-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.hra-compare-summary-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: transparent; color: var(--text-secondary);
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+}
+.hra-compare-summary-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
 
 /* Compact result-position label (Pagination, HRA-290) — replaces the
    full first/prev/jump/next/last control set at phone widths with just
