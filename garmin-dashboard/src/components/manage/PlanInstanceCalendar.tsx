@@ -500,6 +500,12 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
         <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
           <Icon size={12} />
         </span>
+        {/* HRA-318 follow-up: every workout day reports its scheduled time
+            inline, not just the compact rest/todo/other rows — mirrors
+            AgendaDateHeader's own "08:00" fallback so a workout with no
+            explicit scheduled_time still reports the same effective time
+            shown there, instead of silently reporting nothing. */}
+        <span className="hra-agenda-date-time-chip shrink-0">{event.scheduledTime ?? "08:00"}</span>
         <span className="hra-agenda-event-title">
           {dslSegments.map((segment, i) => (
             <span key={i} className="hra-agenda-event-title-line">{segment}</span>
@@ -635,9 +641,17 @@ function WeekRowCard({ event, matchedActivity, dragProps, isDragOver }: {
       {(PlanIcon || hasActual || (hasPlan && event.customizedAt != null)) && (
         <span className="hra-agenda-rowcard-row2">
           {PlanIcon ? (
-            <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
-              <PlanIcon size={13} />
-            </span>
+            <>
+              <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+                <PlanIcon size={13} />
+              </span>
+              {/* HRA-318 follow-up: Week view's own row-card reports the
+                  scheduled time too now, same "08:00" fallback as Month's
+                  card and the date-header chip — this row is the one spot
+                  guaranteed to render for every real workout regardless of
+                  whether Row 1 got overridden by a note. */}
+              <span className="hra-agenda-date-time-chip shrink-0">{event.scheduledTime ?? "08:00"}</span>
+            </>
           ) : <span />}
           {hasPlan && event.customizedAt != null && (
             <span
