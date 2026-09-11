@@ -63,6 +63,13 @@ export interface FitTrackPoint {
   power: number | null;
   lat: number | null;
   lon: number | null;
+  // Real-Time Stamina — RECORD field 137, undocumented in the official FIT
+  // SDK. Empirically identified during HRA-313 refinement: single raw byte,
+  // plain 0–100 range, no scale/offset observed (one real run's curve shape:
+  // 100→67 over ~35 min matched Garmin Connect's own Real-Time Stamina
+  // display for that activity). Not independently re-verified beyond that
+  // one activity — see HRA-313's In Review comment.
+  stamina: number | null;
 }
 
 export interface ParsedFit {
@@ -140,6 +147,8 @@ const RECORD_FIELDS: Record<number, string> = {
   29: "elapsed_time",           // uint32 — ms
   73: "enhanced_speed",         // uint32 — mm/s (÷1000 → m/s)
   78: "enhanced_altitude",      // uint32 — (÷5)−500 → metres
+  137:"stamina",                // uint8 — Real-Time Stamina, undocumented/proprietary,
+                                 // plain 0–100, no scale/offset (see FitTrackPoint.stamina)
   253:"timestamp",              // uint32 — FIT epoch seconds, real wall-clock time
 };
 
@@ -337,6 +346,7 @@ export function parseFit(buf: Buffer, filename: string): ParsedFit {
       power:       validNum(r.power as number, INVALID_U16),
       lat:         latRaw != null ? latRaw / 11_930_465 : null,
       lon:         lonRaw != null ? lonRaw / 11_930_465 : null,
+      stamina:     validNum(r.stamina as number, INVALID_U8),
     };
   });
 

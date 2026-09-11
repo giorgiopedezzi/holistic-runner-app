@@ -161,6 +161,10 @@ function decodeStreams(streams: StreamSet, sport: string): TrackPointRow[] {
       power:       streams.watts?.data[i] ?? null,
       lat:         streams.latlng?.data[i]?.[0] ?? null,
       lon:         streams.latlng?.data[i]?.[1] ?? null,
+      // Strava has no equivalent stream (Garmin's Real-Time Stamina is a
+      // proprietary, undocumented on-device metric) — always NULL for this
+      // source, never decoded or inferred.
+      stamina:     null,
     });
   }
   return points;
@@ -196,10 +200,10 @@ async function main(): Promise<void> {
   const stmtInsertPoint = db.prepare(`
     INSERT INTO track_points
     (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms,
-     cadence, altitude_m, temperature, power, lat, lon)
+     cadence, altitude_m, temperature, power, lat, lon, stamina)
     VALUES
         ($activity_id, $elapsed_sec, $timestamp_unix, $distance_m, $heart_rate, $speed_ms,
-         $cadence, $altitude_m, $temperature, $power, $lat, $lon)
+         $cadence, $altitude_m, $temperature, $power, $lat, $lon, $stamina)
   `);
   const stmtInsertActivity = db.prepare(`
     INSERT OR IGNORE INTO activities

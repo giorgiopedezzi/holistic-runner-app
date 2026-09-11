@@ -39,10 +39,10 @@ const stmtInsertActivity = db.prepare(`
 const stmtInsertPoint = db.prepare(`
     INSERT INTO track_points
     (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms,
-     cadence, altitude_m, temperature, power, lat, lon)
+     cadence, altitude_m, temperature, power, lat, lon, stamina)
     VALUES
         ($activity_id, $elapsed_sec, $timestamp_unix, $distance_m, $heart_rate, $speed_ms,
-         $cadence, $altitude_m, $temperature, $power, $lat, $lon)
+         $cadence, $altitude_m, $temperature, $power, $lat, $lon, $stamina)
 `);
 
 const stmtGetId = db.prepare("SELECT id FROM activities WHERE filename = ?");

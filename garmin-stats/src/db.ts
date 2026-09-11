@@ -183,7 +183,12 @@ export function initSchema(db: DatabaseSync): void {
       temperature    INTEGER,
       power          INTEGER,
       lat            REAL,
-      lon            REAL
+      lon            REAL,
+      -- Real-Time Stamina (RECORD field 137, decoded in fit-parser.ts).
+      -- NULL for activities where the source has none — Strava never
+      -- writes anything but NULL here (no equivalent stream); Garmin
+      -- writes NULL when the raw byte was the invalid sentinel.
+      stamina        INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS body_measurements (
@@ -565,6 +570,9 @@ export function initSchema(db: DatabaseSync): void {
   if (!trackCols.some(c => c.name === "timestamp_unix")) {
     db.exec("ALTER TABLE track_points ADD COLUMN timestamp_unix INTEGER");
   }
+  if (!trackCols.some(c => c.name === "stamina")) {
+    db.exec("ALTER TABLE track_points ADD COLUMN stamina INTEGER");
+  }
 
   const bodyCols = db.prepare("PRAGMA table_info(body_measurements)").all() as { name: string }[];
   if (!bodyCols.some(c => c.name === "deleted_at")) {
@@ -716,6 +724,7 @@ export interface TrackPointRow {
   power: number | null;
   lat: number | null;
   lon: number | null;
+  stamina: number | null;
 }
 
 export interface BodyMeasurementRow {
@@ -917,6 +926,7 @@ export function trackPointParams(p: TrackPointRow): SQLParams {
     $power:       p.power,
     $lat:         p.lat,
     $lon:         p.lon,
+    $stamina:     p.stamina,
   };
 }
 
