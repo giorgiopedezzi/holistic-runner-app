@@ -26,6 +26,7 @@ interface Props {
   approveLoading: boolean;
   editingId: number | null;
   onApprove: () => void;
+  onDeactivate: () => void;
   regenerateLoading: boolean;
   regenerateDisabled: boolean;
   regenerateBucketDirty: boolean;
@@ -42,7 +43,7 @@ interface Props {
 export function PlanInstanceEditorActions({
   fieldsLocked, instantiateLoading, canInstantiate, onInstantiate,
   saveLoading, hasSections, isApproved, saveEnabled, onSaveClick,
-  approveLoading, editingId, onApprove,
+  approveLoading, editingId, onApprove, onDeactivate,
   regenerateLoading, regenerateDisabled, regenerateBucketDirty, onRegenerateClick,
   effectiveFrom, setEffectiveFrom, minEffectiveFrom,
   isDirty, onRestoreClick, viewMode, setViewMode,
@@ -72,8 +73,17 @@ export function PlanInstanceEditorActions({
             <Save size={14} />
             <span className="hra-btn-label">{saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}</span>
           </button>
-          <button className="hra-btn" onClick={onApprove} disabled={approveLoading || editingId == null || demoMode} title={demoTitle}>
-            {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
+          {/* Toggles with the instance's own approval status (Activate / Deactivate)
+              instead of always reading "Activate" regardless of state. Deactivate
+              reuses the whole-instance PATCH's existing approval-clearing — see
+              PlanInstancesSection.tsx's onDeactivate. */}
+          <button
+            className="hra-btn" onClick={isApproved ? onDeactivate : onApprove}
+            disabled={approveLoading || editingId == null || demoMode} title={demoTitle}
+          >
+            {isApproved
+              ? (approveLoading ? t("manage.planInstances.deactivating", "Deactivating…") : t("manage.planInstances.deactivateButton", "Deactivate"))
+              : (approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate"))}
           </button>
           {/* AC3/AC6: label + date picker + button as ONE real control — a
               button-shaped div with the DatePicker nested INSIDE it

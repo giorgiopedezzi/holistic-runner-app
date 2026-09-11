@@ -557,10 +557,13 @@ describe("PlanInstancesSection — happy path", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(fieldControl("Race name")).toHaveValue("Boston"));
 
-    // Activate — no longer locks anything; a persistent warning appears instead.
+    // Activate — no longer locks anything; a persistent warning appears instead,
+    // and the button toggles to Deactivate (HRA-320).
     fireEvent.click(screen.getByRole("button", { name: "Activate" }));
-    await screen.findByText("This race plan is already active — you can still make changes here.");
-    expect(screen.getByRole("button", { name: "Activate" })).toBeEnabled();
+    await screen.findByText(
+      "This race plan is already active — you can still modify single workouts. To change a pace anchor, pace setting, or target time, deactivate the plan first, then amend it, regenerate, save, and activate it again.",
+    );
+    expect(screen.getByRole("button", { name: "Deactivate" })).toBeEnabled();
     // Regenerate is unchanged/out of scope — still locked once approved.
     expect(screen.getByRole("button", { name: /Regenerate from/ })).toHaveAttribute("aria-disabled", "true");
 

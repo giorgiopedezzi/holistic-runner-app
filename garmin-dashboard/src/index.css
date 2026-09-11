@@ -2521,6 +2521,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border: 1px solid color-mix(in srgb, var(--accent-orange) 27%, transparent);
   border-radius: var(--radius-md);
   padding: 14px 16px;
+  margin-bottom: var(--section-gap);
   color: var(--accent-orange);
   font-size: var(--text-label);
 }

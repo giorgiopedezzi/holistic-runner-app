@@ -744,6 +744,26 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
     setApproveLoading(false);
   }
 
+  // Deactivate reuses the whole-instance PATCH's existing unconditional
+  // approval-clearing (plan-instances.service.ts's patchInstance always calls
+  // clearApproval) rather than a dedicated endpoint — resending the
+  // instance's own current name is a no-op on every other field, so this
+  // stays within the existing API contract (a new endpoint would be an API
+  // contract change, Epic HRA-36's territory, out of this Bug's scope).
+  async function onDeactivate() {
+    if (editingId == null) return;
+    setApproveLoading(true);
+    try {
+      const updated = await api.planInstances.update(editingId, { name: instName.trim() });
+      setEditApprovedAt(updated.approved_at);
+      await refreshInstances();
+      notify(t("manage.planInstances.deactivateSucceeded", "Race plan deactivated."));
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : t("manage.planInstances.deactivateFailed", "Failed to deactivate race plan"));
+    }
+    setApproveLoading(false);
+  }
+
   // Regenerate always sends a COMPLETE override map, even {} — omitting the
   // field would mean "keep the instance's current stored overrides"
   // server-side (HRA-132), silently ignoring the user having cleared every
@@ -1054,7 +1074,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       {/* HRA-249: replaces the old hard lock on Save/day-edit/Approve —
           editing an already-active plan is now allowed, this just says so. */}
       {fieldsLocked && isApproved && (
-        <WarningBanner message={t("manage.planInstances.approvedEditWarning", "This race plan is already active — you can still make changes here.")} />
+        <WarningBanner message={t("manage.planInstances.approvedEditWarning", "This race plan is already active — you can still modify single workouts. To change a pace anchor, pace setting, or target time, deactivate the plan first, then amend it, regenerate, save, and activate it again.")} />
       )}
     </>
   );
@@ -1074,6 +1094,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         approveLoading={approveLoading}
         editingId={editingId}
         onApprove={onApprove}
+        onDeactivate={onDeactivate}
         regenerateLoading={regenerateLoading}
         regenerateDisabled={regenerateDisabled}
         regenerateBucketDirty={regenerateBucketDirty}
