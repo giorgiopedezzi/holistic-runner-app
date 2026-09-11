@@ -12,7 +12,7 @@ import type { RunPlan } from "@/types/runplan";
 
 function oneWeekPlan(): RunPlan {
   return {
-    metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: { RG: { kind: "unbound" } } },
+    metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: { RG: { kind: "absolute", pace_sec_per_km: 300 } } },
     sections: [
       {
         name: "Base", week_spec: "1", pace_policy: {}, raw_dsl: "",
