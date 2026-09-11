@@ -151,10 +151,10 @@ interface CalendarEvent {
   // HRA-318 follow-up: true only for a synthetic, rendering-only duplicate
   // of a real-workout day's own event — see timeSummaryEventsFromEvents
   // below. Lets a real workout (long_run/progressive/etc.) report "{category}
-  // at {time}" in the exact same slot Rest/Todo/Other already occupy (Month's
-  // compact row; Week's all-day row, alongside the real "Riposo" entries)
-  // without disturbing the real, metrics-bearing event Week's own timed grid
-  // slot and the scaling math elsewhere in this file both depend on.
+  // at {time}" in the exact same slot Rest/Todo/Other already occupy in
+  // Week's all-day row, alongside the real "Riposo" entries, without
+  // disturbing the real, metrics-bearing event Week's own timed grid slot
+  // and the scaling math elsewhere in this file both depend on. Week-only.
   isTimeSummary?: boolean;
 }
 
@@ -286,9 +286,10 @@ function eventsFromSections(sections: SectionView[]): CalendarEvent[] {
 
 // HRA-318 follow-up: a real workout day (long_run/progressive/etc.) reports
 // "{category} at {time}" in the exact same slot Rest/Todo/Other already
-// occupy — Month's compact row, and Week's own all-day row alongside the
-// real "Riposo"/"To do"/"Other" entries — rather than only inside its
-// detailed, time-grid-positioned card. Deliberately a SEPARATE, rendering-
+// occupy in Week view — its own all-day row, alongside the real "Riposo"/
+// "To do"/"Other" entries — rather than only inside its detailed, time-
+// grid-positioned card. Week-only per direct instruction — Month's day cell
+// is untouched by this. Deliberately a SEPARATE, rendering-
 // only event (allDay, no metrics) rather than mutating the real one: the
 // real event's metrics/allDay/positioning feed the scaling math above and
 // Week's own timed-grid slot, both of which assume exactly one metrics-
@@ -443,14 +444,14 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
   const matchedActivity = activitiesByDateKey.get(toDateKey(event.start));
 
   // HRA-318 follow-up: the synthetic "reports the scheduled time" duplicate
-  // of a real workout day (see timeSummaryEventsFromEvents) — renders
-  // identically to the compact rest/todo/other row below (same class, same
-  // icon+label shape), in both Month (a second stacked row in the day cell)
-  // and Week (this is the entry react-big-calendar places in the all-day
-  // row, right alongside the real Rest/Todo/Other entries — the actual
-  // metrics-bearing event still gets its own timed grid slot via WeekRowCard
-  // below, untouched). Checked before `weekView` so it never goes through
-  // WeekRowCard's row-based layout, which doesn't apply to it.
+  // of a real workout day, Week-only (see timeSummaryEventsFromEvents) —
+  // renders identically to the compact rest/todo/other row below (same
+  // class, same icon+label shape). This is the entry react-big-calendar
+  // places in Week's all-day row, right alongside the real Rest/Todo/Other
+  // entries — the actual metrics-bearing event still gets its own timed
+  // grid slot via WeekRowCard below, untouched. Checked before `weekView`
+  // so it never goes through WeekRowCard's row-based layout, which doesn't
+  // apply to it.
   if (event.isTimeSummary) {
     const Icon = CATEGORY_ICONS[event.trainingLoadCategory!];
     const [key, fallback] = CATEGORY_LABEL_KEYS[event.trainingLoadCategory!];
@@ -613,12 +614,15 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
 // vs. actual side by side; every event type funnels through here in Week
 // view (isActualOnly/todo/other/rest included), each simply showing fewer of
 // the 4 rows rather than DayCellEvent's own separate per-type Month branches.
-// Row 1: the day's note if present, else its training-load category label
-// (todo/other keep their own dedicated non-category label, same as Month).
-// Row 2: the category icon (only for a real workout — run/cross/strength,
+// Row 1: the category icon (only for a real workout — run/cross/strength,
 // via isTimedWorkoutType, same "nothing to schedule" gate Month/the date-
-// header chip already use) on the left, ActualActivityBadge's runner glyph
-// on the right (only when a recorded activity matched this date).
+// header chip already use — HRA-318 follow-up: moved here from Row 2, per
+// direct instruction), then the day's note if present, else its
+// training-load category label (todo/other keep their own dedicated
+// non-category label, same as Month).
+// Row 2: the "Modified" badge (customized_at) and ActualActivityBadge's
+// runner glyph (only when a recorded activity matched this date) — no
+// longer holds the icon.
 // Row 3: the DSL text, only for a real workout — reuses splitDslSegments'
 // existing per-segment line breakdown. A trailing "# note" segment is
 // stripped when Row 1 already shows that note, so it isn't shown twice —
@@ -681,14 +685,19 @@ function WeekRowCard({ event, matchedActivity, dragProps, isDragOver }: {
       className={`hra-agenda-rowcard ${cardClass}${isDragOver ? " hra-swap-drop-target" : ""}`}
       {...dragProps}
     >
-      <span className="hra-agenda-rowcard-row1">{rowOneLabel}</span>
-      {(PlanIcon || hasActual || (hasPlan && event.customizedAt != null)) && (
+      <span className="hra-agenda-rowcard-row1 flex items-center gap-1">
+        {/* HRA-318 follow-up: the category icon moved here from Row 2, per
+            direct instruction — same "hra-category-color" wrapper, unchanged
+            (icon color itself is untouched, only its position moved). */}
+        {PlanIcon && (
+          <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+            <PlanIcon size={13} />
+          </span>
+        )}
+        <span className="min-w-0">{rowOneLabel}</span>
+      </span>
+      {(hasActual || (hasPlan && event.customizedAt != null)) && (
         <span className="hra-agenda-rowcard-row2">
-          {PlanIcon ? (
-            <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
-              <PlanIcon size={13} />
-            </span>
-          ) : <span />}
           {hasPlan && event.customizedAt != null && (
             <span
               title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
@@ -1257,8 +1266,12 @@ export function PlanInstanceCalendar({
   // in alongside them, calendar-rendering only, never fed into the
   // plan-only scaling/summary math below.
   const calendarEvents = useMemo(
-    () => [...events, ...timeSummaryEventsFromEvents(events), ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
-    [events, activitiesByDateKey, plannedDateKeys],
+    // HRA-318 follow-up: the time-summary duplicate is Week-only, per direct
+    // instruction — Month's day cell stays exactly as it was before this
+    // Story (just the gauge card / compact rest-todo-other row, no second
+    // stacked summary line).
+    () => [...events, ...(view === "week" ? timeSummaryEventsFromEvents(events) : []), ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
+    [events, activitiesByDateKey, plannedDateKeys, view],
   );
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
