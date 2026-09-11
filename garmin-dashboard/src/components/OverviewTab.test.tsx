@@ -18,6 +18,7 @@ import { ALL_SENTINEL } from "@/utils/date";
 afterEach(() => {
   vi.unstubAllGlobals();
   setUnitSystem("metric");
+  window.history.replaceState({}, "", "/");
 });
 
 // OverviewTab now takes the full live state (setters included) — it renders
@@ -28,6 +29,25 @@ function fakeRange(from: string, to: string): DateRangeState {
 }
 function fakeCompareRange(from: string, to: string): CompareRangeState {
   return { from, to, setFrom: () => {}, setTo: () => {}, enabled: true, setEnabled: () => {} };
+}
+
+// HRA-307: forces useIsPhone() to the phone branch, same helper shape as
+// DateRangeBar.test.tsx's stubPhoneWidth — the default jsdom matchMedia
+// stub (src/test/setup.ts) always reports "no match" (desktop).
+function stubPhoneWidth() {
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({
+    matches: true,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+}
+
+// HRA-307: deltas (comparison figures) only render in "overlap" view mode
+// (OverviewTab's own showDiff gate, unchanged by this Story) — forces the
+// `trendsView` URL param useUrlState reads on mount, same as picking
+// "Overlay" in the UI.
+function stubOverlapView() {
+  window.history.replaceState({}, "", "?trendsView=overlap");
 }
 
 describe("OverviewTab", () => {
@@ -119,5 +139,104 @@ describe("OverviewTab", () => {
     expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
     expect(screen.queryByText("0.00 km")).not.toBeInTheDocument();
     expect(screen.queryByText("0.0 h")).not.toBeInTheDocument();
+  });
+
+  // HRA-307: one page-level mobile KPI summary replaces the chart-header
+  // GraphKpiCard row + "Other key metrics" sidebar on phone.
+  describe("mobile KPI summary", () => {
+    it("shows every KPI once, with no duplicated chart-header card row", async () => {
+      stubPhoneWidth();
+      installFetch({
+        "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/activities": paginated([]),
+        "GET /api/v1/settings": settings(),
+        "GET /api/v1/date-ranges": paginated([]),
+      });
+      const { container } = render(
+        <OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={{ ...fakeCompareRange("2026-06-15", "2026-07-14"), enabled: false }} savedRanges={[]} />,
+      );
+
+      await screen.findByText("Avg distance");
+      // The seven metrics from the Story's agreed priority — each present
+      // exactly once (no chart-header duplicate of Distance/Activities/Avg pace).
+      for (const label of ["Distance", "Activities", "Time", "Avg pace", "Avg HR", "Avg distance", "Calories"]) {
+        expect(screen.getAllByText(label)).toHaveLength(1);
+      }
+      // No bordered mini-card chrome (GraphKpiCard's own class) anywhere —
+      // the chart begins with its title/controls, not a second KPI row.
+      expect(container.querySelectorAll(".hra-graph-kpi").length).toBe(0);
+    });
+
+    it("keeps heart-rate deltas neutral (no up/down color) while pace/distance deltas are directional", async () => {
+      stubPhoneWidth();
+      stubOverlapView();
+      installFetch({
+        "GET /api/v1/summary": paginated([sportSummary({ sport: "running", avg_hr: 160 })]),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/activities": (req: StubRequest) =>
+          json(paginated(req.url.searchParams.get("from") === "2026-07-15"
+            ? [activity({ avg_hr: 160 })]
+            : [activity({ avg_hr: 140 })])),
+        "GET /api/v1/settings": settings(),
+        "GET /api/v1/date-ranges": paginated([]),
+      });
+      const { container } = render(
+        <OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />,
+      );
+
+      await screen.findByText("Avg HR");
+      const hrRow = screen.getByText("Avg HR").closest(".hra-fact-row-stat");
+      expect(hrRow).not.toBeNull();
+      expect(hrRow!.querySelector(".hra-stat-delta-up, .hra-stat-delta-down")).toBeNull();
+
+      const distanceDelta = container.querySelector(".hra-fact-row-hero .hra-stat-delta");
+      expect(distanceDelta).not.toBeNull();
+      expect(distanceDelta!.className).toMatch(/hra-stat-delta-(up|down)/);
+    });
+
+    it("shows both current and previous activity counts when they differ, without a fabricated compare value", async () => {
+      stubPhoneWidth();
+      stubOverlapView();
+      installFetch({
+        "GET /api/v1/summary": paginated([sportSummary({ sport: "running", total_activities: 5 })]),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/activities": (req: StubRequest) =>
+          json(paginated(req.url.searchParams.get("from") === "2026-07-15"
+            ? [activity(), activity(), activity(), activity(), activity()]
+            : [activity()])),
+        "GET /api/v1/settings": settings(),
+        "GET /api/v1/date-ranges": paginated([]),
+      });
+      render(
+        <OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={fakeCompareRange("2026-06-15", "2026-07-14")} savedRanges={[]} />,
+      );
+
+      const activitiesRow = (await screen.findByText("Activities")).closest(".hra-fact-row-stat");
+      expect(activitiesRow).not.toBeNull();
+      // Current count (main value) ...
+      expect(activitiesRow!.textContent).toContain("5");
+      // ... and the previous period's own count, inside the delta text —
+      // both stay visible, no implied like-for-like equivalence.
+      expect(activitiesRow!.textContent).toContain("1");
+    });
+
+    it("omits a KPI entirely (no fabricated zero) when the metric is missing for the period", async () => {
+      stubPhoneWidth();
+      installFetch({
+        "GET /api/v1/summary": paginated([sportSummary({ sport: "running", avg_hr: null as unknown as number })]),
+        "GET /api/v1/range": dateRange(),
+        "GET /api/v1/activities": paginated([]),
+        "GET /api/v1/settings": settings(),
+        "GET /api/v1/date-ranges": paginated([]),
+      });
+      render(
+        <OverviewTab range={fakeRange("2026-07-15", "2026-08-14")} compareRange={{ ...fakeCompareRange("2026-06-15", "2026-07-14"), enabled: false }} savedRanges={[]} />,
+      );
+
+      await screen.findByText("Avg distance");
+      expect(screen.queryByText("Avg HR")).not.toBeInTheDocument();
+      expect(screen.queryByText("0 bpm")).not.toBeInTheDocument();
+    });
   });
 });

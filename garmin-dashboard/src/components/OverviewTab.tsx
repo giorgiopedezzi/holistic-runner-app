@@ -888,18 +888,21 @@ interface TrendsProps {
   // second graph must be the data of the second graph").
   otherKeyMetrics?: ReactNode;
   compareOtherKeyMetrics?: ReactNode;
-}
-
-function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, prevRun, viewMode, setViewMode, otherKeyMetrics, compareOtherKeyMetrics }: TrendsProps) {
-  const { t } = useTranslation();
   // HRA-307: the chart header's own KPI-card row (kpis/compareKpis) and the
   // "Other key metrics" sidebar (otherKeyMetrics/compareOtherKeyMetrics) are
   // desktop-only from here on — on phone they're replaced by ONE page-level
   // typographic summary rendered above the chart by OverviewTab
   // (OverviewMobileKpiSummary), so the chart begins with its title/controls
   // only, with no duplicated KPI row. Desktop composition below is otherwise
-  // byte-for-byte the pre-existing code path.
-  const isPhone = useIsPhone();
+  // byte-for-byte the pre-existing code path. Passed down from OverviewTab
+  // (which already calls useIsPhone() once for its own gating) rather than
+  // called again here — one hook instance/matchMedia subscription for the
+  // whole tab, not two.
+  isPhone: boolean;
+}
+
+function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, prevRun, viewMode, setViewMode, otherKeyMetrics, compareOtherKeyMetrics, isPhone }: TrendsProps) {
+  const { t } = useTranslation();
   const { state } = useQuery(() => api.garmin.activities(from, to), [from, to]);
   // Same shape/pattern as the current-period query above — comparison
   // activities for the trend charts. compareFrom/compareTo already carry
@@ -964,9 +967,14 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
   // still render through every one of this query's own states, not just
   // "success with data," or it would flicker/disappear on every load and
   // vanish entirely on a genuinely activity-less period.
-  if (state.status === "loading") return <>{otherKeyMetrics}<LoadingSpinner label={t("overview.trendsLoading", "Loading trends…")} /></>;
-  if (state.status === "error")   return <>{otherKeyMetrics}<ErrorBanner message={state.error} /></>;
-  if (state.status !== "success" || state.data.length === 0) return <>{otherKeyMetrics}</>;
+  // HRA-307: these three early returns predate the isPhone gate below (which
+  // only applies once SportTrendPair is actually reached) — on phone,
+  // OverviewMobileKpiSummary (rendered once by OverviewTab, above this whole
+  // section) already covers this same content, so skip it here too rather
+  // than showing it a second time.
+  if (state.status === "loading") return <>{isPhone ? null : otherKeyMetrics}<LoadingSpinner label={t("overview.trendsLoading", "Loading trends…")} /></>;
+  if (state.status === "error")   return <>{isPhone ? null : otherKeyMetrics}<ErrorBanner message={state.error} /></>;
+  if (state.status !== "success" || state.data.length === 0) return <>{isPhone ? null : otherKeyMetrics}</>;
 
   const modeEnabled: Record<GroupMode, boolean> = { single: true, week: weekEnabled, month: monthEnabled };
 
@@ -1500,7 +1508,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
         prevHours={prevHours} prevCalories={prevCalories} prevAvgDistance={prevAvgDistance} showDiff={showDiff} />}
 
       <TrendsBySport from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} compareEnabled={compareRange.enabled}
-        run={run} prevRun={prevRun} viewMode={viewMode} setViewMode={setViewMode}
+        run={run} prevRun={prevRun} viewMode={viewMode} setViewMode={setViewMode} isPhone={isPhone}
         otherKeyMetrics={otherKeyMetrics} compareOtherKeyMetrics={compareOtherKeyMetrics} />
 
       {sports.length > 1 && (
