@@ -1183,6 +1183,12 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
     () => compareRange.enabled ? api.garmin.activities(compareFrom, compareTo) : Promise.resolve([]),
     [compareFrom, compareTo, compareRange.enabled],
   );
+  // Fed into DateRangeBar's phone comparison summary (HRA-306) — null while
+  // comparison is off or its own fetch hasn't resolved yet, distinct from a
+  // genuinely empty (0) previous period.
+  const compareActivityCount = compareRange.enabled
+    ? (prevActivitiesQ.state.status === "success" ? prevActivitiesQ.state.data.length : null)
+    : null;
   // savedRanges (prop) feeds DateRangeBar's two named-range dropdowns AND
   // this tab's own "compare-to is a linked race" detection below.
   const { settings } = useSettings();
@@ -1214,29 +1220,36 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
 
   // Tightened from 20px (graph-first reorg, spec: "reduce unnecessary
   // vertical spacing around the filters so the main graph appears sooner").
-  const dateRangeBar = (
-    <div className="mb-2">
-      <DateRangeBar {...range} compare={compareRange} savedRanges={savedRanges} />
-    </div>
-  );
+  // A function (not a precomputed element) so each call site can pass the
+  // activity count(s) it actually has available yet (HRA-306) — undefined
+  // while `state` hasn't resolved, the real totals once it has.
+  const rangeMinMax = rangeQ.state.status === "success" ? rangeQ.state.data : null;
+  function renderDateRangeBar(currentActivityCount?: number) {
+    return (
+      <div className="mb-2">
+        <DateRangeBar {...range} compare={compareRange} savedRanges={savedRanges}
+          currentActivityCount={currentActivityCount} compareActivityCount={compareActivityCount}
+          allRangeSpan={rangeMinMax} />
+      </div>
+    );
+  }
 
   // DateRangeBar (+ its named-range rows) stays visible — and sticky, same
   // as the success case below — through loading/error/empty too, so the
   // range can still be changed out of any of those states.
   if (state.status === "loading") {
-    return <><div className="hra-sticky-summary">{dateRangeBar}</div><LoadingSpinner label={t("overview.loading", "Loading overview…")} /></>;
+    return <><div className="hra-sticky-summary">{renderDateRangeBar()}</div><LoadingSpinner label={t("overview.loading", "Loading overview…")} /></>;
   }
   if (state.status === "error") {
-    return <><div className="hra-sticky-summary">{dateRangeBar}</div><ErrorBanner message={state.error} /></>;
+    return <><div className="hra-sticky-summary">{renderDateRangeBar()}</div><ErrorBanner message={state.error} /></>;
   }
   if (state.status !== "success") return null;
 
   const sports = state.data;
   if (sports.length === 0) {
-    const rangeMinMax = rangeQ.state.status === "success" ? rangeQ.state.data : null;
     return (
       <>
-        <div className="hra-sticky-summary">{dateRangeBar}</div>
+        <div className="hra-sticky-summary">{renderDateRangeBar(0)}</div>
         <RangeEmpty range={rangeMinMax} from={from} to={to} entityLabel={t("common.entity.activities", "activities")} />
       </>
     );
@@ -1365,7 +1378,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
           linked race (if the compare-side named range points at one) still
           gets its own small card, right under the filters, same as before. */}
       <div className="hra-sticky-summary">
-        {dateRangeBar}
+        {renderDateRangeBar(totals.acts)}
       </div>
       {linkedRaceRow && <Card className="mb-5">{linkedRaceRow}</Card>}
 

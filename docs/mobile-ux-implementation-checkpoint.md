@@ -92,12 +92,30 @@ Suggested order: 1 → (2 parallel) → 3 → 4 → 5.
   draft) — left to Story 3's own domain-semantics audit per the source prompt's explicit instruction,
   not pre-written here.
 
+## HRA-306 outcome (In Review)
+
+DateRangeBar's phone-width compaction (HRA-290) now extends to the `compare` branch instead of
+excluding it. Both phone branches (`!compare` and `compare`) route through one shared sheet
+(`PhoneDateRangeBar` in `DateRangeBar.tsx`) with staged Cancel/Apply — the desktop two-row form is
+untouched (line-for-line, still the original `return` block in `DateRangeBar.tsx`). Added: a
+comparison enable/disable + comparison-period-selection section inside the sheet; a page-level
+"Compare with another period" CTA (comparison off) or a compact dates/counts/edit/close summary
+(comparison on); activity-count props (`currentActivityCount`, `compareActivityCount`,
+`allRangeSpan`) threaded from `OverviewTab.tsx`, optional so every other DateRangeBar caller
+(Activities/Body, Manage) is unaffected. 15/15 DateRangeBar tests pass (6 pre-existing + 9 new/
+extended for HRA-306); full details, verification evidence and residual risks are in the Jira
+In Review comment on HRA-306, not duplicated here.
+
+**Not verified in this pass** (flagged, not fixed): the on-screen-keyboard reachability AC, the
+banner/no-obscuring-at-phone-width AC, and the 320–430px/landscape/200%-text-scaling wrap AC all
+need a live dev-server + viewport pass (this Story's implementation, like the refinement pass, did
+not run one) before those three ACs can be marked DONE in Jira.
+
 ## Exact next step
 
-Refinement is complete (Phases 5/6 of `.agents/workflows/refine-prompt.md` done). Next action is
-the human Gate 1: move a Story to Ready to Develop with `Agent`/`Model`/`Planned thinking effort`
-set, per `.agents/workflows/story-jira-gate.md`. Recommended order: HRA-306 → HRA-307 (parallel-safe)
-→ HRA-308 → HRA-309 → HRA-310.
+HRA-306 is In Review — human Gate 2 decides whether it can close, and whether HRA-308 (which depends
+on it) can start. Recommended remaining order once HRA-306 clears: HRA-307 (parallel-safe) → HRA-308
+→ HRA-309 → HRA-310.
 
 **Known anomaly to check before Gate 1:** all 5 generated Stories show `Agent`, `Model`, and
 `Planned thinking effort` already populated (observed: Claude Code / claude-sonnet-5 / Medium) —

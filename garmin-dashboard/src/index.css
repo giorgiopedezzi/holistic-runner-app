@@ -2083,6 +2083,26 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   font-size: 10px; line-height: 1; font-weight: 600;
 }
 
+/* Sheet Apply/Cancel row (HRA-306) — Cancel plain, Apply the solid accent
+   button; both scroll with the body (same reachability contract as every
+   other sheet control) rather than a separate sticky footer. */
+.hra-sheet-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+/* Page-level comparison entry (HRA-306, phone width) — the "Compare with
+   another period" CTA when off, or the compact summary + edit/close icon
+   actions when on. Icon actions sized as real 44px targets, same recipe as
+   .hra-sheet-close. */
+.hra-compare-cta { width: 100%; }
+.hra-compare-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.hra-compare-summary-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.hra-compare-summary-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px;
+  background: transparent; color: var(--text-secondary);
+  border: none; border-radius: var(--radius-sm); cursor: pointer;
+}
+.hra-compare-summary-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+
 /* Compact result-position label (Pagination, HRA-290) — replaces the
    full first/prev/jump/next/last control set at phone widths with just
    prev/next plus a plain "1-25 of 216" readout. */
