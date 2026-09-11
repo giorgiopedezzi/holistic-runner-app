@@ -241,6 +241,9 @@ export interface TrackPoint {
   altitude_m:  number | null;
   temperature: number | null;
   power:       number | null;
+  // Real-Time Stamina (0-100), Garmin RECORD field 137 — see fit-parser.ts.
+  // Always null for Strava-sourced points (no equivalent stream).
+  stamina:     number | null;
 }
 
 // ── Withings ──────────────────────────────────────────────────────────────

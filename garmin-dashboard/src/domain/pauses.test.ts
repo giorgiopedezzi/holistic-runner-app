@@ -16,7 +16,7 @@ import {
 function pt(o: Partial<TrackPoint>): TrackPoint {
   return {
     elapsed_sec: null, timestamp_unix: null, distance_m: null, heart_rate: null,
-    speed_ms: null, cadence: null, altitude_m: null, temperature: null, power: null, ...o,
+    speed_ms: null, cadence: null, altitude_m: null, temperature: null, power: null, stamina: null, ...o,
   };
 }
 

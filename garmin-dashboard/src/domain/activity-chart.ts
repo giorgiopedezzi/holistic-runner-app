@@ -17,22 +17,39 @@ export type MetricKey  = "speed" | OptionalMetricKey;
 export type SpeedMode  = "speed" | "pace";
 export type XMode      = "distance" | "time";
 
-export function metricUnit(key: MetricKey, speedMode: SpeedMode): string {
+// "stamina" is deliberately NOT part of the MetricKey/OptionalMetricKey union
+// yet (HRA-314). Those types are the single source of truth shared.ts's
+// exhaustive Records (METRIC_DEFS/METRIC_LABEL_SHORT/AXIS_SIDE) key off —
+// widening them here would force this Story to also pick stamina's chart
+// color/axis side, which is explicitly HRA-316's job ("METRIC_DEFS (new
+// validated color)... AXIS_SIDE"). Instead the three domain functions below
+// independently accept the extra "stamina" key via a union widened only at
+// the call site, so HRA-315 (readout row) can already call them; HRA-316
+// later folds "stamina" into the real MetricKey union for the chart/toggle.
+type MetricKeyWithStamina = MetricKey | "stamina";
+
+export function metricUnit(key: MetricKeyWithStamina, speedMode: SpeedMode): string {
   switch (key) {
     case "heart_rate": return "bpm";
     case "speed":       return speedMode === "speed" ? speedUnitLabel() : paceUnitLabel();
     case "altitude_m":  return elevationUnitLabel();
     case "cadence":      return "spm";
     case "power":        return "W";
+    // Stamina is Garmin's own 0-100 Real-Time Stamina score — always a plain
+    // percentage, no unit-system conversion (HRA-313/314).
+    case "stamina":      return "%";
   }
 }
 
-export function metricValue(p: TrackPoint, key: MetricKey, speedMode: SpeedMode): number | null {
+export function metricValue(p: TrackPoint, key: MetricKeyWithStamina, speedMode: SpeedMode): number | null {
   switch (key) {
     case "heart_rate": return p.heart_rate;
     case "altitude_m":  return p.altitude_m == null ? null : (getUnitSystem() === "imperial" ? mToFt(p.altitude_m) : p.altitude_m);
     case "cadence":      return p.cadence;
     case "power":        return p.power;
+    // Raw passthrough — already a plain 0-100 value with no scale/offset
+    // (fit-parser.ts's FitTrackPoint.stamina); null for Strava-sourced points.
+    case "stamina":      return p.stamina;
     case "speed": {
       // A real 0 (or near-0) is NOT hidden here — decelerating to a stop is
       // real, informative data. Isolated sensor glitches are handled by the
@@ -56,12 +73,15 @@ export function metricValue(p: TrackPoint, key: MetricKey, speedMode: SpeedMode)
 // decimal. Unlike fmt.ts's fmtPace, this does NOT convert units: metricValue()
 // already returns the value in the active unit, so converting again here would
 // double-convert.
-export function fmtMetricValue(key: MetricKey, v: number, speedMode: SpeedMode): string {
+export function fmtMetricValue(key: MetricKeyWithStamina, v: number, speedMode: SpeedMode): string {
   if (key === "speed" && speedMode === "pace") {
     const m = Math.floor(v);
     const s = Math.round((v - m) * 60);
     return `${m}:${String(s).padStart(2, "0")}`;
   }
+  // Stamina is a whole-number percentage — round, don't show a decimal like
+  // the other metrics' default 1dp.
+  if (key === "stamina") return String(Math.round(v));
   return v.toFixed(1);
 }
 

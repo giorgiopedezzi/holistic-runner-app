@@ -17,7 +17,8 @@ afterEach(() => setUnitSystem("metric"));
 function pt(o: Partial<TrackPoint>): TrackPoint {
   return {
     elapsed_sec: null, timestamp_unix: null, distance_m: null, heart_rate: null,
-    speed_ms: null, cadence: null, altitude_m: null, temperature: null, power: null, ...o,
+    speed_ms: null, cadence: null, altitude_m: null, temperature: null, power: null,
+    stamina: null, ...o,
   };
 }
 
@@ -55,6 +56,14 @@ describe("metricValue", () => {
   it("returns null for a missing speed sample", () => {
     expect(metricValue(pt({ speed_ms: null }), "speed", "speed")).toBeNull();
   });
+  it("stamina is a raw passthrough (Garmin's own 0-100 score, no unit-system conversion)", () => {
+    expect(metricValue(pt({ stamina: 67 }), "stamina", "speed")).toBe(67);
+    expect(metricValue(pt({ stamina: 0 }), "stamina", "speed")).toBe(0);
+    expect(metricValue(pt({ stamina: 100 }), "stamina", "speed")).toBe(100);
+  });
+  it("stamina is null for Strava-sourced points (no stamina stream)", () => {
+    expect(metricValue(pt({ stamina: null }), "stamina", "speed")).toBeNull();
+  });
 });
 
 describe("metricUnit", () => {
@@ -69,6 +78,12 @@ describe("metricUnit", () => {
     expect(metricUnit("cadence", "speed")).toBe("spm");
     expect(metricUnit("power", "speed")).toBe("W");
   });
+  it("stamina is always a percentage, unaffected by unit system", () => {
+    setUnitSystem("metric");
+    expect(metricUnit("stamina", "speed")).toBe("%");
+    setUnitSystem("imperial");
+    expect(metricUnit("stamina", "speed")).toBe("%");
+  });
 });
 
 describe("fmtMetricValue", () => {
@@ -76,6 +91,11 @@ describe("fmtMetricValue", () => {
     expect(fmtMetricValue("speed", 5.5, "pace")).toBe("5:30");
     expect(fmtMetricValue("speed", 10.84, "speed")).toBe("10.8");
     expect(fmtMetricValue("heart_rate", 152.4, "speed")).toBe("152.4");
+  });
+  it("rounds stamina to a whole-number percentage, no unit conversion", () => {
+    expect(fmtMetricValue("stamina", 66.6, "speed")).toBe("67");
+    expect(fmtMetricValue("stamina", 0, "speed")).toBe("0");
+    expect(fmtMetricValue("stamina", 100, "speed")).toBe("100");
   });
 });
 

@@ -90,9 +90,9 @@ export const SAMPLE_ACTIVITIES: NewActivity[] = [
 // real wall-clock timestamp_unix so pause-from-timestamps logic has data.
 const T0 = 1_754_300_923; // unix seconds ~ 2026-08-04T10:28:43Z
 export const SAMPLE_TRACK_POINTS: Omit<TrackPointRow, "activity_id">[] = [
-  { elapsed_sec: 0,  timestamp_unix: T0,      distance_m: 0,     heart_rate: 110, speed_ms: 0.0, cadence: 0,   altitude_m: 100, temperature: 22, power: null, lat: 45.0, lon: 9.0 },
-  { elapsed_sec: 10, timestamp_unix: T0 + 10, distance_m: 28,    heart_rate: 132, speed_ms: 2.8, cadence: 164, altitude_m: 101, temperature: 22, power: null, lat: 45.001, lon: 9.001 },
-  { elapsed_sec: 20, timestamp_unix: T0 + 20, distance_m: 57,    heart_rate: 145, speed_ms: 2.9, cadence: 168, altitude_m: 102, temperature: 22, power: null, lat: 45.002, lon: 9.002 },
+  { elapsed_sec: 0,  timestamp_unix: T0,      distance_m: 0,     heart_rate: 110, speed_ms: 0.0, cadence: 0,   altitude_m: 100, temperature: 22, power: null, stamina: null, lat: 45.0, lon: 9.0 },
+  { elapsed_sec: 10, timestamp_unix: T0 + 10, distance_m: 28,    heart_rate: 132, speed_ms: 2.8, cadence: 164, altitude_m: 101, temperature: 22, power: null, stamina: null, lat: 45.001, lon: 9.001 },
+  { elapsed_sec: 20, timestamp_unix: T0 + 20, distance_m: 57,    heart_rate: 145, speed_ms: 2.9, cadence: 168, altitude_m: 102, temperature: 22, power: null, stamina: null, lat: 45.002, lon: 9.002 },
 ];
 
 export const SAMPLE_BODY: BodyMeasurementRow = {
@@ -132,10 +132,10 @@ export function seedSampleData(db: DatabaseSync): { activityIds: number[] } {
   const insertTrack = db.prepare(`
     INSERT INTO track_points
       (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms, cadence,
-       altitude_m, temperature, power, lat, lon)
+       altitude_m, temperature, power, stamina, lat, lon)
     VALUES
       ($activity_id, $elapsed_sec, $timestamp_unix, $distance_m, $heart_rate, $speed_ms, $cadence,
-       $altitude_m, $temperature, $power, $lat, $lon)
+       $altitude_m, $temperature, $power, $stamina, $lat, $lon)
   `);
   for (const tp of SAMPLE_TRACK_POINTS) {
     insertTrack.run(trackPointParams({ ...tp, activity_id: activityIds[0] }));

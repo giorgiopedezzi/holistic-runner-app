@@ -112,6 +112,7 @@ export const shortTrack = (): TrackPoint[] =>
     altitude_m: 12,
     temperature: 20,
     power: null,
+    stamina: null,
   }));
 
 // A longer track (>5 points) so ActivityDetailBody renders the real
@@ -128,6 +129,7 @@ export const longTrack = (n = 20): TrackPoint[] =>
     altitude_m: 12,
     temperature: 20,
     power: null,
+    stamina: null,
   }));
 
 export const dateRange = (overrides: Partial<DateRange> = {}): DateRange => ({

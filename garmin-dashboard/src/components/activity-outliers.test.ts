@@ -20,6 +20,7 @@ function track(speeds: (number | null)[]): TrackPoint[] {
     altitude_m: null,
     temperature: null,
     power: null,
+    stamina: null,
   }));
 }
 

@@ -128,7 +128,8 @@
           "cadence": { "type": ["integer", "null"] },
           "altitude_m": { "type": ["number", "null"] },
           "temperature": { "type": ["number", "null"] },
-          "power": { "type": ["integer", "null"] }
+          "power": { "type": ["integer", "null"] },
+          "stamina": { "type": ["integer", "null"], "description": "Garmin Real-Time Stamina, 0-100. Null for Strava-sourced points (no source data in Strava's streams)." }
         }
       },
       "BodyMeasurement": {
