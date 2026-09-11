@@ -31,6 +31,7 @@ import {
   type GroupMode, defaultGroupMode, isoWeekStart, buildTrendPoints, meanCenteredDomain, swimPacePer100m,
   groupActivitiesBySport, type AlignMode, type OverlapPoint, buildOverlapPoints,
 } from "@/domain/trends";
+import { TrendAccessibleData } from "@/components/TrendAccessibleData";
 
 interface Props {
   // The full live state (not just from/to strings) — this tab renders its
@@ -196,6 +197,11 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
       <ChartCard title={title} legend={legend} controlsRow={controlsRow} subHeader={subHeader && (
         <div className="hra-overview-header-inset" style={{ "--overview-header-left": `${HEADER_EXTRA_LEFT}px` } as CSSProperties}>{subHeader}</div>
       )}>
+      {/* HRA-310 AC8 — decorative chart internals hidden from the
+          accessibility tree; TrendAccessibleData (rendered by the caller,
+          SportTrendPair) is the primary non-visual information path for this
+          same data, so a screen reader has nothing useful to traverse here. */}
+      <div aria-hidden="true">
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 0 } : undefined}>
           <defs>
@@ -274,6 +280,7 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
           )}
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
       </ChartCard>
     </div>
   );
@@ -382,6 +389,8 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
           {currentCompareLegend || subHeader}
         </div>
       )}>
+      {/* HRA-310 AC8 — see SportTrendChart's identical comment above. */}
+      <div aria-hidden="true">
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 4 } : { bottom: 8 }}>
           <defs>
@@ -475,6 +484,7 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
           )}
         </ComposedChart>
       </ResponsiveContainer>
+      </div>
       </ChartCard>
     </div>
   );
@@ -914,6 +924,22 @@ function SportTrendPair({ sport, activities, compareActivities, mode, minGroupSi
           {alignToggle}
         </div>
       )}
+
+      {/* HRA-310 — the non-visual accessible alternative: rendered
+          unconditionally here (before the tooFew/phase branching below), so
+          it is present for every meaningful chart state this Story's AC1
+          lists (current-only, overlay, separate, empty, one activity,
+          partial metric, hidden series) rather than only while the visual
+          chart itself renders. Built from scaledOverlap — the same
+          unit-scaled data the chart plots — not from the chart's visual
+          composition (see TrendAccessibleData.tsx's own header comment for
+          why, given HRA-309's declared, disclosed visual-state gaps). */}
+      <TrendAccessibleData
+        sport={sport} mode={mode} periodLabel={periodLabel}
+        compareEnabled={compareEnabled} comparePeriodLabel={compareEnabled ? comparePeriodLabel : undefined}
+        points={scaledOverlap} currentCount={activities.length} compareCount={compareActivities.length}
+        seriesVisible={seriesVisible} distanceUnit={distanceUnitLabel()} paceUnit={isSwimmingUnit ? "/100m" : (imperial ? "/mi" : "/km")}
+      />
 
       {tooFew(activities) ? (
         // Primary keeps its own title/controls/KPI header even when there's

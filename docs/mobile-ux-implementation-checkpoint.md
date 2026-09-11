@@ -3,8 +3,10 @@
 Source prompt: HRA-304 ("Overview & Trends — Mobile-first"), refined via `/generate-user-stories`
 per `.agents/workflows/refine-prompt.md`.
 
-Status: **DONE (planning)** — Epic and Stories created in Jira, source prompt handed off for human
-review. Implementation has not started on any Story.
+Status: **Planning-to-delivery handoff complete** — Epic and all 5 Stories created in Jira; every
+Story (HRA-306 through HRA-310) has been implemented and is now In Review. See each Story's own
+"outcome" section below and the "Exact next step" section at the end of this document for the
+authoritative residual-risk list going into human Gate 2.
 
 - Epic: HRA-305 — Overview & Trends — Mobile-first
 - HRA-306 — Mobile range & comparison-period selection
@@ -255,15 +257,71 @@ diff). `npm run style:check`: PASSED, zero drift (no new literal styles/typograp
 height/margin/interval changes are plain numeric chart-geometry props, not CSS style objects).
 `vite build`: succeeds.
 
+## HRA-310 outcome (In Review)
+
+Scoped, Medium-effort slice, built from the underlying data contract (`domain/trends.ts`'s
+`buildOverlapPoints`/`TrendPoint`/`OverlapPoint` — HRA-255 null propagation, HRA-256 semantic "All"),
+not from HRA-309's visual chart composition: HRA-309 only verified 6/17 of its own ACs and left
+tooltip clamping, non-color comparison differentiation, and explicit empty/one-activity/missing-metric
+*visual* states TODO — those gaps are disclosed on HRA-309's own In Review comment, not fixed here
+(out of scope for this Story).
+
+New `garmin-dashboard/src/components/TrendAccessibleData.tsx` — a concise, always-present summary
+(period, grouping, activity count, comparison state, per-series data availability) plus a visible,
+keyboard/touch-operable "View data" disclosure (`aria-expanded`, 44×44px target, native `<button>`)
+revealing a semantic `<table>` (real `<th scope="col"/"row">`, `<caption>`) with one row per active
+grouping bucket — period, activity count, distance, avg pace, avg HR, current and compare (when
+enabled) unambiguously labelled per cell, missing values stated as "unavailable" (never a fabricated
+zero/NaN/Infinity), and a column-header note when a series is hidden from the visual chart by
+HRA-308's phone toggle rather than omitted from the table. Rendered once per `SportTrendPair` instance
+(primary and every other sport, phone and desktop alike — AC16/desktop-parity), unconditionally
+ahead of the `tooFew`/view-mode branching, so it is present for every meaningful chart state the AC
+lists, not only while the visual chart itself renders. `domain/trends.ts`'s `OverlapPoint` gained
+`currentCount`/`compareCount` — a straight passthrough of `TrendPoint.count` (already computed by
+`buildTrendPoints`), not a new calculation — so the table can state a real per-row activity count.
+`SportTrendChart`/`SportTrendOverlapChart`'s chart wrapper (`ResponsiveContainer`) is now wrapped in
+`aria-hidden="true"`, so the table/summary are the primary screen-reader path through the chart
+region, not a duplicate. New i18n keys (`overview.accessibleData.*`) added to `en.json`/`it.json`
+(parity kept).
+
+**Not done in this pass** (flagged, not silently absorbed):
+- Per-row delta (Δ) values between current and compare are not rendered — current/compare are shown
+  side by side, unambiguously labelled, which already satisfies "deltas appear only when meaningful"
+  by never asserting one; a follow-up could add explicit Δ cells for slots where both operands exist.
+- No live screen-reader pass (VoiceOver/NVDA) or a real 200%-text-scaling browser check was run — same
+  live-verification limitation as every prior Story in this Epic; the table's overflow container
+  (`overflow-x-auto`) and native semantic markup are structurally correct but not device-verified.
+- Because HRA-309's own tooltip-clamping/non-color-differentiation/empty-visual-state ACs are still
+  TODO, the handful of HRA-310 ACs that describe a specific *visual* chart state (e.g. "a visually
+  hidden series," "an empty comparison period" as a chart state) are verified against the data
+  contract only, not against a finished visual composition — flagged per the human's own disclosed
+  scope note, not newly discovered here.
+
+**Verification:** `npm run typecheck`: clean except the same pre-existing, out-of-scope
+`MobileRacePlanCreation.test.tsx` error already confirmed present on the unmodified HRA-306/HRA-309
+tip (unrelated to this Story, not touched). `npm test`: 578/579 passing — the same single
+pre-existing `PlanInstancesSection.test.tsx` regenerate-confirm flake HRA-309 already documented,
+reproduced in isolation on this same unmodified file. New `TrendAccessibleData.test.tsx`: 5/5 passing
+(summary content, disclosure toggle, missing-value/"unavailable" wording with no NaN/Infinity, empty
+comparison count with no repeated current value, hidden-series column note). `OverviewTab.test.tsx`:
+16/16 passing, unchanged. `domain/trends.test.ts`: 11/11 passing, unchanged (the new
+`currentCount`/`compareCount` fields are additive and asserted nowhere by name in existing tests).
+`npm run lint`: 0 errors (pre-existing warnings only, none in touched files). `npm run style:check`:
+PASSED, zero drift — the new table/button use only existing Tailwind utilities and `hra-*` semantic
+classes (`BodyTab.tsx`'s own plain-table convention), no new literal styles. `vite build`: succeeds
+(confirmed by running `vite build` directly, since `npm run build` is gated by the same pre-existing
+`tsc` error above).
+
 ## Exact next step
 
-HRA-306, HRA-307 and HRA-308 are all In Review — human Gate 2 decides whether any can close.
-HRA-309 is now also In Review, on branch `feature/HRA-309-mobile-primary-chart-legibility` (built off
-HRA-307's tip with HRA-308 merged in, per this Epic's sequential-chain branching approach). HRA-310
-(accessible non-visual chart alternative) depends on HRA-309 and should branch from this branch's
-tip once HRA-309 is reviewed — see the Jira In Review comment on HRA-309 for the branch/commit and
-full residual-risk list (the "Not done" items above are the authoritative source; this section is a
-pointer, not a duplicate).
+HRA-306, HRA-307, HRA-308, HRA-309 and HRA-310 are all now In Review — **Epic HRA-305's
+planning-to-delivery handoff is complete**: every Story this Epic generated has a dedicated branch, a
+verified commit, and an In Review Jira comment with evidence and residual risk, per
+`.agents/workflows/story-git-lifecycle.md`. HRA-310 is the last Story in the chain (no downstream
+Story depends on it) — human Gate 2 now reviews all five Stories' In Review comments (branch/commit/
+evidence/residual-risk lists) and decides which, if any, close to Done. This document's "Not done"
+sections across HRA-306–HRA-310 are the authoritative residual-risk list for the whole Epic; nothing
+further is pending on the agent side of the chain.
 
 **Known anomaly to check before Gate 1:** all 5 generated Stories show `Agent`, `Model`, and
 `Planned thinking effort` already populated (observed: Claude Code / claude-sonnet-5 / Medium) —

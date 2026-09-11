@@ -81,24 +81,35 @@ export interface OverlapPoint {
   currentKm: number | null;
   currentPace: number | null;
   currentHr: number | null;
+  // Activity count for this slot's side — a straight passthrough of
+  // TrendPoint.count (already computed by buildTrendPoints), not a new
+  // calculation. Added for HRA-310's accessible table, which needs a
+  // per-row activity count alongside the metrics; null (not 0) when this
+  // side has no point in this slot at all, so it reads the same as every
+  // other unfilled field here — "no data for this side," not "zero
+  // activities" (HRA-255's empty-comparison null-propagation convention).
+  currentCount: number | null;
   compareKm: number | null;
   comparePace: number | null;
   compareHr: number | null;
+  compareCount: number | null;
 }
 
 function emptyOverlapPoint(slot: number): OverlapPoint {
   return {
     slot, currentLabel: null, compareLabel: null,
-    currentKm: null, currentPace: null, currentHr: null,
-    compareKm: null, comparePace: null, compareHr: null,
+    currentKm: null, currentPace: null, currentHr: null, currentCount: null,
+    compareKm: null, comparePace: null, compareHr: null, compareCount: null,
   };
 }
 
 function fillSide(point: OverlapPoint, p: TrendPoint, side: "current" | "compare"): void {
   if (side === "current") {
     point.currentLabel = p.label; point.currentKm = p.totalKm; point.currentPace = p.avgPace; point.currentHr = p.avgHr;
+    point.currentCount = p.count;
   } else {
     point.compareLabel = p.label; point.compareKm = p.totalKm; point.comparePace = p.avgPace; point.compareHr = p.avgHr;
+    point.compareCount = p.count;
   }
 }
 
