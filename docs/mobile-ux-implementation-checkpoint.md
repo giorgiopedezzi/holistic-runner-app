@@ -111,11 +111,30 @@ banner/no-obscuring-at-phone-width AC, and the 320–430px/landscape/200%-text-s
 need a live dev-server + viewport pass (this Story's implementation, like the refinement pass, did
 not run one) before those three ACs can be marked DONE in Jira.
 
+## HRA-307 outcome (In Review)
+
+`GraphKpiCard`'s chart-header row and the "Other key metrics" `Stat` sidebar are now desktop-only
+(`isPhone` gate in `TrendsBySport`/`SportTrendPair`, `OverviewTab.tsx`). On phone, a new
+`OverviewMobileKpiSummary` renders ONE page-level typographic block above the chart instead: total
+distance dominant (own larger `.hra-kpi-value` row), activity count + total time immediately below
+(`Stat layout="row"`), then avg pace / avg HR / avg distance / calories in a two-column grid
+(`.hra-overview-kpi-grid`, divider convention borrowed from HRA-303's activity-metrics grid). All
+seven values/deltas reuse the exact same source data and `comparisonTooltip`/`deltaPositive` helpers
+the desktop composition already used — presentation reorganized, no metric semantics changed.
+Heart-rate deltas are always rendered neutral (no arrow/color) per this Story's AC. Desktop path is
+untouched (same components, same props, gated only by `!isPhone`). 5/5 `OverviewTab.test.tsx` pass;
+typecheck/lint/style-check/build clean except one pre-existing, unrelated `tsc` error in
+`MobileRacePlanCreation.test.tsx` (verified present on the HRA-306 tip before this Story's changes).
+Full verification evidence and residual risks (no live dev-server/viewport pass; 200%-scaling and
+320-430px wrapping not empirically checked, same limitation flagged on HRA-306) are in the Jira In
+Review comment on HRA-307, not duplicated here.
+
 ## Exact next step
 
-HRA-306 is In Review — human Gate 2 decides whether it can close, and whether HRA-308 (which depends
-on it) can start. Recommended remaining order once HRA-306 clears: HRA-307 (parallel-safe) → HRA-308
-→ HRA-309 → HRA-310.
+HRA-306 and HRA-307 are both In Review — human Gate 2 decides whether either can close. HRA-308
+depends on HRA-306 specifically (not HRA-307) — its Story branch should still fork from HRA-306's
+tip, not HRA-307's, since HRA-307's own branch only adds independent Overview-page changes. Recommended
+remaining order once HRA-306 clears: HRA-308 → HRA-309 → HRA-310 (HRA-307 already parallel-started).
 
 **Known anomaly to check before Gate 1:** all 5 generated Stories show `Agent`, `Model`, and
 `Planned thinking effort` already populated (observed: Claude Code / claude-sonnet-5 / Medium) —

@@ -892,6 +892,14 @@ interface TrendsProps {
 
 function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, prevRun, viewMode, setViewMode, otherKeyMetrics, compareOtherKeyMetrics }: TrendsProps) {
   const { t } = useTranslation();
+  // HRA-307: the chart header's own KPI-card row (kpis/compareKpis) and the
+  // "Other key metrics" sidebar (otherKeyMetrics/compareOtherKeyMetrics) are
+  // desktop-only from here on — on phone they're replaced by ONE page-level
+  // typographic summary rendered above the chart by OverviewTab
+  // (OverviewMobileKpiSummary), so the chart begins with its title/controls
+  // only, with no duplicated KPI row. Desktop composition below is otherwise
+  // byte-for-byte the pre-existing code path.
+  const isPhone = useIsPhone();
   const { state } = useQuery(() => api.garmin.activities(from, to), [from, to]);
   // Same shape/pattern as the current-period query above — comparison
   // activities for the trend charts. compareFrom/compareTo already carry
@@ -1060,14 +1068,17 @@ function TrendsBySport({ from, to, compareFrom, compareTo, compareEnabled, run, 
           compareActivities={compareBySport.get(runningEntry[0]) ?? []}
           mode={groupMode} minGroupSize={minGroupSize} compareEnabled={compareEnabled}
           from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} viewMode={viewMode}
-          primary headerControls={modeControls} kpis={runningKpis} compareKpis={compareKpis}
-          otherKeyMetrics={otherKeyMetrics} compareOtherKeyMetrics={compareOtherKeyMetrics} />
+          primary headerControls={modeControls} kpis={isPhone ? undefined : runningKpis} compareKpis={isPhone ? undefined : compareKpis}
+          otherKeyMetrics={isPhone ? undefined : otherKeyMetrics} compareOtherKeyMetrics={isPhone ? undefined : compareOtherKeyMetrics} />
       ) : (
         // No running trend chart to sit beside (no running activities this
         // period, or activities still loading) — "Other key metrics" shows
         // sitewide totals independent of any one sport's chart, so it still
         // renders on its own rather than disappearing with the graph.
-        otherKeyMetrics
+        // On phone, OverviewMobileKpiSummary (rendered by OverviewTab, above
+        // this whole section) already covers this same fallback case — skip
+        // here so it isn't shown twice (HRA-307).
+        isPhone ? null : otherKeyMetrics
       )}
       {/* Week/month enable/disable above is still driven by the CURRENT
           period's data only — the comparison window has no vote over which
@@ -1150,6 +1161,105 @@ function prevSportStats(prevActs: Activity[]) {
     avgPace: paces.length ? paces.reduce((s, v) => s + v, 0) / paces.length : null,
     ascent:  ascents.length ? ascents.reduce((s, v) => s + v, 0) : null,
   };
+}
+
+// HRA-307: the ONE page-level mobile KPI summary — replaces the fragmented
+// phone composition (GraphKpiCard's bordered mini-cards in the chart header
+// PLUS the "Other key metrics" Stat sidebar squeezed beside/under the chart)
+// with a single typographic block using the HRA-279 row convention (no card
+// chrome, per the container-budget rule, .claude/rules/frontend.md). Total
+// distance is dominant (own larger row); activity count and total time
+// stay immediately beneath it; the remaining four metrics compress into a
+// two-column grid where width permits. Values pulled from the exact same
+// sources runningKpis/otherKeyMetrics already used (run = running-specific
+// distance/activities/avg pace/avg HR, totals = sitewide time/calories/avg
+// distance) — this Story reorganizes presentation only, it does not change
+// which figures feed which metric. Rendered only while isPhone (caller-side
+// gate) — desktop keeps the untouched GraphKpiCard/sidebar composition.
+function OverviewMobileKpiSummary({ run, prevRun, totals, prevHours, prevCalories, prevAvgDistance, showDiff }: {
+  run?: SportSummary;
+  prevRun: ReturnType<typeof prevSportStats> | null;
+  totals: { acts: number; km: number; hours: number; calories: number };
+  prevHours: number | null; prevCalories: number | null; prevAvgDistance: number | null;
+  showDiff: boolean;
+}) {
+  const { t } = useTranslation();
+
+  const distance = run ? splitUnit(fmtKm(run.total_km * 1000)) : null;
+  const distanceDeltaText = run && showDiff ? comparisonTooltip(run.total_km, prevRun?.km ?? null, v => fmtKm(v * 1000)) : undefined;
+  const distanceDeltaPositive = run && showDiff ? deltaPositive(run.total_km, prevRun?.km ?? null) : undefined;
+
+  const avgPaceValue = run?.avg_pace != null ? fmtPace(run.avg_pace) : null;
+  const avgPaceDeltaText = run?.avg_pace != null && showDiff
+    ? comparisonTooltip(run.avg_pace, prevRun?.avgPace ?? null, v => `${fmtPace(v)}/${distanceUnitLabel()}`, undefined, /* invert: lower pace = faster */ true) : undefined;
+  const avgPaceDeltaPositive = run?.avg_pace != null && showDiff ? deltaPositive(run.avg_pace, prevRun?.avgPace ?? null, true) : undefined;
+
+  // Heart-rate delta is always presented neutrally — text only, never an
+  // up/down arrow or color, since a higher/lower avg HR isn't inherently
+  // better/worse (AC: "color alone never communicates better or worse").
+  const avgHrValue = run?.avg_hr != null ? `${run.avg_hr} bpm` : null;
+  const avgHrDeltaText = run?.avg_hr != null && showDiff && prevRun?.avgHr != null
+    ? comparisonTooltip(run.avg_hr, prevRun.avgHr, v => `${Math.round(v)} bpm`) : undefined;
+
+  const avgDistanceValue = totals.acts > 0 ? fmtKm((totals.km / totals.acts) * 1000) : null;
+  const avgDistanceDeltaText = totals.acts > 0 && showDiff ? comparisonTooltip(totals.km / totals.acts, prevAvgDistance, v => fmtKm(v * 1000)) : undefined;
+  const avgDistanceDeltaPositive = totals.acts > 0 && showDiff ? deltaPositive(totals.km / totals.acts, prevAvgDistance) : undefined;
+
+  const caloriesValue = totals.calories > 0 ? `${totals.calories.toLocaleString()} kcal` : null;
+  const caloriesDeltaText = totals.calories > 0 && showDiff ? comparisonTooltip(totals.calories, prevCalories, v => `${Math.round(v).toLocaleString()} kcal`) : undefined;
+  const caloriesDeltaPositive = totals.calories > 0 && showDiff ? deltaPositive(totals.calories, prevCalories) : undefined;
+
+  const timeDeltaText = showDiff ? comparisonTooltip(totals.hours, prevHours, v => `${v.toFixed(1)} h`) : undefined;
+  const timeDeltaPositive = showDiff ? deltaPositive(totals.hours, prevHours) : undefined;
+
+  // Both current and previous counts stay visible via comparisonTooltip's
+  // "previous (±pct%)" text even when they differ — no implied like-for-like
+  // equivalence, just current (main value) and previous (in the delta text).
+  const activitiesValue = run ? run.total_activities : totals.acts;
+  const activitiesDeltaText = run && showDiff ? comparisonTooltip(run.total_activities, prevRun?.sessions ?? null, v => String(v)) : undefined;
+  const activitiesDeltaPositive = run && showDiff ? deltaPositive(run.total_activities, prevRun?.sessions ?? null) : undefined;
+
+  return (
+    <div className="hra-overview-kpi-summary mb-3">
+      {distance && (
+        <div className="hra-fact-row hra-fact-row-hero">
+          <span className="hra-fact-row-stat-label">{t("overview.stat.distance", "Distance")}</span>
+          <div className="hra-kpi-value">
+            {distance.main}{distance.unit && <span className="hra-kpi-unit"> {distance.unit}</span>}
+          </div>
+          {distanceDeltaText && (
+            <div className={distanceDeltaPositive == null ? "hra-stat-delta" : distanceDeltaPositive ? "hra-stat-delta hra-stat-delta-up" : "hra-stat-delta hra-stat-delta-down"}>
+              {distanceDeltaPositive != null && (distanceDeltaPositive ? "↗ " : "↘ ")}{distanceDeltaText}
+            </div>
+          )}
+        </div>
+      )}
+      <Stat layout="row" label={t("overview.stat.activities", "Activities")} value={activitiesValue}
+        deltaText={activitiesDeltaText} deltaPositive={activitiesDeltaPositive} />
+      <Stat layout="row" label={t("overview.stat.time", "Time")} value={`${totals.hours.toFixed(1)} h`}
+        deltaText={timeDeltaText} deltaPositive={timeDeltaPositive} />
+      {(avgPaceValue || avgHrValue || avgDistanceValue || caloriesValue) && (
+        <div className="hra-overview-kpi-grid">
+          {avgPaceValue && (
+            <Stat layout="row" label={t("overview.stat.avgPace", "Avg pace")} value={`${avgPaceValue} ${paceUnitLabel()}`}
+              deltaText={avgPaceDeltaText} deltaPositive={avgPaceDeltaPositive} />
+          )}
+          {avgHrValue && (
+            <Stat layout="row" label={t("overview.stat.avgHr", "Avg HR")} value={avgHrValue}
+              deltaText={avgHrDeltaText} />
+          )}
+          {avgDistanceValue && (
+            <Stat layout="row" label={t("overview.stat.avgDistance", "Avg distance")} value={avgDistanceValue}
+              deltaText={avgDistanceDeltaText} deltaPositive={avgDistanceDeltaPositive} />
+          )}
+          {caloriesValue && (
+            <Stat layout="row" label={t("overview.stat.calories", "Calories")} value={caloriesValue}
+              deltaText={caloriesDeltaText} deltaPositive={caloriesDeltaPositive} />
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function OverviewTab({ range, compareRange, savedRanges }: Props) {
@@ -1381,6 +1491,13 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
         {renderDateRangeBar(totals.acts)}
       </div>
       {linkedRaceRow && <Card className="mb-5">{linkedRaceRow}</Card>}
+
+      {/* HRA-307: one page-level mobile KPI summary, above the graph —
+          replaces the chart header's own KPI-card row and the "Other key
+          metrics" sidebar (both suppressed on phone inside TrendsBySport/
+          SportTrendPair) so the chart itself starts with title + controls. */}
+      {isPhone && <OverviewMobileKpiSummary run={run} prevRun={prevRun} totals={totals}
+        prevHours={prevHours} prevCalories={prevCalories} prevAvgDistance={prevAvgDistance} showDiff={showDiff} />}
 
       <TrendsBySport from={from} to={to} compareFrom={compareFrom} compareTo={compareTo} compareEnabled={compareRange.enabled}
         run={run} prevRun={prevRun} viewMode={viewMode} setViewMode={setViewMode}

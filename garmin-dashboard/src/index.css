@@ -1642,6 +1642,21 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-fact-row-stat-values { display: flex; align-items: baseline; gap: 8px; flex-shrink: 0; white-space: nowrap; }
 .hra-fact-row-stat .hra-stat-delta { margin-top: 0; }
 
+/* Mobile graph-header KPI summary (HRA-307) — the dominant total-distance
+   row (own bigger .hra-kpi-value, label above value like the graph-header
+   GraphKpiCard convention, instead of Stat row's label-left/value-right
+   shape) and a two-column grid for the remaining secondary metrics, both
+   built from the same `.hra-fact-row`/`.hra-stat-delta` typographic
+   language as everything else on this container-budget row (no card
+   chrome). Divider convention mirrors HRA-303's activity-metrics grid:
+   column divider on the left cell, row divider from the second row on. */
+.hra-fact-row-hero { display: flex; flex-direction: column; gap: 2px; }
+.hra-overview-kpi-grid { display: grid; grid-template-columns: 1fr 1fr; }
+.hra-overview-kpi-grid > .hra-fact-row { border-top: none; padding: 8px; min-width: 0; }
+.hra-overview-kpi-grid > .hra-fact-row:nth-child(odd) { border-right: 1px solid var(--border); padding-left: 0; }
+.hra-overview-kpi-grid > .hra-fact-row:nth-child(even) { padding-right: 0; }
+.hra-overview-kpi-grid > .hra-fact-row:nth-child(n+3) { border-top: 1px solid var(--border); }
+
 .hra-select-trigger {
   display: inline-flex; align-items: center; justify-content: space-between; gap: 6px;
   font-family: inherit; font-size: var(--text-label);
