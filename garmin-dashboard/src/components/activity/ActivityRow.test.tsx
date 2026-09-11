@@ -73,12 +73,12 @@ describe("ActivityRow", () => {
     }
     render(<Harness />);
 
-    await waitFor(() => expect(screen.getByRole("button", { name: "Save & name" })).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Save & name" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save as" })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Save as" }));
     fireEvent.change(screen.getByPlaceholderText("e.g. Berlin Marathon"), { target: { value: "Berlin Marathon" } });
-    // Two "Save & name" elements once the popover's open: the trigger and its
+    // Two "Save as" elements once the popover's open: the trigger and its
     // own submit button — the submit is the second one in DOM order.
-    fireEvent.click(screen.getAllByRole("button", { name: "Save & name" })[1]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Save as" })[1]);
 
     await waitFor(() => expect(screen.getByText("Berlin Marathon")).toBeInTheDocument());
   });
@@ -96,7 +96,7 @@ describe("ActivityRow", () => {
     expect(onClick).not.toHaveBeenCalled();
   });
 
-  it("disables Remove activity and Save & name when DEMO_MODE is on (HRA-220)", async () => {
+  it("disables Remove activity and Save as when DEMO_MODE is on (HRA-220)", async () => {
     installFetch({
       "GET /api/v1/settings": settings({ demo_mode: true }),
       "GET /api/v1/activity-types": paginated([]),
@@ -107,7 +107,7 @@ describe("ActivityRow", () => {
     );
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove activity" })).toBeDisabled());
-    expect(screen.getByRole("button", { name: "Save & name" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save as" })).toBeDisabled();
   });
 
   it("nests no interactive control inside another interactive/clickable ancestor (HRA-280 AC1)", async () => {
@@ -123,7 +123,7 @@ describe("ActivityRow", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
     const interactiveControls = [
       screen.getByRole("combobox"),
-      screen.getByRole("button", { name: "Save & name" }),
+      screen.getByRole("button", { name: "Save as" }),
       screen.getByRole("button", { name: "Remove activity" }),
     ];
     for (const control of interactiveControls) {
@@ -146,7 +146,7 @@ describe("ActivityRow", () => {
     await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument());
     const openDetail = screen.getByRole("button", { name: /running/ });
     const typeSelect = screen.getByRole("combobox");
-    const saveRename = screen.getByRole("button", { name: "Save & name" });
+    const saveRename = screen.getByRole("button", { name: "Save as" });
     const remove = screen.getByRole("button", { name: "Remove activity" });
 
     const accessibleNames = [

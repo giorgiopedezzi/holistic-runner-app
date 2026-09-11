@@ -511,9 +511,11 @@ function AppShell() {
               Overview & Trends renders its own DateRangeBar internally now
               (wrapped, with the Summary card, in one sticky header — see
               OverviewTab.tsx), so it's excluded here to avoid a duplicate
-              bar. */}
+              bar. Activities pins its own copy the same way (.hra-sticky-summary),
+              so the date selection stays reachable while the activity list
+              scrolls underneath it. */}
           {showDateRange && tab !== "overview" && (
-            <div className="mb-5">
+            <div className={tab === "activities" ? "hra-sticky-summary" : "mb-5"}>
               <DateRangeBar {...range} savedRanges={savedRanges} racePicker={tab === "activities" ? racePicker : undefined} />
             </div>
           )}

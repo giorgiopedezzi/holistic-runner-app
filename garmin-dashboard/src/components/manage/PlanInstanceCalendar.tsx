@@ -178,6 +178,29 @@ function toDateKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+// HRA-318 follow-up: Props.readOnlyDays is either the single whole-plan
+// boolean every pre-existing caller passes, or Agenda's own per-day
+// predicate — this is the one place that resolves either shape down to a
+// plain boolean for a specific day. A missing dateKey (DayView.date is
+// optional) resolves to read-only — the safe default, never a false
+// negative that would open an edit surface with nothing to address it to.
+function resolveReadOnly(readOnlyDays: boolean | ((dateKey: string) => boolean), dateKey: string | null | undefined): boolean {
+  if (typeof readOnlyDays === "boolean") return readOnlyDays;
+  return dateKey == null ? true : readOnlyDays(dateKey);
+}
+
+// HRA-318 follow-up: the scheduled-time editor's own read-only rule —
+// readOnlyScheduledTime, when supplied, overrides readOnlyDays entirely
+// (Agenda's "time can change even on a past day"); omitted, it falls back to
+// the same per-day resolution as everything else.
+function resolveTimeReadOnly(
+  readOnlyDays: boolean | ((dateKey: string) => boolean),
+  readOnlyScheduledTime: boolean | undefined,
+  dateKey: string | null | undefined,
+): boolean {
+  return readOnlyScheduledTime ?? resolveReadOnly(readOnlyDays, dateKey);
+}
+
 // HRA-151 Ask #1 / HRA-189: "only on days with a workout" — the same
 // REST/TODO/empty-cell exclusion DayCellEvent's own gauges already apply (no
 // event at all, or a REST/TODO/OTHER day, all render as the compact no-card
@@ -423,7 +446,7 @@ function dayCardDragProps<THandlers extends object>(drag: { handlers: THandlers;
 }
 
 function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, weekView, activitiesByDateKey }: {
-  event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean; onDaySwap?: (a: number, b: number) => void;
+  event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean | ((dateKey: string) => boolean); onDaySwap?: (a: number, b: number) => void;
   // HRA-190: true in Week view, where DnDCalendar's own EventWrapper owns
   // pointer-drag detection for this event's DOM node. Native draggable=true
   // (this hook's own mechanism, Month's unchanged path) would fight it — a
@@ -439,7 +462,8 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
   activitiesByDateKey: Map<string, Activity>;
 }) {
   const { t } = useTranslation();
-  const drag = useDragSwap(event.dayId, readOnlyDays || dragViaAddon || event.isTimeSummary ? undefined : onDaySwap);
+  const dayReadOnly = resolveReadOnly(readOnlyDays, toDateKey(event.start));
+  const drag = useDragSwap(event.dayId, dayReadOnly || dragViaAddon || event.isTimeSummary ? undefined : onDaySwap);
   const dragProps = dayCardDragProps(drag);
   const matchedActivity = activitiesByDateKey.get(toDateKey(event.start));
 
@@ -794,21 +818,23 @@ function AgendaScheduledTimeEditor({ dayId, scheduledTime, onScheduledTimeEdit }
   );
 }
 
-function AgendaDateHeader({ date, label, event, readOnlyDays, onScheduledTimeEdit }: {
+function AgendaDateHeader({ date, label, event, readOnlyDays, readOnlyScheduledTime, onScheduledTimeEdit }: {
   date: Date;
   label: ReactNode;
   event?: CalendarEvent;
-  readOnlyDays: boolean;
+  readOnlyDays: boolean | ((dateKey: string) => boolean);
+  readOnlyScheduledTime?: boolean;
   onScheduledTimeEdit?: (dayId: number, scheduledTime: string | null) => void;
 }) {
   const isToday = isSameCalendarDay(date, new Date());
   const showsChip = dayHasScheduledWorkout(event);
   const scheduledTime = event?.scheduledTime ?? "08:00";
+  const timeReadOnly = resolveTimeReadOnly(readOnlyDays, readOnlyScheduledTime, toDateKey(date));
   return (
     <span className="hra-agenda-date-header">
       <span className="hra-agenda-date-time">
         {showsChip && (
-          readOnlyDays || event?.dayId == null ? (
+          timeReadOnly || event?.dayId == null ? (
             <span className="hra-agenda-date-time-chip">{scheduledTime}</span>
           ) : (
             <AgendaScheduledTimeEditor dayId={event!.dayId!} scheduledTime={scheduledTime} onScheduledTimeEdit={onScheduledTimeEdit} />
@@ -969,11 +995,12 @@ function AgendaToolbar({ label, onNavigate, summary, view, onView, date }: {
 //
 // Same events, same click behaviour, same scheduled-time editor as the grid —
 // nothing here is a second source of truth.
-function RibbonDay({ date, event, activity, readOnlyDays, onScheduledTimeEdit, onSelect, todayRef }: {
+function RibbonDay({ date, event, activity, readOnlyDays, readOnlyScheduledTime, onScheduledTimeEdit, onSelect, todayRef }: {
   date: Date;
   event: CalendarEvent | undefined;
   activity: Activity | undefined;
-  readOnlyDays: boolean;
+  readOnlyDays: boolean | ((dateKey: string) => boolean);
+  readOnlyScheduledTime?: boolean;
   onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
   onSelect: (event: CalendarEvent) => void;
   // Set on today's row only, so the list can open scrolled to it.
@@ -1015,6 +1042,7 @@ function RibbonDay({ date, event, activity, readOnlyDays, onScheduledTimeEdit, o
 
   const showsTime = dayHasScheduledWorkout(event);
   const scheduledTime = event?.scheduledTime ?? "08:00";
+  const timeReadOnly = resolveTimeReadOnly(readOnlyDays, readOnlyScheduledTime, toDateKey(date));
   // Empty day: still rendered, so the scroll keeps a continuous date rhythm
   // and a gap in the plan reads as a gap rather than as a missing row.
   const body = event == null ? (
@@ -1076,7 +1104,7 @@ function RibbonDay({ date, event, activity, readOnlyDays, onScheduledTimeEdit, o
           where an accidental double-activation is easiest to trigger. */}
       <span className="hra-agenda-ribbon-time">
         {showsTime && (
-          readOnlyDays || event?.dayId == null
+          timeReadOnly || event?.dayId == null
             ? <span className="hra-agenda-date-time-chip">{scheduledTime}</span>
             : <AgendaScheduledTimeEditor dayId={event.dayId} scheduledTime={scheduledTime} onScheduledTimeEdit={onScheduledTimeEdit} />
         )}
@@ -1085,12 +1113,13 @@ function RibbonDay({ date, event, activity, readOnlyDays, onScheduledTimeEdit, o
   );
 }
 
-function AgendaDayRibbon({ rangeStart, rangeEnd, eventsByDateKey, activitiesByDateKey, readOnlyDays, onScheduledTimeEdit, onSelect }: {
+function AgendaDayRibbon({ rangeStart, rangeEnd, eventsByDateKey, activitiesByDateKey, readOnlyDays, readOnlyScheduledTime, onScheduledTimeEdit, onSelect }: {
   rangeStart: Date;
   rangeEnd: Date;
   eventsByDateKey: Map<string, CalendarEvent>;
   activitiesByDateKey: Map<string, Activity>;
-  readOnlyDays: boolean;
+  readOnlyDays: boolean | ((dateKey: string) => boolean);
+  readOnlyScheduledTime?: boolean;
   onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
   onSelect: (event: CalendarEvent) => void;
 }) {
@@ -1119,6 +1148,7 @@ function AgendaDayRibbon({ rangeStart, rangeEnd, eventsByDateKey, activitiesByDa
             event={eventsByDateKey.get(key)}
             activity={activitiesByDateKey.get(key)}
             readOnlyDays={readOnlyDays}
+            readOnlyScheduledTime={readOnlyScheduledTime}
             onScheduledTimeEdit={onScheduledTimeEdit}
             onSelect={onSelect}
             todayRef={key === todayKey ? todayRowRef : undefined}
@@ -1134,7 +1164,20 @@ interface Props {
   // HRA-151: same "locked once approved" rule every other day-level edit in
   // this app follows (HRA-126) — the chip becomes a plain read-only span
   // instead of an <input>, same pattern InstanceDayRow's own fields use.
-  readOnlyDays: boolean;
+  // HRA-318 follow-up (Agenda parity): also accepts a per-day predicate,
+  // keyed by the day's own date (toDateKey format) — "Your agenda" passes
+  // `dateKey => dateKey < today` so editing/swapping opens up from today
+  // onward while past days stay locked, instead of the single whole-plan
+  // boolean every other caller still passes.
+  readOnlyDays: boolean | ((dateKey: string) => boolean);
+  // HRA-318 follow-up: independently overrides the scheduled-time editor's
+  // own read-only state (AgendaDateHeader/RibbonDay's chip, and Week view's
+  // same-day vertical drag) — Agenda's own rule is "time can be changed even
+  // on a past day", which readOnlyDays above must NOT also express (it still
+  // gates edit/swap for past days). Omitted (the default) falls back to
+  // whatever readOnlyDays itself resolves to, unchanged for every other
+  // caller.
+  readOnlyScheduledTime?: boolean;
   onScheduledTimeEdit: (dayId: number, scheduledTime: string | null) => void;
   // HRA-152: day swap between two Agenda cells — see DayCellEvent's own
   // comment. Both dayIds are the dragged/dropped days' own backend ids;
@@ -1179,7 +1222,7 @@ interface Props {
 }
 
 export function PlanInstanceCalendar({
-  sections, readOnlyDays, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
+  sections, readOnlyDays, readOnlyScheduledTime, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
   instanceId, onDayPersisted, raceDate,
 }: Props) {
   // HRA-300: read once, near the top, since both the ribbon-vs-grid branch
@@ -1367,6 +1410,8 @@ export function PlanInstanceCalendar({
   eventsByDateKeyRef.current = eventsByDateKey;
   const readOnlyDaysRef = useRef(readOnlyDays);
   readOnlyDaysRef.current = readOnlyDays;
+  const readOnlyScheduledTimeRef = useRef(readOnlyScheduledTime);
+  readOnlyScheduledTimeRef.current = readOnlyScheduledTime;
   const onScheduledTimeEditRef = useRef(onScheduledTimeEdit);
   onScheduledTimeEditRef.current = onScheduledTimeEdit;
   const DateHeaderComponent = useMemo(
@@ -1375,6 +1420,7 @@ export function PlanInstanceCalendar({
         {...props}
         event={eventsByDateKeyRef.current.get(toDateKey(props.date))}
         readOnlyDays={readOnlyDaysRef.current}
+        readOnlyScheduledTime={readOnlyScheduledTimeRef.current}
         onScheduledTimeEdit={(dayId, scheduledTime) => onScheduledTimeEditRef.current?.(dayId, scheduledTime)}
       />
     ),
@@ -1393,13 +1439,21 @@ export function PlanInstanceCalendar({
   // day drop can only ever be a no-op in the all-day row — nothing to persist
   // there (AC4).
   function handleEventDrop({ event, start }: { event: CalendarEvent; start: Date; end: Date; isAllDay?: boolean }) {
-    if (readOnlyDays || event.dayId == null) return;
+    if (event.dayId == null) return;
+    const sourceKey = toDateKey(event.start);
     const targetKey = toDateKey(start);
-    if (targetKey === toDateKey(event.start)) {
+    if (targetKey === sourceKey) {
+      // Same-day vertical drag = a time change only — governed by the
+      // scheduled-time rule (Agenda's own: allowed even on a past day), never
+      // the edit/swap one.
+      if (resolveTimeReadOnly(readOnlyDays, readOnlyScheduledTime, sourceKey)) return;
       if (!isTimedWorkoutType(event.workoutType)) return;
       onScheduledTimeEdit(event.dayId, formatHHMM(start));
       return;
     }
+    // Cross-day drop = a swap — blocked when either side is read-only for
+    // edit/swap (HRA-318 follow-up: Agenda's own "today or later" rule).
+    if (resolveReadOnly(readOnlyDays, sourceKey) || resolveReadOnly(readOnlyDays, targetKey)) return;
     const targetEvent = eventsByDateKey.get(targetKey);
     if (targetEvent?.dayId == null) return;
     onDaySwap(event.dayId, targetEvent.dayId);
@@ -1408,8 +1462,16 @@ export function PlanInstanceCalendar({
   // drag/swap, and handleEventDrop already no-ops on dayId == null, so the
   // Week-view addon shouldn't even offer to pick it up. HRA-318 follow-up:
   // an isTimeSummary entry is a static all-day label, not a real timed
-  // slot — nothing meaningful to drag it to.
-  const draggableAccessor = (event: CalendarEvent) => !readOnlyDays && event.dayId != null && !event.isTimeSummary;
+  // slot — nothing meaningful to drag it to. Draggable whenever EITHER a
+  // time change (same-day drop) or a swap (cross-day drop) would be allowed
+  // for this event's own date — handleEventDrop itself enforces which of the
+  // two a given drop actually is, so a past day stays draggable purely to
+  // reposition its time even once edit/swap has locked it.
+  const draggableAccessor = (event: CalendarEvent) => {
+    if (event.dayId == null || event.isTimeSummary) return false;
+    const dateKey = toDateKey(event.start);
+    return !resolveTimeReadOnly(readOnlyDays, readOnlyScheduledTime, dateKey) || !resolveReadOnly(readOnlyDays, dateKey);
+  };
 
   // HRA-265: `onSelectEvent` is react-big-calendar's own click-an-event
   // callback (Month cards, Week's all-day row, and Week's timed slots all
@@ -1426,7 +1488,16 @@ export function PlanInstanceCalendar({
       onNavigateToActivity?.(matchedActivity.id);
       return;
     }
-    if (event.dayId != null) setEditingDayId(event.dayId);
+    if (event.dayId == null) return;
+    // HRA-318 follow-up: the phone full-screen editor persists immediately
+    // through its own per-day PATCH, independently of readOnlyDays (HRA-300 —
+    // unaffected when readOnlyDays is the plain whole-plan boolean every
+    // pre-existing caller still passes). Only a per-day predicate (Agenda's
+    // own "today or later" rule) additionally blocks it from opening at all
+    // for a day it marks read-only — unlike desktop's DayEditModal below,
+    // which can still show that same day as read-only text.
+    if (isPhone && instanceId != null && typeof readOnlyDays === "function" && readOnlyDays(toDateKey(event.start))) return;
+    setEditingDayId(event.dayId);
     // Otherwise: an empty day (no plan day, no recorded activity) — no-op.
   }
   const editingDay = editingDayId != null ? dayViewsById.get(editingDayId) : undefined;
@@ -1453,7 +1524,13 @@ export function PlanInstanceCalendar({
     ) : (
       <DayEditModal
         day={editingDay}
-        readOnlyDays={readOnlyDays}
+        // HRA-318 follow-up: with no onDayEdit handler wired at all (e.g.
+        // Agenda's own desktop call site — see this Story's own scope, which
+        // stops short of a desktop DSL/notes editor), stays read-only
+        // regardless of what readOnlyDays would otherwise resolve to for
+        // this day; an editable-looking field with nothing to persist its
+        // edits would be worse than the read-only text it replaces.
+        readOnlyDays={onDayEdit == null ? true : resolveReadOnly(readOnlyDays, editingDay.date)}
         onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
         onClose={() => setEditingDayId(null)}
       />
@@ -1526,6 +1603,7 @@ export function PlanInstanceCalendar({
           eventsByDateKey={ribbonEventsByDateKey}
           activitiesByDateKey={activitiesByDateKey}
           readOnlyDays={readOnlyDays}
+          readOnlyScheduledTime={readOnlyScheduledTime}
           onScheduledTimeEdit={onScheduledTimeEdit}
           onSelect={handleSelectEvent}
         />

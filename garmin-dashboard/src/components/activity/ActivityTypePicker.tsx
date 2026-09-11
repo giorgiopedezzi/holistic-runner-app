@@ -19,7 +19,7 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
   // Fixed sizing (dashboard design-system rework: "keep them at a fixed
   // width... same height") — ActivityRow passes these so the type Select
   // and the Save/Rename button never jitter in width as the label switches
-  // between "Save & name"/"Rename" or between languages; left undefined
+  // between "Save as"/"Rename" or between languages; left undefined
   // (natural/content-sized) for ActivityDetailBody's own header, which has
   // no neighboring fixed-width Delete button to line up against.
   selectWidth?: number; actionWidth?: number; height?: number;
@@ -45,10 +45,10 @@ export function ActivityTypePicker({ activity, onUpdate, selectWidth, actionWidt
   // distance are offered — a 5K can't be tagged "Marathon".
   const eligibleTypes = types.filter(at => at.min_distance_m <= (activity.distance_m ?? 0));
   // Already has a name → this is a RENAME (editing what's there); otherwise
-  // it's a first-time SAVE & NAME. Purely a label/copy distinction now — the
+  // it's a first-time SAVE AS. Purely a label/copy distinction now — the
   // button itself is always actionable regardless of which applies.
   const hasName = Boolean(activity.activity_name);
-  const actionLabel = hasName ? t("activity.typePicker.renameButton", "Rename") : t("activity.typePicker.saveButton", "Save & name");
+  const actionLabel = hasName ? t("activity.typePicker.renameButton", "Rename") : t("activity.typePicker.saveButton", "Save as");
 
   async function handleSave() {
     setSaving(true);

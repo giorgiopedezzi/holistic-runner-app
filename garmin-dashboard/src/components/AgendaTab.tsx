@@ -3,12 +3,23 @@
  * "Your agenda" — the app's default landing tab: today's workout (or REST,
  * or an explicit "nothing planned" state) for whichever approved plan
  * instance's resolved days cover today, without navigating to Plans and
- * finding the right instance. Read-only: reuses apiDaysToSections +
- * PlanInstanceCalendar (Manage → Plans' own Agenda view) with readOnlyDays
- * always true here — editing an active plan's days is already disallowed by
- * the existing readOnlyDays-from-isApproved rule (HRA-126), unrelated to
- * this tab. Independent of SplashScreen, which only gates visibility and
- * never touches tab state.
+ * finding the right instance. Reuses apiDaysToSections + PlanInstanceCalendar
+ * (Manage → Plans' own Agenda view) — the same calendar, not a second
+ * implementation.
+ *
+ * HRA-318 follow-up ("must be just a replica" of the race-plan Agenda view):
+ * edit/swap open up from today onward (readOnlyDays below is a per-day
+ * predicate, not the flat `true` this tab used before) — a day already run
+ * shouldn't be rewritten after the fact. Scheduled-time changes are the one
+ * exception (readOnlyScheduledTime={false}): correcting when a past workout
+ * was actually done doesn't rewrite what it was. Desktop DSL/notes editing
+ * (DayEditModal) stays out of scope here — its onEdit is fired on every
+ * keystroke for a local draft a bulk Save persists (PlanInstancesSection's
+ * own model), and there's no such Save step on this tab; onDayEdit is left
+ * unset, which keeps DayEditModal read-only regardless of date (see that
+ * component's own comment). Phone's full-screen MobileWorkoutEditor already
+ * persists per-keystroke-safe (one PATCH on its own explicit Save), so it's
+ * wired for real once its day is today or later.
  *
  * HRA-263: the calendar itself is now always rendered, even with no active
  * plan (`instance == null` → `sections = []`, still fed to
@@ -18,19 +29,35 @@
  * all for today" are now two independent, non-blocking lines above the
  * calendar, not a takeover.
  */
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "@/api/client";
+import { api, ApiError } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
 import { isoToday } from "@/utils/date";
+import { notify } from "@/utils/toast";
+import { swapDayContent } from "@/domain/runplan-patch";
+import type { DayView, SectionView } from "@/domain/runplan-aggregate";
 import { apiDaysToSections } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
 import { CategoryLegend, PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
-import { Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
+import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
+import { instanceDayDateLabel } from "@/utils/fmt";
+import { Empty, ErrorBanner, LoadingSpinner, ConfirmModal } from "@/components/ui";
 
-// PlanInstanceCalendar's onScheduledTimeEdit/onDaySwap are required props,
-// but readOnlyDays={true} below gates every internal call site that would
-// invoke them (drag handlers, the scheduled-time popover) — real no-ops,
-// not a workaround.
-function noop() {}
+function errorMessage(e: unknown): string {
+  return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
+}
+
+function dayViewsById(sections: SectionView[]): Map<number, DayView> {
+  const map = new Map<number, DayView>();
+  for (const section of sections) for (const week of section.weeks) for (const day of week.days) {
+    if (day.id != null) map.set(day.id, day);
+  }
+  return map;
+}
+
+function dayLabel(day: DayView): string {
+  return day.dsl.replace(DAY_PREFIX_RE, "").trim();
+}
 
 interface Props {
   onNavigateToPlans: () => void;
@@ -48,6 +75,13 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   // today specifically has neither a plan day nor a recorded activity, which
   // is a stricter/independent question from "is there an active plan at all".
   const { state: todayActivityState } = useQuery(() => api.garmin.activities(date, date), [date]);
+  // HRA-318 follow-up: edit/swap open up from today onward — a stable
+  // predicate (memoized on `date`, which only changes once a day) rather
+  // than a fresh arrow function every render, since PlanInstanceCalendar's
+  // own EventComponent is memoized on this same prop's identity.
+  const readOnlyDays = useMemo(() => (dateKey: string) => dateKey < date, [date]);
+  const [swapPending, setSwapPending] = useState<{ a: DayView; b: DayView } | null>(null);
+  const [swapping, setSwapping] = useState(false);
 
   if (state.status === "loading" || state.status === "idle") {
     return <LoadingSpinner label={t("agenda.loading", "Loading your agenda…")} />;
@@ -59,6 +93,44 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const instance = state.data;
   const sections = instance != null ? apiDaysToSections(instance.days) : [];
   const instanceLabel = instance?.name ?? t("manage.planTemplates.untitled", "Untitled plan");
+
+  async function handleScheduledTimeEdit(dayId: number, scheduledTime: string | null) {
+    if (instance == null) return;
+    try {
+      await api.planInstances.patchDay(instance.id, dayId, { scheduled_time: scheduledTime });
+      refetch();
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    }
+  }
+
+  function handleDaySwap(aDayId: number, bDayId: number) {
+    const byId = dayViewsById(sections);
+    const a = byId.get(aDayId);
+    const b = byId.get(bDayId);
+    if (a && b) setSwapPending({ a, b });
+  }
+
+  async function confirmSwap() {
+    if (instance == null || swapPending == null) return;
+    const { a, b } = swapPending;
+    if (a.id == null || b.id == null) return;
+    setSwapping(true);
+    try {
+      const [newDslA, newDslB] = swapDayContent(a.dsl, b.dsl);
+      await Promise.all([
+        api.planInstances.patchDay(instance.id, a.id, { dsl: newDslA, scheduled_time: b.scheduled_time ?? null }),
+        api.planInstances.patchDay(instance.id, b.id, { dsl: newDslB, scheduled_time: a.scheduled_time ?? null }),
+      ]);
+      notify(t("manage.planInstances.mobileSwap.succeeded", "Workouts swapped."));
+      setSwapPending(null);
+      refetch();
+    } catch (e) {
+      notify(errorMessage(e), "error");
+    } finally {
+      setSwapping(false);
+    }
+  }
 
   const todayHasPlanDay = instance != null && instance.days.some(d => d.date === date);
   // Resolved (success or error) rather than still loading — avoids flashing
@@ -89,9 +161,10 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
       <CategoryLegend />
       <PlanInstanceCalendar
         sections={sections}
-        readOnlyDays
-        onScheduledTimeEdit={noop}
-        onDaySwap={noop}
+        readOnlyDays={readOnlyDays}
+        readOnlyScheduledTime={false}
+        onScheduledTimeEdit={handleScheduledTimeEdit}
+        onDaySwap={handleDaySwap}
         initialDate={new Date()}
         onNavigateToActivity={onNavigateToActivity}
         // HRA-300: Agenda's own workout-row entry point for the mobile
@@ -104,6 +177,30 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
         instanceId={instance?.id}
         onDayPersisted={() => refetch()}
         raceDate={instance?.race_date}
+      />
+      <ConfirmModal
+        open={swapPending != null}
+        title={
+          swapPending && (
+            <div className="hra-text-primary text-label font-semibold leading-normal mb-4 flex flex-col gap-2">
+              <span>{t("manage.planInstances.mobileSwap.confirmTitle", "Confirm swap")}</span>
+              <span className="text-body font-normal">
+                {t(
+                  "manage.planInstances.mobileSwap.confirmBody",
+                  `${swapPending.a.date ? instanceDayDateLabel(swapPending.a.date) : ""} (${dayLabel(swapPending.a)}) ↔ ${swapPending.b.date ? instanceDayDateLabel(swapPending.b.date) : ""} (${dayLabel(swapPending.b)})`,
+                  {
+                    a: `${swapPending.a.date ? instanceDayDateLabel(swapPending.a.date) : ""} — ${dayLabel(swapPending.a)}`,
+                    b: `${swapPending.b.date ? instanceDayDateLabel(swapPending.b.date) : ""} — ${dayLabel(swapPending.b)}`,
+                  },
+                )}
+              </span>
+            </div>
+          )
+        }
+        confirmLabel={swapping ? t("common.saving", "Saving…") : t("manage.planInstances.swapConfirmButton", "Swap")}
+        maxWidth={420}
+        onConfirm={() => !swapping && confirmSwap()}
+        onCancel={() => { if (!swapping) setSwapPending(null); }}
       />
     </>
   );

@@ -983,13 +983,9 @@ body {
    three-stop light->neutral->black recipe, which read as an odd green cast
    whenever the accent itself was green/lime (the accent tint and the
    unrelated black-mix end fought each other). Both stops are also blended
-   93% into transparent (raised from 80%, direct feedback: any surface that
-   shows data — cards, accordions, charts, all built on this one primitive —
-   must cover the background, now that a custom background image can sit
-   behind everything; only the sidebar chrome stays deliberately
-   near-transparent), so the card sits at ~93% opacity over the page's own
-   ambient glow/background image — a hairline of it shows through, glass
-   rather than a fully solid panel — with a faint inset top highlight
+   fully opaque (no transparent mix, direct feedback: any surface that shows
+   data — cards, accordions, charts, all built on this one primitive — must
+   fully hide whatever scrolls behind it, no glass hairline) — with a faint inset top highlight
    standing in for a light source and a soft outer shadow for lift, so cards
    read as gently raised. The border itself never changes on hover — only
    the glow does ("a light, not a border"): :hover adds an accent-colored
@@ -997,8 +993,8 @@ body {
    stays exactly as-is. */
 .card {
   background: radial-gradient(140% 140% at 0% 0%,
-  color-mix(in srgb, color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 93%, transparent) 0%,
-  color-mix(in srgb, color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 93%, transparent) 100%);
+  color-mix(in srgb, var(--accent) var(--card-accent-mix), var(--card-bg)) 0%,
+  color-mix(in srgb, black var(--card-dark-mix), var(--card-bg)) 100%);
   border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--card-border));
   border-radius: var(--radius-lg);
   padding: 16px;
@@ -2555,16 +2551,42 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    App.tsx persists the choice to localStorage. */
 /* Overview & Trends' DateRangeBar + named-range rows + "SUMMARY ..." card
    stay pinned while the rest of the tab (Total/Running/By sport/trend
-   charts) scrolls underneath — pins to --header-height (0 now that the
-   header is gone, see :root above) and paints a solid background so
-   scrolled content doesn't show through. */
+   charts) scrolls underneath — pins to --header-height, a CONSTANT (the
+   feedback banner's/phone header's own rendered height) that never changes
+   at runtime, so this element's own screen position never moves regardless
+   of whether that chrome is actually mounted right now (dismissed banner,
+   feedback tab, drawer state). Also used by Activities' own date selection
+   (ActivitiesTab.tsx) for the same pinned-filters behavior. Needs its own
+   opaque background (not just its children's) — otherwise the gaps between
+   child rows (DateRangeBar, named-range rows, summary card) let the content
+   scrolling underneath show through.
+   HRA-318 follow-up: that chrome IS conditionally mounted (banner dismissed,
+   or the "feedback" tab itself never shows it) while --header-height stays
+   fixed, so the band it would have occupied goes uncovered when it's gone —
+   the ::before below is a permanent, always-present opaque spacer standing
+   in for it, extending this element's own box upward by exactly
+   --header-height. When the real chrome IS mounted, it sits at the same
+   position with a higher z-index (10/20 vs this element's 9) and simply
+   paints over the spacer — no visible difference either way, and this
+   element's own sticky position never has to move to account for which
+   case is true. */
 .hra-sticky-summary {
   position: sticky;
   top: var(--header-height);
   z-index: 9;
   padding-bottom: 8px;
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
   margin-bottom: var(--section-gap);
+}
+.hra-sticky-summary::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--header-height));
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  background: var(--bg);
 }
 
 /* Sticky feedback ribbon on desktop/tablet (direct feedback — "make sure
@@ -2589,9 +2611,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   padding: 8px 16px;
   text-align: center;
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
 }
 .hra-feedback-banner-text { flex: 1; min-width: 0; }
@@ -2644,9 +2664,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   align-items: center;
   padding: 6px 12px;
   padding-top: calc(6px + env(safe-area-inset-top, 0px));
-  background: color-mix(in srgb, var(--bg-surface) 92%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--bg-surface);
   border-bottom: 1px solid var(--border);
 }
 .hra-mobile-header-trigger {
@@ -2673,9 +2691,7 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   gap: 20px;
   padding: 20px 12px;
   border-right: 1px solid color-mix(in srgb, var(--accent) 12%, var(--border));
-  background: color-mix(in srgb, var(--bg-surface) 80%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: var(--bg-surface);
   transition: width 0.2s ease;
 }
 .hra-sidebar[data-collapsed="true"] { width: 64px; }
@@ -2725,7 +2741,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    switches to a stacked column since there isn't enough of the 64px rail's
    width left beside the language icon to keep them side by side without
    crowding. */
-.hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 12px; }
+/* HRA-318 follow-up: no horizontal padding of its own — .hra-sidebar already
+   supplies the rail's 12px inset (padding: 20px 12px below), same as every
+   .hra-sidebar-item's own box edge. The extra 12px this rule used to add on
+   top of that pushed the language picker's right edge further in than the
+   nav items' own right edge, and ate into the width "Dreams run free"
+   needed to stay on one line (see .hra-brand's own comment). */
+.hra-sidebar-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .hra-brand {
   display: block;
   font-family: "Manrope", var(--font-sans);

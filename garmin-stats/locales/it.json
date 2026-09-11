@@ -437,7 +437,7 @@
   "activity.typePicker.typeSelectLabel": "Tipo di attività",
   "activity.legend.trigger": "Legenda dei tipi di allenamento",
   "activity.legend.heading": "Tipi di allenamento",
-  "activity.typePicker.saveButton": "Salva e assegna nome",
+  "activity.typePicker.saveButton": "Salva come",
   "activity.typePicker.renameButton": "Rinomina",
   "activity.typePicker.saveTooltip": "Salva il tipo selezionato e, se vuoi, assegna un nome a questa attività",
   "activity.typePicker.renameTooltip": "Modifica il nome salvato di questa attività",

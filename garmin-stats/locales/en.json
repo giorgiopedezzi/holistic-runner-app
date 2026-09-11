@@ -437,7 +437,7 @@
   "activity.typePicker.typeSelectLabel": "Activity type",
   "activity.legend.trigger": "Workout type legend",
   "activity.legend.heading": "Workout types",
-  "activity.typePicker.saveButton": "Save & name",
+  "activity.typePicker.saveButton": "Save as",
   "activity.typePicker.renameButton": "Rename",
   "activity.typePicker.saveTooltip": "Save the selected type and optionally name this activity",
   "activity.typePicker.renameTooltip": "Change this activity's saved name",
