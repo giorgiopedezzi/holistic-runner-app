@@ -735,6 +735,7 @@
   "manage.planInstances.actualActivityTooltip": "Recorded activity: {{value}}",
   "manage.planInstances.actualActivityOnlyLabel": "Recorded activity",
   "manage.planInstances.scheduledTimeLabel": "Scheduled time",
+  "manage.planInstances.categoryAtTime": "{{category}} at {{time}}",
   "manage.planInstances.distanceTooltip": "Distance: {{value}}",
   "manage.planInstances.maxSpeedTooltip": "Max speed: {{value}}",
   "manage.planInstances.durationTooltip": "Duration: {{value}}",

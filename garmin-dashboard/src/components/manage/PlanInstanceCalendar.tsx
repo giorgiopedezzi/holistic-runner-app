@@ -186,6 +186,17 @@ function dayHasScheduledWorkout(event: CalendarEvent | undefined): boolean {
   return event != null && isTimedWorkoutType(event.workoutType);
 }
 
+// HRA-318: the compact row's label gains an inline scheduled time whenever
+// the day actually carries one (e.g. a rest/todo/other day left holding a
+// leftover `scheduled_time` from an HRA-152-follow-up day swap) — reusing
+// the exact value the date-header chip shows, not a second source of truth.
+// A day with none (the ordinary case for these three types) keeps showing
+// just the category label, unchanged.
+function compactRowLabel(t: (key: string, fallback: string, options?: Record<string, unknown>) => string, categoryLabel: string, scheduledTime: string | null | undefined): string {
+  if (!scheduledTime) return categoryLabel;
+  return t("manage.planInstances.categoryAtTime", `${categoryLabel} at ${scheduledTime}`, { category: categoryLabel, time: scheduledTime });
+}
+
 // HRA-189: a workout day's Week-view slot is positioned at its scheduled_time
 // (08:00 fallback, same default the Month chip and List view use); duration
 // is a nominal placeholder only (Week view's own CSS forces content-driven
@@ -434,7 +445,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
     return (
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <CircleHelp size={13} />
-        {t(key, fallback)}
+        {compactRowLabel(t, t(key, fallback), event.scheduledTime)}
         <ActualActivityBadge activity={matchedActivity} />
       </span>
     );
@@ -444,7 +455,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
     return (
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <Info size={13} />
-        {t(key, fallback)}
+        {compactRowLabel(t, t(key, fallback), event.scheduledTime)}
         <ActualActivityBadge activity={matchedActivity} />
       </span>
     );
@@ -458,7 +469,7 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
     return (
       <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
         <Icon size={13} />
-        {categoryLabel}
+        {compactRowLabel(t, categoryLabel, event.scheduledTime)}
         <ActualActivityBadge activity={matchedActivity} />
       </span>
     );
