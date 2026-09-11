@@ -179,7 +179,7 @@ describe("useCompareRange", () => {
       expect(daysBetween(result.current.from, result.current.to)).toBeLessThan(365);
     });
 
-    it("manually re-enabling comparison while All stays selected is not overridden by a later `to` edit", () => {
+    it("locks comparison off while All is selected — setEnabled(true) is a no-op, and it stays off across a later `to` edit", () => {
       const { result, rerender } = renderHook(
         ({ from, to }) => useCompareRange(from, to, URL_KEYS),
         { initialProps: { from: "2026-08-01", to: "2026-08-10" } },
@@ -187,11 +187,19 @@ describe("useCompareRange", () => {
       rerender({ from: ALL_SENTINEL, to: "2026-08-10" });
       expect(result.current.enabled).toBe(false);
 
+      // Comparison has no natural "previous period" while All is selected
+      // (HRA-256) — manually re-enabling it is locked out entirely, not just
+      // defaulted off once.
       act(() => result.current.setEnabled(true));
-      expect(result.current.enabled).toBe(true);
+      expect(result.current.enabled).toBe(false);
 
       // `from` stays the sentinel — only `to` changes, still within All.
       rerender({ from: ALL_SENTINEL, to: "2026-08-11" });
+      expect(result.current.enabled).toBe(false);
+
+      // Leaving All restores normal enable/disable behavior.
+      rerender({ from: "2026-08-01", to: "2026-08-10" });
+      act(() => result.current.setEnabled(true));
       expect(result.current.enabled).toBe(true);
     });
 

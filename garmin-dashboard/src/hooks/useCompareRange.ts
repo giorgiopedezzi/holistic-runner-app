@@ -38,10 +38,9 @@ export function defaultCompareRange(from: string, to: string): { from: string; t
 // All available data has no natural "previous period" to mirror — feeding
 // the sentinel into defaultCompareRange() manufactures a multi-decade
 // comparison window nobody asked for (HRA-256). Falls back to a trivial,
-// inert placeholder; comparison itself starts/goes disabled whenever `from`
-// is the sentinel (see useCompareRange below), so this value is never
-// actually fetched until the user manually re-enables and picks a real
-// range.
+// inert placeholder; comparison itself is force-disabled and locked
+// whenever `from` is the sentinel (see the `enabled`/`setEnabled` override
+// in useCompareRange below), so this value is never actually fetched.
 function safeDefaultCompareRange(from: string, to: string): { from: string; to: string } {
   return from === ALL_SENTINEL ? { from: to, to } : defaultCompareRange(from, to);
 }
@@ -68,12 +67,22 @@ export function useCompareRange(from: string, to: string, urlKeys?: CompareRange
 
   const compFrom = urlKeys ? urlFrom : localRange.from;
   const compTo   = urlKeys ? urlTo   : localRange.to;
-  const enabled  = urlKeys ? urlEnabledParam !== "0" : localEnabled;
+  const rawEnabled = urlKeys ? urlEnabledParam !== "0" : localEnabled;
+  // All available data has no natural "previous period" (HRA-256) — while
+  // it's selected, comparison is force-disabled and locked, not merely
+  // defaulted off once: the effect below already zeroes the underlying
+  // enabled state on transition INTO All, but this override is the single
+  // point every consumer (setEnabled, `enabled` itself) goes through, so no
+  // caller — this hook's own UI, a future one, or stale state timing — can
+  // flip it back on while All stays selected.
+  const enabled = from === ALL_SENTINEL ? false : rawEnabled;
   const setFrom   = urlKeys ? setUrlFrom : (v: string) => setLocalRange(r => ({ ...r, from: v }));
   const setTo     = urlKeys ? setUrlTo   : (v: string) => setLocalRange(r => ({ ...r, to: v }));
-  const setEnabled = urlKeys
-    ? (v: boolean) => setUrlEnabledParam(v ? "1" : "0")
-    : setLocalEnabled;
+  const setEnabled = from === ALL_SENTINEL
+    ? () => {}
+    : urlKeys
+      ? (v: boolean) => setUrlEnabledParam(v ? "1" : "0")
+      : setLocalEnabled;
 
   // Must not fire on initial mount — a boolean "isFirst" ref guard here would
   // be defeated by React 19 StrictMode's dev-only double-invoke of effects
@@ -92,10 +101,11 @@ export function useCompareRange(from: string, to: string, urlKeys?: CompareRange
     if (from === ALL_SENTINEL) {
       // All is selected — never derive an automatic multi-decade "previous
       // period" off the sentinel (HRA-256). Only the actual transition INTO
-      // All forces comparison off; a later edit to `to` alone (from stays
-      // the sentinel) skips the auto-update without touching `enabled`, so a
-      // comparison the user manually re-enables while All stays selected
-      // survives it.
+      // All zeroes the underlying enabled state; a later edit to `to` alone
+      // (from stays the sentinel) skips this. Redundant with the `enabled`/
+      // `setEnabled` override above (which locks comparison off regardless
+      // of this underlying state) but kept so the state a real range later
+      // resumes from is already correct, not just masked.
       if (prevRange.from !== ALL_SENTINEL) {
         if (urlKeys) setUrlEnabledParam("0"); else setLocalEnabled(false);
       }

@@ -209,7 +209,7 @@ export function DateRangeBar(props: Props) {
           <span className="hra-text-primary text-label font-semibold" >{t("dateRange.current", "Current")}</span>
           <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer" >
             {t("dateRange.enableComparison", "Enable comparison")}
-            <Switch checked={compare.enabled} onCheckedChange={compare.setEnabled} />
+            <Switch checked={compare.enabled} onCheckedChange={compare.setEnabled} disabled={allSelected} />
           </label>
         </div>
       )}
@@ -329,7 +329,7 @@ interface PhoneProps extends DateRangeState {
 function PhoneDateRangeBar({
   summaryLabel, countLabel, triggerLabel, activeFilterCount, filtersLabel,
   setFrom, setTo, compare, savedRanges, racePicker,
-  eligibleForCompare, compareActivityCount, currentActivityCount, allAvailableLabel, liveDraft,
+  eligibleForCompare, compareActivityCount, currentActivityCount, allSelected, allAvailableLabel, liveDraft,
 }: PhoneProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -345,6 +345,11 @@ function PhoneDateRangeBar({
     : errorKind === "compare" ? t("dateRange.invalidCompareRange", "Comparison end date must be on or after the comparison start date.")
     : null;
   const draftAllSelected = draft.from === ALL_SENTINEL;
+  // Mirrors useCompareRange's own lock (HRA-256): while the draft's current
+  // range is All, comparison reads as off regardless of what draft.compareEnabled
+  // last held — e.g. it was toggled on before switching the draft's own
+  // preset/dates to All within the same open sheet.
+  const draftCompareEnabled = draftAllSelected ? false : draft.compareEnabled;
   const activePresetDraft = PRESETS.find(p => isActiveFor(draft.from, p.days));
   const currentNamedIdDraft = savedRanges.find(r => r.from_date === draft.from && r.to_date === draft.to)?.id;
   const compareNamedIdDraft = savedRanges.find(r => r.from_date === draft.compareFrom && r.to_date === draft.compareTo)?.id;
@@ -359,8 +364,8 @@ function PhoneDateRangeBar({
     // the default compare window) — the exact same outcome two sequential
     // desktop edits in that order already produce today; not new behavior.
     if (compare) {
-      compare.setEnabled(draft.compareEnabled);
-      if (draft.compareEnabled) {
+      compare.setEnabled(draftCompareEnabled);
+      if (draftCompareEnabled) {
         compare.setFrom(draft.compareFrom);
         compare.setTo(draft.compareTo);
       }
@@ -436,9 +441,9 @@ function PhoneDateRangeBar({
               <>
                 <label className="hra-text-secondary flex items-center gap-1.5 text-meta cursor-pointer">
                   {t("dateRange.enableComparison", "Enable comparison")}
-                  <Switch checked={draft.compareEnabled} onCheckedChange={v => setDraft(d => ({ ...d, compareEnabled: v }))} />
+                  <Switch checked={draftCompareEnabled} onCheckedChange={v => setDraft(d => ({ ...d, compareEnabled: v }))} disabled={draftAllSelected} />
                 </label>
-                {draft.compareEnabled && (
+                {draftCompareEnabled && (
                   <div className="hra-compare-range" data-enabled="true">
                     <div className="hra-text-primary text-label font-semibold mb-1.5">{t("dateRange.comparedTo", "Compared to")}</div>
                     <div className="hra-date-pair">
@@ -514,6 +519,8 @@ function PhoneDateRangeBar({
           className="hra-btn hra-compare-cta"
           data-variant="cta"
           onClick={() => onOpenChange(true, true)}
+          disabled={allSelected}
+          title={allSelected ? t("dateRange.compareUnavailableForAll", "Comparison isn't available for All available data") : undefined}
         >
           {t("dateRange.compareWithAnother", "Compare with another period")}
         </button>

@@ -36,6 +36,7 @@
   "dateRange.invalidRange": "La data di fine deve essere uguale o successiva alla data di inizio.",
   "dateRange.invalidCompareRange": "La data di fine del confronto deve essere uguale o successiva alla data di inizio del confronto.",
   "dateRange.compareWithAnother": "Confronta con un altro periodo",
+  "dateRange.compareUnavailableForAll": "Il confronto non è disponibile per Tutti i dati disponibili",
   "dateRange.editComparison": "Modifica confronto",
   "dateRange.closeComparison": "Chiudi confronto",
   "dateRange.unevenSamples": "Le dimensioni dei campioni differiscono: questi periodi non sono automaticamente confrontabili.",

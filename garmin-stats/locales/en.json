@@ -36,6 +36,7 @@
   "dateRange.invalidRange": "End date must be on or after the start date.",
   "dateRange.invalidCompareRange": "Comparison end date must be on or after the comparison start date.",
   "dateRange.compareWithAnother": "Compare with another period",
+  "dateRange.compareUnavailableForAll": "Comparison isn't available for All available data",
   "dateRange.editComparison": "Edit comparison",
   "dateRange.closeComparison": "Close comparison",
   "dateRange.unevenSamples": "Sample sizes differ — these periods aren't automatically like-for-like.",

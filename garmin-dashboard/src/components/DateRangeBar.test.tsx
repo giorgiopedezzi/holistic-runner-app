@@ -61,6 +61,15 @@ describe("DateRangeBar phone-width compaction (HRA-290)", () => {
     expect(screen.getByText("Compared to")).toBeInTheDocument();
   });
 
+  // Comparison has no natural "previous period" when the current range is
+  // All (HRA-256) — the desktop "Enable comparison" switch must stay
+  // disabled while All is selected, not just default off once.
+  it("disables the desktop 'Enable comparison' switch while All is selected", () => {
+    stubPhoneWidth(false);
+    render(<DateRangeBar {...baseProps()} from={ALL_SENTINEL} compare={baseCompare({ enabled: false })} />);
+    expect(screen.getByRole("switch", { name: "Enable comparison" })).toBeDisabled();
+  });
+
   it("collapses to a range summary + Filter trigger at phone width, opening a Sheet with the same controls", () => {
     stubPhoneWidth(true);
     render(<DateRangeBar {...baseProps()} />);
@@ -179,5 +188,40 @@ describe("DateRangeBar phone-width comparison branch (HRA-306)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Compare with another period" }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+  });
+
+  // Comparison has no natural "previous period" when the current range is
+  // All (HRA-256) — must stay locked off, not just default off once, per
+  // explicit product decision: it must not be reachable through the
+  // "Compare with another period" CTA at all while All is selected.
+  it("locks the 'Compare with another period' action disabled while All is selected, never opening the sheet", () => {
+    stubPhoneWidth(true);
+    const compare = baseCompare({ enabled: false });
+    render(<DateRangeBar {...baseProps()} from={ALL_SENTINEL} compare={compare} />);
+    const cta = screen.getByRole("button", { name: "Compare with another period" });
+    expect(cta).toBeDisabled();
+    fireEvent.click(cta);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  // Same lock, reached through the sheet's own switch instead of the CTA:
+  // opening the sheet on a real range with comparison already on, then
+  // switching the draft's own current range to All inside the same sheet,
+  // must not let Apply commit an enabled comparison.
+  it("forces the sheet's own comparison switch off and disabled once the draft's current range becomes All", () => {
+    stubPhoneWidth(true);
+    const compare = baseCompare({ enabled: true });
+    render(<DateRangeBar {...baseProps()} compare={compare} />);
+    fireEvent.click(screen.getByRole("button", { name: "Filters" }));
+    const comboboxes = screen.getAllByRole("combobox");
+    fireEvent.keyDown(comboboxes[0], { key: "ArrowDown" }); // preset Select
+    fireEvent.click(screen.getByRole("option", { name: "All" }));
+
+    const compareSwitch = screen.getByRole("switch");
+    expect(compareSwitch).toHaveAttribute("aria-checked", "false");
+    expect(compareSwitch).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(compare.setEnabled).toHaveBeenCalledWith(false);
   });
 });
