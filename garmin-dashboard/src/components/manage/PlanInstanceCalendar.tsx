@@ -1219,12 +1219,18 @@ export function PlanInstanceCalendar({
   );
 
   // Shared by both the distance ring's scaling and the toolbar's summary
-  // line — the days in the currently navigated month, recomputed on
+  // line — the days in the currently navigated month (or week, in Week
+  // view — HRA-317: was always month, so Week view's summary showed
+  // month-wide totals instead of its own 7 days), recomputed on
   // navigation (Ask #2/#4).
-  const visibleEvents = useMemo(
-    () => events.filter(e => e.start.getFullYear() === date.getFullYear() && e.start.getMonth() === date.getMonth()),
-    [events, date],
-  );
+  const visibleEvents = useMemo(() => {
+    if (view === "week") {
+      const from = startOfWeek(date);
+      const to = endOfWeek(date);
+      return events.filter(e => e.start >= from && e.start <= to);
+    }
+    return events.filter(e => e.start.getFullYear() === date.getFullYear() && e.start.getMonth() === date.getMonth());
+  }, [events, date, view]);
   const visibleMaxDistanceM = useMemo(
     () => visibleEvents.reduce((max, e) => Math.max(max, e.metrics!.totalDistanceM), 0),
     [visibleEvents],
