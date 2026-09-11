@@ -329,6 +329,32 @@ function timeSummaryEventsFromEvents(events: CalendarEvent[]): CalendarEvent[] {
     .map(e => ({ ...e, allDay: true, isTimeSummary: true }));
 }
 
+// HRA-320: Week view specifically repositions REST/TODO/OTHER out of the
+// all-day row into a full WEEK_MIN_TIME–WEEK_MAX_TIME block in the timed
+// grid, the same region a real workout's own card lives in. The all-day row
+// and the timed grid are two separate vendor drag-and-drop regions
+// (WeekWrapper vs EventContainerWrapper in react-big-calendar's dragAndDrop
+// addon) — EventContainerWrapper's own hit-test (pointInColumn, in
+// node_modules/react-big-calendar/lib/addons/dragAndDrop/common.js) has no
+// upper bound on the pointer's Y position, so dragging a timed workout UP
+// past the grid's own top edge (into the all-day row, where Rest used to
+// live) aborted the drag outright — the browser's own "not allowed" cursor.
+// Giving Rest/Todo/Other a real slot in the SAME timed grid, spanning nearly
+// the whole visible day, routes every swap through one drag mechanism and
+// turns the drop target into the whole column instead of a thin all-day-row
+// sliver. Month view is untouched (it never had this all-day/timed split to
+// begin with) — only applied when the caller is actually rendering Week.
+function restLikeEventsAsTimeGridBlocks(events: CalendarEvent[]): CalendarEvent[] {
+  return events.map(e => {
+    if (isTimedWorkoutType(e.workoutType)) return e;
+    const start = new Date(e.start);
+    start.setHours(WEEK_MIN_TIME.getHours(), WEEK_MIN_TIME.getMinutes(), 0, 0);
+    const end = new Date(e.start);
+    end.setHours(WEEK_MAX_TIME.getHours(), WEEK_MAX_TIME.getMinutes(), 0, 0);
+    return { ...e, allDay: false, start, end };
+  });
+}
+
 // HRA-262: most-recently-started activity per date_only — sport-agnostic,
 // exact-date match only per the Story's own confirmed matching rule.
 // "Most recently-started" compares activity_date (a full timestamp), not
@@ -1318,8 +1344,16 @@ export function PlanInstanceCalendar({
     // instruction — Month's day cell stays exactly as it was before this
     // Story (just the gauge card / compact rest-todo-other row, no second
     // stacked summary line).
-    () => [...events, ...(view === "week" ? timeSummaryEventsFromEvents(events) : []), ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys)],
-    [events, activitiesByDateKey, plannedDateKeys, view],
+    // HRA-320: REST/TODO/OTHER only move into the timed grid for the actual
+    // desktop Week-view grid — Month view, and the phone ribbon (which never
+    // renders this grid at all, regardless of `view`), keep reading the
+    // original zero-duration/allDay shape unchanged.
+    () => [
+      ...(!isPhone && view === "week" ? restLikeEventsAsTimeGridBlocks(events) : events),
+      ...(view === "week" ? timeSummaryEventsFromEvents(events) : []),
+      ...actualOnlyEventsFromActivities(activitiesByDateKey, plannedDateKeys),
+    ],
+    [events, activitiesByDateKey, plannedDateKeys, view, isPhone],
   );
 
   // Ask #3 (intensity ring): max/min speed across the WHOLE plan instance —
@@ -1627,6 +1661,15 @@ export function PlanInstanceCalendar({
     className: "h-full",
     components: { event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent },
     messages: { noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range.") },
+    // HRA-320: marks a restLikeEventsAsTimeGridBlocks output event so
+    // index.css can exempt it from the "content-driven, not duration-scaled"
+    // auto-height rule every other timed-grid card gets — this one's real
+    // (start, end) already spans WEEK_MIN_TIME–WEEK_MAX_TIME and should
+    // render at its real, nearly-full-column height.
+    eventPropGetter: (event: CalendarEvent) =>
+      view === "week" && !event.isTimeSummary && !event.isActualOnly && !isTimedWorkoutType(event.workoutType)
+        ? { className: "hra-agenda-fullday-event" }
+        : {},
     // HRA-318 follow-up: without this, react-big-calendar's Week view
     // defaults scrollToTime to `new Date()` (the real current moment) and
     // auto-scrolls the time grid to it on mount — so opening the tab in the

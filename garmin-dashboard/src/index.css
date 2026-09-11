@@ -728,6 +728,26 @@ p.text-meta, div.text-meta, ul.text-meta { margin-bottom: 4px; }
 .hra-agenda-calendar .rbc-day-slot .rbc-event {
   overflow: visible; max-height: none; height: auto !important;
 }
+/* HRA-320: REST/TODO/OTHER's own full WEEK_MIN_TIME–WEEK_MAX_TIME block
+   (PlanInstanceCalendar.tsx's restLikeEventsAsTimeGridBlocks) is the one
+   exception to the auto-height rule above — its real vendor-computed height
+   already spans (nearly) the whole column, by design, so this card should
+   actually show that instead of collapsing to its own small label content.
+   `.rbc-events-container` itself already spans the full grid height, so
+   100% of it is exactly the target span. */
+.hra-agenda-calendar .rbc-day-slot .rbc-event.hra-agenda-fullday-event {
+  height: 100% !important;
+}
+/* HRA-320: Rest/Todo/Other's own full-day block needs a visible fill —
+   unlike the compact row it replaces (deliberately uncarded, see
+   .hra-agenda-rest-row above), a 100%-height block with no background reads
+   as empty space, not as an occupied day. Muted/neutral on purpose: this
+   isn't a training-load category with its own data-driven color. */
+.hra-agenda-calendar .rbc-day-slot .hra-agenda-fullday-event .hra-agenda-rowcard {
+  background: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  border-color: color-mix(in srgb, var(--text-muted) 40%, transparent);
+  height: 100%;
+}
 /* Follow-up fix: the vendor reserves a 10px right gutter on the whole day
    column (`.rbc-day-slot .rbc-events-container`'s own `right: 10px`) to
    leave room for side-by-side stacking when a day has overlapping events —
