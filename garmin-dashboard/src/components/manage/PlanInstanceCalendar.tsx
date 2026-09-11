@@ -458,7 +458,12 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
     const categoryLabel = t(key, fallback);
     return (
       <span className="hra-agenda-rest-row">
-        <Icon size={13} />
+        {/* Same "hra-category-color" wrapper WeekRowCard's own Row 1 icon
+            uses — this row's icon was plain/uncolored before, unlike every
+            other icon+category pairing in this file. */}
+        <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+          <Icon size={13} />
+        </span>
         {compactRowLabel(t, categoryLabel, event.scheduledTime ?? "08:00")}
       </span>
     );
