@@ -203,7 +203,12 @@ function SportTrendChart({ sport, points, title, kmDomain, paceDomain, hrDomain,
           same data, so a screen reader has nothing useful to traverse here. */}
       <div aria-hidden="true">
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 0 } : undefined}>
+        {/* accessibilityLayer={false}: this chart is already aria-hidden
+            (TrendAccessibleData is the real keyboard/screen-reader path) —
+            Recharts' default tabIndex/role="application" would otherwise
+            leave a focusable-but-hidden element (its own a11y bug) and show
+            the browser focus outline on plain click/touch. */}
+        <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 0 } : undefined} accessibilityLayer={false}>
           <defs>
             <linearGradient id={`${gradId}-bar`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.28} />
@@ -392,7 +397,8 @@ function SportTrendOverlapChart({ sport, title, points, compareEnabled, kmDomain
       {/* HRA-310 AC8 — see SportTrendChart's identical comment above. */}
       <div aria-hidden="true">
       <ResponsiveContainer width="100%" height={height}>
-        <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 4 } : { bottom: 8 }}>
+        {/* accessibilityLayer={false}: see SportTrendChart's identical comment above. */}
+        <ComposedChart data={points} margin={isPhone ? { top: 4, right: 0, left: 0, bottom: 4 } : { bottom: 8 }} accessibilityLayer={false}>
           <defs>
             <linearGradient id={`${gradId}-cur`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--data-pace)" stopOpacity={0.28} />

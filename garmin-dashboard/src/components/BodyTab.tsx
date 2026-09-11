@@ -67,7 +67,12 @@ function MetricChartCard({ title, chartData, tableData, series, deltaMode, empty
           <Empty message={emptyMessage ?? t("body.chart.selectMetric", "Select at least one metric above to plot.")} />
         ) : view === "chart" ? (
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={chartData}>
+            {/* accessibilityLayer={false}: Recharts' default tabIndex/
+                role="application" made a click/touch on the chart show the
+                browser's focus outline around the whole card — no real
+                keyboard interaction exists here to justify it (tooltips are
+                pointer-driven), so it was a dead, confusing focus stop. */}
+            <AreaChart data={chartData} accessibilityLayer={false}>
               <defs>
                 {series.map(s => chartGradientDef(`bodyGrad-${s.key}`, s.color))}
               </defs>
@@ -275,11 +280,12 @@ export function BodyTab({ from, to }: Props) {
       ) : (
         <ChartCard>
           <ResponsiveContainer width="100%" height={180}>
+            {/* accessibilityLayer={false}: see the AreaChart above. */}
             <ComposedChart data={correlation.map(c => ({
               ...c,
               km: getUnitSystem() === "imperial" ? kmToMi(c.km) : c.km,
               avg_weight: c.avg_weight != null ? (getUnitSystem() === "imperial" ? kgToLb(c.avg_weight) : c.avg_weight) : null,
-            }))}>
+            }))} accessibilityLayer={false}>
               <CartesianGrid {...gridStyle} />
               <XAxis dataKey="week" tick={axisStyle} tickLine={false} axisLine={false} interval="preserveStartEnd" />
               <YAxis yAxisId="km"  tick={axisStyle} tickLine={false} axisLine={false} width={32} />

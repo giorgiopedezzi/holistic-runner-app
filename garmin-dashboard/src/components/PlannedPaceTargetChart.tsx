@@ -102,7 +102,11 @@ export function PlannedPaceTargetChart({ model, className = "mt-2.5" }: { model:
                 (MetricStandaloneCard mirrors the right one too) — so this
                 card's plot area lines up with the main chart's, and matching
                 km ticks fall at the same x position on both sides. */}
-            <ComposedChart data={domainPoints} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 28, left: MARGIN_LEFT }}>
+            {/* accessibilityLayer={false}: Recharts' default tabIndex/
+                role="application" made a click/touch on the chart show the
+                browser's focus outline around the whole card — no real
+                keyboard interaction exists here to justify it. */}
+            <ComposedChart data={domainPoints} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 28, left: MARGIN_LEFT }} accessibilityLayer={false}>
               <defs>
                 {bands.map((band, index) => {
                   const start = speedRampColor(paceRampPosition(band.startTargetPaceSecPerKm, slowest, mean, fastest));

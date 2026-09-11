@@ -77,9 +77,15 @@ export const MainOverlayChart = memo(function MainOverlayChart({
           exactly on the y=1 point at the very top of its own [0,1] axis)
           room to render fully — Recharts' default ~5px top margin put half
           the pill above the SVG's own top edge, silently clipping it. */}
+      {/* accessibilityLayer={false}: Recharts' default tabIndex/
+          role="application" made a click/touch on the chart show the
+          browser's focus outline around the whole card — the sr-only list
+          in ActivityChartSection.tsx (this chart's caller) is the real
+          keyboard/screen-reader path; tooltips here are pointer-driven. */}
       <ComposedChart
         data={chartData} margin={{ top: 16, right: rightMargin, bottom: 5, left: 5 }}
         onMouseMove={onMouseMove} onMouseLeave={onMouseLeave}
+        accessibilityLayer={false}
       >
         {/* Speed/Pace and HR are drawn with value-mapped gradients rather
             than a flat stroke — see MetricGradient.tsx. The overlay chart's
@@ -209,7 +215,8 @@ export const MetricStandaloneCard = memo(function MetricStandaloneCard({
             "main" axis, on the left), so its right margin can just BE the
             same total the main chart always reserves (RIGHT_AXES_WIDTH),
             matching it unconditionally. */}
-        <ComposedChart data={cardData} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 5, left: 5 }}>
+        {/* accessibilityLayer={false}: see MainOverlayChart's identical comment above. */}
+        <ComposedChart data={cardData} margin={{ top: 16, right: MARGIN_RIGHT + RIGHT_AXES_WIDTH, bottom: 5, left: 5 }} accessibilityLayer={false}>
           {/* Own gradient ids per card — one <svg> each, and a url(#…) may
               not reach across them. Unlike the overlay chart, this axis is
               never reversed, so in pace mode the faster (lower) values sit
