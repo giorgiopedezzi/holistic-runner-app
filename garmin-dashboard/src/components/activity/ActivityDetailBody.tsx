@@ -14,7 +14,7 @@ import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Act
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtDuration, fmtElevation, fmtDate, fmtSource } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
-import { detectPauses, computeHrRecovery } from "@/domain/pauses";
+import { detectPauses, computeHrRecovery, buildPauseInspectionRows } from "@/domain/pauses";
 import {
   axisDomainCentered, buildChartData,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode,
@@ -223,6 +223,11 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
     })),
     [chartData, hrRecoveryByAfterIndex],
   );
+  // HRA-311: the "Pauses (N)" inspection dialog's own row shape — built from
+  // the SAME `track`/`pauses` this section's chart already uses (not a
+  // second calculation path), so it always matches the chart's current
+  // pause/anomaly settings and can never hold a stale copy.
+  const pauseInspectionRows = useMemo(() => buildPauseInspectionRows(track, pauses), [track, pauses]);
 
   // HRA-206: the selected same-day scheduled day's segments, parsed into the
   // shared PaceTargetBandModel that PlannedPaceTargetChart already renders
@@ -482,6 +487,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 displayTrack={displayTrack}
                 chartData={chartData}
                 hrRecoveryChartData={hrRecoveryChartData}
+                pauseInspectionRows={pauseInspectionRows}
                 xMode={xMode} setXMode={setXMode}
                 pauseThreshold={pauseThreshold} setPauseThreshold={setPauseThreshold}
                 removeOutliers={removeOutliers} setRemoveOutliers={setRemoveOutliers}

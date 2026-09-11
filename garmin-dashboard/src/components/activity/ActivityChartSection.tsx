@@ -20,7 +20,8 @@ import { RunnerTerrain } from "./RunnerTerrain";
 import { RunnerIcon, type RunnerIconHandle } from "./RunnerIcon";
 import { RunnerReadout, type RunnerReadoutHandle } from "./RunnerReadout";
 import { RunnerPlayButton, RunnerStopButton, type PlayStatus } from "./RunnerPlayButton";
-import { nearestHr, clusterByProximity, fmtPauseDuration } from "@/domain/pauses";
+import { nearestHr, clusterByProximity, fmtPauseDuration, type PauseInspectionRow } from "@/domain/pauses";
+import { PauseInspectionDialog } from "./PauseInspectionDialog";
 import { computeRunnerDynamics, NEUTRAL_DYNAMICS, RUNNER_ELEVATION_MAX_PX, type RunnerDynamics } from "@/domain/runner-dynamics";
 
 // How far the actual plotted line sits from this section's own outer edge,
@@ -113,6 +114,10 @@ interface ActivityChartSectionProps {
   // whole chart section, so it needs the raw list + selection here too.
   plannedDays: PlanInstanceDayWithInstance[];
   selectedPlannedDayId: number | null; setSelectedPlannedDayId: (id: number) => void;
+  // HRA-311: the "Pauses (N)" inspection dialog's rows — computed once by
+  // ActivityDetailBody from the same track/pauses this section's own chart
+  // uses (see that component's own comment), never recomputed in here.
+  pauseInspectionRows: PauseInspectionRow[];
 }
 
 export function ActivityChartSection({
@@ -124,6 +129,7 @@ export function ActivityChartSection({
   toggleMetric, toggleCard,
   plannedModel, plannedShown, setPlannedShown, plannedCardShown, setPlannedCardShown,
   plannedDays, selectedPlannedDayId, setSelectedPlannedDayId,
+  pauseInspectionRows,
 }: ActivityChartSectionProps) {
   const { t } = useTranslation();
   const isPhone = useIsPhone();
@@ -782,6 +788,7 @@ export function ActivityChartSection({
                 {chartOptionsFields}
               </SheetContent>
             </Sheet>
+            <PauseInspectionDialog rows={pauseInspectionRows} />
           </div>
           <div className="hra-activity-legend-row-mobile">
             {OPTIONAL_METRIC_ORDER.filter(key => availableMetrics[key]).map(key => (
@@ -827,8 +834,9 @@ export function ActivityChartSection({
               ))}
             </div>
           </div>
-          <div className="hra-row-wrap gap-4 justify-center">
+          <div className="hra-row-wrap gap-4 justify-center items-center">
             {chartOptionsFields}
+            <PauseInspectionDialog rows={pauseInspectionRows} />
           </div>
           <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
             {/* HRA-303 AC14/section 6: "Include heart rate, cadence, and power

@@ -2090,6 +2090,23 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-sheet-body .hra-select-full { width: 100%; }
 .hra-sheet-body .hra-date-pair { width: 100%; }
 
+/* HRA-311: the "dialog" SheetContent variant — desktop-only override to a
+   compact centered modal, leaving the phone bottom-sheet rule above
+   untouched below the breakpoint. 768px matches useIsPhone.ts's own
+   PHONE_MAX_WIDTH_PX=767 constant, so "desktop" here means the same width
+   this app already calls desktop everywhere else. */
+@media (min-width: 768px) {
+  .hra-sheet-content[data-variant="dialog"] {
+    left: 50%; right: auto; bottom: auto; top: 50%;
+    transform: translate(-50%, -50%);
+    width: calc(100vw - 64px); max-width: 560px; max-height: 80vh;
+    border-bottom: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  }
+  .hra-sheet-content[data-variant="dialog"][data-state="open"] { animation: hra-sheet-fade-in 0.15s ease-out; }
+}
+
 /* Compact mobile filter trigger (DateRangeBar, HRA-290) — the summary text
    ellipsizes rather than wrapping/overflowing; the trigger itself is a real
    44px tap target regardless of the Filter icon's own smaller size. */

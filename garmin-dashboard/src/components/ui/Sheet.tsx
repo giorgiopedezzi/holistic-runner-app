@@ -17,14 +17,22 @@ export const SheetTrigger = DialogPrimitive.Trigger;
 interface SheetContentProps {
   title: string;
   children: ReactNode;
+  // HRA-311: "dialog" keeps this content as a bottom sheet on phone (same
+  // markup/behavior as the default) but renders it as a compact centered
+  // modal at desktop widths instead — see index.css's
+  // `.hra-sheet-content[data-variant="dialog"]` — for callers whose Story
+  // explicitly wants "desktop: compact modal" rather than "bottom sheet on
+  // every width" (this primitive's original HRA-290 behavior, still the
+  // default so every existing caller is unaffected).
+  variant?: "sheet" | "dialog";
 }
 
-export function SheetContent({ title, children }: SheetContentProps) {
+export function SheetContent({ title, children, variant = "sheet" }: SheetContentProps) {
   const { t } = useTranslation();
   return (
     <DialogPrimitive.Portal>
       <DialogPrimitive.Overlay className="hra-sheet-overlay" />
-      <DialogPrimitive.Content className="hra-sheet-content" aria-describedby={undefined}>
+      <DialogPrimitive.Content className="hra-sheet-content" data-variant={variant} aria-describedby={undefined}>
         <div className="hra-sheet-header">
           <DialogPrimitive.Title className="text-label hra-text-primary font-semibold">{title}</DialogPrimitive.Title>
           <DialogPrimitive.Close className="hra-sheet-close" aria-label={t("common.close", "Close")}>

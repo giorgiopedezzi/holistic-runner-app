@@ -331,3 +331,60 @@ an agent action. `.agents/workflows/refine-prompt.md` Phase 5 says these must NO
 generated Stories. Confirm with the human whether that automation is intentional; if not, the human
 should clear/reset these fields per-Story to their real launch choice before Gate 1, since a stale
 default could otherwise be mistaken for a deliberate launch decision.
+
+## HRA-311 outcome (In Review — not part of Epic HRA-305)
+
+HRA-311 ("Accessible pause inspection popup for Activity analysis") belongs to Epic HRA-289, not
+this document's Epic HRA-305 — its own Jira description carries a "Checkpoint update requirement"
+pointing at this file, so this entry exists to satisfy that instruction; it isn't part of the
+Overview & Trends chain above and doesn't change any of that chain's residual-risk list.
+
+New `garmin-dashboard/src/components/activity/PauseInspectionDialog.tsx`: a "Pauses (N)" action
+(desktop: inline row next to the chart's pause-threshold/outlier controls; phone: same row as the
+"Chart options" Sheet trigger), gated on `pauses.length > 0`, opening a read-only dialog listing
+every currently-detected pause once, in chronological order — number, formatted duration
+(`fmtPauseDuration`), distance at the pause (`fmtKm`, unit-preference-aware), and HR recovery as
+"start → end bpm · signed delta" or "Unavailable" when either bound is missing (never a fabricated
+0/NaN/Infinity). Desktop renders a compact semantic `<table>`; phone reflows into `.hra-fact-row`
+labelled rows (Container budget rule) — no nested per-pause cards either way.
+
+Rows come from a new `domain/pauses.ts#buildPauseInspectionRows(track, pauses)`, computed once in
+`ActivityDetailBody` from the exact same `track`/`pauses` the chart itself already uses (not a
+second calculation path) and passed straight through `ActivityChartSection` — so the dialog can
+never hold an independent/stale copy, and its count always equals the chart's own current
+pause-collection size under the active pause-threshold setting (outlier/anomaly toggles don't affect
+pause detection, so they don't affect this count either, matching existing chart behavior).
+
+`ui/Sheet.tsx`'s `SheetContent` gained an opt-in `variant?: "sheet" | "dialog"` prop (default
+`"sheet"`, so every existing caller — the chart's own "Chart options" Sheet included — is
+byte-for-byte unchanged): `variant="dialog"` keeps the phone bottom-sheet presentation unmodified but
+renders as a compact centered modal at ≥768px (`index.css`'s new
+`.hra-sheet-content[data-variant="dialog"]` rule, gated at the same breakpoint `useIsPhone.ts`'s
+`PHONE_MAX_WIDTH_PX` already uses), satisfying the Story's "desktop: compact modal / phone: bottom
+sheet" AC without a second dialog primitive. Full focus-trap/Escape/backdrop-dismiss/focus-return
+accessibility is inherited unchanged from the existing `@radix-ui/react-dialog`-based Sheet (already
+pinned generically in `ui-primitives.test.tsx`) — not re-implemented.
+
+**Verification:** `npx tsc --noEmit`: clean. Full suite: 593/594 passing — the sole failure is the
+same pre-existing `PlanInstancesSection.test.tsx` regenerate-confirm flake documented on every prior
+Story in this file, reproduced on this branch's unmodified base tip. New tests: `pauses.test.ts`
+gained 5 (19/19 passing) covering row order/shape, missing-HR → null (never fabricated), missing
+distance → null; new `PauseInspectionDialog.test.tsx`: 7/7 passing (no trigger at zero pauses, count
+label, desktop table order/content, "Unavailable" HR wording with no NaN/Infinity, phone row layout,
+metric/imperial distance formatting, Escape closes with no dialog-owned replay side effects — the
+dialog has no play/stop control of its own to affect). `npm run lint`: 0 errors (pre-existing
+warnings only, none in touched files). `npm run style:check`: PASSED, zero drift — the new table/rows
+use only existing Tailwind utilities and `hra-*` semantic classes plus one new theme-token-only CSS
+rule (no new style-exceptions entry needed). `vite build`: succeeds.
+
+**Not done in this pass** (flagged, not silently absorbed):
+- No live dev-server/viewport pass at 320/360/390/412/430px, phone landscape, or 200%-text-scaling —
+  same limitation every Story referencing this checkpoint file has already disclosed; the dialog's
+  scroll container (`.hra-sheet-content`'s existing `max-height`/`overflow-y-auto`) and the
+  `.hra-chip-action` trigger's existing 44×44px phone rule are structurally correct but not
+  device-verified.
+- No live screen-reader pass (VoiceOver/NVDA) — the table's `scope="col"/"row"` + `<caption>` and the
+  dialog's inherited Radix semantics are structurally correct but not device-verified.
+- Per-row delta between the dialog and the chart's own hover/tap HR-recovery readout was not
+  cross-checked live (both read the same underlying `nearestHr`/`pauses` source by construction, so
+  this is believed consistent, not independently verified against a running chart).

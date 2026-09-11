@@ -10,6 +10,7 @@ import type { TrackPoint } from "@/types/api";
 import {
   detectPauses, detectPausesFromTimestamps, detectPausesHeuristic,
   fmtPauseDuration, nearestHr, computeHrRecovery, clusterByProximity,
+  buildPauseInspectionRows,
 } from "./pauses";
 
 function pt(o: Partial<TrackPoint>): TrackPoint {
@@ -142,5 +143,42 @@ describe("nearestHr / computeHrRecovery", () => {
     const points = [pt({ heart_rate: 155 }), pt({ heart_rate: 160 }), pt({ heart_rate: 120 })];
     const flags = computeHrRecovery(points, [{ afterIndex: 1, durationSec: 300 }]);
     expect(flags).toEqual([{ afterIndex: 1, delta: 40 }]);
+  });
+});
+
+describe("buildPauseInspectionRows (HRA-311 — Pauses (N) dialog)", () => {
+  it("builds one row per pause, in the same chronological order, with distance + HR before/after/delta", () => {
+    const points = [
+      pt({ distance_m: 1000, heart_rate: 160 }),
+      pt({ distance_m: 1500, heart_rate: 120 }),
+      pt({ distance_m: 3000, heart_rate: 170 }),
+      pt({ distance_m: 3500, heart_rate: 130 }),
+    ];
+    const pauses = [{ afterIndex: 0, durationSec: 60 }, { afterIndex: 2, durationSec: 90 }];
+    const rows = buildPauseInspectionRows(points, pauses);
+    expect(rows).toEqual([
+      { afterIndex: 0, durationSec: 60, distanceM: 1000, hrBefore: 160, hrAfter: 120, hrDelta: 40 },
+      { afterIndex: 2, durationSec: 90, distanceM: 3000, hrBefore: 170, hrAfter: 130, hrDelta: 40 },
+    ]);
+  });
+  it("reports hrBefore/hrAfter/hrDelta as null (never fabricated) when HR is missing on both sides", () => {
+    const points = [pt({ distance_m: 1000 }), pt({ distance_m: 1500 })];
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45 }]);
+    expect(rows).toEqual([{ afterIndex: 0, durationSec: 45, distanceM: 1000, hrBefore: null, hrAfter: null, hrDelta: null }]);
+  });
+  it("reports hrDelta as null when only one side of HR is known", () => {
+    const points = [pt({ distance_m: 1000, heart_rate: 160 }), pt({ distance_m: 1500 })];
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45 }]);
+    expect(rows[0].hrBefore).toBe(160);
+    expect(rows[0].hrAfter).toBeNull();
+    expect(rows[0].hrDelta).toBeNull();
+  });
+  it("reports distanceM as null when no point around the pause has a known distance", () => {
+    const points = [pt({ heart_rate: 160 }), pt({ heart_rate: 120 })];
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45 }]);
+    expect(rows[0].distanceM).toBeNull();
+  });
+  it("returns [] for no pauses", () => {
+    expect(buildPauseInspectionRows([pt({})], [])).toEqual([]);
   });
 });

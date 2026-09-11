@@ -144,3 +144,42 @@ export function computeHrRecovery(points: TrackPoint[], pauses: Pause[]): HrReco
   }
   return flags;
 }
+
+function nearestDistance(points: TrackPoint[], startIdx: number, dir: 1 | -1): number | null {
+  for (let i = startIdx; i >= 0 && i < points.length; i += dir) {
+    if (points[i].distance_m != null) return points[i].distance_m;
+  }
+  return null;
+}
+
+// HRA-311: one row per pause for the "Pauses (N)" inspection dialog — built
+// from the exact same `pauses` (afterIndex order, already chronological by
+// construction — see detectPausesFromTimestamps/detectPausesHeuristic) and
+// `points` the chart itself uses, so the dialog can never carry an
+// independent/stale copy. hrBefore/hrAfter reuse nearestHr the same way
+// computeHrRecovery does, but keep both raw values (not just the delta) —
+// the dialog's AC needs "start HR → recovered HR" displayed, not only the
+// magnitude computeHrRecovery/HrRecoveryFlag report.
+export interface PauseInspectionRow {
+  afterIndex: number;
+  durationSec: number;
+  distanceM: number | null;
+  hrBefore: number | null;
+  hrAfter: number | null;
+  hrDelta: number | null;
+}
+
+export function buildPauseInspectionRows(points: TrackPoint[], pauses: Pause[]): PauseInspectionRow[] {
+  return pauses.map(p => {
+    const hrBefore = nearestHr(points, p.afterIndex, -1);
+    const hrAfter = nearestHr(points, p.afterIndex + 1, 1);
+    return {
+      afterIndex: p.afterIndex,
+      durationSec: p.durationSec,
+      distanceM: nearestDistance(points, p.afterIndex, -1),
+      hrBefore,
+      hrAfter,
+      hrDelta: hrBefore != null && hrAfter != null ? hrBefore - hrAfter : null,
+    };
+  });
+}
