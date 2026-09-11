@@ -336,6 +336,7 @@
   "activity.metric.altitude_m": "標高",
   "activity.metric.cadence": "ケイデンス",
   "activity.metric.power": "パワー",
+  "activity.metric.stamina": "スタミナ",
   "activity.metricShort.heart_rate": "HR",
   "activity.metricShort.altitude_m": "高度",
   "activity.metricShort.cadence": "Cad",

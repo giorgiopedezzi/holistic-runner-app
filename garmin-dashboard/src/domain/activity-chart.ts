@@ -12,26 +12,21 @@ import { getUnitSystem, mToFt, kmhToMph, paceKmToMi, speedUnitLabel, paceUnitLab
 import { fmtKm } from "@/utils/fmt";
 import type { Pause } from "./pauses";
 
-export type OptionalMetricKey = "heart_rate" | "altitude_m" | "cadence" | "power";
+export type OptionalMetricKey = "heart_rate" | "altitude_m" | "cadence" | "power" | "stamina";
 export type MetricKey  = "speed" | OptionalMetricKey;
 export type SpeedMode  = "speed" | "pace";
 export type XMode      = "distance" | "time";
 
-// "stamina" is deliberately NOT part of the MetricKey/OptionalMetricKey union
-// yet (HRA-314). Those types are the single source of truth shared.ts's
-// exhaustive Records (METRIC_DEFS/METRIC_LABEL_SHORT/AXIS_SIDE) key off —
-// widening them here would force this Story to also pick stamina's chart
-// color/axis side, which is explicitly HRA-316's job ("METRIC_DEFS (new
-// validated color)... AXIS_SIDE"). Instead the three domain functions below
-// independently accept the extra "stamina" key via a union widened only at
-// the call site, so HRA-315 (readout row) can already call them; HRA-316
-// later folds "stamina" into the real MetricKey union for the chart/toggle.
-// Exported (HRA-315) so the readout row's own call sites (ActivityDetailBody's
-// buildChartData call, RunnerReadout's metrics prop) share this one widened
-// type instead of each re-declaring `MetricKey | "stamina"` locally.
-export type MetricKeyWithStamina = MetricKey | "stamina";
+// "stamina" joined the real MetricKey/OptionalMetricKey union here (HRA-316)
+// — it was deliberately excluded through HRA-314/315 because shared.ts's
+// exhaustive Records (METRIC_DEFS/METRIC_LABEL_SHORT/AXIS_SIDE) key off this
+// union, and picking stamina's real chart color/axis side was this Story's
+// job. The former `MetricKeyWithStamina = MetricKey | "stamina"` widened-only-
+// at-the-call-site type (HRA-315) is gone now that the real union already
+// includes "stamina" — every call site below (and RunnerReadout's `metrics`
+// prop, ActivityDetailBody's buildChartData call) uses plain MetricKey.
 
-export function metricUnit(key: MetricKeyWithStamina, speedMode: SpeedMode): string {
+export function metricUnit(key: MetricKey, speedMode: SpeedMode): string {
   switch (key) {
     case "heart_rate": return "bpm";
     case "speed":       return speedMode === "speed" ? speedUnitLabel() : paceUnitLabel();
@@ -44,7 +39,7 @@ export function metricUnit(key: MetricKeyWithStamina, speedMode: SpeedMode): str
   }
 }
 
-export function metricValue(p: TrackPoint, key: MetricKeyWithStamina, speedMode: SpeedMode): number | null {
+export function metricValue(p: TrackPoint, key: MetricKey, speedMode: SpeedMode): number | null {
   switch (key) {
     case "heart_rate": return p.heart_rate;
     case "altitude_m":  return p.altitude_m == null ? null : (getUnitSystem() === "imperial" ? mToFt(p.altitude_m) : p.altitude_m);
@@ -76,7 +71,7 @@ export function metricValue(p: TrackPoint, key: MetricKeyWithStamina, speedMode:
 // decimal. Unlike fmt.ts's fmtPace, this does NOT convert units: metricValue()
 // already returns the value in the active unit, so converting again here would
 // double-convert.
-export function fmtMetricValue(key: MetricKeyWithStamina, v: number, speedMode: SpeedMode): string {
+export function fmtMetricValue(key: MetricKey, v: number, speedMode: SpeedMode): string {
   if (key === "speed" && speedMode === "pace") {
     const m = Math.floor(v);
     const s = Math.round((v - m) * 60);
@@ -139,14 +134,7 @@ export function fmtElapsedClock(sec: number): string {
 export interface ChartRow { x: number; realX: number | null; pauseDurationSec?: number; pauseAfterIndex?: number; [key: string]: number | string | null | undefined; }
 
 export function buildChartData(
-  // `metrics` accepts the same widened MetricKeyWithStamina as
-  // metricValue/metricUnit/fmtMetricValue above (HRA-315: the readout row's
-  // caller passes effectiveActive + "stamina" so ChartRow.stamina exists for
-  // RunnerReadout to render) — this row-builder itself is metric-agnostic
-  // (`row[key] = metricValue(...)`), so widening its param here is the same
-  // additive, call-site-only pattern, not a change to the real MetricKey
-  // union or to what the CHART/toggle system (axisDomain*, AXIS_SIDE) uses.
-  points: TrackPoint[], pauses: Pause[], xMode: XMode, metrics: MetricKeyWithStamina[], speedMode: SpeedMode,
+  points: TrackPoint[], pauses: Pause[], xMode: XMode, metrics: MetricKey[], speedMode: SpeedMode,
   outlierMask: boolean[] = [],
 ): ChartRow[] {
   // Time mode uses real wall-clock elapsed time (timestamp_unix minus the

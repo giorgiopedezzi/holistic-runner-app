@@ -97,7 +97,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
   // shows it (it's always active), a second single-metric copy is redundant.
   // Heart rate's card starts open to match it starting active by default.
   const [showCard, setShowCard] = useState<Record<MetricKey, boolean>>({
-    speed: false, heart_rate: true, altitude_m: false, cadence: false, power: false,
+    speed: false, heart_rate: true, altitude_m: false, cadence: false, power: false, stamina: false,
   });
 
   // `ignore` guards against a stale response landing after a newer request
@@ -169,18 +169,16 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
     altitude_m: track.some(p => p.altitude_m != null),
     cadence:    track.some(p => p.cadence != null),
     power:      track.some(p => p.power != null),
+    // HRA-316: false for Strava-sourced activities and un-reprocessed old
+    // Garmin activities (fit-parser.ts's stamina field never backfilled),
+    // same availableMetrics gate every other optional metric already uses —
+    // this is what keeps the toggle from appearing for those activities
+    // (AC3), with no separate mechanism needed.
+    stamina:    track.some(p => p.stamina != null),
   }), [track]);
 
   // Speed/Pace is always active — the mandatory first metric.
   const effectiveActive = useMemo((): MetricKey[] => ["speed", ...activeMetrics], [activeMetrics]);
-
-  // HRA-315: stamina has no toggle of its own yet (that's HRA-316's chart/
-  // toggle work) — the readout row shows it unconditionally whenever this
-  // activity's track actually has it, alongside whichever optional metrics
-  // are active. Only affects chartData/RunnerReadout's own metrics array
-  // (below); effectiveActive itself stays untouched since the real chart
-  // axes/toggle system still only knows the real MetricKey union.
-  const staminaAvailable = useMemo(() => track.some(p => p.stamina != null), [track]);
 
   // Outlier filtering only ever touches speed_ms/cadence — every other field
   // (position, timestamps, heart_rate...) passes through unchanged, so pause
@@ -212,14 +210,13 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
   }, [displayTrack, speedMode]);
 
   const pauses = useMemo(() => detectPauses(track, pauseThreshold), [track, pauseThreshold]);
-  // Widened with "stamina" (MetricKeyWithStamina, not the real MetricKey —
-  // see activity-chart.ts's own comment) only for this call, so
-  // ChartRow.stamina exists for RunnerReadout to render; every other
-  // buildChartData consumer (axes, toggle system) still only ever sees
-  // effectiveActive's real MetricKey values.
+  // HRA-316: stamina is now a real, toggleable OptionalMetricKey, so it
+  // reaches ChartRow the same way every other optional metric does — via
+  // effectiveActive whenever the user has it active — with no separate
+  // widened-metrics-list special case.
   const chartData = useMemo(
-    () => buildChartData(displayTrack, pauses, xMode, staminaAvailable ? [...effectiveActive, "stamina"] : effectiveActive, speedMode, speedOutlierMask),
-    [displayTrack, pauses, xMode, effectiveActive, speedMode, speedOutlierMask, staminaAvailable],
+    () => buildChartData(displayTrack, pauses, xMode, effectiveActive, speedMode, speedOutlierMask),
+    [displayTrack, pauses, xMode, effectiveActive, speedMode, speedOutlierMask],
   );
   const hrRecovery = useMemo(() => computeHrRecovery(track, pauses), [track, pauses]);
   // Aligned 1:1 with `pauses` (both in afterIndex order) — chartData produces

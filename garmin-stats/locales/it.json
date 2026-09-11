@@ -392,6 +392,7 @@
   "activity.metric.altitude_m": "Altitudine",
   "activity.metric.cadence": "Cadenza",
   "activity.metric.power": "Potenza",
+  "activity.metric.stamina": "Resistenza",
   "activity.metricShort.heart_rate": "FC",
   "activity.metricShort.altitude_m": "Alt",
   "activity.metricShort.cadence": "Cad",

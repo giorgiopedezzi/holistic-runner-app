@@ -67,15 +67,30 @@ export const SPEED_AXIS_TEXT_COLOR = "#20c17b"; // ~6.7:1 vs --bg-card
 
 // speed/heart_rate/altitude_m use the app's fixed semantic data colors
 // (HRA-94/97: --data-pace, --data-hr, --data-elev — same hex as before, now
-// the token that's never allowed to vary with the user's accent). cadence
-// and power have no fixed semantic token in that set (only pace/HR/
+// the token that's never allowed to vary with the user's accent). cadence,
+// power, and stamina have no fixed semantic token in that set (only pace/HR/
 // elevation/weight/fat/muscle do) and keep their own literal colors.
+// Stamina's color (HRA-316): a teal (#0d9488), chosen to sit visually
+// distinct from every other metric already on this chart (HR red, Speed
+// blue-steel, Cadence orange, Power purple) — no green is used elsewhere in
+// this set, avoiding confusion with --accent-green (success) or
+// --data-muscle. Contrast-checked (WCAG relative-luminance formula) as a
+// stroke/tick color against the darkest --bg-card (#0A0C10, dark-metal
+// theme): ~5.2:1, comfortably above cadence's own ~6.15:1 precedent and the
+// general ~4.5:1 legibility bar; against the lightest --bg-card (#FFFFFF,
+// light themes) it measures ~3.75:1, better than cadence's own ~3.18:1
+// there — same category of literal, theme-invariant color as cadence/power,
+// not a new pattern. This Story's own stamina axis never renders visibly
+// (see MainOverlayChart's per-metric YAxis `hide` rule below, unchanged),
+// so the color is load-bearing only for the <Line> stroke and the toggle's
+// own chip/legend swatch, not for on-chart tick-label contrast.
 export const METRIC_DEFS: Record<MetricKey, { label: string; color: string }> = {
   speed:      { label: "Speed",      color: "var(--data-pace)" },
   heart_rate: { label: "Heart rate", color: "var(--data-hr)" },
   altitude_m: { label: "Altitude",   color: "var(--data-elev)" },
   cadence:    { label: "Cadence",    color: "#d97706" },
   power:      { label: "Power",      color: "#a855f7" },
+  stamina:    { label: "Stamina",    color: "#0d9488" },
 };
 // Altitude dropped from the toggleable set (dashboard design-system rework,
 // "reorganize activity layout") — RunnerTerrain already visualizes the
@@ -84,30 +99,40 @@ export const METRIC_DEFS: Record<MetricKey, { label: string; color: string }> = 
 // line/axis toggle here was redundant. altitude_m itself is untouched at
 // the domain/type level (MetricKey, METRIC_DEFS, axis helpers) — only this
 // UI-facing list no longer offers it as a chart toggle.
-export const OPTIONAL_METRIC_ORDER: OptionalMetricKey[] = ["heart_rate", "cadence", "power"];
+// Stamina (HRA-316) joins at the end — same toggle mechanism as HR/Cadence/
+// Power (MetricRow/MetricLegendChip, gated by availableMetrics), no
+// mobile-specific treatment ("just another metric" per the Story's own
+// instruction).
+export const OPTIONAL_METRIC_ORDER: OptionalMetricKey[] = ["heart_rate", "cadence", "power", "stamina"];
 
 // Compact labels for the runner's mouse-follow readout — "HR", not "Heart
 // rate", to keep the single-line pill short. speed's own real label is
 // picked separately (speed vs pace, per speedMode); this entry only exists
-// so the Record's key set stays complete against MetricKey.
+// so the Record's key set stays complete against MetricKey. "Sta" for
+// stamina (HRA-316) matches the i18n default already shipped in HRA-315
+// (`activity.metricShort.stamina`) — this Record is now the single source
+// of truth for it too; RunnerReadout.tsx's own local stamina fallback
+// (label + color) was removed as redundant once this Record covered it.
 export const METRIC_LABEL_SHORT: Record<MetricKey, string> = {
-  speed: "speed", heart_rate: "HR", altitude_m: "Alt", cadence: "Cad", power: "Pwr",
+  speed: "speed", heart_rate: "HR", altitude_m: "Alt", cadence: "Cad", power: "Pwr", stamina: "Sta",
 };
 
 // Speed/Pace (the one mandatory metric) is ALONE on the left — every
-// optional metric (heart_rate, altitude_m, cadence, power) goes right, no
-// exceptions. Earlier versions only isolated Speed from whichever single
-// metric was being compared against at the time (first from all optional
-// metrics generically, then just from HR once HR moved right) — but leaving
-// any other optional metric sharing Speed's side meant toggling *that* one
-// on could reintroduce the same "Speed shares a side with a
+// optional metric (heart_rate, altitude_m, cadence, power, stamina) goes
+// right, no exceptions. Earlier versions only isolated Speed from whichever
+// single metric was being compared against at the time (first from all
+// optional metrics generically, then just from HR once HR moved right) —
+// but leaving any other optional metric sharing Speed's side meant toggling
+// *that* one on could reintroduce the same "Speed shares a side with a
 // dynamically-appearing axis" situation that caused it to go missing
 // before. Giving Speed sole, unconditional ownership of the left side
 // removes that risk under every toggle combination, not just the default
 // one, while still keeping Speed and HR (the two axes visible by default)
-// on opposite sides as asked.
+// on opposite sides as asked. Stamina (HRA-316) joins the existing
+// right-side group unconditionally — no change to which metrics share
+// which side beyond that one addition, per the Story's own scope limit.
 export const AXIS_SIDE: Record<MetricKey, "left" | "right"> = {
-  speed: "left", heart_rate: "right", altitude_m: "right", cadence: "right", power: "right",
+  speed: "left", heart_rate: "right", altitude_m: "right", cadence: "right", power: "right", stamina: "right",
 };
 
 // Same yellow gradient/cap-based scheme as pause flags — a drop (recovery)
