@@ -823,6 +823,31 @@ describe("PlanTemplatesSection — AI-assisted DSL generation (HRA-329)", () => 
     expect(call).toBeDefined();
     const sentBody = JSON.parse((call![1] as RequestInit).body as string);
     expect(sentBody).toMatchObject({ text: "Week 1: 5km easy", event: "5k" });
+    // Never auto-saves/activates — no create/update/approve call fires.
+    expect(fetchMock.mock.calls.some(([input, init]) => {
+      const method = (init as RequestInit | undefined)?.method ?? "GET";
+      const url = String(input);
+      return url.includes("/api/v1/plan-templates") && !url.includes("/ai-generate") && !url.includes("/generate") && method !== "GET";
+    })).toBe(false);
+  });
+
+  it("a syntactically invalid AI result is placed in the DSL editor with the validator's warnings shown, never discarded (AC3)", async () => {
+    installFetch({
+      "POST /api/v1/plan-templates/ai-generate": json({ dsl: "not valid dsl !!!", model: "test-model", generated_at: "2026-09-12T00:00:00Z" }),
+      "POST /api/v1/plan-templates/generate": problem(422, "DSL failed to parse."),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    await pickEvent("5k");
+    fireEvent.click(screen.getByRole("button", { name: "Generate DSL with AI" }));
+
+    // Placed in the editor (not discarded) and the Workout DSL stage opens
+    // showing the existing validator's own error — same path a manual paste
+    // of invalid DSL already takes.
+    expect(await screen.findByLabelText("Workout plan text")).toHaveValue("not valid dsl !!!");
+    expect(await screen.findByText("DSL failed to parse.")).toBeInTheDocument();
   });
 
   it("a second click while a request is in flight is a no-op, not a second billable call", async () => {

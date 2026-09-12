@@ -180,6 +180,13 @@ test("missing provider config surfaces as 503, not a generic 500", async () => {
   }
 });
 
+// A real HTTP-level timeout test would need to fake global timers, which
+// also breaks the real local http test server's own timer-dependent
+// internals (observed hang). The "timeout" -> 504 mapping is a trivial,
+// visually-verifiable one-line switch case in mapPlanTemplateAiError, and
+// PlanTemplateAiError's own "timeout" code generation is already unit-tested
+// in test/integrations/plan-template-ai.test.ts — covered there instead.
+
 test("a network failure surfaces as 502", async () => {
   mockFetch(async () => { throw new TypeError("fetch failed"); });
   const server = await startTestServer();
