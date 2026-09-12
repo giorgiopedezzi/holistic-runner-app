@@ -805,10 +805,13 @@ export interface TemplateDayRowProps {
   // rather than a materialize-then-a-second-click. Every other caller omits
   // it (defaults to collapsed, unchanged from before this Story).
   defaultExpanded?: boolean;
+  // Agenda already supplies the day number in its gutter. This is a
+  // presentation-only override; `day.dsl` is never parsed, changed, or saved.
+  displayLabel?: string;
 }
 
 export function TemplateDayRow({
-  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit, highlighted, defaultExpanded,
+  day, onEdit, readOnlyDays, dayRef, onDaySwap, offsetUnit, highlighted, defaultExpanded, displayLabel,
 }: TemplateDayRowProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(defaultExpanded ?? false);
@@ -944,7 +947,7 @@ export function TemplateDayRow({
   return (
     <div {...drag.handlers} className={drag.isDragOver ? "hra-swap-drop-target" : undefined} data-swappable={drag.swappable || undefined}>
       <AccordionCard
-        title={<TitleRow label={dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
+        title={<TitleRow label={displayLabel ?? dayLabel(day)} summary={fmtDistance(day.distance, t)} hasWarning={day.needs_review} note={day.notes} t={t} />}
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
         className={highlighted ? "hra-edited-row-highlight" : undefined}
       >

@@ -83,7 +83,8 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
     fireEvent.click(await screen.findByText("New template", { selector: "span" }));
 
     expect(await screen.findByLabelText("Original text")).toHaveValue("Week 1: 5km easy"); // Plan text expanded, content preserved
-    expect(screen.getByLabelText("Generated prompt")).toBeInTheDocument(); // Conversion prompt also expanded (a prompt already exists)
+    fireEvent.click(pipelineHeader(/Conversion prompt/));
+    expect(screen.getByLabelText("Generated prompt")).toBeInTheDocument();
   });
 
   it("an existing template (already has DSL) opens with Workout DSL expanded, Plan text/Conversion prompt collapsed", async () => {
@@ -98,7 +99,7 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
     // Headers stay reachable — clicking one opens it without touching the others.
     fireEvent.click(pipelineHeader(/Plan text/));
     expect(await screen.findByLabelText("Original text")).toBeInTheDocument();
-    expect(screen.getByLabelText("Workout plan text")).toBeInTheDocument(); // Workout DSL untouched — both can be open at once
+    expect(screen.queryByLabelText("Workout plan text")).not.toBeInTheDocument();
   });
 });
 
@@ -479,8 +480,8 @@ describe("PlanTemplatesSection — Agenda view (HRA-283/HRA-285)", () => {
 
   it("a declared day reuses the List view's own TemplateDayRow — same collapsed title", async () => {
     await openAgendaView();
-    expect(screen.getByText("D1: 5km @ RG")).toBeInTheDocument();
-    expect(screen.getByText("D3: 4x1000m @ RG-20")).toBeInTheDocument();
+    expect(screen.getByText("5km @ RG")).toBeInTheDocument();
+    expect(screen.getByText("4x1000m @ RG-20")).toBeInTheDocument();
   });
 
   it("an undeclared D-number shows a Rest day summary, not a gap, and viewing it alone does not touch dsl_source", async () => {
@@ -531,30 +532,30 @@ describe("PlanTemplatesSection — Agenda view (HRA-283/HRA-285)", () => {
 
   it("dragging one declared day onto another swaps their content, keeping each D-number in place (AC6)", async () => {
     await openAgendaView();
-    const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
-    const day3 = dayTitle("D3: 4x1000m @ RG-20").closest('[data-swappable="true"]') as HTMLElement;
+    const day1 = dayTitle("5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
+    const day3 = dayTitle("4x1000m @ RG-20").closest('[data-swappable="true"]') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
 
     fireEvent.dragStart(day1, { dataTransfer });
     fireEvent.drop(day3, { dataTransfer });
 
-    await waitFor(() => expect(dayTitle("D1: 4x1000m @ RG-20")).toBeInTheDocument());
-    expect(dayTitle("D3: 5km @ RG")).toBeInTheDocument();
+    await waitFor(() => expect(dayTitle("4x1000m @ RG-20")).toBeInTheDocument());
+    expect(dayTitle("5km @ RG")).toBeInTheDocument();
     const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
     expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 4x1000m @ RG-20", "D3: 5km @ RG"].join("\n"));
   });
 
   it("dropping a declared day onto an undeclared slot materializes it and moves the content there, leaving REST behind (AC5/AC6)", async () => {
     await openAgendaView();
-    const day1 = dayTitle("D1: 5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
+    const day1 = dayTitle("5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
     const undeclaredDay2 = screen.getAllByText("Rest day")[0].closest('[role="button"]') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
 
     fireEvent.dragStart(day1, { dataTransfer });
     fireEvent.drop(undeclaredDay2, { dataTransfer });
 
-    await waitFor(() => expect(dayTitle("D2: 5km @ RG")).toBeInTheDocument()); // the dragged workout moved to D2
-    expect(dayTitle("D1: REST")).toBeInTheDocument(); // origin left as REST
+    await waitFor(() => expect(dayTitle("5km @ RG")).toBeInTheDocument()); // the dragged workout moved to D2
+    expect(dayTitle("REST")).toBeInTheDocument(); // origin left as REST
     const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
     expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: REST", "D2: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n"));
   });

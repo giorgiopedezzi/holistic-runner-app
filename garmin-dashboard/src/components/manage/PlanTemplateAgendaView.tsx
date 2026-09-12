@@ -75,6 +75,13 @@ const TEMPLATE_AGENDA_EVENTS: TemplateCalendarEvent[] = DAY_NUMBERS.map(n => ({
 
 function noopNavigate() {}
 
+// Agenda has a separate day-number gutter, so repeating the persisted D-line
+// prefix adds noise. This deliberately only changes display text: persistence,
+// parser and all editor callbacks still receive `day.dsl` verbatim.
+export function agendaWorkoutLabel(rawDsl: string): string {
+  return rawDsl.replace(/^\s*D\d+\s*:\s*/i, "");
+}
+
 // Reuses the exact icon + i18n key TemplateDayRow's own Structured view shows
 // for a real REST day (STATE_DAY_ICONS.rest / STATE_DAY_LABEL_KEYS.rest) —
 // an undeclared slot is presented as "what this day will read as if you
@@ -200,6 +207,7 @@ export function PlanTemplateAgendaView({ ownerName, sections, onDayEdit, onDaySw
           offsetUnit={offsetUnit}
           highlighted={highlighted}
           defaultExpanded={justMaterializedDay === dayNumber}
+          displayLabel={agendaWorkoutLabel(week.days[dayIndex].dsl)}
         />
       );
     },

@@ -69,7 +69,7 @@ const EMPTY_EDITOR: EditorState = { dslSource: "", sections: [], offsetUnit: "s/
 interface PipelineExpansion { text: boolean; prompt: boolean; dsl: boolean }
 function computeDefaultExpansion(hasText: boolean, hasPrompt: boolean, hasDsl: boolean): PipelineExpansion {
   if (hasDsl) return { text: false, prompt: false, dsl: true };
-  if (hasText) return { text: true, prompt: hasPrompt, dsl: false };
+  if (hasText || hasPrompt) return { text: true, prompt: false, dsl: false };
   return { text: true, prompt: false, dsl: false };
 }
 
@@ -340,6 +340,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [dslExpanded, setDslExpanded] = useState(false);
 
+  function selectPipeline(stage: "text" | "prompt" | "dsl") {
+    setTextExpanded(stage === "text");
+    setPromptExpanded(stage === "prompt");
+    setDslExpanded(stage === "dsl");
+  }
+
   // HRA-140: the active row's own "last saved/loaded" snapshot — what
   // isEditorDirty() below diffs the live fields against. `savedDslSource`
   // above already served this exact role for dslSource (canApprove already
@@ -413,7 +419,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // catch, including the debounced auto-regenerate path), not just the
   // initial open, so a later edit that turns out invalid also re-exposes it.
   useEffect(() => {
-    if (genError) setDslExpanded(true);
+    if (genError) selectPipeline("dsl");
   }, [genError]);
 
   // Warn before a refresh/tab close discards unsaved edits — either the
@@ -622,7 +628,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // against an LLM — this app never calls an LLM API itself.
   function onGeneratePrompt() {
     setGeneratedPrompt(fillAiPromptTemplate(originalText, language, event, name, distanceUnit));
-    setPromptExpanded(true);
+    selectPipeline("prompt");
   }
 
   // Same prompt, but with the <training_plan> body replaced by a fixed
@@ -631,7 +637,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // Original text filled in, since the AI is meant to read the attachment.
   function onGeneratePromptForAttachment() {
     setGeneratedPrompt(fillAiPromptTemplate(ATTACHMENT_PLACEHOLDER, language, event, name, distanceUnit));
-    setPromptExpanded(true);
+    selectPipeline("prompt");
   }
 
   async function onCopyPrompt() {
@@ -1172,7 +1178,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         <div className="hra-plan-instance-section-gap flex flex-col gap-2">
           <AccordionCard
             title={pipelineSectionTitle(t("manage.planTemplates.pipeline.planTextHeader", "1 · Plan text"), planTextStateLabel())}
-            expanded={textExpanded} onToggle={() => setTextExpanded(v => !v)}
+            expanded={textExpanded} onToggle={() => selectPipeline("text")}
           >
             {/* HRA-200: paste a messy real-world plan, generate a
                 ready-to-copy LLM prompt (built from the tested base prompt),
@@ -1230,7 +1236,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
           <AccordionCard
             title={pipelineSectionTitle(t("manage.planTemplates.pipeline.conversionPromptHeader", "2 · Conversion prompt"), conversionPromptStateLabel())}
-            expanded={promptExpanded} onToggle={() => setPromptExpanded(v => !v)}
+            expanded={promptExpanded} onToggle={() => selectPipeline("prompt")}
           >
             <div className="flex flex-col gap-2.5">
               <p className="hra-text-secondary text-meta m-0">
@@ -1261,7 +1267,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
 
           <AccordionCard
             title={pipelineSectionTitle(t("manage.planTemplates.pipeline.workoutDslHeader", "3 · Workout DSL"), workoutDslStateLabel())}
-            expanded={dslExpanded} onToggle={() => setDslExpanded(v => !v)}
+            expanded={dslExpanded} onToggle={() => selectPipeline("dsl")}
           >
             <div className="flex flex-col gap-2.5">
               <p className="hra-text-secondary text-meta m-0">
