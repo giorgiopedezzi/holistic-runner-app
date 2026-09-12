@@ -99,6 +99,9 @@ const M_PER_MILE = 1609.34;
 interface Draft {
   name: string; event: EventType | ""; distanceValue: string; distanceUnit: DistanceUnit; dslSource: string;
   originalText: string; language: string; generatedPrompt: string | null;
+  // HRA-328: carried so reopening a stashed draft reproduces the exact same
+  // stale indicator it had when collapsed, rather than losing it.
+  promptStale: boolean; dslStale: boolean;
 }
 // A row's identity: an existing template's real id, or "new" for the
 // not-yet-saved draft row. String-keyed in `drafts` (object keys are always
@@ -312,6 +315,21 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [language, setLanguage] = useState("");
   const [generatedPrompt, setGeneratedPrompt] = useState<string | null>(null);
 
+  // HRA-328: source-file upload (.txt/.csv/.pdf -> server-side extraction ->
+  // originalText) progress/error — purely transient UI feedback, never
+  // stashed in a Draft (there's nothing to restore mid-upload).
+  const [sourceUploading, setSourceUploading] = useState(false);
+  const [sourceUploadError, setSourceUploadError] = useState<string | null>(null);
+  // HRA-328 AC4: whether a generated prompt/DSL predates the plan text
+  // currently in the box, because a new source file was uploaded after they
+  // were produced — surfaced via the pipeline step labels below, same
+  // "derivable status text" convention HRA-238 established (see
+  // planTextStateLabel/conversionPromptStateLabel/workoutDslStateLabel).
+  // Never auto-clears the stale artifacts themselves (AC4's own "without
+  // silently discarding them").
+  const [promptStale, setPromptStale] = useState(false);
+  const [dslStale, setDslStale] = useState(false);
+
   // HRA-238: independent open/collapsed state for the three pipeline
   // sections (Plan text / Conversion prompt / Workout DSL) — NOT a
   // single-expand accordion like the outer template row: the user may need
@@ -381,6 +399,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setBaselineName(""); setBaselineEvent(""); setBaselineDistanceValue("");
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     setOriginalText(""); setLanguage(""); setGeneratedPrompt(null);
+    setPromptStale(false); setDslStale(false); setSourceUploading(false); setSourceUploadError(null);
     setLastPatchedLine(null); setLastEditedRef(null);
     // HRA-238: a reset row is always blank (no text, no prompt, no DSL) —
     // the "new empty template" default: Plan text expanded, the other two
@@ -535,6 +554,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setName(draft.name); setEvent(draft.event);
     setDistanceValue(draft.distanceValue); setDistanceUnit(draft.distanceUnit);
     setOriginalText(draft.originalText); setLanguage(draft.language); setGeneratedPrompt(draft.generatedPrompt);
+    setPromptStale(draft.promptStale); setDslStale(draft.dslStale);
     // HRA-238: a stashed draft carries its own text/prompt/DSL state,
     // unlike startEdit's always-blank text/prompt — recompute defaults from
     // what this specific draft actually holds.
@@ -562,7 +582,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     if (activeKey == null) return;
     const key = String(activeKey);
     if (isEditorDirty()) {
-      setDrafts(prev => ({ ...prev, [key]: { name, event, distanceValue, distanceUnit, dslSource: editor.dslSource, originalText, language, generatedPrompt } }));
+      setDrafts(prev => ({ ...prev, [key]: { name, event, distanceValue, distanceUnit, dslSource: editor.dslSource, originalText, language, generatedPrompt, promptStale, dslStale } }));
     } else {
       setDrafts(prev => { if (!(key in prev)) return prev; const next = { ...prev }; delete next[key]; return next; });
     }
@@ -599,6 +619,62 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setEditor({ dslSource: text, sections: [], offsetUnit: "s/km" });
     setPlanWarnings([]);
     setLastPatchedLine(null); setLastEditedRef(null);
+    // HRA-328: a direct DSL-text upload/edit is itself the user addressing
+    // whatever staleness a prior source-file upload flagged for the DSL.
+    setDslStale(false);
+  }
+
+  // HRA-328: extension -> the backend's SourceType enum ("txt"/"csv"/"pdf"),
+  // sniffed client-side purely to pick the request field and reject an
+  // obviously-unsupported file before spending a round trip — the backend
+  // itself re-sniffs the real bytes regardless of what's sent (HRA-327),
+  // so this is a convenience check, not the source of truth.
+  function sourceTypeFromFileName(fileName: string): "txt" | "csv" | "pdf" | null {
+    const ext = fileName.toLowerCase().split(".").pop();
+    if (ext === "txt" || ext === "csv" || ext === "pdf") return ext;
+    return null;
+  }
+
+  function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // readAsDataURL yields "data:<mime>;base64,<data>" — only the part
+        // after the first comma is the actual base64 payload the backend
+        // controller decodes.
+        const result = reader.result as string;
+        resolve(result.slice(result.indexOf(",") + 1));
+      };
+      reader.onerror = () => reject(reader.error ?? new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  // HRA-328: Testo del piano's own upload control — extracts .txt/.csv/.pdf
+  // server-side (HRA-327) and populates originalText for the user to review/
+  // correct, never editor.dslSource (that's the separate Workout DSL upload
+  // above, unchanged). Never calls generatePromptFrom/AI (AC3). On success,
+  // marks an already-generated prompt/DSL stale (AC4) without touching their
+  // content (never discarded — the user can still copy/use/regenerate them).
+  async function onSourceFileUpload(file: File) {
+    setSourceUploadError(null);
+    const sourceType = sourceTypeFromFileName(file.name);
+    if (!sourceType) {
+      setSourceUploadError(t("manage.planTemplates.sourceUpload.unsupportedFormat", "Unsupported file format — only .txt, .csv, and .pdf are supported."));
+      return;
+    }
+    setSourceUploading(true);
+    try {
+      const contentBase64 = await fileToBase64(file);
+      const { sourceText } = await api.sourceFiles.extract({ fileName: file.name, sourceType, contentBase64 });
+      if (generatedPrompt != null) setPromptStale(true);
+      if (editor.dslSource.trim() !== "") setDslStale(true);
+      setOriginalText(sourceText);
+    } catch (e) {
+      setSourceUploadError(e instanceof Error ? e.message : t("manage.planTemplates.sourceUpload.failed", "Failed to extract text from this file."));
+    } finally {
+      setSourceUploading(false);
+    }
   }
 
   // HRA-326: composes the AI-transcription prompt via the backend's
@@ -614,6 +690,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         event_name: name.trim() || undefined, distance_m: distanceM, unit: distanceUnit,
       });
       setGeneratedPrompt(prompt);
+      setPromptStale(false);
       selectPipeline("prompt");
     } catch (e) {
       notify(e instanceof Error ? e.message : t("manage.planTemplates.aiPrompt.generatePromptFailed", "Failed to generate the conversion prompt."), "error");
@@ -996,12 +1073,18 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     return t("manage.planTemplates.pipeline.stateReady", "Ready");
   }
   function conversionPromptStateLabel(): string {
-    return generatedPrompt != null
-      ? t("manage.planTemplates.pipeline.stateGenerated", "Generated")
-      : t("manage.planTemplates.pipeline.stateNotGenerated", "Not generated");
+    if (generatedPrompt == null) return t("manage.planTemplates.pipeline.stateNotGenerated", "Not generated");
+    // HRA-328 AC4: a new source-file upload marks an already-generated
+    // prompt stale, without discarding it — same derivable-status-text
+    // convention as the other pipeline labels, closing the gap HRA-238's
+    // own comment flagged ("no stored baseline to diff against") for this
+    // one specific, upload-triggered case.
+    if (promptStale) return t("manage.planTemplates.pipeline.stateStale", "Stale — plan text changed");
+    return t("manage.planTemplates.pipeline.stateGenerated", "Generated");
   }
   function workoutDslStateLabel(): string {
     if (editor.dslSource.trim() === "") return t("manage.planTemplates.pipeline.stateEmpty", "Empty");
+    if (dslStale) return t("manage.planTemplates.pipeline.stateStale", "Stale — plan text changed");
     if (!generated) return t("manage.planTemplates.pipeline.stateReadyToPreview", "Ready to preview");
     if (genError || hasOutstandingWarnings(editor, planWarnings)) return t("manage.planTemplates.pipeline.stateNeedsReview", "Needs review");
     return t("manage.planTemplates.pipeline.stateValid", "Valid");
@@ -1051,6 +1134,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   function onDslTextareaChange(value: string) {
     setEditor(prev => ({ dslSource: value, sections: prev.sections, offsetUnit: prev.offsetUnit }));
     setLastPatchedLine(null); setLastEditedRef(null);
+    // HRA-328: a direct hand-edit is the user addressing whatever staleness
+    // a prior source-file upload flagged for the DSL.
+    setDslStale(false);
   }
 
   function onDslTextareaScroll(e: UIEvent<HTMLTextAreaElement>) {
@@ -1200,6 +1286,25 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                   rows={4}
                 />
               </label>
+
+              {/* HRA-328: server-side extraction (HRA-327) into originalText
+                  above — distinct from the Workout DSL step's own "Upload
+                  .txt/.csv…" button further down, which reads the file
+                  client-side into dslSource directly and is unchanged. Never
+                  calls onGeneratePrompt/onGeneratePromptForAttachment itself
+                  (AC3: no AI call on upload). */}
+              <div className="hra-row-wrap" >
+                <label className="hra-btn cursor-pointer" aria-disabled={sourceUploading}>
+                  {sourceUploading
+                    ? t("manage.planTemplates.sourceUpload.uploading", "Extracting…")
+                    : t("manage.planTemplates.sourceUpload.uploadButton", "Upload .txt/.csv/.pdf…")}
+                  <input
+                    type="file" accept=".txt,.csv,.pdf" className="hidden" disabled={sourceUploading}
+                    onChange={e => { const file = e.target.files?.[0]; if (file) void onSourceFileUpload(file); e.target.value = ""; }}
+                  />
+                </label>
+              </div>
+              {sourceUploadError && <ErrorBanner message={sourceUploadError} />}
 
               <div className="flex items-start gap-2.5 flex-wrap">
                 <label className="hra-template-name-field hra-text-secondary text-meta">

@@ -17,7 +17,7 @@ import { afterEach, beforeAll, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { PlanTemplatesSection } from "./PlanTemplatesSection";
-import { installFetch, json, type StubRequest } from "@/test/api-stub";
+import { installFetch, json, problem, type StubRequest } from "@/test/api-stub";
 import { planTemplate } from "@/test/fixtures";
 
 const TEMPLATE = planTemplate();
@@ -681,5 +681,94 @@ describe("PlanTemplatesSection — mobile compact list (HRA-296)", () => {
 
     expect(await screen.findByText("No templates saved yet.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "How to use it" })).not.toBeInTheDocument();
+  });
+});
+
+// HRA-328: Testo del piano's own upload control — server-side .txt/.csv/.pdf
+// extraction (HRA-327's endpoint) into originalText, distinct from the
+// Workout DSL step's pre-existing client-side upload (unchanged, untested
+// here). The hidden <input type="file"> lives inside a <label> with no
+// htmlFor/id, so getByLabelText resolves it via implicit wrapping the same
+// way a real click on the visible button text would.
+function sourceFileInput(): HTMLInputElement {
+  return screen.getByLabelText(/Upload \.txt\/\.csv\/\.pdf/) as HTMLInputElement;
+}
+
+describe("PlanTemplatesSection — source-file upload into Plan text (HRA-328)", () => {
+  it("uploading a .pdf shows progress, then populates Original text with the extracted text (AC1)", async () => {
+    installFetch({
+      "POST /api/v1/source-files/extract": json({ sourceText: "Week 1: 5km easy\nWeek 2: 8km easy", sourceType: "pdf", fileName: "plan.pdf", pageCount: 1 }),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    await screen.findByLabelText("Original text");
+
+    const file = new File(["%PDF-1.4 dummy bytes"], "plan.pdf", { type: "application/pdf" });
+    fireEvent.change(sourceFileInput(), { target: { files: [file] } });
+
+    expect(await screen.findByText("Extracting…")).toBeInTheDocument(); // progress (AC1)
+    await waitFor(() => expect(screen.getByLabelText("Original text")).toHaveValue("Week 1: 5km easy\nWeek 2: 8km easy"));
+    expect(screen.queryByText("Extracting…")).not.toBeInTheDocument(); // progress clears on completion
+  });
+
+  it("each distinct backend extraction-error reason renders its own actionable message, not one generic failure (AC2)", async () => {
+    installFetch({
+      "POST /api/v1/source-files/extract": problem(422, "PDF is password-protected; encrypted PDFs are not supported."),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    await screen.findByLabelText("Original text");
+
+    fireEvent.change(sourceFileInput(), { target: { files: [new File(["%PDF-1.4"], "locked.pdf", { type: "application/pdf" })] } });
+    expect(await screen.findByText("PDF is password-protected; encrypted PDFs are not supported.")).toBeInTheDocument();
+  });
+
+  it("an unsupported file extension is rejected client-side with its own message, no network call", async () => {
+    const fetchMock = installFetch({});
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    await screen.findByLabelText("Original text");
+
+    fireEvent.change(sourceFileInput(), { target: { files: [new File(["hello"], "plan.docx")] } });
+    expect(await screen.findByText("Unsupported file format — only .txt, .csv, and .pdf are supported.")).toBeInTheDocument();
+    // No request to the extraction endpoint specifically — other, unrelated
+    // background calls (e.g. GET /api/v1/settings on mount) are out of scope.
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/source-files/extract"))).toBe(false);
+  });
+
+  it("never fires the AI prompt-generation call on upload (AC3)", async () => {
+    const fetchMock = installFetch({
+      "POST /api/v1/source-files/extract": json({ sourceText: "extracted text", sourceType: "txt", fileName: "plan.txt" }),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    await screen.findByLabelText("Original text");
+
+    fireEvent.change(sourceFileInput(), { target: { files: [new File(["hi"], "plan.txt", { type: "text/plain" })] } });
+    await screen.findByDisplayValue("extracted text");
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/prompt-preview"))).toBe(false);
+  });
+
+  it("uploading while a generated prompt already exists marks Conversion prompt stale without discarding it (AC4)", async () => {
+    installFetch({
+      "POST /api/v1/plan-templates/prompt-preview": promptPreviewStub,
+      "POST /api/v1/source-files/extract": json({ sourceText: "new source text", sourceType: "txt", fileName: "plan2.txt" }),
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate full prompt" }));
+    const promptField = await screen.findByLabelText("Generated prompt") as HTMLTextAreaElement;
+    expect(promptField.value).toContain("Week 1: 5km easy");
+    expect(pipelineHeader(/Conversion prompt/)).toHaveTextContent("Generated");
+
+    fireEvent.click(pipelineHeader(/Plan text/)); // switch back to Plan text to reach its upload control
+    fireEvent.change(sourceFileInput(), { target: { files: [new File(["hi"], "plan2.txt", { type: "text/plain" })] } });
+
+    await waitFor(() => expect(pipelineHeader(/Conversion prompt/)).toHaveTextContent("Stale — plan text changed"));
+    // Not discarded — the previously generated prompt is still there to inspect/reuse.
+    fireEvent.click(pipelineHeader(/Conversion prompt/));
+    expect(await screen.findByLabelText("Generated prompt")).toHaveValue("PROMPT: Week 1: 5km easy");
   });
 });

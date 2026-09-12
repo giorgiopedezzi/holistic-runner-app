@@ -53,6 +53,16 @@ export interface PlanInstanceCustomizedDay {
   notes: string | null;
 }
 
+// HRA-327: response of POST /api/v1/source-files/extract — normalized plan
+// text extracted server-side from an uploaded .txt/.csv/.pdf, for hand-off
+// into the plan-template pipeline's "Plan text" stage (HRA-328).
+export interface SourceExtractionResult {
+  sourceText: string;
+  sourceType: "txt" | "csv" | "pdf";
+  fileName: string;
+  pageCount?: number;
+}
+
 // Error carrying the HTTP status (0 = the request never reached the server), so
 // callers can branch on it if they need to. Its message is already human — see
 // buildApiError. (HRA-43) `overlaps` is set only for a plan-instance activation
@@ -432,5 +442,12 @@ export const api = {
         skipped: Number(res.headers.get("X-Export-Skipped") ?? "0"),
       };
     },
+  },
+  // HRA-327: server-side .txt/.csv/.pdf text extraction — the backend does
+  // the actual parsing (pdf.js for PDFs, UTF-8 decode + validation for plain
+  // text); this endpoint takes a JSON body (base64 content), not multipart.
+  sourceFiles: {
+    extract: (input: { fileName: string; sourceType: "txt" | "csv" | "pdf"; contentBase64: string }) =>
+      request<SourceExtractionResult>("/api/v1/source-files/extract", "POST", undefined, input),
   },
 };
