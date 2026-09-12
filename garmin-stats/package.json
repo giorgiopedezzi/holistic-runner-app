@@ -25,6 +25,7 @@
   "dependencies": {
     "@garmin/fitsdk": "21.214.0",
     "fit-file-parser": "^4.1.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.4.3"
   }
 }

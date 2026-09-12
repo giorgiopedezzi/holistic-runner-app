@@ -23,6 +23,7 @@ import { createDateRangesController } from "../controllers/date-ranges.controlle
 import { createActivityTypesController } from "../controllers/activity-types.controller.ts";
 import { createPlanTemplatesController } from "../controllers/plan-templates.controller.ts";
 import { createFeedbackController } from "../controllers/feedback.controller.ts";
+import { createSourceFilesController } from "../controllers/source-files.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -37,6 +38,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const planTemplates = createPlanTemplatesController(ctx);
   const locales      = createLocalesController(ctx);
   const feedback     = createFeedbackController(ctx);
+  const sourceFiles  = createSourceFilesController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -164,6 +166,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         // source of feedback submissions. Do not reflexively wrap this in
         // demo() later.
         if (route === "/api/v1/feedback")                  return await feedback.create(req, res, url);
+        if (route === "/api/v1/source-files/extract")      return await sourceFiles.extract(req, res, url);
       }
 
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);

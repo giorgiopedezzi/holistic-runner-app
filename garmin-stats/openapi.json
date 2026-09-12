@@ -19,6 +19,7 @@
     { "name": "activity-types", "description": "The fixed Training/Race lookup used to tag an activity" },
     { "name": "plan-templates", "description": "Reusable RunPlan DSL v1 templates + resolved instances (HRA-111/HRA-112)" },
     { "name": "locales", "description": "i18n translation bundles" },
+    { "name": "source-files", "description": "Server-side source-file text extraction (.txt/.csv/.pdf) for hand-off into training-plan template generation (HRA-327)" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
@@ -384,6 +385,17 @@
           "plan": { "type": "object", "description": "The parsed RunPlan (domain/runplan/types.ts), with per-day warnings on each DayEntry." },
           "warnings": { "type": "array", "items": { "$ref": "#/components/schemas/ParseWarning" }, "description": "Plan-scoped warnings only (day-scoped warnings live on each DayEntry inside plan)." }
         }
+      },
+      "SourceExtractionResult": {
+        "type": "object",
+        "description": "Response of POST /api/v1/source-files/extract — never persisted; nothing is written to disk.",
+        "properties": {
+          "sourceText": { "type": "string", "description": "Extracted text, line-endings normalized to \\n. Never empty (an empty extraction is rejected, 422)." },
+          "sourceType": { "type": "string", "enum": ["txt", "csv", "pdf"], "description": "The REAL sniffed content type (from the file's own bytes), which may differ from the sourceType the caller declared." },
+          "fileName": { "type": "string" },
+          "pageCount": { "type": "integer", "description": "Present only when sourceType is pdf." }
+        },
+        "required": ["sourceText", "sourceType", "fileName"]
       }
     }
   },
@@ -785,6 +797,14 @@
     },
     "/api/v1/locales/{lang}": {
       "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/source-files/extract": {
+      "post": {
+        "tags": ["source-files"], "summary": "Extract plan text from an uploaded .txt/.csv/.pdf file (HRA-327)",
+        "description": "Decodes contentBase64 and sniffs the REAL content type from the bytes (a PDF signature within the leading 1024 bytes), never trusting sourceType or the filename extension alone — a file declared pdf that isn't one is rejected as corrupt/misnamed rather than silently read as text, and a genuine PDF is extracted as one even if declared txt/csv. .txt/.csv content is decoded as UTF-8 and returned unchanged apart from line-ending normalization. .pdf content is parsed via unpdf (pure-JS, no native deps); an encrypted PDF, a corrupt/non-PDF file, an oversized file (>10MB) or overlong PDF (>200 pages), and an image-only/no-extractable-text PDF each 422/413 with a distinct, actionable detail message — none return 200 with empty/garbage sourceText. Nothing is ever written to disk; nothing persists across the request.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["fileName", "sourceType", "contentBase64"], "properties": { "fileName": { "type": "string" }, "sourceType": { "type": "string", "enum": ["txt", "csv", "pdf"], "description": "Caller's declared type (e.g. from the file extension) — verified, not trusted, against the actual bytes." }, "contentBase64": { "type": "string", "description": "The file's raw bytes, base64-encoded." } } } } } },
+        "responses": { "200": { "description": "Extracted source text.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SourceExtractionResult" } } } }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
     },
     "/api/v1/docs": {
       "get": { "tags": ["docs"], "summary": "Rendered API documentation (self-contained HTML)", "responses": { "200": { "description": "Docs page.", "content": { "text/html": {} } } } }
