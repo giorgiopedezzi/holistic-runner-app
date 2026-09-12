@@ -330,27 +330,31 @@ function timeSummaryEventsFromEvents(events: CalendarEvent[]): CalendarEvent[] {
 }
 
 // HRA-320: Week view specifically repositions REST/TODO/OTHER out of the
-// all-day row into a full WEEK_MIN_TIME–WEEK_MAX_TIME block in the timed
-// grid, the same region a real workout's own card lives in. The all-day row
-// and the timed grid are two separate vendor drag-and-drop regions
-// (WeekWrapper vs EventContainerWrapper in react-big-calendar's dragAndDrop
-// addon) — EventContainerWrapper's own hit-test (pointInColumn, in
-// node_modules/react-big-calendar/lib/addons/dragAndDrop/common.js) has no
-// upper bound on the pointer's Y position, so dragging a timed workout UP
+// all-day row into the same timed grid a real workout's own card lives in.
+// The all-day row and the timed grid are two separate vendor drag-and-drop
+// regions (WeekWrapper vs EventContainerWrapper in react-big-calendar's
+// dragAndDrop addon) — EventContainerWrapper's own hit-test (pointInColumn,
+// in node_modules/react-big-calendar/lib/addons/dragAndDrop/common.js) has
+// no upper bound on the pointer's Y position, so dragging a timed workout UP
 // past the grid's own top edge (into the all-day row, where Rest used to
 // live) aborted the drag outright — the browser's own "not allowed" cursor.
-// Giving Rest/Todo/Other a real slot in the SAME timed grid, spanning nearly
-// the whole visible day, routes every swap through one drag mechanism and
-// turns the drop target into the whole column instead of a thin all-day-row
-// sliver. Month view is untouched (it never had this all-day/timed split to
-// begin with) — only applied when the caller is actually rendering Week.
+// A normal, small (30-minute-nominal) slot — the exact same
+// computeEventTimes shape a real workout gets — is enough: dragging bounds
+// are computed against the WHOLE day column's own container (see
+// EventContainerWrapper's _selectable, which tracks `wrapper.children[0]`,
+// the column's own events container, not any one event's individual box),
+// not against the dragged event's own size — a real workout's small card
+// already drops anywhere in its day column today. An earlier version of this
+// fix stretched the card to span the whole visible day (WEEK_MIN_TIME–
+// WEEK_MAX_TIME) for a bigger-looking target; that turned out unnecessary
+// for the fix itself and made the drag-preview ghost enormous and jarring —
+// reverted in favor of this normal-sized slot. Month view is untouched (it
+// never had this all-day/timed split to begin with) — only applied when the
+// caller is actually rendering Week.
 function restLikeEventsAsTimeGridBlocks(events: CalendarEvent[]): CalendarEvent[] {
   return events.map(e => {
     if (isTimedWorkoutType(e.workoutType)) return e;
-    const start = new Date(e.start);
-    start.setHours(WEEK_MIN_TIME.getHours(), WEEK_MIN_TIME.getMinutes(), 0, 0);
-    const end = new Date(e.start);
-    end.setHours(WEEK_MAX_TIME.getHours(), WEEK_MAX_TIME.getMinutes(), 0, 0);
+    const { start, end } = computeEventTimes(e.start, e.scheduledTime, true);
     return { ...e, allDay: false, start, end };
   });
 }
@@ -471,6 +475,25 @@ function dayCardDragProps<THandlers extends object>(drag: { handlers: THandlers;
   return { ...drag.handlers, style: drag.swappable ? { cursor: "grab" as const } : undefined };
 }
 
+// HRA-320: Month view's own visible card is deliberately small (bottom-
+// anchored, content-sized, so its hover-zoom effect above has somewhere to
+// grow into without shifting layout) — that made it a genuinely hard drag
+// source/drop target to hit precisely. This wrapper fills the WHOLE day cell
+// (.rbc-row-segment) with the actual draggable/droppable element, while the
+// visible card inside it keeps its exact existing size, position, and
+// hover-zoom behavior untouched — a bigger hit area, not a visual change.
+function DayCellHitArea({ dragProps, isDragOver, children }: {
+  dragProps: ReturnType<typeof dayCardDragProps>;
+  isDragOver: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <span className={`hra-agenda-cell-hitarea${isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
+      {children}
+    </span>
+  );
+}
+
 function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, weekView, activitiesByDateKey }: {
   event: CalendarEvent; scaling: GaugeScaling; readOnlyDays: boolean | ((dateKey: string) => boolean); onDaySwap?: (a: number, b: number) => void;
   // HRA-190: true in Week view, where DnDCalendar's own EventWrapper owns
@@ -549,21 +572,25 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
   if (event.workoutType === "todo") {
     const [key, fallback] = TODO_LABEL_KEY;
     return (
-      <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
-        <CircleHelp size={13} />
-        {compactRowLabel(t, t(key, fallback), event.scheduledTime)}
-        <ActualActivityBadge activity={matchedActivity} />
-      </span>
+      <DayCellHitArea dragProps={dragProps} isDragOver={drag.isDragOver}>
+        <span className="hra-agenda-rest-row">
+          <CircleHelp size={13} />
+          {compactRowLabel(t, t(key, fallback), event.scheduledTime)}
+          <ActualActivityBadge activity={matchedActivity} />
+        </span>
+      </DayCellHitArea>
     );
   }
   if (event.workoutType === "other") {
     const [key, fallback] = OTHER_LABEL_KEY;
     return (
-      <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
-        <Info size={13} />
-        {compactRowLabel(t, t(key, fallback), event.scheduledTime)}
-        <ActualActivityBadge activity={matchedActivity} />
-      </span>
+      <DayCellHitArea dragProps={dragProps} isDragOver={drag.isDragOver}>
+        <span className="hra-agenda-rest-row">
+          <Info size={13} />
+          {compactRowLabel(t, t(key, fallback), event.scheduledTime)}
+          <ActualActivityBadge activity={matchedActivity} />
+        </span>
+      </DayCellHitArea>
     );
   }
 
@@ -573,11 +600,13 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
 
   if (event.workoutType === "rest") {
     return (
-      <span className={`hra-agenda-rest-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} {...dragProps}>
-        <Icon size={13} />
-        {compactRowLabel(t, categoryLabel, event.scheduledTime)}
-        <ActualActivityBadge activity={matchedActivity} />
-      </span>
+      <DayCellHitArea dragProps={dragProps} isDragOver={drag.isDragOver}>
+        <span className="hra-agenda-rest-row">
+          <Icon size={13} />
+          {compactRowLabel(t, categoryLabel, event.scheduledTime)}
+          <ActualActivityBadge activity={matchedActivity} />
+        </span>
+      </DayCellHitArea>
     );
   }
 
@@ -598,69 +627,68 @@ function DayCellEvent({ event, scaling, readOnlyDays, onDaySwap, dragViaAddon, w
   const dslSegments = splitDslSegments(event.title);
 
   return (
-    <span
-      className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory!] ?? ""}${drag.isDragOver ? " hra-swap-drop-target" : ""}`}
-      {...dragProps}
-    >
-      <span className="hra-agenda-event-main-row flex items-center gap-1 min-w-0 w-full" >
-        <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
-          <Icon size={12} />
-        </span>
-        <span className="hra-agenda-event-title">
-          {dslSegments.map((segment, i) => (
-            <span key={i} className="hra-agenda-event-title-line">{segment}</span>
-          ))}
-        </span>
-        {event.needsReview && (
-          <span
-            title={t("manage.planInstances.needsReviewTooltip", "Needs review")}
-            className="hra-text-warning inline-flex items-center shrink-0"
-          >
-            <AlertTriangle size={12} />
+    <DayCellHitArea dragProps={dragProps} isDragOver={drag.isDragOver}>
+      <span className={`hra-agenda-event-card ${CATEGORY_CARD_CLASS[event.trainingLoadCategory!] ?? ""}`}>
+        <span className="hra-agenda-event-main-row flex items-center gap-1 min-w-0 w-full" >
+          <span title={categoryLabel} className="hra-category-color inline-flex items-center shrink-0">
+            <Icon size={12} />
           </span>
-        )}
-        {event.customizedAt != null && (
-          <span
-            title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
-            className="hra-text-secondary text-meta shrink-0"
-          >
-            {t("runplan.accordion.customizedBadge", "Modified")}
+          <span className="hra-agenda-event-title">
+            {dslSegments.map((segment, i) => (
+              <span key={i} className="hra-agenda-event-title-line">{segment}</span>
+            ))}
           </span>
-        )}
-        <ActualActivityBadge activity={matchedActivity} />
-      </span>
+          {event.needsReview && (
+            <span
+              title={t("manage.planInstances.needsReviewTooltip", "Needs review")}
+              className="hra-text-warning inline-flex items-center shrink-0"
+            >
+              <AlertTriangle size={12} />
+            </span>
+          )}
+          {event.customizedAt != null && (
+            <span
+              title={t("runplan.accordion.customizedBadgeTitle", "Individually edited or swapped — regenerating will ask before overwriting it")}
+              className="hra-text-secondary text-meta shrink-0"
+            >
+              {t("runplan.accordion.customizedBadge", "Modified")}
+            </span>
+          )}
+          <ActualActivityBadge activity={matchedActivity} />
+        </span>
 
-      {(hasDistance || hasDuration || hasIntensity) && (
-        <span className="hra-agenda-gauges">
-          {hasDistance && (
-            <span className="hra-agenda-gauge" title={t("manage.planInstances.distanceTooltip", `Distance: ${formatDistanceM(metrics.totalDistanceM)}`, { value: formatDistanceM(metrics.totalDistanceM) })}>
-              <Route size={11} />
-              <span className="hra-agenda-gauge-ring hra-agenda-gauge-distance" style={{ "--gauge-pct": distancePct } as CSSProperties} />
-            </span>
-          )}
-          {hasDuration && (
-            <span className="hra-agenda-gauge" title={t("manage.planInstances.durationTooltip", `Duration: ${fmtElapsedClock(metrics.totalDurationSec)}`, { value: fmtElapsedClock(metrics.totalDurationSec) })}>
-              <Clock3 size={11} />
-              {/* Bug fix: NOT var(--accent) — .hra-agenda-calendar scopes its
-                  own shadcn-vocabulary --accent (a bare "H S% L%" triplet,
-                  see the theming block in index.css) which shadows the
-                  app's real hex --accent inside this whole subtree. Using it
-                  here made conic-gradient()'s first color stop invalid,
-                  rendering this ring invisible in every state, always —
-                  --accent-green isn't a shadowed name, so it resolves to the
-                  app's real token as intended. */}
-              <span className="hra-agenda-gauge-ring hra-agenda-gauge-duration" style={{ "--gauge-pct": durationPct } as CSSProperties} />
-            </span>
-          )}
-          {hasIntensity && (
-            <span className="hra-agenda-gauge" title={t("manage.planInstances.maxSpeedTooltip", `Max speed: ${formatSpeedKmh(metrics.maxSpeedKmh!)}`, { value: formatSpeedKmh(metrics.maxSpeedKmh!) })}>
-              <Gauge size={11} />
-              <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": intensityPct, "--gauge-fill": intensityColor } as CSSProperties} />
-            </span>
-          )}
-        </span>
-      )}
-    </span>
+        {(hasDistance || hasDuration || hasIntensity) && (
+          <span className="hra-agenda-gauges">
+            {hasDistance && (
+              <span className="hra-agenda-gauge" title={t("manage.planInstances.distanceTooltip", `Distance: ${formatDistanceM(metrics.totalDistanceM)}`, { value: formatDistanceM(metrics.totalDistanceM) })}>
+                <Route size={11} />
+                <span className="hra-agenda-gauge-ring hra-agenda-gauge-distance" style={{ "--gauge-pct": distancePct } as CSSProperties} />
+              </span>
+            )}
+            {hasDuration && (
+              <span className="hra-agenda-gauge" title={t("manage.planInstances.durationTooltip", `Duration: ${fmtElapsedClock(metrics.totalDurationSec)}`, { value: fmtElapsedClock(metrics.totalDurationSec) })}>
+                <Clock3 size={11} />
+                {/* Bug fix: NOT var(--accent) — .hra-agenda-calendar scopes its
+                    own shadcn-vocabulary --accent (a bare "H S% L%" triplet,
+                    see the theming block in index.css) which shadows the
+                    app's real hex --accent inside this whole subtree. Using it
+                    here made conic-gradient()'s first color stop invalid,
+                    rendering this ring invisible in every state, always —
+                    --accent-green isn't a shadowed name, so it resolves to the
+                    app's real token as intended. */}
+                <span className="hra-agenda-gauge-ring hra-agenda-gauge-duration" style={{ "--gauge-pct": durationPct } as CSSProperties} />
+              </span>
+            )}
+            {hasIntensity && (
+              <span className="hra-agenda-gauge" title={t("manage.planInstances.maxSpeedTooltip", `Max speed: ${formatSpeedKmh(metrics.maxSpeedKmh!)}`, { value: formatSpeedKmh(metrics.maxSpeedKmh!) })}>
+                <Gauge size={11} />
+                <span className="hra-agenda-gauge-ring" style={{ "--gauge-pct": intensityPct, "--gauge-fill": intensityColor } as CSSProperties} />
+              </span>
+            )}
+          </span>
+        )}
+      </span>
+    </DayCellHitArea>
   );
 }
 
@@ -1661,15 +1689,6 @@ export function PlanInstanceCalendar({
     className: "h-full",
     components: { event: EventComponent, toolbar: ToolbarComponent, dateHeader: DateHeaderComponent },
     messages: { noEventsInRange: t("manage.planInstances.calendarNoEvents", "No days in range.") },
-    // HRA-320: marks a restLikeEventsAsTimeGridBlocks output event so
-    // index.css can exempt it from the "content-driven, not duration-scaled"
-    // auto-height rule every other timed-grid card gets — this one's real
-    // (start, end) already spans WEEK_MIN_TIME–WEEK_MAX_TIME and should
-    // render at its real, nearly-full-column height.
-    eventPropGetter: (event: CalendarEvent) =>
-      view === "week" && !event.isTimeSummary && !event.isActualOnly && !isTimedWorkoutType(event.workoutType)
-        ? { className: "hra-agenda-fullday-event" }
-        : {},
     // HRA-318 follow-up: without this, react-big-calendar's Week view
     // defaults scrollToTime to `new Date()` (the real current moment) and
     // auto-scrolls the time grid to it on mount — so opening the tab in the
