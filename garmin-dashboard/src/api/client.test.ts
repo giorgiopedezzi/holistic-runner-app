@@ -34,6 +34,16 @@ describe("api error handling", () => {
     expect((err as ApiError).message).toBe("Activity 999 not found.");
   });
 
+  it("surfaces a real problem+json `detail` on a 502/503/504 from this app's own backend (HRA-329), not the generic gateway copy", async () => {
+    stubFetch(() => new Response(
+      JSON.stringify({ type: "about:blank", title: "Bad Gateway", status: 502, detail: "AI provider rejected the configured API key" }),
+      { status: 502, headers: { "Content-Type": "application/problem+json" } },
+    ));
+    const err = await api.garmin.deviceStatus().then(() => null, (e) => e);
+    expect((err as ApiError).status).toBe(502);
+    expect((err as ApiError).message).toBe("AI provider rejected the configured API key");
+  });
+
   it("falls back to problem+json `title` when there's no detail (HRA-37)", async () => {
     stubFetch(() => new Response(
       JSON.stringify({ type: "about:blank", title: "Unprocessable Entity", status: 422 }),

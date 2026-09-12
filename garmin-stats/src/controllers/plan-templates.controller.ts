@@ -21,13 +21,18 @@ import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
 import { computeMobileEligibility, resolveAllAnchors } from "../domain/runplan/mobile-eligibility.ts";
 import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
+import { generatePlanTemplate, PlanTemplateAiError } from "../integrations/plan-template-ai.ts";
 import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
 import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
 import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
-import { badRequest, conflict, notFound, unprocessable } from "../http/problem.ts";
+import {
+  ApiProblem, badGateway, badRequest, conflict, gatewayTimeout, notFound,
+  serviceUnavailable, tooManyRequests, unprocessable,
+} from "../http/problem.ts";
+import { loadConfig } from "../config.ts";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const GOAL_TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
@@ -184,6 +189,62 @@ export function createPlanTemplatesController(ctx: AppContext) {
       distanceM: body.distance_m, unit: body.unit as "km" | "mi" | undefined,
     });
     return send(res, { prompt });
+  };
+
+  // Maps the AI provider adapter's distinguishable error codes (HRA-325) onto
+  // an honest HTTP status — this endpoint is a gateway to that provider, so
+  // its own failures (auth/rate-limit/timeout/network/malformed) surface as
+  // the matching 5xx/429 rather than a generic 500, letting the frontend
+  // treat "the provider failed" distinctly from "we rejected your request".
+  // missing-config is a 503 (feature not set up), not a bug in the request.
+  function mapPlanTemplateAiError(e: unknown): ApiProblem {
+    if (e instanceof PlanTemplateAiError) {
+      switch (e.code) {
+        case "missing-config": return serviceUnavailable(e.message);
+        case "auth": return badGateway(e.message);
+        case "rate-limit": return tooManyRequests(e.message);
+        case "timeout": return gatewayTimeout(e.message);
+        case "network": case "http-error": case "empty-response": case "malformed-response":
+          return badGateway(e.message);
+      }
+    }
+    throw e;
+  }
+
+  // POST /api/v1/plan-templates/ai-generate (HRA-329) — the real, billable
+  // "Generate DSL con AI" call: composes the exact same conversion prompt as
+  // prompt-preview above (composeConversionPrompt(), never a second copy),
+  // then sends it to the configured provider (integrations/plan-template-
+  // ai.ts). Never persists — same preview-only shape as generate/
+  // composePromptPreview; the caller decides whether/when to Save. Demo-
+  // guarded at the router (router.ts) since every call has a real cost.
+  const generateDsl: Handler = async (req, res) => {
+    const body = await readJsonBody<ComposePromptBody>(req);
+    if (!body.text?.trim()) throw unprocessable("text is required.");
+    if (body.event != null && !eventTypeSchema.safeParse(body.event).success) {
+      throw unprocessable(`event, when supplied, must be one of: ${eventTypeSchema.options.join(", ")}.`);
+    }
+    if (body.unit != null && body.unit !== "km" && body.unit !== "mi") {
+      throw unprocessable('unit, when supplied, must be "km" or "mi".');
+    }
+    if (body.distance_m != null && !(body.distance_m > 0)) {
+      throw unprocessable("distance_m, when supplied, must be a positive number.");
+    }
+    const prompt = composeConversionPrompt(body.text, {
+      language: body.language, event: body.event as EventType | undefined, eventName: body.event_name,
+      distanceM: body.distance_m, unit: body.unit as "km" | "mi" | undefined,
+    });
+    let dsl: string;
+    try {
+      dsl = await generatePlanTemplate([{ role: "user", content: prompt }]);
+    } catch (e) {
+      throw mapPlanTemplateAiError(e);
+    }
+    // Reads the model config that generatePlanTemplate itself just used —
+    // safe to assert non-null: a successful call already proved it's set
+    // (requirePlanTemplateAiConfig), so this never re-validates or re-throws.
+    const model = loadConfig().planTemplateAi.model as string;
+    return send(res, { dsl, model, generated_at: new Date().toISOString() });
   };
 
   // HRA-120: event is now an explicit, validated request field (replacing
@@ -1012,7 +1073,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   };
 
   return {
-    list, getById, generate, composePromptPreview, create, update, approveTemplate, remove,
+    list, getById, generate, composePromptPreview, generateDsl, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
     mobileEligibility, instantiatePreview,

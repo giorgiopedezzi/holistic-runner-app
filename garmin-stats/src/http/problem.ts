@@ -75,5 +75,13 @@ export const conflict        = (detail?: string, extra?: Partial<Problem>) => ma
 export const payloadTooLarge = (detail?: string, extra?: Partial<Problem>) => make(413, "Payload Too Large", detail, extra);
 // 422 — the request parsed fine but breaks a validation rule.
 export const unprocessable   = (detail?: string, extra?: Partial<Problem>) => make(422, "Unprocessable Entity", detail, extra);
+// 429 — caller (or this server, acting as a client of an upstream) is rate-limited.
+export const tooManyRequests = (detail?: string, extra?: Partial<Problem>) => make(429, "Too Many Requests", detail, extra);
 // 500 — an unexpected server error; detail is deliberately generic (never leaks internals).
 export const internal        = (detail = "An unexpected error occurred.") => make(500, "Internal Server Error", detail);
+// 502 — this server, acting as a gateway to an external provider, got back an invalid/failed response.
+export const badGateway      = (detail?: string, extra?: Partial<Problem>) => make(502, "Bad Gateway", detail, extra);
+// 503 — a required integration isn't configured (distinct from a genuine 500 bug).
+export const serviceUnavailable = (detail?: string, extra?: Partial<Problem>) => make(503, "Service Unavailable", detail, extra);
+// 504 — this server, acting as a gateway, timed out waiting on an external provider.
+export const gatewayTimeout  = (detail?: string, extra?: Partial<Problem>) => make(504, "Gateway Timeout", detail, extra);

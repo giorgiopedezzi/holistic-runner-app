@@ -54,7 +54,22 @@ describe("ActivitiesTab", () => {
     });
     render(<ActivitiesTab from="2026-07-15" to="2026-08-14" />);
 
-    // 503 is remapped to the gateway-busy message by the real client (HRA-43).
+    // HRA-329: a real problem+json body (this one included) always surfaces
+    // its own detail now, even on 502/503/504 — only a genuinely unparseable
+    // 502/503/504 body (a raw infra/proxy failure, not this app's own
+    // response) falls back to the generic gateway-busy copy (see the next
+    // test below).
+    expect(await screen.findByText("activities unavailable")).toBeInTheDocument();
+  });
+
+  it("falls back to the generic gateway-busy message for a genuinely bodyless 502/503/504 (HRA-43/HRA-329)", async () => {
+    installFetch({
+      "GET /api/v1/activities": () => new Response("", { status: 503 }),
+      "GET /api/v1/range": dateRange(),
+      "GET /api/v1/settings": settings(),
+    });
+    render(<ActivitiesTab from="2026-07-15" to="2026-08-14" />);
+
     expect(await screen.findByText(/Couldn't reach the API server/i)).toBeInTheDocument();
   });
 

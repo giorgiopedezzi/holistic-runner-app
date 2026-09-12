@@ -330,6 +330,20 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const [promptStale, setPromptStale] = useState(false);
   const [dslStale, setDslStale] = useState(false);
 
+  // HRA-329: the real "Genera DSL con AI" call — aiGenerating is the
+  // duplicate-submission guard (a second click while a request is in flight
+  // is a no-op, not a second billable call); aiGeneratedDsl is the exact DSL
+  // text the AI last produced, so the editor can tell "still exactly the
+  // AI's own output" (dslIsManuallyEdited below) apart from "the user has
+  // since edited/replaced it" — the latter needs an explicit confirmation
+  // before a regenerate overwrites it. Deliberately never stashed into
+  // Draft (unlike promptStale/dslStale): losing this cosmetic marker across
+  // a collapse/reopen round-trip is harmless, and the actual dslSource it
+  // describes is already stashed via Draft.dslSource.
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiGeneratedDsl, setAiGeneratedDsl] = useState<string | null>(null);
+  const [pendingAiGenerateConfirm, setPendingAiGenerateConfirm] = useState(false);
+
   // HRA-238: independent open/collapsed state for the three pipeline
   // sections (Plan text / Conversion prompt / Workout DSL) — NOT a
   // single-expand accordion like the outer template row: the user may need
@@ -400,6 +414,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setPlanWarnings([]); setGenError(null); setPatchError(null); setSaveError(null);
     setOriginalText(""); setLanguage(""); setGeneratedPrompt(null);
     setPromptStale(false); setDslStale(false); setSourceUploading(false); setSourceUploadError(null);
+    setAiGenerating(false); setAiGeneratedDsl(null); setPendingAiGenerateConfirm(false);
     setLastPatchedLine(null); setLastEditedRef(null);
     // HRA-238: a reset row is always blank (no text, no prompt, no DSL) —
     // the "new empty template" default: Plan text expanded, the other two
@@ -550,6 +565,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // would read false the instant a genuinely-dirty draft reopens.
   async function reopenDraft(draft: Draft, template: PlanTemplate | undefined) {
     setGenError(null); setPatchError(null); setSaveError(null);
+    setAiGenerating(false); setAiGeneratedDsl(null); setPendingAiGenerateConfirm(false);
     setLastPatchedLine(null); setLastEditedRef(null);
     setName(draft.name); setEvent(draft.event);
     setDistanceValue(draft.distanceValue); setDistanceUnit(draft.distanceUnit);
@@ -709,6 +725,67 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // Original text filled in, since the AI is meant to read the attachment.
   function onGeneratePromptForAttachment() {
     void generatePromptFrom(ATTACHMENT_PLACEHOLDER);
+  }
+
+  // HRA-329: the real "Genera DSL con AI" action — composes the identical
+  // prompt as generatePromptFrom (same backend composeConversionPrompt()
+  // call), but sends it to the configured provider (POST .../ai-generate)
+  // instead of only previewing it, and drops the returned dsl straight into
+  // the Workout DSL editor. Reuses runGenerate on the result so an invalid
+  // AI response behaves exactly like a manual paste — placed in the editor
+  // with the existing validator's warnings shown, never silently discarded.
+  // Never sets approved_at or calls Save/approve itself (success only ever
+  // updates local, unsaved editor state).
+  async function generateDslFrom(text: string) {
+    const distanceM = event === "custom" ? distanceToMeters(distanceValue, distanceUnit) : (event !== "" ? STANDARD_DISTANCE_M[event] : undefined);
+    setAiGenerating(true);
+    try {
+      const { dsl } = await api.planTemplates.generateDsl(text, {
+        language: language.trim() || undefined, event: event || undefined,
+        event_name: name.trim() || undefined, distance_m: distanceM, unit: distanceUnit,
+      });
+      setAiGeneratedDsl(dsl);
+      setDslStale(false);
+      setLastPatchedLine(null); setLastEditedRef(null);
+      setEditor(prev => ({ ...prev, dslSource: dsl }));
+      // A definite "make sure this is open" (like genError's own effect
+      // above), not the header's toggle-on-click selectPipeline — otherwise
+      // this would instead CLOSE Workout DSL if the user had already
+      // switched to it manually while the request was in flight.
+      setActivePipeline("dsl");
+      await runGenerate(dsl, { autoFillDistance: false });
+    } catch (e) {
+      notify(e instanceof Error ? e.message : t("manage.planTemplates.aiGenerate.failed", "Failed to generate DSL with AI."), "error");
+    } finally {
+      setAiGenerating(false);
+    }
+  }
+
+  // Whether the DSL editor currently holds content the user (not the AI) is
+  // responsible for — anything non-empty that isn't exactly what the last
+  // AI generation produced. Regenerating over that needs an explicit
+  // confirmation (AC); an empty editor, or one still holding exactly the
+  // AI's own last output, never does.
+  function dslIsManuallyEdited(): boolean {
+    return editor.dslSource.trim() !== "" && editor.dslSource !== aiGeneratedDsl;
+  }
+
+  function onAiGenerateClick() {
+    if (aiGenerating) return; // duplicate-submission guard: a second click in flight is a no-op.
+    if (dslIsManuallyEdited()) {
+      setPendingAiGenerateConfirm(true);
+      return;
+    }
+    void generateDslFrom(originalText);
+  }
+
+  function cancelAiGenerateConfirm() {
+    setPendingAiGenerateConfirm(false);
+  }
+
+  function confirmAiGenerate() {
+    setPendingAiGenerateConfirm(false);
+    void generateDslFrom(originalText);
   }
 
   async function onCopyPrompt() {
@@ -958,6 +1035,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   const canSave = generated && genError == null && !hasOutstandingWarnings(editor, planWarnings) && name.trim() !== ""
     && event !== "" && (!isCustomEvent || distanceValue.trim() !== "") && isEditorDirty();
   const canApprove = editingId != null && genError == null && !isEditorDirty() && !hasOutstandingWarnings(editor, planWarnings);
+  // HRA-329: disabled until source text is present and the same event/
+  // distance context Save itself requires is valid (AC) — never gated on
+  // name, unlike canSave, since generating a DSL doesn't need a template
+  // name yet.
+  const aiGenerateDisabled = originalText.trim() === "" || event === "" || (isCustomEvent && distanceValue.trim() === "");
+  const dslIsAiGenerated = aiGeneratedDsl != null && editor.dslSource === aiGeneratedDsl;
 
   async function onSave() {
     if (event === "") return;
@@ -1318,6 +1401,17 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 </label>
                 <button
                   className="hra-btn self-end"
+                  data-variant="green"
+                  onClick={onAiGenerateClick}
+                  disabled={aiGenerateDisabled || aiGenerating || demoMode}
+                  title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+                >
+                  {aiGenerating
+                    ? t("manage.planTemplates.aiGenerate.generating", "Generating…")
+                    : t("manage.planTemplates.aiGenerate.button", "Generate DSL with AI")}
+                </button>
+                <button
+                  className="hra-btn self-end"
                   onClick={onGeneratePrompt}
                   disabled={originalText.trim() === ""}
                 >
@@ -1330,6 +1424,12 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                   {t("manage.planTemplates.aiPrompt.generateForAttachmentButton", "Generate prompt for an attached document")}
                 </button>
               </div>
+              <p className="hra-text-secondary text-meta m-0">
+                {t(
+                  "manage.planTemplates.aiGenerate.hint",
+                  "\"Generate DSL with AI\" sends this text straight to the configured AI provider and drops the result into Workout DSL below for review — no copy/paste needed. Prefer to use your own AI instead? Generate a prompt below and paste the result yourself.",
+                )}
+              </p>
               <p className="hra-text-secondary text-meta m-0">
                 {t(
                   "manage.planTemplates.aiPrompt.attachmentHint",
@@ -1373,6 +1473,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               <p className="hra-text-secondary text-meta m-0">
                 {t("manage.planTemplates.pipeline.workoutDslDescription", "Source of truth for the structured plan.")}
               </p>
+              {dslIsAiGenerated && (
+                <span className="inline-flex items-center gap-1">
+                  <AlertTriangle size={14} className="hra-text-warning shrink-0" />
+                  <span className="hra-text-secondary text-meta">
+                    {t("manage.planTemplates.aiGenerate.needsReviewBadge", "AI-generated — review before saving")}
+                  </span>
+                </span>
+              )}
               <label className="hra-text-secondary text-meta block" >
                 {t("manage.planTemplates.dslSourceLabel", "Workout plan text")}
                 {renderDslTextarea()}
@@ -1461,6 +1569,24 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               />
             )}
           </>
+        )}
+
+        {pendingAiGenerateConfirm && (
+          <div className="hra-modal-layer hra-modal-backdrop fixed inset-0 flex items-center justify-center p-6" onClick={cancelAiGenerateConfirm}>
+            <div className="hra-bg-surface hra-border rounded-xl w-full max-w-90 p-5" onClick={e => e.stopPropagation()}>
+              <div className="hra-text-primary text-label font-semibold leading-normal mb-4" >
+                {t("manage.planTemplates.aiGenerate.overwriteConfirmBody", "Workout DSL already has manually-edited content — regenerating with AI will replace it. Continue?")}
+              </div>
+              <div className="hra-row-wrap justify-end" >
+                <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1.5 px-3.5 text-meta cursor-pointer" onClick={cancelAiGenerateConfirm}>
+                  {t("common.cancel", "Cancel")}
+                </button>
+                <button className="hra-btn" data-variant="danger" onClick={confirmAiGenerate}>
+                  {t("manage.planTemplates.aiGenerate.button", "Generate DSL with AI")}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {pendingRestoreConfirm && (

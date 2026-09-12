@@ -101,14 +101,19 @@ async function translate(key: string, defaultValue: string, options?: Record<str
 }
 
 async function buildApiError(res: Response, path: string): Promise<ApiError> {
-  if (res.status === 502 || res.status === 503 || res.status === 504) {
+  const problem = (await res.json().catch(() => null)) as {
+    detail?: string; title?: string; overlaps?: PlanInstanceOverlaps; customized_days?: PlanInstanceCustomizedDay[];
+  } | null;
+  // A real problem+json body (this app's own backend, e.g. HRA-329's AI
+  // provider error mapping) always carries detail/title — show that specific
+  // message. Only a raw, unparseable 502/503/504 (a reverse proxy/infra
+  // failure with an HTML/empty body, not this app's own response) falls back
+  // to the generic "give it a moment" copy below.
+  if (problem == null && (res.status === 502 || res.status === 503 || res.status === 504)) {
     return new ApiError(res.status, await translate("api.gatewayError",
       `Couldn't reach the API server (${res.status}). It may be busy, restarting, or a long request (e.g. the AI classifier) timed out — the operation may still have finished, so wait a moment and try again.`,
       { status: res.status }));
   }
-  const problem = (await res.json().catch(() => null)) as {
-    detail?: string; title?: string; overlaps?: PlanInstanceOverlaps; customized_days?: PlanInstanceCustomizedDay[];
-  } | null;
   const message = problem?.detail ?? problem?.title ?? await translate("api.genericError", `API error ${res.status}: ${path}`, { status: res.status, path });
   return new ApiError(res.status, message, problem?.overlaps, problem?.customized_days);
 }
@@ -286,6 +291,12 @@ export const api = {
     // context field is optional.
     composePrompt: (text: string, context: { language?: string; event?: EventType; event_name?: string; distance_m?: number; unit?: "km" | "mi" } = {}) =>
       request<{ prompt: string }>("/api/v1/plan-templates/prompt-preview", "POST", undefined, { text, ...context }),
+    // HRA-329: the real, billable "Genera DSL con AI" call — same context
+    // shape as composePrompt above (the backend composes the identical
+    // prompt), but actually sends it to the configured provider and returns
+    // the generated DSL text instead of the prompt itself. Never persists.
+    generateDsl: (text: string, context: { language?: string; event?: EventType; event_name?: string; distance_m?: number; unit?: "km" | "mi" } = {}) =>
+      request<{ dsl: string; model: string; generated_at: string }>("/api/v1/plan-templates/ai-generate", "POST", undefined, { text, ...context }),
     // event/distance_m (HRA-120): explicit request fields, replacing the old
     // DSL-text EVENT/DISTANCE lines — distance_m only meaningful (and only
     // sent) when event is "custom".

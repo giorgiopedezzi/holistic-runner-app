@@ -17,6 +17,7 @@ import { afterEach, beforeAll, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { PlanTemplatesSection } from "./PlanTemplatesSection";
+import { ToastContainer } from "@/components/ui";
 import { installFetch, json, problem, type StubRequest } from "@/test/api-stub";
 import { planTemplate } from "@/test/fixtures";
 
@@ -770,5 +771,134 @@ describe("PlanTemplatesSection — source-file upload into Plan text (HRA-328)",
     // Not discarded — the previously generated prompt is still there to inspect/reuse.
     fireEvent.click(pipelineHeader(/Conversion prompt/));
     expect(await screen.findByLabelText("Generated prompt")).toHaveValue("PROMPT: Week 1: 5km easy");
+  });
+});
+
+// HRA-329: the real "Generate DSL with AI" action — composes the same
+// prompt as "Generate full prompt" but actually calls the configured
+// provider (POST .../ai-generate) and drops the result into Workout DSL.
+describe("PlanTemplatesSection — AI-assisted DSL generation (HRA-329)", () => {
+  const GENERATE_EMPTY = json({ plan: { metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} }, sections: [] }, warnings: [] });
+
+  async function pickEvent(label: string) {
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: label }));
+  }
+
+  it("stays disabled until source text is present and event/distance context is valid", async () => {
+    installFetch({});
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    await screen.findByLabelText("Original text");
+
+    const aiButton = screen.getByRole("button", { name: "Generate DSL with AI" });
+    expect(aiButton).toBeDisabled(); // no text, no event yet
+
+    fireEvent.change(screen.getByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    expect(aiButton).toBeDisabled(); // text present, but event still unset
+
+    await pickEvent("5k");
+    expect(aiButton).toBeEnabled(); // 5k needs no distance
+
+    await pickEvent("custom"); // test-env i18n falls back to the raw (lowercase) event value as the option label
+    expect(aiButton).toBeDisabled(); // custom requires a distance too
+  });
+
+  it("sends the pasted text + context to /ai-generate and drops the result into Workout DSL, opening that stage", async () => {
+    const fetchMock = installFetch({
+      "POST /api/v1/plan-templates/ai-generate": json({ dsl: "D1: 5km @ RG # Week 1: 5km easy", model: "test-model", generated_at: "2026-09-12T00:00:00Z" }),
+      "POST /api/v1/plan-templates/generate": GENERATE_EMPTY,
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    await pickEvent("5k");
+    fireEvent.click(screen.getByRole("button", { name: "Generate DSL with AI" }));
+
+    expect(await screen.findByLabelText("Workout plan text")).toHaveValue("D1: 5km @ RG # Week 1: 5km easy");
+    expect(screen.getByText("AI-generated — review before saving")).toBeInTheDocument();
+
+    const call = fetchMock.mock.calls.find(([input]) => String(input).includes("/ai-generate"));
+    expect(call).toBeDefined();
+    const sentBody = JSON.parse((call![1] as RequestInit).body as string);
+    expect(sentBody).toMatchObject({ text: "Week 1: 5km easy", event: "5k" });
+  });
+
+  it("a second click while a request is in flight is a no-op, not a second billable call", async () => {
+    let resolveGenerate!: (res: Response) => void;
+    const pending = new Promise<Response>(resolve => { resolveGenerate = resolve; });
+    const fetchMock = installFetch({
+      "POST /api/v1/plan-templates/ai-generate": () => pending,
+      "POST /api/v1/plan-templates/generate": GENERATE_EMPTY,
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    await pickEvent("5k");
+    const aiButton = screen.getByRole("button", { name: "Generate DSL with AI" });
+    fireEvent.click(aiButton);
+    fireEvent.click(aiButton); // second click while the first is still in flight
+    fireEvent.click(aiButton);
+
+    resolveGenerate(json({ dsl: "D1: REST", model: "test-model", generated_at: "2026-09-12T00:00:00Z" }));
+    await screen.findByDisplayValue("D1: REST");
+
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes("/ai-generate")).length).toBe(1);
+  });
+
+  it("regenerating over manually-edited DSL requires confirmation; declining leaves the manual edit untouched", async () => {
+    const fetchMock = installFetch({
+      "POST /api/v1/plan-templates/ai-generate": json({ dsl: "D1: 5km @ RG", model: "test-model", generated_at: "2026-09-12T00:00:00Z" }),
+      "POST /api/v1/plan-templates/generate": GENERATE_EMPTY,
+    });
+    render(<PlanTemplatesSection {...mountProps()} />);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    await pickEvent("5k");
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: "D1: manually typed" } });
+    fireEvent.click(pipelineHeader(/Plan text/)); // back to Plan text — the AI-generate button lives there
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate DSL with AI" }));
+    const confirmBody = await screen.findByText(/regenerating with AI will replace it/i);
+    expect(confirmBody).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/ai-generate"))).toBe(false); // not sent yet
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByText(/regenerating with AI will replace it/i)).not.toBeInTheDocument();
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    expect(await screen.findByLabelText("Workout plan text")).toHaveValue("D1: manually typed"); // untouched
+    fireEvent.click(pipelineHeader(/Plan text/));
+
+    // Confirming proceeds and actually overwrites it.
+    fireEvent.click(screen.getByRole("button", { name: "Generate DSL with AI" }));
+    await screen.findByText(/regenerating with AI will replace it/i);
+    fireEvent.click(screen.getAllByRole("button", { name: "Generate DSL with AI" })[1]); // the modal's own confirm button
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    await waitFor(() => expect(screen.getByLabelText("Workout plan text")).toHaveValue("D1: 5km @ RG"));
+  });
+
+  it("a provider failure notifies the error and leaves manual DSL editing/Save fully usable", async () => {
+    installFetch({
+      "POST /api/v1/plan-templates/ai-generate": problem(502, "AI provider rejected the configured API key"),
+    });
+    render(<>
+      <PlanTemplatesSection {...mountProps()} />
+      <ToastContainer />
+    </>);
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    await pickEvent("5k");
+    fireEvent.click(screen.getByRole("button", { name: "Generate DSL with AI" }));
+
+    expect(await screen.findByText("AI provider rejected the configured API key")).toBeInTheDocument();
+    // The rest of the editor stays usable — a manual DSL edit still works.
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: "D1: REST" } });
+    expect(screen.getByLabelText("Workout plan text")).toHaveValue("D1: REST");
   });
 });

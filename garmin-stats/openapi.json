@@ -37,6 +37,10 @@
       "NotFound": { "description": "Resource not found.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "Conflict": { "description": "A conflicting resource already exists (e.g. duplicate name).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "Unprocessable": { "description": "Request parsed but failed a validation rule.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "TooManyRequests": { "description": "The upstream AI provider rate-limited this request.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "BadGateway": { "description": "The upstream AI provider rejected the request, was unreachable, or returned an invalid response.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "ServiceUnavailable": { "description": "The AI provider integration is not configured.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "GatewayTimeout": { "description": "The upstream AI provider request timed out.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "PayloadTooLarge": { "description": "Request body exceeds the size limit.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "ServerError": { "description": "Unexpected server error (generic; never leaks internals).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
     },
@@ -644,6 +648,22 @@
         "description": "Composes the same 'Plan text -> RunPlan DSL' conversion prompt via composeConversionPrompt() (domain/runplan/prompt-composer.ts) that a future real AI provider call will use — one function, not two implementations, so preview and the real send can never drift. text is required; language/event/event_name/distance_m/unit are all optional context fields. Plan text containing tag-like substrings (e.g. </training_plan>, <system>) is escaped so it can't terminate the envelope early or be read as new instructions.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "language": { "type": "string" }, "event": { "type": "string", "enum": ["5k", "10k", "half", "marathon", "custom"] }, "event_name": { "type": "string" }, "distance_m": { "type": "number" }, "unit": { "type": "string", "enum": ["km", "mi"] } } } } } },
         "responses": { "200": { "description": "The assembled prompt.", "content": { "application/json": { "schema": { "type": "object", "properties": { "prompt": { "type": "string" } }, "required": ["prompt"] } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
+    "/api/v1/plan-templates/ai-generate": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Generate RunPlan DSL from plan text via the configured AI provider (HRA-329) — real, billable call",
+        "description": "Composes the identical conversion prompt as prompt-preview (composeConversionPrompt(), never a second copy) and sends it to the configured provider (garmin-stats/src/integrations/plan-template-ai.ts, HRA-325). Never persists — the caller drops the returned dsl into the existing Workout DSL editor, which re-parses/validates it exactly like a manual paste; the result is never auto-saved or auto-activated. Demo-guarded (403 when DEMO_MODE is on) since every call has a real external cost. Provider failures surface as an honest status instead of a generic 500: 503 (not configured), 502 (auth/network/http-error/empty or malformed response), 429 (rate-limited), 504 (timeout).",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "language": { "type": "string" }, "event": { "type": "string", "enum": ["5k", "10k", "half", "marathon", "custom"] }, "event_name": { "type": "string" }, "distance_m": { "type": "number" }, "unit": { "type": "string", "enum": ["km", "mi"] } } } } } },
+        "responses": {
+          "200": { "description": "The AI-generated DSL.", "content": { "application/json": { "schema": { "type": "object", "properties": { "dsl": { "type": "string" }, "model": { "type": "string" }, "generated_at": { "type": "string", "format": "date-time" } }, "required": ["dsl", "model", "generated_at"] } } } },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "429": { "$ref": "#/components/responses/TooManyRequests" },
+          "502": { "$ref": "#/components/responses/BadGateway" },
+          "503": { "$ref": "#/components/responses/ServiceUnavailable" },
+          "504": { "$ref": "#/components/responses/GatewayTimeout" }
+        }
       }
     },
     "/api/v1/plan-templates": {

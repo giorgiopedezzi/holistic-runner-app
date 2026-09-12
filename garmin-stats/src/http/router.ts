@@ -154,6 +154,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/date-ranges")               return await dateRanges.create(req, res, url);
         if (route === "/api/v1/plan-templates/generate")    return await planTemplates.generate(req, res, url);
         if (route === "/api/v1/plan-templates/prompt-preview") return await planTemplates.composePromptPreview(req, res, url);
+        if (route === "/api/v1/plan-templates/ai-generate")    return await demo(planTemplates.generateDsl)(req, res, url);
         if (route === "/api/v1/plan-templates")             return await planTemplates.create(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/instantiate$/.test(route)) return await demo(planTemplates.instantiate)(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+\/instantiate\/preview$/.test(route)) return await planTemplates.instantiatePreview(req, res, url);
