@@ -18,6 +18,7 @@ import { PlanInstanceFormFields } from "@/components/manage/PlanInstanceFormFiel
 import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEditorActions";
 import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
 import { PlanInstanceMobileActionsMenu } from "@/components/manage/PlanInstanceMobileActionsMenu";
+import { PlanInstanceHelpModal } from "@/components/manage/PlanInstanceHelpModal";
 import {
   collectPlanAnchors, resolveIntensityPaceSecPerKm, summarizeInstanceProgress, summarizeTemplatePlan,
   type DayView, type InstanceProgress, type SectionView, type WeekView,
@@ -83,6 +84,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, PlanInstanceDraft>>({});
   const [confirmation, setConfirmation] = useState<PlanInstanceConfirmation>(null);
+  const [showHelp, setShowHelp] = useState(false);
   // HRA-249: the just-edited day, for TrainingPlanAccordion's
   // hra-edited-row-highlight — same role as PlanTemplatesSection.tsx's own
   // lastEditedRef, extended here since the instance editor previously never
@@ -1533,7 +1535,18 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
 
   return (
     <section className="hra-instantiate-form">
-      <h2 className="hra-section-title mb-1">{t("manage.planInstances.title", "Race plans")}</h2>
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <h2 className="hra-section-title m-0">{t("manage.planInstances.title", "Race plans")}</h2>
+        <div className="flex shrink-0 items-center gap-2">
+          <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1 px-2.5 text-meta cursor-pointer" onClick={() => setShowHelp(true)}>
+            {t("manage.planInstances.howToUse", "How to use it")}
+          </button>
+          <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new", isDirty)} disabled={newDraftPending || !templates || templates.length === 0}>
+            {t("manage.planInstances.newInstance", "Create race plan")}
+          </button>
+        </div>
+      </div>
+      {showHelp && <PlanInstanceHelpModal onClose={() => setShowHelp(false)} />}
       <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.planInstances.description", "A concrete race plan generated from a plan template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
       </div>
@@ -1573,9 +1586,6 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         </div>
       )}
       {deleteError && <ErrorBanner message={deleteError} />}
-      <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new", isDirty)} disabled={newDraftPending || !templates || templates.length === 0}>
-        {t("manage.planInstances.newInstance", "Create race plan")}
-      </button>
       {templates && templates.length === 0 && (
         <div className="hra-text-muted text-meta mt-1.5" >{t("manage.planInstances.noTemplates", "Save a plan template first — a race plan is always created from one.")}</div>
       )}
