@@ -40,8 +40,8 @@ import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
 import "shadcn-big-calendar/styles";
 import { format, parse, startOfWeek, getDay, addDays } from "date-fns";
 import { enUS } from "date-fns/locale";
-import { flattenWeeks, type SectionView } from "@/domain/runplan-aggregate";
-import { TemplateDayRow, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
+import { flattenWeeks, type DayView, type SectionView } from "@/domain/runplan-aggregate";
+import { useDragSwap, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import type { OffsetUnit } from "@/types/runplan";
 
 const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
@@ -86,32 +86,26 @@ export function agendaWorkoutLabel(rawDsl: string): string {
 // for a real REST day (STATE_DAY_ICONS.rest / STATE_DAY_LABEL_KEYS.rest) —
 // an undeclared slot is presented as "what this day will read as if you
 // don't touch it," not a separate visual language.
-function UndeclaredDaySlot({ onMaterialize }: { onMaterialize: (swapWith?: DayRef) => void }) {
+function TemplateAgendaRow({ day, dayRef, onDaySwap, onMaterialize }: { day?: DayView; dayRef?: DayRef; onDaySwap?: (a: DayRef, b: DayRef) => void; onMaterialize?: (swapWith?: DayRef) => void }) {
   const { t } = useTranslation();
-  const [dragOver, setDragOver] = useState(false);
-  function handleDrop(e: DragEvent<HTMLDivElement>) {
+  const drag = useDragSwap(dayRef, onDaySwap);
+  const isRest = !day || day.workout_type === "rest";
+  const label = isRest
+    ? t("runplan.accordion.stateRestLabel", "Rest day")
+    : agendaWorkoutLabel(day.dsl);
+  const kilometers = ((day?.distance.meters ?? 0) / 1000).toFixed(1);
+  function dropOnRest(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
-    setDragOver(false);
     const raw = e.dataTransfer.getData("text/plain");
-    if (!raw) { onMaterialize(); return; }
-    try { onMaterialize(JSON.parse(raw) as DayRef); } catch { onMaterialize(); }
+    try { onMaterialize?.(raw ? JSON.parse(raw) as DayRef : undefined); } catch { onMaterialize?.(); }
   }
-  const label = t("runplan.accordion.stateRestLabel", "Rest day");
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className={`card hra-text-secondary flex flex-col items-center justify-center gap-1.5 p-3 min-h-24 cursor-pointer${dragOver ? " hra-swap-drop-target" : ""}`}
-      onClick={() => onMaterialize()}
-      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onMaterialize(); } }}
-      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={handleDrop}
-      aria-label={label}
-      title={label}
-    >
-      <Bed size={16} />
-      <span className="text-meta">{label}</span>
+    <div className={`hra-template-agenda-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} data-swappable={drag.swappable} {...drag.handlers} onClick={!day ? () => onMaterialize?.() : undefined} onDrop={!day ? dropOnRest : ("onDrop" in drag.handlers ? drag.handlers.onDrop : undefined)}>
+      <span className="hra-template-agenda-workout">
+        {isRest && <Bed size={16} aria-hidden="true" />}
+        <span>{label}</span>
+      </span>
+      <span className="hra-template-agenda-distance">{t("runplan.accordion.distance", `${kilometers} km`, { km: kilometers })}</span>
     </div>
   );
 }
@@ -153,7 +147,8 @@ interface Props {
   highlightedRef?: EditedRef;
 }
 
-export function PlanTemplateAgendaView({ ownerName, sections, onDayEdit, onDaySwap, onMaterializeDay, offsetUnit, highlightedRef }: Props) {
+export function PlanTemplateAgendaView(props: Props) {
+  const { ownerName, sections, onDaySwap, onMaterializeDay } = props;
   const { t } = useTranslation();
   const flatWeeks = flattenWeeks(sections);
   const [pos, setPos] = useState(0);
@@ -164,52 +159,30 @@ export function PlanTemplateAgendaView({ ownerName, sections, onDayEdit, onDaySw
   const current = flatWeeks[clampedPos];
   // Cleared on navigation so a later week reusing the same D-number doesn't
   // inherit a stale "just materialized, open me" flag from a different week.
-  const [justMaterializedDay, setJustMaterializedDay] = useState<number | null>(null);
 
   const sectionIndex = current?.sectionIndex ?? 0;
   const weekIndex = current?.weekIndex ?? 0;
   const section = sections[sectionIndex];
   const week = section?.weeks[weekIndex];
 
-  function goPrev() { setJustMaterializedDay(null); setPos(p => Math.max(0, p - 1)); }
-  function goNext() { setJustMaterializedDay(null); setPos(p => Math.min(flatWeeks.length - 1, p + 1)); }
-
-  function handleMaterialize(dayNumber: number, swapWith?: DayRef) {
-    onMaterializeDay(sectionIndex, weekIndex, dayNumber, swapWith);
-    setJustMaterializedDay(dayNumber);
-  }
+  function goPrev() { setPos(p => Math.max(0, p - 1)); }
+  function goNext() { setPos(p => Math.min(flatWeeks.length - 1, p + 1)); }
+  function handleMaterialize(dayNumber: number, swapWith?: DayRef) { onMaterializeDay(sectionIndex, weekIndex, dayNumber, swapWith); }
 
   // Stable event-component identity (a fresh function identity on
   // `components.event` would make the vendor remount every day cell on every
   // render, resetting TemplateDayRow's own internal expand/collapse state) —
   // same ref-bridge pattern PlanInstanceCalendar's DateHeaderComponent uses,
   // for the identical reason.
-  const stateRef = useRef({ week, sectionIndex, weekIndex, onDayEdit, onDaySwap, offsetUnit, highlightedRef, justMaterializedDay, handleMaterialize });
-  stateRef.current = { week, sectionIndex, weekIndex, onDayEdit, onDaySwap, offsetUnit, highlightedRef, justMaterializedDay, handleMaterialize };
+  const stateRef = useRef({ week });
+  stateRef.current = { week };
   const EventComponent = useMemo(
     () => function TemplateAgendaEvent({ event }: { event: TemplateCalendarEvent }) {
-      const { week, sectionIndex, weekIndex, onDayEdit, onDaySwap, offsetUnit, highlightedRef, justMaterializedDay, handleMaterialize } = stateRef.current;
+      const { week } = stateRef.current;
       if (!week) return null;
       const dayNumber = event.dayNumber;
       const dayIndex = week.days.findIndex(d => d.day === dayNumber);
-      if (dayIndex === -1) {
-        return <UndeclaredDaySlot onMaterialize={swapWith => handleMaterialize(dayNumber, swapWith)} />;
-      }
-      const highlighted = highlightedRef?.kind === "day"
-        && highlightedRef.sectionIndex === sectionIndex && highlightedRef.weekIndex === weekIndex && highlightedRef.dayIndex === dayIndex;
-      return (
-        <TemplateDayRow
-          day={week.days[dayIndex]}
-          onEdit={patch => onDayEdit(sectionIndex, weekIndex, dayIndex, patch)}
-          readOnlyDays={false}
-          dayRef={{ sectionIndex, weekIndex, dayIndex }}
-          onDaySwap={onDaySwap}
-          offsetUnit={offsetUnit}
-          highlighted={highlighted}
-          defaultExpanded={justMaterializedDay === dayNumber}
-          displayLabel={agendaWorkoutLabel(week.days[dayIndex].dsl)}
-        />
-      );
+      return <TemplateAgendaRow day={dayIndex === -1 ? undefined : week.days[dayIndex]} dayRef={dayIndex === -1 ? undefined : { sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap} onMaterialize={swapWith => handleMaterialize(dayNumber, swapWith)} />;
     },
     [],
   );

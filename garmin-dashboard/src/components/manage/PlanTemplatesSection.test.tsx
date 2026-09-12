@@ -83,8 +83,7 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
     fireEvent.click(await screen.findByText("New template", { selector: "span" }));
 
     expect(await screen.findByLabelText("Original text")).toHaveValue("Week 1: 5km easy"); // Plan text expanded, content preserved
-    fireEvent.click(pipelineHeader(/Conversion prompt/));
-    expect(screen.getByLabelText("Generated prompt")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Generated prompt")).not.toBeInTheDocument(); // one shared panel: the text draft remains intact while prompt stays closed
   });
 
   it("an existing template (already has DSL) opens with Workout DSL expanded, Plan text/Conversion prompt collapsed", async () => {
@@ -548,14 +547,14 @@ describe("PlanTemplatesSection — Agenda view (HRA-283/HRA-285)", () => {
   it("dropping a declared day onto an undeclared slot materializes it and moves the content there, leaving REST behind (AC5/AC6)", async () => {
     await openAgendaView();
     const day1 = dayTitle("5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
-    const undeclaredDay2 = screen.getAllByText("Rest day")[0].closest('[role="button"]') as HTMLElement;
+    const undeclaredDay2 = screen.getAllByText("Rest day")[0].closest('.hra-template-agenda-row') as HTMLElement;
     const dataTransfer = fakeDataTransfer();
 
     fireEvent.dragStart(day1, { dataTransfer });
     fireEvent.drop(undeclaredDay2, { dataTransfer });
 
     await waitFor(() => expect(dayTitle("5km @ RG")).toBeInTheDocument()); // the dragged workout moved to D2
-    expect(dayTitle("REST")).toBeInTheDocument(); // origin left as REST
+    expect(screen.getAllByText("Rest day").length).toBeGreaterThan(0); // origin is presented as a compact rest row
     const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
     expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: REST", "D2: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n"));
   });

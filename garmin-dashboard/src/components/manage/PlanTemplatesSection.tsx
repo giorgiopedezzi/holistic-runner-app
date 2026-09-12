@@ -26,7 +26,7 @@
  */
 import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, Save, Trash2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronUp, Save, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
@@ -336,14 +336,10 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // to compare artifacts, so more than one section can be open at once.
   // Defaults are (re)computed only when a row opens (computeDefaultExpansion
   // below), never reactively as the user edits.
-  const [textExpanded, setTextExpanded] = useState(true);
-  const [promptExpanded, setPromptExpanded] = useState(false);
-  const [dslExpanded, setDslExpanded] = useState(false);
+  const [activePipeline, setActivePipeline] = useState<"text" | "prompt" | "dsl" | null>("text");
 
   function selectPipeline(stage: "text" | "prompt" | "dsl") {
-    setTextExpanded(stage === "text");
-    setPromptExpanded(stage === "prompt");
-    setDslExpanded(stage === "dsl");
+    setActivePipeline(current => current === stage ? null : stage);
   }
 
   // HRA-140: the active row's own "last saved/loaded" snapshot — what
@@ -408,7 +404,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     // the "new empty template" default: Plan text expanded, the other two
     // collapsed but visible.
     const exp = computeDefaultExpansion(false, false, false);
-    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
+    setActivePipeline(exp.dsl ? "dsl" : exp.prompt ? "prompt" : exp.text ? "text" : null);
     lastGeneratedRef.current = null;
   }
 
@@ -419,7 +415,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // catch, including the debounced auto-regenerate path), not just the
   // initial open, so a later edit that turns out invalid also re-exposes it.
   useEffect(() => {
-    if (genError) selectPipeline("dsl");
+    if (genError) setActivePipeline("dsl");
   }, [genError]);
 
   // Warn before a refresh/tab close discards unsaved edits — either the
@@ -542,7 +538,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     // DSL" case — Workout DSL opens, Plan text/Conversion prompt collapse
     // (but stay reachable).
     const exp = computeDefaultExpansion(false, false, template.dsl_source.trim() !== "");
-    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
+    setActivePipeline(exp.dsl ? "dsl" : exp.prompt ? "prompt" : exp.text ? "text" : null);
     await runGenerate(template.dsl_source, { autoFillDistance: false });
   }
 
@@ -561,7 +557,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     // unlike startEdit's always-blank text/prompt — recompute defaults from
     // what this specific draft actually holds.
     const exp = computeDefaultExpansion(draft.originalText.trim() !== "", draft.generatedPrompt != null, draft.dslSource.trim() !== "");
-    setTextExpanded(exp.text); setPromptExpanded(exp.prompt); setDslExpanded(exp.dsl);
+    setActivePipeline(exp.dsl ? "dsl" : exp.prompt ? "prompt" : exp.text ? "text" : null);
     if (template) {
       setSavedDslSource(template.dsl_source);
       setBaselineName(template.name);
@@ -1019,12 +1015,14 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // owns `aria-expanded`. Order/title/status/expanded-state are all real
   // text or a real ARIA attribute — never color alone (accessibility
   // requirement).
-  function pipelineSectionTitle(header: string, status: string) {
+  function pipelineStep(stage: "text" | "prompt" | "dsl", header: string, status: string) {
+    const expanded = activePipeline === stage;
     return (
-      <span className="flex items-center justify-between flex-1 min-w-0 gap-2">
-        <span className="overflow-hidden text-ellipsis whitespace-nowrap">{header}</span>
-        <span className="hra-text-secondary text-meta shrink-0">{status}</span>
-      </span>
+      <button type="button" className="hra-plan-pipeline-step hra-accordion-trigger" data-active={expanded} onClick={() => selectPipeline(stage)} onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); selectPipeline(stage); } }} aria-expanded={expanded}>
+        <span className="hra-plan-pipeline-step-label">{header}</span>
+        <span className="hra-text-secondary text-meta">{status}</span>
+        {expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+      </button>
     );
   }
 
@@ -1175,11 +1173,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             Default open/collapsed state is computed once when the row opens
             (computeDefaultExpansion, called from startCreate/startEdit/
             reopenDraft), never reactively as the user types. */}
-        <div className="hra-plan-instance-section-gap flex flex-col gap-2">
-          <AccordionCard
-            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.planTextHeader", "1 · Plan text"), planTextStateLabel())}
-            expanded={textExpanded} onToggle={() => selectPipeline("text")}
-          >
+        <div className="hra-plan-instance-section-gap">
+          <div className="hra-plan-pipeline-strip" role="group" aria-label={t("manage.planTemplates.pipeline.label", "Plan preparation steps")}>
+            {pipelineStep("text", t("manage.planTemplates.pipeline.planTextHeader", "1 · Plan text"), planTextStateLabel())}
+            {pipelineStep("prompt", t("manage.planTemplates.pipeline.conversionPromptHeader", "2 · Conversion prompt"), conversionPromptStateLabel())}
+            {pipelineStep("dsl", t("manage.planTemplates.pipeline.workoutDslHeader", "3 · Workout DSL"), workoutDslStateLabel())}
+          </div>
+          {activePipeline != null && <div className="hra-plan-pipeline-panel" role="region" aria-label={t("manage.planTemplates.pipeline.label", "Plan preparation steps")}>
+          {activePipeline === "text" && (
+            <>
             {/* HRA-200: paste a messy real-world plan, generate a
                 ready-to-copy LLM prompt (built from the tested base prompt),
                 run it externally, then paste the returned DSL into Workout
@@ -1232,12 +1234,10 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 )}
               </p>
             </div>
-          </AccordionCard>
+            </>
+          )}
 
-          <AccordionCard
-            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.conversionPromptHeader", "2 · Conversion prompt"), conversionPromptStateLabel())}
-            expanded={promptExpanded} onToggle={() => selectPipeline("prompt")}
-          >
+          {activePipeline === "prompt" && (
             <div className="flex flex-col gap-2.5">
               <p className="hra-text-secondary text-meta m-0">
                 {t("manage.planTemplates.pipeline.conversionPromptDescription", "Use this prompt with your preferred AI, then paste the resulting plan into Workout DSL.")}
@@ -1263,12 +1263,9 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 </div>
               </label>
             </div>
-          </AccordionCard>
+          )}
 
-          <AccordionCard
-            title={pipelineSectionTitle(t("manage.planTemplates.pipeline.workoutDslHeader", "3 · Workout DSL"), workoutDslStateLabel())}
-            expanded={dslExpanded} onToggle={() => selectPipeline("dsl")}
-          >
+          {activePipeline === "dsl" && (
             <div className="flex flex-col gap-2.5">
               <p className="hra-text-secondary text-meta m-0">
                 {t("manage.planTemplates.pipeline.workoutDslDescription", "Source of truth for the structured plan.")}
@@ -1288,7 +1285,8 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
               </div>
               {genError && <ErrorBanner message={genError} />}
             </div>
-          </AccordionCard>
+          )}
+          </div>}
         </div>
 
         {/* HRA-238 AC6: Save/Approve/Restore stay global template-lifecycle

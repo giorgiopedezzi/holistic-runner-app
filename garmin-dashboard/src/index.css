@@ -2891,12 +2891,24 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    vertical stack of TemplateDayRow/UndeclaredDaySlot cards, each providing
    its own card chrome, spaced by this stack rather than table borders. */
 .hra-template-agenda-calendar { height: auto; }
-.hra-template-agenda-calendar .rbc-agenda-view { overflow: visible; }
+.hra-template-agenda-calendar .rbc-agenda-view { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); }
 .hra-template-agenda-calendar table.rbc-agenda-table { width: 100%; border: none; border-collapse: collapse; }
 .hra-template-agenda-calendar table.rbc-agenda-table thead { display: none; }
-.hra-template-agenda-calendar table.rbc-agenda-table tbody > tr > td { padding: 0 0 8px; border: none; vertical-align: middle; }
-.hra-template-agenda-calendar .rbc-agenda-date-cell { width: 44px; padding-right: 8px; text-align: center; }
+.hra-template-agenda-calendar table.rbc-agenda-table tbody > tr > td { padding: 0; border: none; vertical-align: middle; }
+.hra-template-agenda-calendar table.rbc-agenda-table tbody > tr + tr > td { border-top: 1px solid var(--border); }
+.hra-template-agenda-calendar .rbc-agenda-date-cell { width: 96px; min-width: 96px; padding: 0 12px; text-align: left; white-space: nowrap; }
 .hra-template-agenda-calendar .rbc-agenda-time-cell { display: none; }
+.hra-template-agenda-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 68px; gap: 16px; padding: 0 16px; }
+.hra-template-agenda-workout { display: flex; min-width: 0; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.hra-template-agenda-workout > span { overflow: hidden; text-overflow: ellipsis; }
+.hra-template-agenda-distance { flex: 0 0 auto; white-space: nowrap; text-align: right; color: var(--text-secondary); font-size: var(--text-meta); }
+.hra-plan-pipeline-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-card); }
+.hra-plan-pipeline-step { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; min-height: 64px; padding: 12px 16px; text-align: left; color: var(--text-primary); background: var(--bg-card); }
+.hra-plan-pipeline-step + .hra-plan-pipeline-step { border-left: 1px solid var(--border); }
+.hra-plan-pipeline-step[data-active="true"] { background: var(--bg-card-hover); }
+.hra-plan-pipeline-step-label { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--text-label); font-weight: var(--text-label--font-weight); }
+.hra-plan-pipeline-panel { padding: 16px; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 var(--radius-card) var(--radius-card); background: var(--bg-card); }
+@media (max-width: 760px) { .hra-plan-pipeline-strip { grid-template-columns: 1fr; } .hra-plan-pipeline-step + .hra-plan-pipeline-step { border-left: 0; border-top: 1px solid var(--border); } }
 [data-swappable="true"] { cursor: grab; }
 .hra-warning-list { padding-left: 18px; }
 .hra-classification-method { flex: 1 1 240px; }
