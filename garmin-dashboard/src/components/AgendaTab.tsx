@@ -29,7 +29,7 @@
  * all for today" are now two independent, non-blocking lines above the
  * calendar, not a takeover.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
@@ -39,6 +39,7 @@ import { swapDayContent } from "@/domain/runplan-patch";
 import type { DayView, SectionView } from "@/domain/runplan-aggregate";
 import { apiDaysToSections, racePaceReferenceFromPlan } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
 import type { RunPlan } from "@/types/runplan";
+import type { PlanInstanceWithDays } from "@/types/api";
 import { CategoryLegend, PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -85,14 +86,26 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const [swapPending, setSwapPending] = useState<{ a: DayView; b: DayView } | null>(null);
   const [swapping, setSwapping] = useState(false);
 
-  if (state.status === "loading" || state.status === "idle") {
+  // HRA-320: a swap (or scheduled-time edit) calls refetch(), which briefly
+  // sends `state` back to "loading" with no data at all — the early return
+  // below used to unmount PlanInstanceCalendar for that instant, discarding
+  // its own internal date/view navigation state, so the tab reopened back on
+  // today/this week instead of wherever the user actually was. Keeping the
+  // last successfully loaded instance around and rendering through a
+  // refetch (instead of unmounting) fixes that; `undefined` (never loaded)
+  // is distinct from `null` (loaded, no active plan), so a genuine first
+  // load still shows the spinner.
+  const lastInstanceRef = useRef<PlanInstanceWithDays | null | undefined>(undefined);
+  if (state.status === "success") lastInstanceRef.current = state.data;
+
+  if (lastInstanceRef.current === undefined && (state.status === "loading" || state.status === "idle")) {
     return <LoadingSpinner label={t("agenda.loading", "Loading your agenda…")} />;
   }
-  if (state.status === "error") {
+  if (lastInstanceRef.current === undefined && state.status === "error") {
     return <ErrorBanner message={state.error} />;
   }
 
-  const instance = state.data;
+  const instance = lastInstanceRef.current ?? null;
   const template = instance != null && templatesState.status === "success"
     ? templatesState.data.find(candidate => candidate.id === instance.template_id)
     : undefined;
