@@ -8,7 +8,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { prepareLive } from "../db.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
-const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, created_at FROM plan_instances";
+const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, schedule_timezone, original_start_date, original_days_snapshot, created_at FROM plan_instances";
 const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time, customized_at FROM plan_instance_days";
 
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
@@ -29,9 +29,14 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const countAllStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances");
   const listByTemplateStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
   const countByTemplateStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
-  const insertInstance = prepareLive(
-    "INSERT INTO plan_instances (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date, race_url) VALUES ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date, $race_url)",
-  );
+  const insertInstance = prepareLive(`
+    INSERT INTO plan_instances
+      (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date, race_url,
+       schedule_timezone, original_start_date, original_days_snapshot)
+    VALUES
+      ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date, $race_url,
+       $schedule_timezone, $original_start_date, $original_days_snapshot)
+  `);
   const findDaysByInstance = prepareLive(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
   const findDayByIdStmt = prepareLive(`SELECT ${DAY_FIELDS} WHERE id = ?`);
   // HRA-203: the section/week .fit-zip export's own scoping queries — same
@@ -158,6 +163,12 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // supply) before running instantiatePlan, so both columns stay consistent
   // with whatever was actually used to produce the regenerated days.
   const updateStartDateAndPaceOverridesStmt = prepareLive("UPDATE plan_instances SET start_date = ?, pace_overrides = ? WHERE id = ?");
+  // HRA-332: schedule_timezone correction (rejected by the service once
+  // Original is frozen) and the Original-baseline mirror write, run by the
+  // service after every pre-freeze Current mutation — see
+  // plan-instances.service.ts's syncOriginalIfNotFrozen.
+  const updateScheduleTimezoneStmt = prepareLive("UPDATE plan_instances SET schedule_timezone = ? WHERE id = ?");
+  const updateOriginalStmt = prepareLive("UPDATE plan_instances SET original_start_date = ?, original_days_snapshot = ? WHERE id = ?");
   // ON DELETE CASCADE (plan_instance_days.instance_id) removes the instance's days too.
   const deleteInstanceStmt = prepareLive("DELETE FROM plan_instances WHERE id = ?");
 
@@ -184,6 +195,8 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
         $template_id: i.template_id, $start_date: i.start_date,
         $pace_overrides: i.pace_overrides, $target_activity_id: i.target_activity_id,
         $name: i.name, $event: i.event, $race_name: i.race_name, $race_date: i.race_date, $race_url: i.race_url,
+        $schedule_timezone: i.schedule_timezone, $original_start_date: i.original_start_date,
+        $original_days_snapshot: i.original_days_snapshot,
       });
       return findInstanceById.get(Number(info.lastInsertRowid)) as unknown as PlanInstanceRow;
     },
@@ -214,6 +227,10 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     },
     updateStartDateAndPaceOverrides: (id: number, startDate: string, paceOverrides: string | null) => {
       updateStartDateAndPaceOverridesStmt.run(startDate, paceOverrides, id);
+    },
+    updateScheduleTimezone: (id: number, scheduleTimezone: string) => { updateScheduleTimezoneStmt.run(scheduleTimezone, id); },
+    updateOriginal: (id: number, originalStartDate: string, originalDaysSnapshot: string) => {
+      updateOriginalStmt.run(originalStartDate, originalDaysSnapshot, id);
     },
     // HRA-149: dsl-derived columns for one day, re-parsed+resolved by the caller.
     updateDayFromDsl: (dayId: number, d: {

@@ -11,11 +11,26 @@ import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 import type { PlanInstanceDayInput, PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
 import { instantiatePlan, type InstantiateOptions } from "../domain/runplan/instantiate.ts";
 import type { RunPlan } from "../domain/runplan/types.ts";
+import { isOriginalFrozen } from "../domain/plan-timezone.ts";
 
 export function createPlanInstancesService(db: DatabaseSync, instances: PlanInstancesRepo) {
+  // HRA-332: mirrors the instance's Current start_date/days into its
+  // Original baseline columns, but only while Original isn't frozen yet —
+  // a no-op once (today, in the instance's own schedule_timezone) has
+  // reached original_start_date. Called at the end of every mutating
+  // operation's transaction, after the Current-side writes, so Original
+  // always reflects exactly what Current was at the moment freeze took
+  // effect (AC6/AC7) with no scheduler involved.
+  function syncOriginalIfNotFrozen(instanceId: number): void {
+    const instance = instances.instanceById(instanceId);
+    if (!instance || !instance.schedule_timezone || !instance.original_start_date) return;
+    if (isOriginalFrozen(instance.original_start_date, instance.schedule_timezone)) return;
+    instances.updateOriginal(instanceId, instance.start_date, JSON.stringify(instances.daysByInstance(instanceId)));
+  }
+
   function instantiate(
     templateId: number, plan: RunPlan, options: InstantiateOptions, targetActivityId: number | null, name: string,
-    raceName: string | null, raceDate: string | null, raceUrl: string | null,
+    raceName: string | null, raceDate: string | null, raceUrl: string | null, scheduleTimezone: string,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     const resolvedDays = instantiatePlan(plan, options);
 
@@ -35,6 +50,12 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         race_name: raceName,
         race_date: raceDate,
         race_url: raceUrl,
+        // HRA-332: Original mirrors Current at creation unconditionally
+        // (there is no prior Original to protect yet) — original_days_snapshot
+        // is filled in below once the days themselves exist.
+        schedule_timezone: scheduleTimezone,
+        original_start_date: options.startDate,
+        original_days_snapshot: null,
       });
       for (const day of resolvedDays) {
         instances.createDay({
@@ -59,8 +80,13 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           customized_at: null,
         });
       }
+      // HRA-332: the initial Original snapshot, now that the days actually
+      // exist — an instance whose start_date is already in the past is
+      // frozen from this very write onward (syncOriginalIfNotFrozen isn't
+      // used here: creation always establishes Original once, unconditionally).
+      instances.updateOriginal(instance.id, options.startDate, JSON.stringify(instances.daysByInstance(instance.id)));
       db.exec("COMMIT");
-      return { instance, days: instances.daysByInstance(instance.id) };
+      return { instance: instances.instanceById(instance.id)!, days: instances.daysByInstance(instance.id) };
     } catch (e) {
       db.exec("ROLLBACK");
       throw e;
@@ -84,6 +110,10 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     instanceId: number,
     fields: Partial<{ name: string; race_name: string | null; race_date: string | null; race_url: string | null }>,
     days?: Omit<PlanInstanceDayInput, "instance_id">[],
+    // HRA-332: already validated (IANA format) and freeze-checked by the
+    // controller before this is called — the controller has the instance
+    // loaded anyway to build the freeze check's own error message.
+    scheduleTimezone?: string,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     db.exec("BEGIN");
     try {
@@ -94,7 +124,11 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         }
       }
       instances.updateFields(instanceId, fields);
+      if (scheduleTimezone) instances.updateScheduleTimezone(instanceId, scheduleTimezone);
       instances.clearApproval(instanceId);
+      // HRA-332: mirrors the (possibly just-replaced) days and/or the
+      // just-corrected timezone into Original — a no-op once frozen.
+      syncOriginalIfNotFrozen(instanceId);
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");
@@ -119,6 +153,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     notes: string | null | undefined,
     scheduledTime: string | null | undefined,
   ): PlanInstanceDayRow {
+    const instanceId = instances.dayById(dayId)!.instance_id;
     db.exec("BEGIN");
     try {
       if (dslFields) {
@@ -134,6 +169,8 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       if (scheduledTime !== undefined) {
         instances.updateDayScheduledTime(dayId, scheduledTime);
       }
+      // HRA-332: mirrors this day's change into Original — a no-op once frozen.
+      syncOriginalIfNotFrozen(instanceId);
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");
@@ -206,6 +243,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       // persisted day content, exactly the class of edit that revokes
       // approval.
       instances.clearApproval(instanceId);
+      // HRA-332: mirrors the regenerated days + new start_date into
+      // Original — a no-op once frozen.
+      syncOriginalIfNotFrozen(instanceId);
       db.exec("COMMIT");
     } catch (e) {
       db.exec("ROLLBACK");

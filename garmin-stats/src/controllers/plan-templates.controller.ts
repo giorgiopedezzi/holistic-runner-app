@@ -33,6 +33,7 @@ import {
   serviceUnavailable, tooManyRequests, unprocessable,
 } from "../http/problem.ts";
 import { loadConfig } from "../config.ts";
+import { isOriginalFrozen, isValidIanaTimeZone, SCHEDULE_TIMEZONE_BACKFILL_FALLBACK } from "../domain/plan-timezone.ts";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const GOAL_TIME_RE = /^(\d{2}):(\d{2}):(\d{2})$/;
@@ -89,6 +90,12 @@ type InstantiateBody = Partial<{
   // plug a gap in a template week (a D-number 1-7 the template never
   // declared for that week).
   rest_day_label: string;
+  // HRA-332: explicit schedule timezone for this instance. Omitted, it
+  // defaults from settings.timezone (the owner-configured value); if that's
+  // also unset, browser_timezone_fallback (the caller's own browser
+  // timezone) is used as a creation-time-only fallback.
+  schedule_timezone: string;
+  browser_timezone_fallback: string;
 }>;
 // HRA-115: a day edit is now its raw DSL text (same grammar as a template's
 // D-line) plus the section/week/date scope it lives in — not pre-resolved
@@ -102,6 +109,9 @@ type InstanceDayBody = { section_name: string; week_number: number; date: string
 type InstanceUpdateBody = Partial<{
   name: string; race_name: string | null; race_date: string | null; race_url: string | null;
   days: InstanceDayBody[];
+  // HRA-332: correcting the schedule timezone — rejected (409) once
+  // Original has frozen.
+  schedule_timezone: string;
 }>;
 // HRA-132: effective_from is required (the cutover — server-floored to
 // "today", never trusted from the client); start_date/pace_overrides are
@@ -138,6 +148,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const activitiesRepo = ctx.repos.activities;
   const instancesRepo = ctx.repos.planInstances;
   const instancesService = ctx.services.planInstances;
+  const settingsRepo = ctx.repos.settings;
 
   const list: Handler = (_req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
@@ -435,8 +446,25 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     }
 
+    // HRA-332: schedule_timezone resolution order — explicit request value,
+    // then the owner-configured settings.timezone, then the caller's own
+    // browser timezone as a creation-time-only fallback (AC1). Whichever
+    // source wins, it's validated as a real IANA identifier before use.
+    // No source at all (no explicit value, no owner profile, no browser
+    // fallback) falls back to the same documented UTC constant the AC5
+    // backfill migration uses — keeps this endpoint non-breaking for
+    // existing callers that don't yet send any timezone field, rather than
+    // hard-rejecting creation outright.
+    const explicitTimezone = body.schedule_timezone?.trim();
+    const ownerTimezone = (settingsRepo.get() as { timezone: string | null }).timezone;
+    const scheduleTimezone = explicitTimezone || ownerTimezone || body.browser_timezone_fallback?.trim() || SCHEDULE_TIMEZONE_BACKFILL_FALLBACK;
+    if (!isValidIanaTimeZone(scheduleTimezone)) {
+      throw unprocessable(`schedule_timezone "${scheduleTimezone}" is not a valid IANA timezone identifier.`);
+    }
+
     const { instance, days } = instancesService.instantiate(
       templateId, plan, { startDate: body.start_date, paceOverrides, restDayLabel }, targetActivityId, name, raceName, raceDate, raceUrl,
+      scheduleTimezone,
     );
 
     res.setHeader("Location", `/api/v1/plan-instances/${instance.id}`);
@@ -601,8 +629,26 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const hasRaceDate = "race_date" in body;
     const hasRaceUrl = "race_url" in body;
     const hasDays = "days" in body;
-    if (!hasName && !hasRaceName && !hasRaceDate && !hasRaceUrl && !hasDays) {
-      throw unprocessable("At least one of name, race_name, race_date, race_url, days is required.");
+    const hasScheduleTimezone = "schedule_timezone" in body;
+    if (!hasName && !hasRaceName && !hasRaceDate && !hasRaceUrl && !hasDays && !hasScheduleTimezone) {
+      throw unprocessable("At least one of name, race_name, race_date, race_url, days, schedule_timezone is required.");
+    }
+
+    // HRA-332: a timezone correction is only allowed before Original
+    // freezes (AC3/AC4) — checked against the CURRENT schedule_timezone,
+    // the one about to be replaced, since that's what "today" must be
+    // interpreted in right up until the moment it's corrected.
+    let scheduleTimezone: string | undefined;
+    if (hasScheduleTimezone) {
+      const requested = body.schedule_timezone?.trim();
+      if (!requested || !isValidIanaTimeZone(requested)) {
+        throw unprocessable(`schedule_timezone "${body.schedule_timezone}" is not a valid IANA timezone identifier.`);
+      }
+      if (instance.schedule_timezone && instance.original_start_date
+        && isOriginalFrozen(instance.original_start_date, instance.schedule_timezone)) {
+        throw conflict("schedule_timezone can no longer be changed — the Original baseline has already frozen.");
+      }
+      scheduleTimezone = requested;
     }
 
     const fields: Partial<{ name: string; race_name: string | null; race_date: string | null; race_url: string | null }> = {};
@@ -683,7 +729,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     }
 
-    const { instance: updated, days } = instancesService.patchInstance(id, fields, dayInputs);
+    const { instance: updated, days } = instancesService.patchInstance(id, fields, dayInputs, scheduleTimezone);
     return send(res, { ...updated, days });
   };
 

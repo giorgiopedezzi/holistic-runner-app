@@ -11,7 +11,7 @@ import { prepareLive } from "../db.ts";
 type NamedParams = Record<string, string | number | null>;
 
 export function createSettingsRepo(db: DatabaseSync) {
-  const settingsGet    = prepareLive("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette FROM settings WHERE id = 1");
+  const settingsGet    = prepareLive("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, timezone, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette FROM settings WHERE id = 1");
   // Two dedicated writes, one per Settings card (HRA-40): the Outlier-detection
   // card (three values) and the Overview & Trends card (min_trend_group_size).
   // Each replaces only its own sub-resource — no combined write.
@@ -20,6 +20,9 @@ export function createSettingsRepo(db: DatabaseSync) {
   const themeUpdate      = prepareLive("UPDATE settings SET theme = $theme, updated_at = datetime('now') WHERE id = 1");
   const backgroundUpdate = prepareLive("UPDATE settings SET background_kind = $background_kind, background_value = $background_value, updated_at = datetime('now') WHERE id = 1");
   const unitsUpdate      = prepareLive("UPDATE settings SET unit_system = $unit_system, updated_at = datetime('now') WHERE id = 1");
+  // HRA-332: the owner-configured schedule timezone — its own sub-resource,
+  // same one-card-per-endpoint pattern as theme/units/etc above.
+  const timezoneUpdate   = prepareLive("UPDATE settings SET timezone = $timezone, updated_at = datetime('now') WHERE id = 1");
   const detailViewUpdate = prepareLive("UPDATE settings SET activity_detail_view = $activity_detail_view, updated_at = datetime('now') WHERE id = 1");
   const accentUpdate     = prepareLive("UPDATE settings SET accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
   const dateFormatUpdate = prepareLive("UPDATE settings SET date_format = $date_format, updated_at = datetime('now') WHERE id = 1");
@@ -37,6 +40,7 @@ export function createSettingsRepo(db: DatabaseSync) {
     updateTheme:      (p: NamedParams) => themeUpdate.run(p),
     updateBackground: (p: NamedParams) => backgroundUpdate.run(p),
     updateUnits:      (p: NamedParams) => unitsUpdate.run(p),
+    updateTimezone:   (p: NamedParams) => timezoneUpdate.run(p),
     updateDetailView: (p: NamedParams) => detailViewUpdate.run(p),
     updateAccent:     (p: NamedParams) => accentUpdate.run(p),
     updateDateFormat: (p: NamedParams) => dateFormatUpdate.run(p),

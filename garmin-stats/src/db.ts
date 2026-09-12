@@ -257,6 +257,12 @@ export function initSchema(db: DatabaseSync): void {
       background_kind               TEXT NOT NULL DEFAULT 'none',
       background_value              TEXT,
       unit_system                   TEXT NOT NULL DEFAULT 'auto',
+      -- HRA-332: the owner-configured IANA timezone, nullable — NULL means
+      -- "not yet configured", the app's own documented backfill/creation
+      -- fallback for plan_instances.schedule_timezone (see that column's own
+      -- comment) rather than a DEFAULT here, since a DEFAULT would silently
+      -- imply a real configured value that was never actually chosen.
+      timezone                      TEXT,
       -- Overview & Trends: minimum activities (single mode) or groups
       -- (week/month mode) before a sport's trend chart is worth showing —
       -- below this, a "too few activities" message is shown instead. Same
@@ -390,6 +396,32 @@ export function initSchema(db: DatabaseSync): void {
       race_name          TEXT,
       race_date          TEXT,
       race_url           TEXT,
+      -- HRA-332: the instance's own stable IANA schedule timezone — governs
+      -- plan-date interpretation, activity local-date conversion, report
+      -- asOf boundaries, and missed-workout eligibility. Defaults from the
+      -- owner-configured settings.timezone at creation; a browser-supplied
+      -- value is only a creation-time fallback when settings.timezone isn't
+      -- set. Freely correctable via PATCH until Original freezes (below),
+      -- then rejected — it never changes automatically from travel or a
+      -- browser/server timezone change.
+      schedule_timezone  TEXT,
+      -- HRA-332: the Original baseline — start_date/days mirrored from
+      -- Current on every pre-freeze mutation (including at creation) and
+      -- left untouched forever once frozen. Freeze is a pure function of
+      -- (today's local date in schedule_timezone) >= original_start_date,
+      -- recomputed on demand (domain/plan-timezone.ts's isOriginalFrozen) —
+      -- deliberately not a stored boolean/midnight job, so an instance whose
+      -- start_date is already in the past freezes on its very first write
+      -- with no scheduler involved. original_days_snapshot is JSON (same
+      -- per-day shape as plan_instance_days, without id/instance_id) rather
+      -- than a mirrored table: nothing yet consumes Original at the
+      -- individual-day granularity (the report feature that will is Epic
+      -- HRA-331, still unstarted), and a whole-snapshot column is trivially
+      -- correct to keep in lockstep with Current pre-freeze — a second
+      -- mirrored table is the more invasive alternative, rejected here as
+      -- unjustified until an actual per-day Original query need exists.
+      original_start_date     TEXT,
+      original_days_snapshot  TEXT,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -619,6 +651,9 @@ export function initSchema(db: DatabaseSync): void {
   if (settingsCols.some(c => c.name === "style_pack")) {
     db.exec("ALTER TABLE settings DROP COLUMN style_pack");
   }
+  if (!settingsCols.some(c => c.name === "timezone")) {
+    db.exec("ALTER TABLE settings ADD COLUMN timezone TEXT");
+  }
 
   // HRA-113: approval gate columns, added after plan_templates/plan_instances
   // already existed (HRA-112). First migration either table has needed.
@@ -664,6 +699,51 @@ export function initSchema(db: DatabaseSync): void {
   }
   if (!planInstanceCols.some(c => c.name === "race_url")) {
     db.exec("ALTER TABLE plan_instances ADD COLUMN race_url TEXT");
+  }
+
+  // HRA-332: schedule_timezone + Original baseline columns, added after
+  // plan_instances already existed. Backfill runs only on the migration that
+  // actually adds schedule_timezone — a fresh install's CREATE TABLE above
+  // already has the columns with no rows to fill.
+  const addingScheduleTimezone = !planInstanceCols.some(c => c.name === "schedule_timezone");
+  if (addingScheduleTimezone) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN schedule_timezone TEXT");
+  }
+  if (!planInstanceCols.some(c => c.name === "original_start_date")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN original_start_date TEXT");
+  }
+  if (!planInstanceCols.some(c => c.name === "original_days_snapshot")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN original_days_snapshot TEXT");
+  }
+  if (addingScheduleTimezone) {
+    // Pre-HRA-332 rows have no schedule_timezone of their own. Backfill from
+    // the owner-configured settings.timezone; 'UTC' is the explicit
+    // documented fallback (AC5) for a settings row that also has no
+    // timezone configured — deliberately a fixed literal, never the
+    // migration-running process's own runtime/server timezone, so re-running
+    // this migration on a different host produces the same result. Original
+    // is backfilled as "Current is Original" — the only sane one-time value
+    // for legacy rows, since no prior Original ever existed to recover.
+    // Built in JS rather than SQLite's JSON1 functions (json_object/
+    // json_group_array) — this backend otherwise never relies on that
+    // extension, and node:sqlite's bundled build isn't guaranteed to include
+    // it; app-side JSON.stringify is the same approach every other JSON
+    // column in this schema already uses.
+    const ownerTimezone = (db.prepare("SELECT timezone FROM settings WHERE id = 1").get() as { timezone: string | null } | undefined)?.timezone;
+    const fallbackTimezone = ownerTimezone ?? "UTC";
+    const legacyInstances = db.prepare("SELECT id, start_date FROM plan_instances WHERE schedule_timezone IS NULL").all() as { id: number; start_date: string }[];
+    const legacyDaysStmt = db.prepare(`
+      SELECT section_name, week_number, date, day, suffix, category, workout_type, segments,
+             activity_target, activity_description, notes, needs_review, scheduled_time, customized_at
+      FROM plan_instance_days WHERE instance_id = ? ORDER BY date ASC, day ASC
+    `);
+    const backfillStmt = db.prepare(
+      "UPDATE plan_instances SET schedule_timezone = ?, original_start_date = ?, original_days_snapshot = ? WHERE id = ?",
+    );
+    for (const instance of legacyInstances) {
+      const days = legacyDaysStmt.all(instance.id);
+      backfillStmt.run(fallbackTimezone, instance.start_date, JSON.stringify(days), instance.id);
+    }
   }
 
   // HRA-149: scheduled_time, added after plan_instance_days already existed
@@ -821,6 +901,10 @@ export interface PlanInstanceRow {
   race_name: string | null;
   race_date: string | null;
   race_url: string | null;
+  // HRA-332: see the CREATE TABLE comment above for freeze/backfill semantics.
+  schedule_timezone: string | null;
+  original_start_date: string | null;
+  original_days_snapshot: string | null;
   created_at: string;
 }
 
@@ -878,6 +962,9 @@ export interface SettingsRow {
   background_kind: string;
   background_value: string | null;
   unit_system: string;
+  // HRA-332: the owner-configured IANA timezone, nullable — see the
+  // CREATE TABLE comment above.
+  timezone: string | null;
   min_trend_group_size: number;
   activity_detail_view: string;
   accent_color: string;

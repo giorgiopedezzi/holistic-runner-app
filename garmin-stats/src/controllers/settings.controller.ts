@@ -11,6 +11,7 @@ import type { SettingsRow } from "../db.ts";
 import { send } from "../http/respond.ts";
 import { readJsonBody, readBodyBuffer } from "../http/request.ts";
 import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
+import { isValidIanaTimeZone } from "../domain/plan-timezone.ts";
 
 // theme: no writable 'auto' anymore (removed from ThemePicker) — only an
 // explicit choice can be PUT. A settings row can still legally hold a
@@ -124,6 +125,20 @@ export function createSettingsController(ctx: AppContext) {
     return sendSettings(res);
   };
 
+  // PUT /api/v1/settings/timezone — HRA-332: the owner-configured schedule
+  // timezone, its own sub-resource (rest-api-standards §1/§2 — a full
+  // single-value replacement is PUT, same as theme/units above). This is the
+  // "user profile" default new plan instances pick up at creation; it never
+  // affects an already-created instance's own schedule_timezone.
+  const updateTimezone: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    if (!body.timezone || !isValidIanaTimeZone(body.timezone)) {
+      throw unprocessable("timezone must be a valid IANA timezone identifier (e.g. \"Europe/Rome\").");
+    }
+    repo.updateTimezone({ $timezone: body.timezone });
+    return sendSettings(res);
+  };
+
   const updateDetailView: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);
     if (!body.activity_detail_view || !DETAIL_VIEWS.includes(body.activity_detail_view)) {
@@ -203,5 +218,5 @@ export function createSettingsController(ctx: AppContext) {
     return sendSettings(res);
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateTimezone, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };
 }

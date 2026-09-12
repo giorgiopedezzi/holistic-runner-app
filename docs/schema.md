@@ -42,7 +42,7 @@ Withings data. Key columns: `measured_at` (UNIQUE), `date_only`, `weight_kg`, `f
 Identical shape, one row each (id=1). Columns: `access_token`, `refresh_token`, `expires_at` (unix seconds), `scope`.
 
 ### `settings`
-Single global row (id=1), same pattern as `*_tokens`. Columns: `outlier_speed_delta_per_sec` (REAL, default 2.0), `outlier_cadence_delta_per_sec` (REAL, default 60.0) — max plausible change-per-second for Speed and Cadence, used by `ActivityModal.tsx`'s outlier filter (see below). Deliberately "change per second" (not a statistical parameter like a z-score) — a threshold a user can reason about directly ("speed can't jump 2 m/s in one second"), edited via the Settings tab. Also `outlier_min_speed_kmh` (REAL, default 6.0 ≈ 10:00 min/km) — an independent, absolute (not delta-based) floor: any Speed/Pace sample slower than this is dropped outright as "not really running," regardless of whether it looks like a spike; **always stored/labeled in km/h regardless of the unit system** — a deliberate scoping choice (it's an internal tuning threshold, not a measurement display). Plus appearance/units: `theme` (TEXT, default `'auto'` for fresh installs — see "Appearance" below for why existing installs don't retroactively get this — one of the 4 names in `types/api.ts`'s `THEME_NAMES`, or `'auto'`), `background_kind` (TEXT, default `'none'`, one of `'none' | 'bundled' | 'custom'`), `background_value` (TEXT, nullable — a bundled preset id, or an uploaded filename under `garmin-stats/backgrounds/`, depending on `background_kind`), `unit_system` (TEXT, default `'auto'`, one of `'metric' | 'imperial' | 'auto'`). Also `min_trend_group_size` (INTEGER, default 5 — see Overview tab below) and `activity_detail_view` (TEXT, default `'accordion'`, one of `'accordion' | 'modal'` — see Activities tab below). Also `date_format` (TEXT, default `'literal_uk'`, one of `'numeric_uk' | 'numeric_us' | 'literal_uk' | 'literal_us'`) — how every displayed date renders app-wide (`garmin-dashboard`'s `utils/fmt.ts` `fmtDate`): style (numeric `23/03/2026` vs literal `23 Mar 2026`) × region (uk day-first vs us month-first). Independent of `unit_system` — a UK date format doesn't imply metric units. `initSchema()` seeds the row with `INSERT OR IGNORE` since column `DEFAULT`s only populate a row that gets inserted, not the table itself.
+Single global row (id=1), same pattern as `*_tokens`. Columns: `outlier_speed_delta_per_sec` (REAL, default 2.0), `outlier_cadence_delta_per_sec` (REAL, default 60.0) — max plausible change-per-second for Speed and Cadence, used by `ActivityModal.tsx`'s outlier filter (see below). Deliberately "change per second" (not a statistical parameter like a z-score) — a threshold a user can reason about directly ("speed can't jump 2 m/s in one second"), edited via the Settings tab. Also `outlier_min_speed_kmh` (REAL, default 6.0 ≈ 10:00 min/km) — an independent, absolute (not delta-based) floor: any Speed/Pace sample slower than this is dropped outright as "not really running," regardless of whether it looks like a spike; **always stored/labeled in km/h regardless of the unit system** — a deliberate scoping choice (it's an internal tuning threshold, not a measurement display). Plus appearance/units: `theme` (TEXT, default `'auto'` for fresh installs — see "Appearance" below for why existing installs don't retroactively get this — one of the 4 names in `types/api.ts`'s `THEME_NAMES`, or `'auto'`), `background_kind` (TEXT, default `'none'`, one of `'none' | 'bundled' | 'custom'`), `background_value` (TEXT, nullable — a bundled preset id, or an uploaded filename under `garmin-stats/backgrounds/`, depending on `background_kind`), `unit_system` (TEXT, default `'auto'`, one of `'metric' | 'imperial' | 'auto'`). Also `timezone` (TEXT, nullable — HRA-332: the owner-configured IANA timezone, `PUT /api/v1/settings/timezone`; `NULL` means "not yet configured," the documented trigger for `plan_instances.schedule_timezone`'s own `'UTC'` creation/backfill fallback — see that column's own comment above — deliberately no column `DEFAULT`, since a `DEFAULT` would silently imply a real configured value that was never actually chosen). Also `min_trend_group_size` (INTEGER, default 5 — see Overview tab below) and `activity_detail_view` (TEXT, default `'accordion'`, one of `'accordion' | 'modal'` — see Activities tab below). Also `date_format` (TEXT, default `'literal_uk'`, one of `'numeric_uk' | 'numeric_us' | 'literal_uk' | 'literal_us'`) — how every displayed date renders app-wide (`garmin-dashboard`'s `utils/fmt.ts` `fmtDate`): style (numeric `23/03/2026` vs literal `23 Mar 2026`) × region (uk day-first vs us month-first). Independent of `unit_system` — a UK date format doesn't imply metric units. `initSchema()` seeds the row with `INSERT OR IGNORE` since column `DEFAULT`s only populate a row that gets inserted, not the table itself.
 
 ### `date_ranges`
 Named date ranges the user saves for later recall/comparison (Data & Sync tab's "Named date ranges"
@@ -113,7 +113,35 @@ convenience; never independently settable, always the same event type as its tem
 race it targets, all optional and independent of `target_activity_id` — a race that hasn't happened
 yet may have no linkable activity row at all. `race_url` is a plain free-text link, e.g. the race's
 registration page — not validated as a well-formed URL server-side, same "trust the user" treatment
-as `race_name`), `created_at`.
+as `race_name`), `schedule_timezone` (nullable TEXT, an IANA identifier — see "Schedule timezone
+& Original baseline" below), `original_start_date` / `original_days_snapshot` (same section),
+`created_at`.
+
+**Schedule timezone & Original baseline (HRA-332):** `schedule_timezone` governs plan-date
+interpretation, activity local-date conversion, report `asOf` boundaries, and missed-workout
+eligibility for this instance. Set at creation from an explicit request value, else the
+owner-configured `settings.timezone`, else a request-supplied `browser_timezone_fallback`
+(creation-time-only), else the literal `'UTC'` (so `POST .../instantiate` stays non-breaking for a
+caller that sends none of these). Freely correctable via `PATCH /api/v1/plan-instances/:id`
+(`{schedule_timezone}`) until Original freezes, then rejected with 409.
+
+`original_start_date` / `original_days_snapshot` (nullable TEXT, JSON — same per-day shape as
+`plan_instance_days`, without `id`/`instance_id`) are the Original baseline: mirrored from Current
+on every pre-freeze mutation (`instantiate`, `PATCH .../plan-instances/:id` fields/days/
+schedule_timezone, `PATCH .../days/:dayId`, `POST .../regenerate`) and left untouched forever once
+frozen. Freeze is `domain/plan-timezone.ts`'s `isOriginalFrozen()` — a pure function of (today's
+local calendar date in `schedule_timezone`) >= `original_start_date` — recomputed on every mutation
+attempt rather than a stored flag flipped by a scheduled job, so an instance created with a
+past `start_date` freezes immediately on its first write with no scheduler involved, and moving
+`start_date` later can never unfreeze it (the frozen boundary itself never moves backward once
+"today" has passed it). A whole-instance JSON snapshot was chosen over a second mirrored
+`plan_instance_days`-shaped table: nothing yet queries Original at day granularity (the report
+feature that will is Epic HRA-331, not started), and the snapshot is trivially kept in lockstep
+pre-freeze; a mirrored table is the more invasive alternative if a real per-day Original query need
+ever appears. **Backfill:** pre-HRA-332 rows get `schedule_timezone` from the owner's
+`settings.timezone` (or `'UTC'` if that was never configured either) and `original_start_date`/
+`original_days_snapshot` set to their current `start_date`/days — "Current is Original" is the only
+sane one-time value for legacy rows, since no prior Original ever existed to recover.
 
 **`name`/`event` migration (HRA-114):** rows created before this Story had neither column. The
 migration backfills them from the source template (`name` ← template's `name`, `event` ← template's
