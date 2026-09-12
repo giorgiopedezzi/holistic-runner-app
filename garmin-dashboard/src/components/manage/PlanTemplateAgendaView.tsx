@@ -33,47 +33,23 @@
  * it behaves as an ordinary declared day. Pure component: it never touches
  * dsl_source itself — PlanTemplatesSection owns that.
  */
-import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Bed, ChevronLeft, ChevronRight } from "lucide-react";
-import { ShadcnBigCalendar, dateFnsLocalizer } from "shadcn-big-calendar";
-import "shadcn-big-calendar/styles";
-import { format, parse, startOfWeek, getDay, addDays } from "date-fns";
-import { enUS } from "date-fns/locale";
 import { flattenWeeks, type DayView, type SectionView } from "@/domain/runplan-aggregate";
 import { useDragSwap, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import type { OffsetUnit } from "@/types/runplan";
 
 const DAY_NUMBERS = [1, 2, 3, 4, 5, 6, 7] as const;
 
-const locales = { enUS };
-const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales });
 
 // A fixed, arbitrary calendar week — never displayed, only used so the
 // vendor calendar has real Date objects to lay its 7 columns out with.
 // Normalized through the SAME startOfWeek the localizer itself uses, so
 // Day 1 always lands in the leftmost column regardless of locale.
-const TEMPLATE_AGENDA_ANCHOR = startOfWeek(new Date(2024, 0, 7));
-const TEMPLATE_AGENDA_DAY_DATES: Record<number, Date> = Object.fromEntries(
-  DAY_NUMBERS.map(n => [n, addDays(TEMPLATE_AGENDA_ANCHOR, n - 1)]),
-);
-function dayNumberFromDate(date: Date): number {
-  for (const n of DAY_NUMBERS) {
-    const d = TEMPLATE_AGENDA_DAY_DATES[n];
-    if (d.getFullYear() === date.getFullYear() && d.getMonth() === date.getMonth() && d.getDate() === date.getDate()) return n;
-  }
-  return 1;
-}
-
 // Every event sits in the vendor's all-day row (no time-of-day exists for a
 // template day) — this array's identity/content never changes, so it's a
 // module-scope constant rather than something recomputed per render.
-interface TemplateCalendarEvent { dayNumber: number; start: Date; end: Date; allDay: true }
-const TEMPLATE_AGENDA_EVENTS: TemplateCalendarEvent[] = DAY_NUMBERS.map(n => ({
-  dayNumber: n, start: TEMPLATE_AGENDA_DAY_DATES[n], end: TEMPLATE_AGENDA_DAY_DATES[n], allDay: true,
-}));
-
-function noopNavigate() {}
 
 // Agenda has a separate day-number gutter, so repeating the persisted D-line
 // prefix adds noise. This deliberately only changes display text: persistence,
@@ -86,7 +62,7 @@ export function agendaWorkoutLabel(rawDsl: string): string {
 // for a real REST day (STATE_DAY_ICONS.rest / STATE_DAY_LABEL_KEYS.rest) —
 // an undeclared slot is presented as "what this day will read as if you
 // don't touch it," not a separate visual language.
-function TemplateAgendaRow({ day, dayRef, onDaySwap, onMaterialize }: { day?: DayView; dayRef?: DayRef; onDaySwap?: (a: DayRef, b: DayRef) => void; onMaterialize?: (swapWith?: DayRef) => void }) {
+function TemplateAgendaRow({ dayNumber, day, dayRef, onDaySwap, onMaterialize }: { dayNumber: number; day?: DayView; dayRef?: DayRef; onDaySwap?: (a: DayRef, b: DayRef) => void; onMaterialize?: (swapWith?: DayRef) => void }) {
   const { t } = useTranslation();
   const drag = useDragSwap(dayRef, onDaySwap);
   const isRest = !day || day.workout_type === "rest";
@@ -101,6 +77,7 @@ function TemplateAgendaRow({ day, dayRef, onDaySwap, onMaterialize }: { day?: Da
   }
   return (
     <div className={`hra-template-agenda-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} data-swappable={drag.swappable} {...drag.handlers} onClick={!day ? () => onMaterialize?.() : undefined} onDrop={!day ? dropOnRest : ("onDrop" in drag.handlers ? drag.handlers.onDrop : undefined)}>
+      <span className="hra-template-agenda-day">{t("runplan.weekView.dayHeader", `Day ${dayNumber}`, { n: dayNumber })}</span>
       <span className="hra-template-agenda-workout">
         {isRest && <Bed size={16} aria-hidden="true" />}
         <span>{label}</span>
@@ -116,19 +93,6 @@ function TemplateAgendaRow({ day, dayRef, onDaySwap, onMaterialize }: { day?: Da
 // view (Agenda.js) reads this via `components.date`, receiving `{ day }` —
 // the Date it computed from `date`/`length`, which dayNumberFromDate maps
 // back to its own Day N.
-function TemplateAgendaDateCell({ day }: { day: Date }) {
-  const { t } = useTranslation();
-  const dayNumber = dayNumberFromDate(day);
-  return <span className="hra-agenda-date-num">{t("runplan.weekView.dayHeader", `Day ${dayNumber}`, { n: dayNumber })}</span>;
-}
-
-// Suppresses Agenda.js's own "All day" fallback label in its time column —
-// no scheduled_time exists for a template day, so that column carries
-// nothing at all (hidden outright via index.css's .rbc-agenda-time-cell rule
-// below; this is what would otherwise render inside it).
-function TemplateAgendaTimeCell() {
-  return null;
-}
 
 interface Props {
   ownerName: string;
@@ -174,19 +138,6 @@ export function PlanTemplateAgendaView(props: Props) {
   // render, resetting TemplateDayRow's own internal expand/collapse state) —
   // same ref-bridge pattern PlanInstanceCalendar's DateHeaderComponent uses,
   // for the identical reason.
-  const stateRef = useRef({ week });
-  stateRef.current = { week };
-  const EventComponent = useMemo(
-    () => function TemplateAgendaEvent({ event }: { event: TemplateCalendarEvent }) {
-      const { week } = stateRef.current;
-      if (!week) return null;
-      const dayNumber = event.dayNumber;
-      const dayIndex = week.days.findIndex(d => d.day === dayNumber);
-      return <TemplateAgendaRow day={dayIndex === -1 ? undefined : week.days[dayIndex]} dayRef={dayIndex === -1 ? undefined : { sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap} onMaterialize={swapWith => handleMaterialize(dayNumber, swapWith)} />;
-    },
-    [],
-  );
-
   if (!current || !week || !section) {
     return <div className="hra-text-muted text-meta">{t("runplan.weekView.empty", "No weeks to show.")}</div>;
   }
@@ -217,23 +168,11 @@ export function PlanTemplateAgendaView(props: Props) {
           <ChevronRight size={15} />
         </button>
       </div>
-      <div className="hra-agenda-calendar hra-template-agenda-calendar">
-        <ShadcnBigCalendar
-          localizer={localizer}
-          events={TEMPLATE_AGENDA_EVENTS}
-          startAccessor="start"
-          endAccessor="end"
-          views={["agenda"]}
-          view="agenda"
-          length={7}
-          onView={() => {}}
-          date={TEMPLATE_AGENDA_ANCHOR}
-          onNavigate={noopNavigate}
-          toolbar={false}
-          className="h-full"
-          components={{ event: EventComponent, date: TemplateAgendaDateCell, time: TemplateAgendaTimeCell }}
-          messages={{ noEventsInRange: t("runplan.weekView.empty", "No weeks to show.") }}
-        />
+      <div className="hra-template-agenda-list">
+        {DAY_NUMBERS.map(dayNumber => {
+          const dayIndex = week.days.findIndex(day => day.day === dayNumber);
+          return <TemplateAgendaRow key={dayNumber} dayNumber={dayNumber} day={dayIndex === -1 ? undefined : week.days[dayIndex]} dayRef={dayIndex === -1 ? undefined : { sectionIndex, weekIndex, dayIndex }} onDaySwap={onDaySwap} onMaterialize={swapWith => handleMaterialize(dayNumber, swapWith)} />;
+        })}
       </div>
     </div>
   );
