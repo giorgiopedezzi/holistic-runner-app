@@ -56,7 +56,11 @@ runs, or export the vars in your shell.
 **Per-host setup**: every host (local, Railway, Vercel, etc.) configures the same var list — see
 `.env.example` for the full set. `DB_PATH` is required everywhere; `GARMIN_DEVICE_NAME` only where
 `sync:garmin` runs (typically local, since it needs the MTP bridge); `WITHINGS_*`/`STRAVA_*` only
-where that integration's login/sync runs; `OLLAMA_*` only where AI workout classification runs.
+where that integration's login/sync runs; `OLLAMA_*` only where AI workout classification runs;
+`PLAN_TEMPLATE_AI_ENDPOINT`/`PLAN_TEMPLATE_AI_API_KEY`/`PLAN_TEMPLATE_AI_MODEL` only where
+AI-assisted plan template generation runs (`integrations/plan-template-ai.ts`) — a chat-completions
+style external provider called with Bearer auth; leave all three blank to disable the feature (the
+adapter fails with a controlled "AI generation unavailable" error rather than attempting a request).
 There is no `config.json` to hand-edit or commit per deploy target — set the vars in the host's own
 env var UI/config instead. `config-locale.json` may still exist in a local checkout but is dead:
 `loadConfig()` reads only `process.env`, nothing reads that file.
@@ -170,7 +174,8 @@ npm run server     # start the API if not already running
 
 **"Missing required environment variable(s): ..."**
 → Set the named var(s) in `.env` (see `.env.example`) — thrown at boot for `DB_PATH`, or lazily
-the first time a Garmin/Withings/Strava/Ollama code path actually runs without its vars set.
+the first time a Garmin/Withings/Strava/Ollama/Plan-Template-AI code path actually runs without its
+vars set.
 
 **"No Withings token found"**
 → Run `npm run withings:login` first.

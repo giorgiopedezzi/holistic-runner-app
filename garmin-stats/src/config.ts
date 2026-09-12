@@ -41,6 +41,14 @@ export interface Config {
     host?: string;
     model?: string;
   };
+  // AI-assisted plan template generation (integrations/plan-template-ai.ts).
+  // A generic chat-completions-style external provider — endpoint/model are
+  // configurable per host, never hardcoded (HRA-325).
+  planTemplateAi: {
+    endpoint?: string;
+    apiKey?: string;
+    model?: string;
+  };
 }
 
 // "true" (case-insensitive) is the only truthy string; anything else,
@@ -86,6 +94,11 @@ export function loadConfig(): Config {
       host: process.env.OLLAMA_HOST,
       model: process.env.OLLAMA_MODEL,
     },
+    planTemplateAi: {
+      endpoint: process.env.PLAN_TEMPLATE_AI_ENDPOINT,
+      apiKey: process.env.PLAN_TEMPLATE_AI_API_KEY,
+      model: process.env.PLAN_TEMPLATE_AI_MODEL,
+    },
   };
 }
 
@@ -122,6 +135,14 @@ export function requireStravaConfig(config: Config): { client_id: string; client
 
 export function requireOllamaConfig(config: Config): { host: string; model: string } {
   return requireEnv(config.ollama, { host: "OLLAMA_HOST", model: "OLLAMA_MODEL" });
+}
+
+export function requirePlanTemplateAiConfig(config: Config): { endpoint: string; apiKey: string; model: string } {
+  return requireEnv(config.planTemplateAi, {
+    endpoint: "PLAN_TEMPLATE_AI_ENDPOINT",
+    apiKey: "PLAN_TEMPLATE_AI_API_KEY",
+    model: "PLAN_TEMPLATE_AI_MODEL",
+  });
 }
 
 export function getArg(flag: string): string | null {
