@@ -47,13 +47,15 @@ function mountRoutes() {
 }
 
 describe("PlansTab — desktop (regression)", () => {
-  it("keeps both sections stacked under their own titles, no segmented control", async () => {
+  it("uses a page-level template heading with header actions and a separate race-plan section", async () => {
     stubViewport(false);
     installFetch(mountRoutes());
     render(<PlansTab onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />);
 
-    expect(await screen.findByRole("heading", { name: "Plan templates" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Plan templates", level: 1 })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Race plans" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "How to use it" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New template" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Templates" })).not.toBeInTheDocument();
   });
 });

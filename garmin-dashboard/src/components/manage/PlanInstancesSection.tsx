@@ -8,7 +8,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/api/client";
-import { Card, ErrorBanner, WarningBanner, AccordionCard, Badge } from "@/components/ui";
+import { ErrorBanner, WarningBanner, AccordionCard, Badge } from "@/components/ui";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
@@ -1532,8 +1532,8 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   }
 
   return (
-    <Card className="hra-instantiate-form">
-      <div className="hra-block-title mb-1" >{t("manage.planInstances.title", "Race plans")}</div>
+    <section className="hra-instantiate-form">
+      <h2 className="hra-section-title mb-1">{t("manage.planInstances.title", "Race plans")}</h2>
       <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.planInstances.description", "A concrete race plan generated from a plan template for one race — resolved paces, a start date, and (optionally) a linked race activity.")}
       </div>
@@ -1586,6 +1586,6 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         onConfirm={confirmPendingAction}
         onCancel={() => setConfirmation(null)}
       />
-    </Card>
+    </section>
   );
 }

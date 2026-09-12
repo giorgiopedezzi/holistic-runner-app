@@ -28,7 +28,7 @@ import { useEffect, useRef, useState, type UIEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Save, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { Card, ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
+import { ErrorBanner, Badge, Select, AccordionCard } from "@/components/ui";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import { PlanTemplateHelpModal } from "@/components/manage/PlanTemplateHelpModal";
 import { PlanTemplateAgendaView } from "@/components/manage/PlanTemplateAgendaView";
@@ -1606,12 +1606,17 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   }
 
   return (
-    <Card>
-      <div className="flex items-center justify-between mb-1">
-        <div className="hra-block-title">{t("manage.planTemplates.title", "Plan templates")}</div>
-        <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1 px-2.5 text-meta cursor-pointer"  onClick={() => setShowHelp(true)}>
-          {t("manage.planTemplates.howToUse", "How to use it")}
-        </button>
+    <section className="mb-8">
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <h1 className="hra-section-title m-0">{t("manage.planTemplates.title", "Plan templates")}</h1>
+        <div className="flex shrink-0 items-center gap-2">
+          <button className="hra-border-strong hra-text-secondary bg-transparent rounded-md py-1 px-2.5 text-meta cursor-pointer"  onClick={() => setShowHelp(true)}>
+            {t("manage.planTemplates.howToUse", "How to use it")}
+          </button>
+          <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new")} disabled={newDraftPending}>
+            {t("manage.planTemplates.newTemplate", "New template")}
+          </button>
+        </div>
       </div>
       <div className="hra-text-secondary text-meta mb-3" >
         {t("manage.planTemplates.description", "Reusable RunPlan DSL v1 templates — paced generically (symbolic anchors like RG), instantiated per race with concrete paces and a start date.")}
@@ -1670,10 +1675,6 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
         </div>
       )}
       {deleteError && <ErrorBanner message={deleteError} />}
-      <button className="hra-btn" data-variant="accent" onClick={() => onToggleRow("new")} disabled={newDraftPending}>
-        {t("manage.planTemplates.newTemplate", "New template")}
-      </button>
-
       {/* One shared confirm modal (not per-row) — deleteConfirmId already
           uniquely identifies the target, and only one can ever be pending
           at a time. */}
@@ -1706,6 +1707,6 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           onCreated={() => setRacePlanCreationTemplate(null)}
         />
       )}
-    </Card>
+    </section>
   );
 }

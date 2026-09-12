@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { SectionTitle, HelpDisclosure } from "@/components/ui";
+import { HelpDisclosure } from "@/components/ui";
 import { api } from "@/api/client";
 import type { PlanTemplate } from "@/types/api";
 import { PlanTemplatesSection } from "@/components/manage/PlanTemplatesSection";
@@ -90,10 +90,7 @@ export function PlansTab({ onNavigateToActivity, onNavigateToAgenda }: Props) {
 
   return (
     <>
-      <SectionTitle>{t("manage.planTemplatesSectionTitle", "Plan templates")}</SectionTitle>
       <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
-
-      <SectionTitle>{t("manage.planInstancesSectionTitle", "Race plans")}</SectionTitle>
       <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} onNavigateToAgenda={onNavigateToAgenda} />
     </>
   );
