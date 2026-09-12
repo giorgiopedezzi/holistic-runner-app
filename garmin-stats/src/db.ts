@@ -1,4 +1,5 @@
 import { DatabaseSync, type SQLInputValue, type StatementSync } from "node:sqlite";
+import { randomUUID } from "node:crypto";
 import path from "path";
 import { loadConfig, getArg } from "./config.ts";
 
@@ -458,7 +459,23 @@ export function initSchema(db: DatabaseSync): void {
       -- fresh row (a bulk days-replace or a regeneration both recreate the
       -- row from scratch) — a day is only ever "customized" relative to its
       -- own currently-persisted row.
-      customized_at         TEXT
+      customized_at         TEXT,
+      -- HRA-333: this planned workout's stable identity — independent of
+      -- date/day/week/section placement and of ordinary semantic edits, so
+      -- Original-vs-Current lineage (domain/runplan/lineage.ts) survives a
+      -- move, swap, or edit instead of reading as an unrelated
+      -- removal+addition. Assigned once (instantiate: freshly minted;
+      -- regenerate: carried over from the slot's previous row when its
+      -- (section_name, week_number, day) identity still matches, per
+      -- deleteDayByIdentity's own reasoning above; bulk days-replace: carried
+      -- over when the caller's request echoes back a workout_id belonging to
+      -- one of this instance's own current days, else freshly minted) and
+      -- never changed by an ordinary UPDATE (patchDay's dsl/notes/
+      -- scheduled_time edits). Nullable at the schema level only because
+      -- SQLite's ALTER TABLE ADD COLUMN can't default every row to a
+      -- distinct value (see the migration below) — application code always
+      -- supplies one on insert.
+      workout_id             TEXT
     );
 
     -- Anonymous visitor feedback (HRA-226): one row per submission, no
@@ -761,6 +778,57 @@ export function initSchema(db: DatabaseSync): void {
     db.exec("ALTER TABLE plan_instance_days ADD COLUMN customized_at TEXT");
   }
 
+  // HRA-333: workout_id, added after plan_instance_days already existed.
+  // Unlike scheduled_time/customized_at above, this one DOES need a backfill
+  // — every pre-existing row (and every pre-existing Original snapshot day)
+  // needs a stable identity to participate in lineage comparisons at all.
+  const addingWorkoutId = !planInstanceDayCols.some(c => c.name === "workout_id");
+  if (addingWorkoutId) {
+    db.exec("ALTER TABLE plan_instance_days ADD COLUMN workout_id TEXT");
+
+    // Every existing day gets its own freshly minted, independent identity —
+    // nothing before this Story tracked workout identity, so there is no
+    // earlier lineage to recover; a fresh id per row is the only honest
+    // starting point (AC2: migrate without regenerating plans, discarding
+    // edits, or duplicating workouts — this only ever adds a column value,
+    // never touches any other field or row count).
+    const allDays = db.prepare("SELECT id FROM plan_instance_days").all() as { id: number }[];
+    const setWorkoutIdStmt = db.prepare("UPDATE plan_instance_days SET workout_id = ? WHERE id = ?");
+    for (const day of allDays) {
+      setWorkoutIdStmt.run(randomUUID(), day.id);
+    }
+
+    // original_days_snapshot (every plan_instances row, whether it predates
+    // HRA-332 or not) is JSON captured before workout_id existed, so its day
+    // objects have none either. Match each snapshot day to its Current
+    // counterpart by (section_name, week_number, day) — the same positional
+    // identity deleteDayByIdentity/regenerate already treat as "this slot"
+    // — and carry over that Current row's just-minted workout_id, so a
+    // not-yet-diverged instance's Original and Current agree from the very
+    // first post-migration read (AC3). A snapshot day with no such Current
+    // counterpart (already removed from Current since freeze) gets its own
+    // independent fresh id instead: there is no earlier lineage to recover
+    // for a day this migration is the first to model identity for either.
+    const instancesWithSnapshot = db.prepare(
+      "SELECT id, original_days_snapshot FROM plan_instances WHERE original_days_snapshot IS NOT NULL",
+    ).all() as { id: number; original_days_snapshot: string }[];
+    const currentDaysForInstanceStmt = db.prepare(
+      "SELECT section_name, week_number, day, workout_id FROM plan_instance_days WHERE instance_id = ?",
+    );
+    const updateSnapshotStmt = db.prepare("UPDATE plan_instances SET original_days_snapshot = ? WHERE id = ?");
+    for (const instance of instancesWithSnapshot) {
+      const currentDays = currentDaysForInstanceStmt.all(instance.id) as
+        { section_name: string; week_number: number; day: number; workout_id: string }[];
+      const snapshotDays = JSON.parse(instance.original_days_snapshot) as Record<string, unknown>[];
+      const withWorkoutIds = snapshotDays.map(snapshotDay => {
+        const match = currentDays.find(c =>
+          c.section_name === snapshotDay.section_name && c.week_number === snapshotDay.week_number && c.day === snapshotDay.day);
+        return { ...snapshotDay, workout_id: match ? match.workout_id : randomUUID() };
+      });
+      updateSnapshotStmt.run(JSON.stringify(withWorkoutIds), instance.id);
+    }
+  }
+
   // Feedback app-type poll — added after the feedback table already existed.
   const feedbackCols = db.prepare("PRAGMA table_info(feedback)").all() as { name: string }[];
   if (!feedbackCols.some(c => c.name === "app_type_choice")) {
@@ -931,6 +999,9 @@ export interface PlanInstanceDayRow {
   // was individually edited or swapped after creation (see the CREATE TABLE
   // comment above).
   customized_at: string | null;
+  // HRA-333: this planned workout's stable identity — see the CREATE TABLE
+  // comment above. Always populated by application code on insert.
+  workout_id: string;
 }
 
 export interface WithingsTokenRow {

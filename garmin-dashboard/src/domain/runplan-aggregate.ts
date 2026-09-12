@@ -436,6 +436,10 @@ export interface DayView {
   // "Modificato" badge on race-plan/Agenda rows derives from this being
   // non-null.
   customized_at?: string | null;
+  // HRA-333: this planned workout's stable identity — only ever set on the
+  // instance path, same reasoning as id/customized_at above. A swap must
+  // carry this along with dsl so identity follows the content, not the slot.
+  workout_id?: string;
   // HRA-229: the day's raw parsed segments — only ever set on the template
   // path (buildTemplateSectionView). Instance days carry ResolvedSegment,
   // a different (already pace-resolved) shape out of this Story's scope, so
@@ -707,7 +711,7 @@ export function buildInstanceSectionView(
       metrics: computeResolvedDayMetrics(day),
       trainingLoadCategory: classifyResolvedDay(day, classificationContext),
       paceTargetBands: buildPaceTargetBandModel(day.segments),
-      id: day.id, scheduled_time: day.scheduled_time, customized_at: day.customized_at,
+      id: day.id, scheduled_time: day.scheduled_time, customized_at: day.customized_at, workout_id: day.workout_id,
     }));
     return {
       number: week.number, notes: week.notes, raw_dsl: week.raw_dsl ?? "", days,

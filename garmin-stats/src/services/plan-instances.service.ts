@@ -12,6 +12,15 @@ import type { PlanInstanceDayInput, PlanInstancesRepo } from "../repositories/pl
 import { instantiatePlan, type InstantiateOptions } from "../domain/runplan/instantiate.ts";
 import type { RunPlan } from "../domain/runplan/types.ts";
 import { isOriginalFrozen } from "../domain/plan-timezone.ts";
+import { newWorkoutId } from "../domain/runplan/workout-identity.ts";
+
+// HRA-333: the bulk days-replace's own per-day input — like
+// PlanInstanceDayInput minus instance_id, but workout_id is a caller
+// SUGGESTION rather than a requirement. patchInstance resolves the final
+// value itself (echoed back only when it belongs to one of this instance's
+// own CURRENT days, else freshly minted) — a caller may not have one yet (a
+// brand-new day) and a stale/foreign value must never be trusted blindly.
+export type PlanInstanceDayReplacement = Omit<PlanInstanceDayInput, "instance_id" | "workout_id"> & { workout_id?: string };
 
 export function createPlanInstancesService(db: DatabaseSync, instances: PlanInstancesRepo) {
   // HRA-332: mirrors the instance's Current start_date/days into its
@@ -78,6 +87,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           // HRA-299: a freshly instantiated day has never been individually
           // edited or swapped.
           customized_at: null,
+          // HRA-333: a brand-new instance has no prior lineage to inherit —
+          // every day gets its own freshly minted, independent identity.
+          workout_id: newWorkoutId(),
         });
       }
       // HRA-332: the initial Original snapshot, now that the days actually
@@ -109,7 +121,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
   function patchInstance(
     instanceId: number,
     fields: Partial<{ name: string; race_name: string | null; race_date: string | null; race_url: string | null }>,
-    days?: Omit<PlanInstanceDayInput, "instance_id">[],
+    days?: PlanInstanceDayReplacement[],
     // HRA-332: already validated (IANA format) and freeze-checked by the
     // controller before this is called — the controller has the instance
     // loaded anyway to build the freeze check's own error message.
@@ -118,9 +130,19 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     db.exec("BEGIN");
     try {
       if (days) {
+        // HRA-333: read BEFORE the delete below wipes them — a day/week
+        // swap, section move, or plain re-save of an untouched day all
+        // arrive here as this same wholesale replace, and the only signal
+        // that an incoming entry is "the same workout, now here" is whether
+        // it echoes back a workout_id this instance's CURRENT rows already
+        // recognize. Never trust a workout_id the caller supplies that
+        // doesn't match one of THESE rows — that would let a stale or
+        // cross-instance value silently steal another workout's lineage.
+        const currentWorkoutIds = new Set(instances.daysByInstance(instanceId).map(d => d.workout_id));
         instances.deleteDaysByInstance(instanceId);
         for (const day of days) {
-          instances.createDay({ ...day, instance_id: instanceId });
+          const workoutId = day.workout_id && currentWorkoutIds.has(day.workout_id) ? day.workout_id : newWorkoutId();
+          instances.createDay({ ...day, instance_id: instanceId, workout_id: workoutId });
         }
       }
       instances.updateFields(instanceId, fields);
@@ -152,6 +174,19 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined,
     notes: string | null | undefined,
     scheduledTime: string | null | undefined,
+    // HRA-333: a swap flow (AgendaTab/MobileWorkoutSwap) persists via two of
+    // these single-day PATCHes rather than the bulk days-replace — each one
+    // supplies the OTHER day's workout_id alongside its swapped-in dsl, so
+    // the identity travels with the content it now represents instead of
+    // staying pinned to this row. Trusted the same way dsl/notes/
+    // scheduled_time already are (the controller has already confirmed
+    // dayId belongs to instanceId): deliberately NOT re-validated against
+    // "one of this instance's current workout_ids" here, since the paired
+    // partner call in the same swap may commit first and briefly move that
+    // exact value off of every current row — an order-dependent check would
+    // make the very race Promise.all already accepts for scheduled_time
+    // (see AgendaTab.tsx/MobileWorkoutSwap.tsx) silently drop this write.
+    workoutId?: string,
   ): PlanInstanceDayRow {
     const instanceId = instances.dayById(dayId)!.instance_id;
     db.exec("BEGIN");
@@ -168,6 +203,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       }
       if (scheduledTime !== undefined) {
         instances.updateDayScheduledTime(dayId, scheduledTime);
+      }
+      if (workoutId !== undefined) {
+        instances.updateDayWorkoutId(dayId, workoutId);
       }
       // HRA-332: mirrors this day's change into Original — a no-op once frozen.
       syncOriginalIfNotFrozen(instanceId);
@@ -196,6 +234,17 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
 
     db.exec("BEGIN");
     try {
+      // HRA-333: capture each regenerated slot's previous occupant's
+      // identity BEFORE any delete below runs — the freshly created row
+      // replacing it inherits that slot's workout_id, extending
+      // deleteDayByIdentity's own "same (section_name, week_number, day)
+      // tuple = same slot" reasoning to workout_id. A slot with no previous
+      // occupant (a template DSL change introducing a new day) gets none —
+      // it's a genuinely new workout, not a continuation of anything.
+      const priorWorkoutIds = new Map(regeneratedDays.map(day => [
+        `${day.section_name} ${day.week_number} ${day.day}`,
+        instances.dayByIdentity(instanceId, day.section_name, day.week_number, day.day),
+      ]));
       // HRA-155: delete each regenerated day's previous row by identity
       // (section_name/week_number/day), not by a date threshold — see
       // deleteDayByIdentity's own comment in the repo for why a raw date
@@ -210,6 +259,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         instances.deleteDayByIdentity(instanceId, day.section_name, day.week_number, day.day);
       }
       for (const day of regeneratedDays) {
+        const priorWorkoutId = priorWorkoutIds.get(`${day.section_name} ${day.week_number} ${day.day}`);
         instances.createDay({
           instance_id: instanceId,
           section_name: day.section_name,
@@ -233,6 +283,7 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
           // replaces carried (the preflight below is what protects a
           // customized day from reaching this point without confirmation).
           customized_at: null,
+          workout_id: priorWorkoutId ?? newWorkoutId(),
         });
       }
       instances.updateStartDateAndPaceOverrides(

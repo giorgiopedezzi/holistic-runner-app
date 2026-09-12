@@ -66,8 +66,8 @@ function blockedReasonLabel(reason: SwapBlockedReason, t: ReturnType<typeof useT
 type SwapRecord = {
   updatedSource: PlanInstanceDay;
   updatedTarget: PlanInstanceDay;
-  originalSource: { dsl: string; scheduledTime: string | null | undefined };
-  originalTarget: { dsl: string; scheduledTime: string | null | undefined };
+  originalSource: { dsl: string; scheduledTime: string | null | undefined; workoutId: string | undefined };
+  originalTarget: { dsl: string; scheduledTime: string | null | undefined; workoutId: string | undefined };
 };
 
 export function MobileWorkoutSwap({ source, sections, instanceId, raceDate, hasActivity, onClose, onSwapped }: Props) {
@@ -87,15 +87,17 @@ export function MobileWorkoutSwap({ source, sections, instanceId, raceDate, hasA
     setSwapError(null);
     const [newSourceDsl, newTargetDsl] = swapDayContent(source.dsl, target.dsl);
     try {
+      // HRA-333: each row now holds the OTHER day's workout — its
+      // workout_id travels along with the swapped-in dsl.
       const [updatedSource, updatedTarget] = await Promise.all([
-        api.planInstances.patchDay(instanceId, source.id, { dsl: newSourceDsl, scheduled_time: target.scheduled_time ?? null }),
-        api.planInstances.patchDay(instanceId, target.id, { dsl: newTargetDsl, scheduled_time: source.scheduled_time ?? null }),
+        api.planInstances.patchDay(instanceId, source.id, { dsl: newSourceDsl, scheduled_time: target.scheduled_time ?? null, workout_id: target.workout_id }),
+        api.planInstances.patchDay(instanceId, target.id, { dsl: newTargetDsl, scheduled_time: source.scheduled_time ?? null, workout_id: source.workout_id }),
       ]);
       onSwapped(updatedSource, updatedTarget);
       setResult({
         updatedSource, updatedTarget,
-        originalSource: { dsl: source.dsl, scheduledTime: source.scheduled_time },
-        originalTarget: { dsl: target.dsl, scheduledTime: target.scheduled_time },
+        originalSource: { dsl: source.dsl, scheduledTime: source.scheduled_time, workoutId: source.workout_id },
+        originalTarget: { dsl: target.dsl, scheduledTime: target.scheduled_time, workoutId: target.workout_id },
       });
       notify(t("manage.planInstances.mobileSwap.succeeded", "Workouts swapped."));
       setPendingTarget(null);
@@ -117,8 +119,8 @@ export function MobileWorkoutSwap({ source, sections, instanceId, raceDate, hasA
     setSwapError(null);
     try {
       await Promise.all([
-        api.planInstances.patchDay(instanceId, result.updatedSource.id, { dsl: result.originalSource.dsl, scheduled_time: result.originalSource.scheduledTime ?? null }),
-        api.planInstances.patchDay(instanceId, result.updatedTarget.id, { dsl: result.originalTarget.dsl, scheduled_time: result.originalTarget.scheduledTime ?? null }),
+        api.planInstances.patchDay(instanceId, result.updatedSource.id, { dsl: result.originalSource.dsl, scheduled_time: result.originalSource.scheduledTime ?? null, workout_id: result.originalSource.workoutId }),
+        api.planInstances.patchDay(instanceId, result.updatedTarget.id, { dsl: result.originalTarget.dsl, scheduled_time: result.originalTarget.scheduledTime ?? null, workout_id: result.originalTarget.workoutId }),
       ]).then(([undoneSource, undoneTarget]) => onSwapped(undoneSource, undoneTarget));
       notify(t("manage.planInstances.mobileSwap.undone", "Swap undone."));
       onClose();

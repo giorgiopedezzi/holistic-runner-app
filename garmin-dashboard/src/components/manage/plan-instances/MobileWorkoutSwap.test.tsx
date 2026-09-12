@@ -18,10 +18,10 @@ function buildSections(days: Partial<PlanInstanceDay>[]) {
 }
 
 const baseFixture = () => buildSections([
-  { id: 100, date: "2026-09-15", day: 1, week_number: 1, workout_type: "run", segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, resolved_pace_sec_per_km: 330, raw: "5km @ RG" }]) },
-  { id: 101, date: "2026-09-16", day: 2, week_number: 1, workout_type: "rest", segments: "[]" },
-  { id: 102, date: "2026-09-01", day: 3, week_number: 1, workout_type: "run", segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 3000, raw: "3km" }, resolved_pace_sec_per_km: 300, raw: "3km @ MP" }]) },
-  { id: 103, date: "2026-09-22", day: 1, week_number: 2, workout_type: "run", segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 10000, raw: "10km" }, resolved_pace_sec_per_km: 360, raw: "10km @ 6:00/km" }]) },
+  { id: 100, workout_id: "wid-100", date: "2026-09-15", day: 1, week_number: 1, workout_type: "run", segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, resolved_pace_sec_per_km: 330, raw: "5km @ RG" }]) },
+  { id: 101, workout_id: "wid-101", date: "2026-09-16", day: 2, week_number: 1, workout_type: "rest", segments: "[]" },
+  { id: 102, workout_id: "wid-102", date: "2026-09-01", day: 3, week_number: 1, workout_type: "run", segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 3000, raw: "3km" }, resolved_pace_sec_per_km: 300, raw: "3km @ MP" }]) },
+  { id: 103, workout_id: "wid-103", date: "2026-09-22", day: 1, week_number: 2, workout_type: "run", segments: JSON.stringify([{ type: "continuous", target: { kind: "distance", distance_m: 10000, raw: "10km" }, resolved_pace_sec_per_km: 360, raw: "10km @ 6:00/km" }]) },
 ]);
 
 function renderSwap(overrides: Partial<Parameters<typeof MobileWorkoutSwap>[0]> = {}) {
@@ -81,15 +81,17 @@ describe("MobileWorkoutSwap", () => {
   });
 
   it("confirming persists both days through one PATCH each, reports both persisted results, and shows an accessible success message with Undo", async () => {
-    const updatedSource = planInstanceDay({ id: 100, date: "2026-09-15", day: 1, workout_type: "rest", segments: "[]", customized_at: "2026-09-10T00:00:00Z" });
-    const updatedTarget = planInstanceDay({ id: 101, date: "2026-09-16", day: 2, workout_type: "run", segments: "[]", customized_at: "2026-09-10T00:00:00Z" });
+    const updatedSource = planInstanceDay({ id: 100, workout_id: "wid-101", date: "2026-09-15", day: 1, workout_type: "rest", segments: "[]", customized_at: "2026-09-10T00:00:00Z" });
+    const updatedTarget = planInstanceDay({ id: 101, workout_id: "wid-100", date: "2026-09-16", day: 2, workout_type: "run", segments: "[]", customized_at: "2026-09-10T00:00:00Z" });
     installFetch({
+      // HRA-333: each row now holds the OTHER day's workout, so it carries
+      // that day's workout_id along with the swapped-in dsl.
       [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/100`]: (req: { body: unknown }) => {
-        expect(req.body).toEqual({ dsl: "D1: REST", scheduled_time: null });
+        expect(req.body).toEqual({ dsl: "D1: REST", scheduled_time: null, workout_id: "wid-101" });
         return json(updatedSource);
       },
       [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/101`]: (req: { body: unknown }) => {
-        expect(req.body).toEqual({ dsl: "D2: 5km @ 5:30/km", scheduled_time: null });
+        expect(req.body).toEqual({ dsl: "D2: 5km @ 5:30/km", scheduled_time: null, workout_id: "wid-100" });
         return json(updatedTarget);
       },
     });

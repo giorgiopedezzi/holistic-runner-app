@@ -186,6 +186,9 @@ export interface PlanInstanceDay {
   // HRA-299: non-null means this day's workout content was individually
   // edited or swapped after creation — see docs/schema.md.
   customized_at:         string | null;
+  // HRA-333: this planned workout's stable identity, independent of `id`
+  // and of date/day/week/section placement — see docs/schema.md.
+  workout_id:            string;
 }
 
 export interface PlanInstanceWithDays extends PlanInstance {

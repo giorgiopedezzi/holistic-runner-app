@@ -114,6 +114,10 @@ export interface ResolvedDay {
   // edited or swapped after creation, mirroring PlanInstanceDay's own
   // customized_at (types/api.ts).
   customized_at?: string | null;
+  // HRA-333: this planned workout's stable identity, mirroring
+  // PlanInstanceDay's own workout_id (types/api.ts). A swap carries this
+  // along with dsl so identity follows the content, not the slot.
+  workout_id?: string;
 }
 
 export type EventType = "5k" | "10k" | "half" | "marathon" | "custom";

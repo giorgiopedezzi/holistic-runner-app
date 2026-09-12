@@ -218,7 +218,43 @@ at `NULL` regardless of what the row it replaces carried — both recreate the r
 meaningful relative to a day's own currently-persisted row, never carried forward through either of
 those two wholesale-replace paths (bulk editing is explicitly out of this Story's scope). `POST
 .../regenerate`'s own preflight (below) is what protects a customized day from silently reaching
-that fresh-insert path without confirmation).
+that fresh-insert path without confirmation). `workout_id` (TEXT — HRA-333: this planned
+workout's stable identity, independent of `id`) — see the dedicated paragraph below.
+
+**Stable workout identity & Original-to-Current lineage (HRA-333):** `plan_instance_days.workout_id`
+is a planned workout's identity independent of the row's own primary key and of its date/day/week/
+section placement — the primary key is bound to a physical row/slot (an `UPDATE` keeps it, a
+delete+recreate does not), while `workout_id` travels with the *session itself* so a day/week swap,
+a section move, or a regenerate is never read as an unrelated Original removal plus Current addition
+when the intended workout survives. Assigned once per workout and never changed by an ordinary
+`UPDATE` (`PATCH .../days/:dayId`'s `dsl`/`notes`/`scheduled_time` edits): **instantiate** mints a
+fresh id per day (nothing to inherit yet); **regenerate** carries a slot's previous occupant's id
+over to the freshly regenerated row replacing it, keyed by the same `(section_name, week_number,
+day)` tuple `deleteDayByIdentity` already treats as "this slot" (a slot with no previous occupant —
+a template DSL change introducing a new day — mints a fresh one); the **bulk days-replace**
+(`PATCH /api/v1/plan-instances/:id`) accepts an optional `workout_id` per day in the request body
+and echoes it back only when it names one of that instance's own *current* days (never trusted
+blindly — a stale or cross-instance value is silently replaced with a fresh id instead), which is
+how a day/week swap (the frontend exchanges `workout_id` alongside `dsl` between the two swapped
+slots) survives the wholesale delete+recreate; the **single-day PATCH** (`.../days/:dayId`) accepts
+the same optional `workout_id` for the swap flows that persist via two of these calls instead of the
+bulk replace (`AgendaTab.tsx`, `MobileWorkoutSwap.tsx`) — trusted without a same-instance check there,
+since the paired swap partner call may commit first and briefly move that exact value off of every
+current row (an order-dependent check would make the very race `Promise.all` already accepts for
+`scheduled_time` silently drop the identity write). `domain/runplan/lineage.ts`'s
+`classifyWorkoutLineage(originalDays, currentDays)` — pure, no I/O — matches Original's
+`original_days_snapshot` days to Current's `plan_instance_days` rows by `workout_id` and classifies
+each as `unchanged | moved | modified | moved_and_modified | removed | added`: **moved** compares the
+structural `(section_name, week_number, day)` slot, deliberately not the absolute `date` (which
+shifts for every *unmoved* workout on a plain start-date regenerate); **modified** compares parsed
+structural content (`segments`/`activity_target` JSON-parsed, not string-compared) so a cosmetic
+re-serialization never counts as a change. Consumed by a future report Story (Epic HRA-331) — this
+Story owns only the identity + classification, not any endpoint or UI. **Migration:** every
+pre-existing `plan_instance_days` row is backfilled with its own fresh, independent id (there is no
+earlier lineage to recover); every pre-existing `original_days_snapshot`'s day objects are backfilled
+by matching each to its Current counterpart on that same `(section_name, week_number, day)` tuple and
+inheriting that row's freshly minted id — a snapshot day with no such match (already removed from
+Current since freeze) gets its own independent fresh id instead.
 
 **Week-date derivation rule** (confirmed at Refinement for HRA-112, amended HRA-124): `week.start_date
 = trueMonday + (week.number - 1) × 7 days`, **unless** that week already carries an explicit

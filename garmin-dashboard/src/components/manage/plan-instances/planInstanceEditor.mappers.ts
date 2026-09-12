@@ -37,6 +37,7 @@ export interface ApiPlanInstanceDayLike {
   id?: number | null;
   scheduled_time?: string | null;
   customized_at?: string | null;
+  workout_id?: string | null;
 }
 
 export function apiDaysToResolvedDays(days: ApiPlanInstanceDayLike[]): ResolvedDay[] {
@@ -56,6 +57,7 @@ export function apiDaysToResolvedDays(days: ApiPlanInstanceDayLike[]): ResolvedD
     id: d.id ?? undefined,
     scheduled_time: d.scheduled_time,
     customized_at: d.customized_at,
+    workout_id: d.workout_id ?? undefined,
   }));
 }
 

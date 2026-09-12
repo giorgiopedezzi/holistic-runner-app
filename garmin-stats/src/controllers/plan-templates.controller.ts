@@ -23,7 +23,7 @@ import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
 import { generatePlanTemplate, PlanTemplateAiError } from "../integrations/plan-template-ai.ts";
 import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
-import type { PlanInstanceDayInput } from "../repositories/plan-instances.repo.ts";
+import type { PlanInstanceDayReplacement } from "../services/plan-instances.service.ts";
 import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
@@ -101,7 +101,13 @@ type InstantiateBody = Partial<{
 // D-line) plus the section/week/date scope it lives in — not pre-resolved
 // segments. The backend re-parses+resolves it against that scope's own
 // effective pace policy (see updateInstance below).
-type InstanceDayBody = { section_name: string; week_number: number; date: string; dsl: string };
+// HRA-333: workout_id is optional — the caller echoes back the value it was
+// given for a day it already had loaded (carrying it along with dsl when
+// content moves, e.g. a swap), and omits it for a genuinely new day. See
+// plan-instances.service.ts's patchInstance for how the final value is
+// resolved (echoed back only if it matches one of this instance's own
+// current days, never trusted blindly).
+type InstanceDayBody = { section_name: string; week_number: number; date: string; dsl: string; workout_id?: string };
 // HRA-135: PATCH body — every field optional (at least one required, checked
 // in patchInstance below); race_name/race_date/race_url are nullable so a
 // caller can explicitly clear one via `null` (JSON Merge Patch semantics),
@@ -124,7 +130,10 @@ type RegenerateBody = Partial<{ start_date: string; pace_overrides: Record<strin
 // re-parsed+resolved the same way the bulk day-replace path does, notes and
 // scheduled_time are independent columns (notes overrides whatever the dsl
 // parse itself produced, when both are supplied in the same request).
-type DayPatchBody = Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>;
+// HRA-333: workout_id is an accessory field, never counted toward "at least
+// one required" — a swap flow sends it alongside dsl (never alone) to move
+// this row's identity onto the content it now holds.
+type DayPatchBody = Partial<{ dsl: string; notes: string | null; scheduled_time: string | null; workout_id: string }>;
 
 // HRA-113: nothing in the tree is a hard error anymore — walk plan-scoped
 // (ParseResult.warnings) plus every day's own DayEntry.warnings so a 422 body
@@ -666,7 +675,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
     if (hasRaceUrl) fields.race_url = body.race_url?.trim() || null;
 
-    let dayInputs: Omit<PlanInstanceDayInput, "instance_id">[] | undefined;
+    let dayInputs: PlanInstanceDayReplacement[] | undefined;
     if (hasDays) {
       const template = templates.byId(instance.template_id);
       if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
@@ -722,6 +731,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
           // "out of scope: bulk editing" boundary the Story itself draws.
           // Every row it produces starts uncustomized.
           customized_at: null,
+          // HRA-333: passed through as-is; the service resolves whether it's
+          // actually honored (see patchInstance's own comment).
+          workout_id: d.workout_id,
         });
       }
       if (flagged.length > 0) {
@@ -819,8 +831,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
       };
     }
     const notes = hasNotes ? (body.notes?.trim() || null) : undefined;
+    const workoutId = "workout_id" in body ? body.workout_id : undefined;
+    if (workoutId !== undefined && !workoutId.trim()) throw unprocessable("workout_id must not be blank.");
 
-    const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime);
+    const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime, workoutId);
     return send(res, updated);
   };
 

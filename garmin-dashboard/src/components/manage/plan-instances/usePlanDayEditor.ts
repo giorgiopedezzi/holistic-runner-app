@@ -282,6 +282,9 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
         category: dayA.category,
         date: dayA.date,
         id: dayA.id,
+        // HRA-333: slot A now holds B's workout, so it carries B's identity —
+        // identity follows the content, not the slot.
+        workout_id: dayB.workout_id,
       };
       next[b.sectionIndex].weeks[b.weekIndex].days[b.dayIndex] = {
         ...dayA,
@@ -293,6 +296,7 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
         category: dayB.category,
         date: dayB.date,
         id: dayB.id,
+        workout_id: dayA.workout_id,
       };
 
       return recomputeTotals(
@@ -346,6 +350,8 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
           category: originalA.category,
           date: originalA.date,
           id: originalA.id,
+          // HRA-333: identity follows the content, not the slot.
+          workout_id: originalB.workout_id,
         });
         Object.assign(dayB, originalA, {
           dsl: newB,
@@ -356,6 +362,7 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
           category: originalB.category,
           date: originalB.date,
           id: originalB.id,
+          workout_id: originalA.workout_id,
         });
       }
 

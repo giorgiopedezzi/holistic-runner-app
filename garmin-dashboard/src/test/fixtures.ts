@@ -215,5 +215,6 @@ export const planInstanceDay = (overrides: Partial<PlanInstanceDay> = {}): PlanI
   needs_review: 0,
   scheduled_time: null,
   customized_at: null,
+  workout_id: "workout-100",
   ...overrides,
 });

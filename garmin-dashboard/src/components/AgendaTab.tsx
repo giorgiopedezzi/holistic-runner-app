@@ -140,9 +140,11 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
     setSwapping(true);
     try {
       const [newDslA, newDslB] = swapDayContent(a.dsl, b.dsl);
+      // HRA-333: each row now holds the OTHER day's workout — its
+      // workout_id travels along with the swapped-in dsl.
       await Promise.all([
-        api.planInstances.patchDay(instance.id, a.id, { dsl: newDslA, scheduled_time: b.scheduled_time ?? null }),
-        api.planInstances.patchDay(instance.id, b.id, { dsl: newDslB, scheduled_time: a.scheduled_time ?? null }),
+        api.planInstances.patchDay(instance.id, a.id, { dsl: newDslA, scheduled_time: b.scheduled_time ?? null, workout_id: b.workout_id }),
+        api.planInstances.patchDay(instance.id, b.id, { dsl: newDslB, scheduled_time: a.scheduled_time ?? null, workout_id: a.workout_id }),
       ]);
       notify(t("manage.planInstances.mobileSwap.succeeded", "Workouts swapped."));
       setSwapPending(null);

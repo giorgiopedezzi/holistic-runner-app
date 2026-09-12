@@ -362,12 +362,16 @@ export const api = {
     // PATCH /api/v1/plan-instances/:id (HRA-135, replacing the earlier PUT) —
     // every field optional, at least one required; each provided field
     // replaces its current value, omitted fields stay untouched. `days`, when
-    // provided, is {section_name, week_number, date, dsl} (HRA-115) — raw DSL
-    // text, re-parsed and resolved server-side against that day's own
-    // effective pace policy, and still fully replaces the day set.
+    // provided, is {section_name, week_number, date, dsl, workout_id?}
+    // (HRA-115, workout_id HRA-333) — raw DSL text, re-parsed and resolved
+    // server-side against that day's own effective pace policy, and still
+    // fully replaces the day set. workout_id, when echoed back for a day
+    // this instance already had, preserves that workout's stable identity
+    // across the replace (see docs/schema.md) — omitted for a genuinely new
+    // day.
     update: (id: number, body: Partial<{
       name: string; race_name: string | null; race_date: string | null; race_url: string | null;
-      days: { section_name: string; week_number: number; date: string; dsl: string }[];
+      days: { section_name: string; week_number: number; date: string; dsl: string; workout_id?: string }[];
     }>) => request<PlanInstanceWithDays>(`/api/v1/plan-instances/${id}`, "PATCH", undefined, body),
     approve: (id: number) => request<PlanInstance>(`/api/v1/plan-instances/${id}/approve`, "POST"),
     // POST /api/v1/plan-instances/:id/regenerate (HRA-132/HRA-134) —
@@ -389,7 +393,10 @@ export const api = {
     // scheduled_time — see that endpoint's own doc comment). HRA-150 uses
     // this exclusively for scheduled_time, so a day edit persists immediately
     // rather than waiting for the whole-day bulk Save.
-    patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null }>) =>
+    // workout_id (HRA-333, optional) moves this row's stable identity onto
+    // the content it now holds — the swap flows below supply the OTHER
+    // swapped day's workout_id alongside its swapped-in dsl.
+    patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null; workout_id: string }>) =>
       request<PlanInstanceDay>(`/api/v1/plan-instances/${instanceId}/days/${dayId}`, "PATCH", undefined, body),
     // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162) —
     // parse-only preview, never persists (mirrors planTemplates.generate's

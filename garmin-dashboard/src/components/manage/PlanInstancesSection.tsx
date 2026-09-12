@@ -683,8 +683,12 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   async function onSave() {
     if (editingId == null) return;
     setSaveLoading(true); setEditError(null);
+    // HRA-333: workout_id is echoed back so a day/week swap survives this
+    // wholesale replace as the same workout, now elsewhere — see
+    // usePlanDayEditor's swapDaysByRef/swapWeeksByRef, which carry it along
+    // with dsl whenever content moves between slots.
     const days = sections.flatMap(s => s.weeks.flatMap(w => w.days.map(d => ({
-      section_name: s.name, week_number: w.number, date: d.date!, dsl: d.dsl,
+      section_name: s.name, week_number: w.number, date: d.date!, dsl: d.dsl, workout_id: d.workout_id,
     }))));
     const name = instName.trim();
     try {

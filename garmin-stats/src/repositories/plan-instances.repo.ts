@@ -9,7 +9,7 @@ import { prepareLive } from "../db.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
 const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, schedule_timezone, original_start_date, original_days_snapshot, created_at FROM plan_instances";
-const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time, customized_at FROM plan_instance_days";
+const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time, customized_at, workout_id FROM plan_instance_days";
 
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
@@ -57,7 +57,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const findDaysByDateAndWorkoutTypeStmt = prepareLive(`
     SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
            pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
-           pid.scheduled_time, pid.customized_at, pi.name AS instance_name
+           pid.scheduled_time, pid.customized_at, pid.workout_id, pi.name AS instance_name
     FROM plan_instance_days pid
     JOIN plan_instances pi ON pi.id = pid.instance_id
     WHERE pid.date = ? AND pid.workout_type = ?
@@ -80,11 +80,19 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   `);
   const insertDay = prepareLive(`
     INSERT INTO plan_instance_days
-      (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review)
+      (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, workout_id)
     VALUES
-      ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review)
+      ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review, $workout_id)
   `);
   const deleteDaysByInstanceStmt = prepareLive("DELETE FROM plan_instance_days WHERE instance_id = ?");
+  // HRA-333: the previous occupant of a (section_name, week_number, day)
+  // slot, looked up BEFORE deleteDayByIdentity removes it — regenerateFrom's
+  // own way of carrying that slot's workout_id over to the freshly
+  // regenerated row replacing it, same positional-identity reasoning
+  // deleteDayByIdentity itself already relies on.
+  const dayByIdentityStmt = prepareLive(
+    "SELECT workout_id FROM plan_instance_days WHERE instance_id = ? AND section_name = ? AND week_number = ? AND day = ?",
+  );
   // HRA-149: PATCH /api/v1/plan-instances/:id/days/:dayId — a single day's
   // dsl-derived columns (re-parsed+resolved) vs. its independent notes/
   // scheduled_time overrides are separate statements, run conditionally by
@@ -97,6 +105,10 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   `);
   const updateDayNotesStmt = prepareLive("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
   const updateDayScheduledTimeStmt = prepareLive("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
+  // HRA-333: PATCH .../days/:dayId's own way of moving identity onto a row
+  // whose dsl just became a swap partner's content — see
+  // plan-instances.service.ts's patchDay.
+  const updateDayWorkoutIdStmt = prepareLive("UPDATE plan_instance_days SET workout_id = ? WHERE id = ?");
   // HRA-299: sets the customization provenance marker on one day — called
   // whenever that day's workout content is individually edited or swapped
   // (never for a notes-only or scheduled_time-only patch, and never for a
@@ -205,9 +217,14 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
         $instance_id: d.instance_id, $section_name: d.section_name, $week_number: d.week_number,
         $date: d.date, $day: d.day, $suffix: d.suffix, $category: d.category, $workout_type: d.workout_type,
         $segments: d.segments, $activity_target: d.activity_target, $activity_description: d.activity_description,
-        $notes: d.notes, $needs_review: d.needs_review,
+        $notes: d.notes, $needs_review: d.needs_review, $workout_id: d.workout_id,
       });
     },
+    // HRA-333: undefined when no day currently occupies that slot (a
+    // template DSL change introducing a new day the previous version didn't
+    // have) — the caller mints a fresh workout_id in that case.
+    dayByIdentity: (instanceId: number, sectionName: string, weekNumber: number, day: number): string | undefined =>
+      (dayByIdentityStmt.get(instanceId, sectionName, weekNumber, day) as { workout_id: string } | undefined)?.workout_id,
     // Compound operations (delete+insert+clear-approval) belong to
     // services/plan-instances.service.ts, which owns the transaction — these
     // are the single-statement primitives it composes (rest-api-standards §11).
@@ -244,6 +261,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
     },
     updateDayNotes: (dayId: number, notes: string | null) => { updateDayNotesStmt.run(notes, dayId); },
     updateDayScheduledTime: (dayId: number, scheduledTime: string | null) => { updateDayScheduledTimeStmt.run(scheduledTime, dayId); },
+    updateDayWorkoutId: (dayId: number, workoutId: string) => { updateDayWorkoutIdStmt.run(workoutId, dayId); },
     markDayCustomized: (dayId: number) => { markDayCustomizedStmt.run(dayId); },
     customizedDaysFrom: (instanceId: number, effectiveFrom: string): PlanInstanceDayRow[] =>
       customizedDaysFromStmt.all(instanceId, effectiveFrom) as unknown as PlanInstanceDayRow[],
