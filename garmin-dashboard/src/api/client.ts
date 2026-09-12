@@ -269,6 +269,13 @@ export const api = {
     // Parse-only preview, never persists (HRA-113) — what the create/edit
     // flow calls on every "Generate"/"Refresh preview" click.
     generate: (dsl_source: string) => request<{ plan: RunPlan; warnings: ParseWarning[] }>("/api/v1/plan-templates/generate", "POST", undefined, { dsl_source }),
+    // HRA-326: backend-composed "Plan text -> RunPlan DSL" conversion prompt
+    // preview, replacing the frontend's own local prompt-template asset —
+    // the same composeConversionPrompt() call a future real AI provider call
+    // will use, so preview and the actual send can never drift. Every
+    // context field is optional.
+    composePrompt: (text: string, context: { language?: string; event?: EventType; event_name?: string; distance_m?: number; unit?: "km" | "mi" } = {}) =>
+      request<{ prompt: string }>("/api/v1/plan-templates/prompt-preview", "POST", undefined, { text, ...context }),
     // event/distance_m (HRA-120): explicit request fields, replacing the old
     // DSL-text EVENT/DISTANCE lines — distance_m only meaningful (and only
     // sent) when event is "custom".

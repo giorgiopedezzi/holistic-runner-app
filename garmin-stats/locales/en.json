@@ -581,6 +581,7 @@
   "manage.planTemplates.aiPrompt.saveAsButton": "Save prompt as…",
   "manage.planTemplates.aiPrompt.copySucceeded": "Prompt copied to clipboard.",
   "manage.planTemplates.aiPrompt.copyFailed": "Failed to copy prompt to clipboard.",
+  "manage.planTemplates.aiPrompt.generatePromptFailed": "Failed to generate the conversion prompt.",
   "manage.planTemplates.pipeline.planTextHeader": "1 · Plan text",
   "manage.planTemplates.pipeline.planTextDescription": "Paste the original training plan in any readable format or language.",
   "manage.planTemplates.pipeline.conversionPromptHeader": "2 · Conversion prompt",

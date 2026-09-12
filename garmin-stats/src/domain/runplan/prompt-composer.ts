@@ -1,4 +1,32 @@
-<system>
+// ── RunPlan DSL v1 — canonical AI conversion-prompt composer (HRA-326) ──────
+// Single source of truth for the "Plan text -> RunPlan DSL" conversion
+// prompt: the system-message content below is ported verbatim from the
+// frontend's former local copy (garmin-dashboard/src/assets/
+// template-generator-ai-prompt.txt, now removed — it had drifted ahead of
+// docs/utils/template-generator-AI-prompt.txt and was the version actually
+// exercised in production, including the "use the attached document"
+// placeholder handling). Both the preview endpoint (this Story) and, later, the real AI
+// provider call (Epic HRA-36) must call composeConversionPrompt() — the
+// same function, not two separately-maintained copies — so what the user
+// sees in preview and what actually gets sent to the provider can never
+// drift.
+//
+// No I/O here — mirrors this project's domain/ convention (pure logic, no
+// DB/network access).
+
+import type { EventType } from "./types.ts";
+
+export const RUNPLAN_DSL_VERSION = "v1";
+
+export interface ConversionPromptContext {
+  language?: string;
+  event?: EventType;
+  eventName?: string;
+  distanceM?: number;
+  unit?: "km" | "mi";
+}
+
+const SYSTEM_PROMPT = `<system>
 	<role>
 You are a running training plan parser and RunPlan DSL v1 template generator.
 </role>
@@ -1400,12 +1428,46 @@ Before returning output, internally verify:
 54. If no attached document content is available, output only the minimal
     missing-plan DSL.
 </validation>
-</system>
+</system>`;
+
+// Escapes any tag-like substring (not just the two the envelope itself
+// uses) so pasted plan text can never terminate the <training_plan>
+// envelope early or be misread as new instructions — the system prompt's
+// own <input_policy> requires treating <context>/<training_plan> content
+// as data, never instructions. Standard XML/HTML text escaping already
+// satisfies that: any '<'/'>' in the source becomes inert markup-safe
+// text, whatever tag name it happened to spell (</training_plan>,
+// <system>, or anything else).
+function escapeEnvelopeText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function buildContextBlock(context: ConversionPromptContext): string {
+  const lines = [
+    `\t<language>${escapeEnvelopeText(context.language ?? "")}</language>`,
+    `\t<event>${escapeEnvelopeText(context.event ?? "")}</event>`,
+    `\t<event_name>${escapeEnvelopeText(context.eventName ?? "")}</event_name>`,
+    `\t<distance_m>${context.distanceM != null ? String(context.distanceM) : ""}</distance_m>`,
+    `\t<unit>${context.unit ?? ""}</unit>`,
+    `\t<dsl_version>${RUNPLAN_DSL_VERSION}</dsl_version>`,
+  ];
+  return lines.join("\n");
+}
+
+// The single shared composition call (AC1): given the same source text +
+// context, this is exactly what both the preview endpoint and the future
+// real provider call must invoke — never two separate implementations of
+// "system message + context + training plan".
+export function composeConversionPrompt(trainingPlanText: string, context: ConversionPromptContext = {}): string {
+  const contextBlock = buildContextBlock(context);
+  const trainingPlanBlock = escapeEnvelopeText(trainingPlanText);
+  return `${SYSTEM_PROMPT}
 
 <context>
-	<language></language>
+${contextBlock}
 </context>
 
 <training_plan>
-{{TRAINING_PLAN}}
-</training_plan>
+${trainingPlanBlock}
+</training_plan>`;
+}

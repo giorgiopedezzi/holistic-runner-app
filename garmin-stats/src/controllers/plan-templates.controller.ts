@@ -14,6 +14,7 @@
 import type { AppContext, Handler } from "../http/context.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow, PlanTemplateRow } from "../db.ts";
 import { parseRunPlanDSL, parsePaceValue, parseDayEntry } from "../domain/runplan/parser.ts";
+import { composeConversionPrompt } from "../domain/runplan/prompt-composer.ts";
 import { instantiatePlan, resolveDay } from "../domain/runplan/instantiate.ts";
 import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
@@ -64,6 +65,11 @@ function parseIdForNestedAction(pathname: string): number {
 
 type TemplateBody = Partial<{ name: string; event: string; distance_m: number; dsl_source: string }>;
 type GenerateBody = Partial<{ dsl_source: string }>;
+// HRA-326: the "Prompt di conversione" pipeline stage's own inputs — text is
+// the pasted (or attachment-placeholder) plan source; the rest are optional
+// context fields (mirrors the frontend editor's own event/name/distance-unit
+// fields, none of which are required to compose a preview).
+type ComposePromptBody = Partial<{ text: string; language: string; event: string; event_name: string; distance_m: number; unit: string }>;
 type InstantiateBody = Partial<{
   name: string; start_date: string; pace_overrides: Record<string, string>;
   goal_time: string; distance_m: number; race_pace_anchor: string;
@@ -153,6 +159,31 @@ export function createPlanTemplatesController(ctx: AppContext) {
       throw unprocessable("DSL failed to parse.", { errors: result.errors.map(e => ({ field: `line:${e.line}`, message: e.message })) });
     }
     return send(res, { plan: result.plan, warnings: result.warnings });
+  };
+
+  // POST /api/v1/plan-templates/prompt-preview (HRA-326) — parse-only-style
+  // preview, never persists: composes the same conversion prompt
+  // composeConversionPrompt() will later hand the real AI provider adapter
+  // (Epic HRA-36), so "what the user sees" here and "what gets sent" then can
+  // never drift. Every context field is optional — a bare paste with no
+  // event/name/distance chosen yet still previews.
+  const composePromptPreview: Handler = async (req, res) => {
+    const body = await readJsonBody<ComposePromptBody>(req);
+    if (!body.text?.trim()) throw unprocessable("text is required.");
+    if (body.event != null && !eventTypeSchema.safeParse(body.event).success) {
+      throw unprocessable(`event, when supplied, must be one of: ${eventTypeSchema.options.join(", ")}.`);
+    }
+    if (body.unit != null && body.unit !== "km" && body.unit !== "mi") {
+      throw unprocessable('unit, when supplied, must be "km" or "mi".');
+    }
+    if (body.distance_m != null && !(body.distance_m > 0)) {
+      throw unprocessable("distance_m, when supplied, must be a positive number.");
+    }
+    const prompt = composeConversionPrompt(body.text, {
+      language: body.language, event: body.event as EventType | undefined, eventName: body.event_name,
+      distanceM: body.distance_m, unit: body.unit as "km" | "mi" | undefined,
+    });
+    return send(res, { prompt });
   };
 
   // HRA-120: event is now an explicit, validated request field (replacing
@@ -981,7 +1012,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   };
 
   return {
-    list, getById, generate, create, update, approveTemplate, remove,
+    list, getById, generate, composePromptPreview, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
     mobileEligibility, instantiatePreview,

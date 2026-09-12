@@ -581,6 +581,7 @@
   "manage.planTemplates.aiPrompt.saveAsButton": "Salva prompt come…",
   "manage.planTemplates.aiPrompt.copySucceeded": "Prompt copiato negli appunti.",
   "manage.planTemplates.aiPrompt.copyFailed": "Impossibile copiare il prompt negli appunti.",
+  "manage.planTemplates.aiPrompt.generatePromptFailed": "Impossibile generare il prompt di conversione.",
   "manage.planTemplates.pipeline.planTextHeader": "1 · Testo del piano",
   "manage.planTemplates.pipeline.planTextDescription": "Incolla il piano di allenamento originale in qualsiasi formato o lingua leggibile.",
   "manage.planTemplates.pipeline.conversionPromptHeader": "2 · Prompt di conversione",

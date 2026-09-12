@@ -626,6 +626,14 @@
         "responses": { "200": { "description": "The parsed plan preview.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GeneratedPlan" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
+    "/api/v1/plan-templates/prompt-preview": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Parse-only-style preview of the AI conversion prompt (HRA-326) — never persists",
+        "description": "Composes the same 'Plan text -> RunPlan DSL' conversion prompt via composeConversionPrompt() (domain/runplan/prompt-composer.ts) that a future real AI provider call will use — one function, not two implementations, so preview and the real send can never drift. text is required; language/event/event_name/distance_m/unit are all optional context fields. Plan text containing tag-like substrings (e.g. </training_plan>, <system>) is escaped so it can't terminate the envelope early or be read as new instructions.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "language": { "type": "string" }, "event": { "type": "string", "enum": ["5k", "10k", "half", "marathon", "custom"] }, "event_name": { "type": "string" }, "distance_m": { "type": "number" }, "unit": { "type": "string", "enum": ["km", "mi"] } } } } } },
+        "responses": { "200": { "description": "The assembled prompt.", "content": { "application/json": { "schema": { "type": "object", "properties": { "prompt": { "type": "string" } }, "required": ["prompt"] } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/plan-templates": {
       "get": { "tags": ["plan-templates"], "summary": "List plan templates, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Plan templates.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanTemplate" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "post": {

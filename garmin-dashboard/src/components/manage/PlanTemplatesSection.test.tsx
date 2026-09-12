@@ -46,6 +46,14 @@ function pipelineHeader(name: string | RegExp) {
   return screen.getByRole("button", { name });
 }
 
+// HRA-326: "Generate full prompt" now calls the backend's prompt-preview
+// endpoint instead of filling a local template synchronously — every test
+// that clicks it needs this stubbed. Echoes the submitted text back so
+// assertions can still check the original text survived into the prompt.
+function promptPreviewStub(req: StubRequest) {
+  return json({ prompt: `PROMPT: ${(req.body as { text: string }).text}` });
+}
+
 describe("PlanTemplatesSection — default pipeline expansion", () => {
   it("a new empty template opens with Plan text expanded, the other two collapsed but visible", async () => {
     installFetch({});
@@ -62,7 +70,7 @@ describe("PlanTemplatesSection — default pipeline expansion", () => {
   });
 
   it("original text with a generated prompt: both Plan text and Conversion prompt reopen expanded on the stashed draft", async () => {
-    installFetch({});
+    installFetch({ "POST /api/v1/plan-templates/prompt-preview": promptPreviewStub });
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
 
@@ -150,7 +158,7 @@ describe("PlanTemplatesSection — direct DSL path (AC2)", () => {
 
 describe("PlanTemplatesSection — prompt generation preserves original text", () => {
   it("generating the prompt leaves the source text field unchanged", async () => {
-    installFetch({});
+    installFetch({ "POST /api/v1/plan-templates/prompt-preview": promptPreviewStub });
     render(<PlanTemplatesSection {...mountProps()} />);
     fireEvent.click(screen.getByRole("button", { name: "New template" }));
 

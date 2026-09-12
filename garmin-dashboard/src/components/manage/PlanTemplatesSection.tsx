@@ -47,10 +47,6 @@ import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
 import type { EventType, OffsetUnit, ParseWarning, RunPlan } from "@/types/runplan";
 import { useDemoMode } from "@/hooks/useDemoMode";
-// HRA-200: frontend-owned copy of docs/utils/template-generator-AI-prompt.txt
-// (the already-tested base prompt) — kept in sync manually, see that file's
-// own header for the sync-risk note.
-import aiPromptTemplate from "@/assets/template-generator-ai-prompt.txt?raw";
 
 interface EditorState { dslSource: string; sections: SectionView[]; offsetUnit: OffsetUnit }
 
@@ -71,20 +67,6 @@ function computeDefaultExpansion(hasText: boolean, hasPrompt: boolean, hasDsl: b
   if (hasDsl) return { text: false, prompt: false, dsl: true };
   if (hasText || hasPrompt) return { text: true, prompt: false, dsl: false };
   return { text: true, prompt: false, dsl: false };
-}
-
-// HRA-200: split+join, not String.replace(pattern, value) — replace() treats
-// "$" sequences in the replacement string specially (e.g. "$&", "$1"), which
-// pasted training-plan text could easily contain unintentionally.
-function fillAiPromptTemplate(
-  originalText: string, language: string, eventType: string, eventName: string, unit: string,
-): string {
-  return aiPromptTemplate
-    .split("{{TRAINING_PLAN}}").join(originalText)
-    .split("{{LANGUAGE_OPTIONAL}}").join(language)
-    .split("{{EVENT_TYPE_OPTIONAL}}").join(eventType)
-    .split("{{EVENT_NAME_OPTIONAL}}").join(eventName)
-    .split("{{UNIT_OPTIONAL}}").join(unit);
 }
 
 // The prompt's own <training_plan> placeholder, used verbatim in place of
@@ -619,12 +601,29 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     setLastPatchedLine(null); setLastEditedRef(null);
   }
 
-  // HRA-200: fills the base AI-transcription prompt from the pasted plan
-  // text + optional language, for the user to copy and run externally
-  // against an LLM — this app never calls an LLM API itself.
+  // HRA-326: composes the AI-transcription prompt via the backend's
+  // canonical composeConversionPrompt() (POST .../prompt-preview) — the same
+  // function a future real AI provider call will use — for the user to copy
+  // and run externally against an LLM (this app never calls an LLM API
+  // itself). Replaces the old frontend-local fillAiPromptTemplate/asset.
+  async function generatePromptFrom(text: string) {
+    const distanceM = event === "custom" ? distanceToMeters(distanceValue, distanceUnit) : (event !== "" ? STANDARD_DISTANCE_M[event] : undefined);
+    try {
+      const { prompt } = await api.planTemplates.composePrompt(text, {
+        language: language.trim() || undefined, event: event || undefined,
+        event_name: name.trim() || undefined, distance_m: distanceM, unit: distanceUnit,
+      });
+      setGeneratedPrompt(prompt);
+      selectPipeline("prompt");
+    } catch (e) {
+      notify(e instanceof Error ? e.message : t("manage.planTemplates.aiPrompt.generatePromptFailed", "Failed to generate the conversion prompt."), "error");
+    }
+  }
+
+  // HRA-200: fills the conversion prompt from the pasted plan text +
+  // optional language.
   function onGeneratePrompt() {
-    setGeneratedPrompt(fillAiPromptTemplate(originalText, language, event, name, distanceUnit));
-    selectPipeline("prompt");
+    void generatePromptFrom(originalText);
   }
 
   // Same prompt, but with the <training_plan> body replaced by a fixed
@@ -632,8 +631,7 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
   // directly to the AI conversation rather than paste as text. Never needs
   // Original text filled in, since the AI is meant to read the attachment.
   function onGeneratePromptForAttachment() {
-    setGeneratedPrompt(fillAiPromptTemplate(ATTACHMENT_PLACEHOLDER, language, event, name, distanceUnit));
-    selectPipeline("prompt");
+    void generatePromptFrom(ATTACHMENT_PLACEHOLDER);
   }
 
   async function onCopyPrompt() {
