@@ -203,7 +203,16 @@ export function buildReport(request: ReportRequest, inputs: ReportInputs): Repor
       return (date: string) => dates.has(date);
     })()
     : () => true;
-  const isInRange = (date: string) => rangeFilter(date) && weekFilter(date);
+
+  // HRA-341: an explicit calendar-date window (date-range/race-range
+  // reports) — ANDed on top of the existing filters, same composition as
+  // weekFilter above; a no-op "always true" for every caller that never
+  // sets dateWindow, so week/plan reports see no behavior change.
+  const windowFilter = request.dateWindow
+    ? (date: string) => date >= request.dateWindow!.from && date <= request.dateWindow!.to
+    : () => true;
+
+  const isInRange = (date: string) => rangeFilter(date) && weekFilter(date) && windowFilter(date);
 
   const scope = classifyScopeBoundary(originalDays, inputs.currentDays, isInRange);
 
@@ -246,10 +255,17 @@ export function buildReport(request: ReportRequest, inputs: ReportInputs): Repor
   // week (`not_applicable`) is unrelated to the requested week and never
   // belongs in ITS drill-down — a moved_in/moved_out workout still qualifies
   // (exactly one side is `true`), so a week's own adaptation entry stays
-  // reachable. Plan granularity (the pre-existing, already-tested behavior)
-  // is untouched: isInRange has no week component there, so this condition
-  // never excludes anything it didn't already include.
-  const drillDownScope = request.granularity === "week" ? scope.filter(s => s.originalInRange || s.currentInRange) : scope;
+  // reachable. Plan granularity with no dateWindow (the pre-existing,
+  // already-tested behavior) is untouched: isInRange has no week/window
+  // component there, so this condition never excludes anything it didn't
+  // already include. HRA-341: a dateWindow (date-range/race-range reports)
+  // gets the SAME confining treatment as week granularity — "every count and
+  // aggregate drills down to the exact referenced workouts" (AC) would
+  // otherwise leak an instance's workouts from outside the requested window
+  // into its drill-down.
+  const drillDownScope = request.granularity === "week" || request.dateWindow
+    ? scope.filter(s => s.originalInRange || s.currentInRange)
+    : scope;
   const drillDown: DrillDownIds = {
     workoutIds: drillDownScope.map(s => s.workout_id),
     activityIds: [...actual.accepted, ...actual.ambiguous, ...actual.extra].map(a => a.activity_id),

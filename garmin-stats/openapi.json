@@ -588,6 +588,66 @@
           "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
         }
       },
+      "RangeReport": {
+        "type": "object",
+        "description": "Response of GET /api/v1/reports/range (HRA-341) — the date-range/race-range report. Unlike WeekReport/PlanReport (one plan instance), this scans EVERY plan instance whose Original or Current span overlaps [from,to] and gives each its own isolated ReportResult — an instance's own evidence never leaks into another instance's report within the same window. `aggregate` sums across every included instance (Actual is computed range-wide, directly from every accepted activity in the window, never as a sum of possibly-partial per-instance actuals). `unplanned`/`ambiguous` are range-wide (never duplicated per instance).",
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "from": { "type": "string", "format": "date" }, "to": { "type": "string", "format": "date" },
+              "range": { "type": "string", "enum": ["plan_to_date", "full_plan"] },
+              "grouping": { "type": "string", "enum": ["workout", "week", "month"], "description": "Automatic presentation grouping by window length (AC: workout for short ranges, week for medium, month only for long ranges) — reuses Overview & Trends' own preset ladder, an advisory hint the caller applies to how it groups the per-instance execution/outcome entries it already has, not a second server-side bucketing." },
+              "generatedAt": { "type": "string", "format": "date-time" }, "asOf": { "type": "string", "format": "date-time" }
+            }
+          },
+          "instances": {
+            "type": "array",
+            "description": "One entry per plan instance overlapping [from,to]. Empty is a truthful 'no-plan' state, never an error.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "instanceId": { "type": "integer" }, "planInstanceName": { "type": ["string", "null"] }, "scheduleTimezone": { "type": "string" },
+                "dateSpan": { "type": "object", "properties": { "start": { "type": ["string", "null"], "format": "date" }, "end": { "type": ["string", "null"], "format": "date" } }, "description": "This instance's own span, intersected with [from,to]." },
+                "report": { "$ref": "#/components/schemas/ReportResult" }
+              }
+            }
+          },
+          "aggregate": {
+            "type": "object",
+            "properties": {
+              "datasets": { "type": "object", "properties": { "original": { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, "current": { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, "actual": { "$ref": "#/components/schemas/WorkoutDatasetMetrics" } } },
+              "denominators": { "type": "object", "properties": { "execution": { "type": "object", "properties": { "total": { "type": "integer" }, "completed": { "type": "integer" }, "missed": { "type": "integer" }, "upcoming": { "type": "integer" } } }, "outcome": { "type": "object", "properties": { "total": { "type": "integer" }, "completed": { "type": "integer" }, "missed": { "type": "integer" }, "upcoming": { "type": "integer" } } } } },
+              "coverage": { "type": "object", "properties": { "totalActivitiesInScope": { "type": "integer" }, "trustedActivities": { "type": "integer" }, "ambiguousActivities": { "type": "integer" }, "extraActivities": { "type": "integer" } } },
+              "drillDown": { "type": "object", "properties": { "workoutIds": { "type": "array", "items": { "type": "string" } }, "activityIds": { "type": "array", "items": { "type": "integer" } } } }
+            }
+          },
+          "unplanned": { "type": "array", "items": { "type": "object", "properties": { "activity_id": { "type": "integer" }, "local_date": { "type": "string", "format": "date" } } }, "description": "Range-wide extra/unplanned activities, included by their own actual local date, Actual-only." },
+          "ambiguous": { "type": "array", "items": { "type": "object", "properties": { "activity_id": { "type": "integer" }, "workout_id": { "type": ["string", "null"] } } }, "description": "Range-wide unresolved associations — visible in coverage, never in a trusted total." },
+          "qualityEvidence": {
+            "type": "object",
+            "description": "HRA-341's own structured quality-workout range rollup, reusing HRA-342's per-workout structured comparison — CURRENT run-type days only, classified as repetition/threshold/tempo/progressive.",
+            "properties": {
+              "totalWorkouts": { "type": "integer" }, "workoutsWithEvidence": { "type": "integer" },
+              "segments": { "type": "object", "properties": { "totalWorkSegments": { "type": "integer" }, "alignedWorkSegments": { "type": "integer" } } },
+              "byKind": { "type": "object", "description": "Per QualityWorkoutKind ('repetition'|'threshold'|'tempo'|'progressive'): {total, withEvidence}." },
+              "workouts": {
+                "type": "array",
+                "description": "Range drill-down: the exact quality workouts, each with its full per-repetition/block/phase structure and alignment provenance (StructuredQualityComparison).",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "instanceId": { "type": "integer" }, "workoutId": { "type": "string" }, "planInstanceName": { "type": ["string", "null"] },
+                    "sectionName": { "type": ["string", "null"] }, "weekNumber": { "type": ["integer", "null"] }, "day": { "type": ["integer", "null"] },
+                    "currentDate": { "type": ["string", "null"], "format": "date" },
+                    "comparison": { "type": "object", "description": "StructuredQualityComparison — same shape WorkoutReport.structuredQualityEvidence carries when available (kind/available/segments/totals/wholeSessionPaceSecPerKm)." }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "ParseWarning": {
         "type": "object",
         "description": "A non-fatal parse issue (HRA-113: nothing the parser encounters is a hard error — everything degrades to a warning). Day-scoped warnings live on the day itself; this shape is also used for the plan-scoped list (unrecognized lines, circular pace refs).",
@@ -1032,6 +1092,19 @@
           { "name": "as_of", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "description": "Explicit ISO instant for the report's future/missed cutoff; defaults to the server's current time." }
         ],
         "responses": { "200": { "description": "The entire-plan report.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanReport" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/reports/range": {
+      "get": {
+        "tags": ["reporting"], "summary": "The date-range/race-range report — cross-plan, grouped automatically by window length (HRA-341)",
+        "description": "Unlike every other report above (scoped to one plan instance), this scans EVERY plan instance whose Original or Current span overlaps [from,to] and gives each its own isolated buildReport call (associations pre-filtered to that instance's own workout ids, so one instance's evidence never leaks into another's totals within the same window). aggregate sums across every included instance; its Actual dataset and the range-wide unplanned/ambiguous lists are computed once against every activity in the window, never per instance. A race-range is just a saved date_ranges row's own {from,to} resolved by the caller before this call — there is no separate race-range endpoint. An empty window (no instances, no activities) returns an explicit empty report rather than 404ing.",
+        "parameters": [
+          { "name": "from", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "to", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } },
+          { "name": "range", "in": "query", "required": false, "schema": { "type": "string", "enum": ["plan_to_date", "full_plan"], "default": "plan_to_date" }, "description": "plan_to_date (default) excludes future workouts from execution/outcome entirely; full_plan keeps them as upcoming context. Applies identically to every included instance." },
+          { "name": "as_of", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "description": "Explicit ISO instant for the report's future/missed cutoff; defaults to the server's current time." }
+        ],
+        "responses": { "200": { "description": "The range report.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RangeReport" } } } }, "400": { "$ref": "#/components/responses/BadRequest" } }
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}": {

@@ -48,6 +48,12 @@ export interface ReportRequest {
   // that moved to/from this exact slot still surfaces as moved_in/moved_out
   // (AC6) instead of silently vanishing from one side's report.
   week?: { section_name: string; week_number: number };
+  // HRA-341: an explicit calendar-date window (inclusive, `YYYY-MM-DD`) — the
+  // date-range/race-range report's own membership predicate, ANDed with the
+  // existing range/week filters above rather than replacing them. Unlike
+  // `week` (a structural plan slot), this is a real calendar span shared
+  // across every plan instance a range report touches.
+  dateWindow?: { from: string; to: string };
 }
 
 // ── scope membership (AC6) ──────────────────────────────────────────────

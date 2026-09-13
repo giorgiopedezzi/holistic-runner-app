@@ -11,6 +11,8 @@ import { badRequest, notFound, unprocessable } from "../http/problem.ts";
 import { readJsonBody } from "../http/request.ts";
 import type { ReportRangeMode } from "../domain/reporting/types.ts";
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
 // /api/v1/plan-instances/:id/reports/workouts/:workoutId
 function parseInstanceIdAndWorkoutId(pathname: string): { instanceId: number; workoutId: string } {
   const parts = pathname.split("/");
@@ -128,5 +130,24 @@ export function createReportingController(ctx: AppContext) {
     return send(res, { workout_id: workoutId, segment_index: segmentIndex, removed: true });
   };
 
-  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment };
+  // GET /api/v1/reports/range?from=&to=&range=&as_of= (HRA-341)
+  // The date-range/race-range report — cross-plan, never scoped to one
+  // instance (unlike every report above). `from`/`to` are the SAME
+  // YYYY-MM-DD shape POST /api/v1/date-ranges already validates; a
+  // race-range is just a saved date_ranges row's own {from,to} resolved by
+  // the caller before this call — no separate race-range endpoint exists,
+  // since the window is the only thing this report actually needs.
+  const getRangeReport: Handler = (_req, res, url) => {
+    const from = url.searchParams.get("from");
+    const to = url.searchParams.get("to");
+    if (!from || !ISO_DATE.test(from) || !to || !ISO_DATE.test(to)) throw badRequest("from and to are required dates in YYYY-MM-DD format.");
+    if (from > to) throw badRequest("from must not be after to.");
+
+    const range = parseRange(url);
+    const asOf = parseAsOf(url);
+
+    return send(res, reporting.getRangeReport(from, to, range, asOf));
+  };
+
+  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment, getRangeReport };
 }

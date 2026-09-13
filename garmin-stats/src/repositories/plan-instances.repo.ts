@@ -34,6 +34,15 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // existing style of one statement per query shape.
   const listAllStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
   const countAllStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances");
+  // HRA-341: the date-range/race-range report's own "which instances might
+  // this window touch" scan — unpaginated, same "no envelope, internal
+  // reporting read" convention as workout-associations.repo.ts's all() /
+  // activities.repo.ts's list(). This app is single-user with a modest
+  // instance count, so a full scan (then filtered in JS against each
+  // instance's own Original+Current date span, since Original lives in a
+  // JSON snapshot column no SQL predicate can range over) costs nothing
+  // worth a second, more fragile query shape.
+  const listEveryInstanceStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC`);
   const listByTemplateStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
   const countByTemplateStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
   const insertInstance = prepareLive(`
@@ -233,6 +242,7 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
         : listAllStmt.all(limit, offset)) as unknown as PlanInstanceRow[],
     count: (templateId?: number): { count: number } =>
       (templateId != null ? countByTemplateStmt.get(templateId) : countAllStmt.get()) as unknown as { count: number },
+    allInstances: (): PlanInstanceRow[] => listEveryInstanceStmt.all() as unknown as PlanInstanceRow[],
     daysByInstance: (instanceId: number): PlanInstanceDayRow[] => findDaysByInstance.all(instanceId) as unknown as PlanInstanceDayRow[],
     dayById: (id: number): PlanInstanceDayRow | undefined => findDayByIdStmt.get(id) as unknown as PlanInstanceDayRow | undefined,
     daysBySection: (instanceId: number, sectionName: string): PlanInstanceDayRow[] =>

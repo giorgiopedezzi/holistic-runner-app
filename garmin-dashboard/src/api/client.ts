@@ -11,7 +11,7 @@ import type {
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
-  FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport, WeekReport, PlanReport, ReportRangeMode,
+  FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport, WeekReport, PlanReport, ReportRangeMode, RangeReport,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
@@ -494,6 +494,15 @@ export const api = {
         skipped: Number(res.headers.get("X-Export-Skipped") ?? "0"),
       };
     },
+  },
+  // GET /api/v1/reports/range (HRA-341) — the date-range/race-range report,
+  // cross-plan (unlike every report above, which is scoped to one plan
+  // instance). A race-range is just a saved date_ranges row's own
+  // {from,to}, resolved by the caller before this call — there is no
+  // separate race-range client method.
+  reports: {
+    range: (from: string, to: string, range: ReportRangeMode = "plan_to_date") =>
+      request<RangeReport>("/api/v1/reports/range", "GET", { from, to, range }),
   },
   // HRA-327: server-side .txt/.csv/.pdf text extraction — the backend does
   // the actual parsing (pdf.js for PDFs, UTF-8 decode + validation for plain

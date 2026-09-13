@@ -245,3 +245,39 @@ test("plan granularity's drill-down is unaffected by the week machinery (pre-exi
   const result = buildReport(req({ dimensions: ["adaptation"] }), baseInputs({ currentDays }));
   assert.deepEqual(result.drillDown.workoutIds.sort(), ["w1", "w2"]);
 });
+
+// HRA-341: dateWindow — the date-range/race-range report's own explicit
+// calendar-span filter, ANDed on top of the existing range/week filters.
+test("dateWindow: a workout outside [from,to] is excluded from datasets/drill-down even though it's plan granularity", () => {
+  const currentDays = [
+    day({ workout_id: "w1", date: "2026-09-10" }),
+    day({ workout_id: "w2", date: "2026-09-20" }),
+  ];
+  const result = buildReport(
+    req({ dimensions: ["adaptation"], dateWindow: { from: "2026-09-08", to: "2026-09-15" } }),
+    baseInputs({ currentDays }),
+  );
+  assert.deepEqual(result.drillDown.workoutIds, ["w1"]);
+  assert.equal(result.datasets.current.distanceM, 10000, "only w1's own 10km, never w2's");
+});
+
+test("dateWindow: composes with week granularity (both must agree a day is in scope)", () => {
+  const currentDays = [
+    day({ workout_id: "w1", date: "2026-09-10", week_number: 1 }),
+    day({ workout_id: "w2", date: "2026-09-12", week_number: 1 }),
+  ];
+  const result = buildReport(
+    req({
+      granularity: "week", week: { section_name: "Base", week_number: 1 }, dimensions: ["adaptation"],
+      dateWindow: { from: "2026-09-11", to: "2026-09-30" },
+    }),
+    baseInputs({ currentDays }),
+  );
+  assert.deepEqual(result.drillDown.workoutIds, ["w2"], "w1 belongs to the week but falls before the window");
+});
+
+test("no dateWindow set: behavior is unchanged from before HRA-341 (every day passes the window filter)", () => {
+  const currentDays = [day({ workout_id: "w1", date: "2026-09-10" })];
+  const result = buildReport(req({ dimensions: ["adaptation"] }), baseInputs({ currentDays }));
+  assert.deepEqual(result.drillDown.workoutIds, ["w1"]);
+});

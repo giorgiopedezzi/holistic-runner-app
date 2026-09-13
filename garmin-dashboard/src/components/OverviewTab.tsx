@@ -20,6 +20,7 @@ import {
   Popover, PopoverTrigger, PopoverContent,
 } from "@/components/ui";
 import { DateRangeBar } from "@/components/DateRangeBar";
+import { RangeReportModal } from "@/components/manage/plan-instances/RangeReportModal";
 import { ActivityRow } from "@/components/activity/ActivityRow";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
 import { SPORT_COLOR, type Activity, type SavedDateRange, type SportSummary } from "@/types/api";
@@ -1619,12 +1620,25 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // activity count(s) it actually has available yet (HRA-306) — undefined
   // while `state` hasn't resolved, the real totals once it has.
   const rangeMinMax = rangeQ.state.status === "success" ? rangeQ.state.data : null;
+  // HRA-341: opens the cross-plan date-range/race-range report for the SAME
+  // interval this bar already governs — "reuse established Overview & Trends
+  // range semantics" rather than a second range picker. `from` resolves the
+  // "All" sentinel (AC2: "never exposes an implementation sentinel date") to
+  // the real earliest observed activity date, the same real boundary
+  // `allRangeSpan` already feeds DateRangeBar's own display; falls back to
+  // the sentinel only while rangeMinMax hasn't resolved yet.
+  const [rangeReportOpen, setRangeReportOpen] = useState(false);
+  const rangeReportFrom = from === ALL_SENTINEL && rangeMinMax?.min_date ? rangeMinMax.min_date : from;
   function renderDateRangeBar(currentActivityCount?: number) {
     return (
-      <div className="mb-2">
+      <div className="mb-2 flex flex-col gap-2">
         <DateRangeBar {...range} compare={compareRange} savedRanges={savedRanges}
           currentActivityCount={currentActivityCount} compareActivityCount={compareActivityCount}
           allRangeSpan={rangeMinMax} />
+        <button type="button" className="hra-btn self-start" data-variant="outline" onClick={() => setRangeReportOpen(true)}>
+          {t("rangeReport.open", "Training report")}
+        </button>
+        {rangeReportOpen && <RangeReportModal from={rangeReportFrom} to={to} onClose={() => setRangeReportOpen(false)} />}
       </div>
     );
   }

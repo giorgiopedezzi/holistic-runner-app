@@ -20,16 +20,25 @@ import type { WorkoutSegmentAlignmentsRepo } from "../repositories/workout-segme
 import type { ManualSegmentAlignment } from "../domain/reporting/quality-evidence.ts";
 import type { PlanInstanceDayRow, WorkoutAssociationRow } from "../db.ts";
 import type { OriginalDaySnapshot } from "../domain/runplan/lineage.ts";
-import { ACCEPTED_STATUSES, type AssociationLookup } from "../domain/reporting/scope.ts";
+import { computeWorkoutDayStatus } from "../domain/workout-association.ts";
+import { ACCEPTED_STATUSES, classifyActualPopulation, type AssociationLookup } from "../domain/reporting/scope.ts";
 import { buildWorkoutReport, type WorkoutReportResult } from "../domain/reporting/workout-report.ts";
 import { buildReport, type ReportActivityInput, type ReportInputs } from "../domain/reporting/report.ts";
-import type { AcceptedEvidence, ReportRangeMode, ReportRequest } from "../domain/reporting/types.ts";
+import type { AcceptedEvidence, DimensionDenominator, ReportRangeMode, ReportRequest, WorkoutEvidenceState } from "../domain/reporting/types.ts";
 import { computeHrEvidence, computeStaminaEvidence, type PauseEvidencePointInput } from "../domain/reporting/evidence.ts";
 import { aggregatePauseEvidence, selectComparableStaminaCandidate } from "../domain/reporting/aggregate-evidence.ts";
+import { SCHEDULE_TIMEZONE_BACKFILL_FALLBACK } from "../domain/plan-timezone.ts";
+import { buildCanonicalQualityStructure } from "../domain/reporting/quality-workout.ts";
+import { buildStructuredQualityComparison } from "../domain/reporting/quality-evidence.ts";
+import { aggregatePaceSecPerKm } from "../domain/reporting/metrics.ts";
 import {
   buildWorkoutIdentities, collectPlanWeeks, planDateSpan, weekDateSpan,
   type AggregateEvidence, type PlanReportResult, type PlanWeekKey, type PlanWeekSummary, type WeekReportResult,
 } from "../domain/reporting/plan-report.ts";
+import {
+  actualDatasetFromAccepted, aggregateDatasetMetrics, aggregateDenominator, buildRangeQualityEvidence,
+  mergeDrillDown, resolveRangeGrouping, type RangeInstanceReport, type RangeQualityWorkoutEntry, type RangeReportResult,
+} from "../domain/reporting/range-report.ts";
 
 export function createReportingService(
   planInstances: PlanInstancesRepo, workoutAssociations: WorkoutAssociationsRepo, activities: ActivitiesRepo,
@@ -314,7 +323,149 @@ export function createReportingService(
     };
   }
 
-  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment };
+  // ── date-range and race-range reports (HRA-341) ───────────────────────
+  // Cross-plan: unlike getWeekReport/getPlanReport (one plan instance), this
+  // scans every plan instance whose Original or Current span overlaps
+  // [from,to] and gives each its OWN isolated buildReport call — associations
+  // are pre-filtered to that instance's own workout ids so an activity
+  // accepted-associated to a DIFFERENT instance's workout can never leak
+  // into this one's totals (Scope: "handle cross-plan ... periods without
+  // corrupting dataset identity"). Range-wide ambiguous/unplanned counts and
+  // the range-wide Actual dataset are computed ONCE against every activity
+  // in the window (never per instance, never summed per instance), so they
+  // can never be inflated by one instance's own trusted evidence reading as
+  // "extra" relative to another's isolated view — see domain/reporting/
+  // range-report.ts's own top-of-file comment.
+  function instanceOwnWorkoutIds(originalDays: OriginalDaySnapshot[], currentDays: PlanInstanceDayRow[]): Set<string> {
+    const ids = new Set<string>();
+    for (const d of originalDays) ids.add(d.workout_id);
+    for (const d of currentDays) ids.add(d.workout_id);
+    return ids;
+  }
+
+  function associationsForWorkoutIds(allAssociations: WorkoutAssociationRow[], workoutIds: Set<string>): AssociationLookup[] {
+    return allAssociations
+      .filter(a => a.workout_id != null && workoutIds.has(a.workout_id))
+      .map(a => ({ activity_id: a.activity_id, workout_id: a.workout_id, status: a.status }));
+  }
+
+  function toRangeEvidenceState(status: "pending" | "missed" | "completed"): WorkoutEvidenceState {
+    return status === "pending" ? "upcoming" : status;
+  }
+
+  function getRangeReport(from: string, to: string, range: ReportRangeMode, asOf?: Date): RangeReportResult {
+    const now = new Date();
+    const effectiveAsOf = asOf ?? now;
+
+    const allInstances = planInstances.allInstances();
+    const allAssociations = workoutAssociations.all();
+    const { activityInputs, rowsById } = loadActivitiesInRange(from, to);
+
+    // Range-wide trust classification — the FULL association map, never a
+    // per-instance-filtered one, so an activity accepted for SOME instance
+    // never reads as "extra" merely because that instance isn't scanned
+    // below (e.g. its own span doesn't overlap [from,to] at all).
+    const globalAssociationsByActivity = new Map<number, AssociationLookup>(allAssociations.map(a => [a.activity_id, a]));
+    const classification = classifyActualPopulation(activityInputs, globalAssociationsByActivity, SCHEDULE_TIMEZONE_BACKFILL_FALLBACK);
+
+    const candidates = allInstances.map(instance => {
+      const currentDays = planInstances.daysByInstance(instance.id);
+      const originalDays = loadOriginalDays(instance);
+      const span = planDateSpan(originalDays, currentDays);
+      return { instance, currentDays, originalDays, span };
+    });
+    const included = candidates.filter(c => c.span.start != null && c.span.end != null && c.span.start! <= to && c.span.end! >= from);
+
+    const instances: RangeInstanceReport[] = [];
+    const qualityEntries: RangeQualityWorkoutEntry[] = [];
+
+    for (const { instance, currentDays, originalDays, span } of included) {
+      const ownWorkoutIds = instanceOwnWorkoutIds(originalDays, currentDays);
+      const instanceAssociations = associationsForWorkoutIds(allAssociations, ownWorkoutIds);
+      const instanceActivityIds = new Set(instanceAssociations.map(a => a.activity_id));
+      const instanceActivityInputs = activityInputs.filter(a => instanceActivityIds.has(a.activity_id));
+
+      const instanceInput = {
+        id: instance.id, schedule_timezone: instance.schedule_timezone,
+        original_start_date: instance.original_start_date, original_days_snapshot: instance.original_days_snapshot,
+      };
+      const request: ReportRequest = {
+        instanceId: instance.id, range, granularity: "plan",
+        dimensions: ["adaptation", "execution", "outcome"], metrics: ["distance", "duration", "pace"],
+        asOf: effectiveAsOf, dateWindow: { from, to },
+      };
+      const report = buildReport(request, {
+        instance: instanceInput, currentDays, associations: instanceAssociations, activities: instanceActivityInputs, now,
+      });
+
+      const timeZone = instance.schedule_timezone ?? SCHEDULE_TIMEZONE_BACKFILL_FALLBACK;
+      const acceptedByWorkout = new Map(report.actual.accepted.map(e => [e.workout_id, e]));
+
+      // HRA-341 quality-workout range requirements — CURRENT days only
+      // (execution's own Current-vs-Actual scope, never Original), scoped to
+      // [from,to], reusing HRA-342's own per-workout structure/evidence
+      // primitives rather than a second classification engine.
+      for (const day of currentDays) {
+        if (day.workout_type !== "run") continue;
+        if (day.date < from || day.date > to) continue;
+        const structure = buildCanonicalQualityStructure({ category: day.category ?? undefined, segments: JSON.parse(day.segments) });
+        if (!structure) continue;
+
+        const state = toRangeEvidenceState(computeWorkoutDayStatus(day.date, timeZone, acceptedByWorkout.has(day.workout_id), effectiveAsOf));
+        if (state === "upcoming" && range === "plan_to_date") continue;
+
+        const workoutAcceptedActivities = instanceAssociations
+          .filter(a => a.workout_id === day.workout_id && ACCEPTED_STATUSES.includes(a.status))
+          .map(a => rowsById.get(a.activity_id))
+          .filter((a): a is ReportingActivityRow => a != null);
+        const wholeSessionPace = aggregatePaceSecPerKm(workoutAcceptedActivities.map(a => ({ distanceM: a.distance_m, timeSec: a.duration_sec })));
+        const manualAlignments = workoutSegmentAlignments.byWorkoutId(day.workout_id)
+          .map(a => ({ segmentIndex: a.segment_index, activityId: a.activity_id, distanceM: a.distance_m, durationSec: a.duration_sec }));
+
+        qualityEntries.push({
+          instanceId: instance.id, workoutId: day.workout_id, planInstanceName: instance.name,
+          sectionName: day.section_name, weekNumber: day.week_number, day: day.day, currentDate: day.date,
+          comparison: buildStructuredQualityComparison(structure, { manual: manualAlignments }, wholeSessionPace),
+        });
+      }
+
+      const spanStart = span.start!;
+      const spanEnd = span.end!;
+      instances.push({
+        instanceId: instance.id, planInstanceName: instance.name, scheduleTimezone: report.provenance.scheduleTimezone,
+        dateSpan: { start: spanStart < from ? from : spanStart, end: spanEnd > to ? to : spanEnd },
+        report,
+      });
+    }
+
+    return {
+      provenance: { from, to, range, grouping: resolveRangeGrouping(from, to), generatedAt: now.toISOString(), asOf: effectiveAsOf.toISOString() },
+      instances,
+      aggregate: {
+        datasets: {
+          original: aggregateDatasetMetrics(instances.map(i => i.report.datasets.original)),
+          current: aggregateDatasetMetrics(instances.map(i => i.report.datasets.current)),
+          actual: actualDatasetFromAccepted(classification.accepted, rowsById),
+        },
+        denominators: {
+          execution: aggregateDenominator(instances.map(i => i.report.denominators.execution).filter((d): d is DimensionDenominator => d != null)),
+          outcome: aggregateDenominator(instances.map(i => i.report.denominators.outcome).filter((d): d is DimensionDenominator => d != null)),
+        },
+        coverage: {
+          totalActivitiesInScope: classification.accepted.length + classification.ambiguous.length + classification.extra.length,
+          trustedActivities: classification.accepted.length,
+          ambiguousActivities: classification.ambiguous.length,
+          extraActivities: classification.extra.length,
+        },
+        drillDown: mergeDrillDown(instances.map(i => i.report.drillDown), classification.extra.map(e => e.activity_id)),
+      },
+      unplanned: classification.extra,
+      ambiguous: classification.ambiguous,
+      qualityEvidence: buildRangeQualityEvidence(qualityEntries),
+    };
+  }
+
+  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment, getRangeReport };
 }
 
 export type ReportingService = ReturnType<typeof createReportingService>;

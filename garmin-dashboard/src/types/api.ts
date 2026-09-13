@@ -499,6 +499,62 @@ export interface PlanReport {
   structuredQualityEvidence: { available: false; reason: "not_implemented" };
 }
 
+// ── date-range and race-range reports (HRA-341) — mirrors garmin-stats/src/
+// domain/reporting/range-report.ts exactly. GET /api/v1/reports/range.
+// Cross-plan (unlike WeekReport/PlanReport above): one ReportResult per plan
+// instance overlapping [from,to], plus a range-wide aggregate/unplanned/
+// ambiguous/qualityEvidence rollup.
+
+export type RangeGrouping = "workout" | "week" | "month";
+
+export interface RangeInstanceReport {
+  instanceId: number;
+  planInstanceName: string | null;
+  scheduleTimezone: string;
+  dateSpan: { start: string | null; end: string | null };
+  report: ReportResult;
+}
+
+export interface RangeQualityWorkoutEntry {
+  instanceId: number;
+  workoutId: string;
+  planInstanceName: string | null;
+  sectionName: string | null;
+  weekNumber: number | null;
+  day: number | null;
+  currentDate: string | null;
+  comparison: StructuredQualityComparison;
+}
+
+export interface RangeQualityEvidence {
+  totalWorkouts: number;
+  workoutsWithEvidence: number;
+  segments: { totalWorkSegments: number; alignedWorkSegments: number };
+  byKind: Partial<Record<QualityWorkoutKind, { total: number; withEvidence: number }>>;
+  workouts: RangeQualityWorkoutEntry[];
+}
+
+export interface RangeReport {
+  provenance: {
+    from: string;
+    to: string;
+    range: ReportRangeMode;
+    grouping: RangeGrouping;
+    generatedAt: string;
+    asOf: string;
+  };
+  instances: RangeInstanceReport[];
+  aggregate: {
+    datasets: { original: ReportDatasetMetrics; current: ReportDatasetMetrics; actual: ReportDatasetMetrics };
+    denominators: { execution?: DimensionDenominator; outcome?: DimensionDenominator };
+    coverage: { totalActivitiesInScope: number; trustedActivities: number; ambiguousActivities: number; extraActivities: number };
+    drillDown: { workoutIds: string[]; activityIds: number[] };
+  };
+  unplanned: { activity_id: number; local_date: string }[];
+  ambiguous: { activity_id: number; workout_id: string | null }[];
+  qualityEvidence: RangeQualityEvidence;
+}
+
 // GET /api/v1/plan-instance-days's response shape (HRA-206) — a
 // PlanInstanceDay denormalized with its owning instance's own name, so a
 // same-day picker across multiple instances can label each option without a

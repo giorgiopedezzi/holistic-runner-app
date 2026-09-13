@@ -103,6 +103,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+$/.test(route)) return await reporting.getWorkoutReport(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/weeks$/.test(route)) return await reporting.getWeekReport(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/plan$/.test(route)) return await reporting.getPlanReport(req, res, url);
+        if (route === "/api/v1/reports/range")               return await reporting.getRangeReport(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))    return await planTemplates.instanceById(req, res, url);
         if (/^\/api\/v1\/locales\/[^/]+$/.test(route))     return await locales.get(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
