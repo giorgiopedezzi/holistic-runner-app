@@ -18,6 +18,8 @@ import {
   type HrEvidence, type PauseEvidence, type PauseEvidencePointInput, type StaminaEvidence,
 } from "./evidence.ts";
 import type { WorkoutEvidenceState } from "./types.ts";
+import { buildCanonicalQualityStructure } from "./quality-workout.ts";
+import { buildStructuredQualityComparison, type ManualSegmentAlignment, type StructuredQualityComparison } from "./quality-evidence.ts";
 
 export interface WorkoutReportInstanceInput {
   id: number;
@@ -70,6 +72,13 @@ export interface WorkoutReportInputs {
   // (AC3) and pause detail/count/longest (AC5/AC7) both come from here;
   // never loaded for Original/Current or for non-accepted activities.
   trackPointsByActivity?: Map<number, PauseEvidencePointInput[]>;
+  // HRA-342: this workout's own runner-confirmed manual segment alignments
+  // (workout_segment_alignments) — the caller (services/reporting.service.ts)
+  // loads these; this module never queries the DB. Executed-step/lap
+  // evidence isn't ingested anywhere in this app yet (see quality-evidence.ts's
+  // own top-of-file note), so this is the only reliable-evidence tier
+  // actually populated today.
+  manualQualityAlignments?: ManualSegmentAlignment[];
   now?: Date;
   asOf?: Date;
 }
@@ -144,7 +153,12 @@ export interface WorkoutReportResult {
   // activity's own track_points only; never averaged across activities.
   stamina: StaminaEvidence | null;
   pauses: PauseEvidence | null;
-  structuredQualityEvidence: { available: false; reason: "not_implemented" };
+  // HRA-342: real structured quality-workout comparison when this workout's
+  // resolved DSL classifies as repetition/threshold/tempo/progressive; the
+  // explicit "not_applicable" shape otherwise (a plain easy/rest/cross day —
+  // never a fabricated empty comparison for a day that was never a quality
+  // workout to begin with).
+  structuredQualityEvidence: StructuredQualityComparison | { available: false; reason: "not_applicable" };
 }
 
 function plannedMetricsForDay(day: { workout_type: string; segments: string } | null): WorkoutDatasetMetrics | null {
@@ -268,6 +282,19 @@ export function buildWorkoutReport(inputs: WorkoutReportInputs): WorkoutReportRe
     actualSource: acceptedActivities.length > 0 ? "activity" : "none",
   };
 
+  // HRA-342: classification/canonical structure come from CURRENT's own
+  // resolved DSL when it exists (the live definition), falling back to
+  // Original only when this workout was removed since freeze — same
+  // "current ?? original" preference plannedMetricsForDay's own caller
+  // (targetMetrics above) already applies for planned metrics.
+  const structureSourceDay = current ?? original;
+  const structure = structureSourceDay
+    ? buildCanonicalQualityStructure({ category: structureSourceDay.category ?? undefined, segments: JSON.parse(structureSourceDay.segments) })
+    : null;
+  const structuredQualityEvidence: WorkoutReportResult["structuredQualityEvidence"] = structure
+    ? buildStructuredQualityComparison(structure, { manual: inputs.manualQualityAlignments }, actualMetrics?.paceSecPerKm ?? null)
+    : { available: false, reason: "not_applicable" };
+
   return {
     provenance: {
       planInstanceId: instance.id,
@@ -297,6 +324,6 @@ export function buildWorkoutReport(inputs: WorkoutReportInputs): WorkoutReportRe
     hr,
     stamina,
     pauses,
-    structuredQualityEvidence: { available: false, reason: "not_implemented" },
+    structuredQualityEvidence,
   };
 }

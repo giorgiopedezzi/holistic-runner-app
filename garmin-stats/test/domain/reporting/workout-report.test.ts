@@ -191,10 +191,41 @@ test("provenance carries both revisions and the instance's schedule_timezone", (
   assert.equal(result.provenance.scheduleTimezone, ROME);
 });
 
-test("structuredQualityEvidence is always the not-yet-available sentinel (HRA-342 slot)", () => {
+test("structuredQualityEvidence (HRA-342): a single continuous segment classifies as 'tempo', unavailable with no evidence", () => {
   const d = day({ workout_id: "w1", date: "2026-09-10" });
   const result = buildWorkoutReport(baseInputs({ current: d }));
-  assert.deepEqual(result.structuredQualityEvidence, { available: false, reason: "not_implemented" });
+  const sqe = result.structuredQualityEvidence;
+  assert.ok("kind" in sqe);
+  assert.equal(sqe.kind, "tempo");
+  assert.equal(sqe.available, false);
+  assert.equal(sqe.totals.plannedWorkDistanceM, 10000);
+});
+
+test("structuredQualityEvidence (HRA-342): a non-quality-workout day (rest) reports the explicit not_applicable shape", () => {
+  const d = day({
+    workout_id: "w1", date: "2026-09-10", workout_type: "rest",
+    segments: JSON.stringify([{ type: "rest_block", target: { kind: "unknown", raw: "" }, raw: "REST" }]),
+  });
+  const result = buildWorkoutReport(baseInputs({ current: d }));
+  assert.deepEqual(result.structuredQualityEvidence, { available: false, reason: "not_applicable" });
+});
+
+test("structuredQualityEvidence (HRA-342): a manual alignment for an accepted activity is wired through end to end", () => {
+  const d = day({ workout_id: "w1", date: "2026-09-10" });
+  const activity = activityInput({ activity_id: 5, distance_m: 10200, duration_sec: 3050 });
+  const result = buildWorkoutReport(baseInputs({
+    current: d,
+    associations: [{ activity_id: 5, status: "automatic" }],
+    activities: [activity],
+    manualQualityAlignments: [{ segmentIndex: 0, activityId: 5, distanceM: 10200, durationSec: 3050 }],
+  }));
+  const sqe = result.structuredQualityEvidence;
+  assert.ok("kind" in sqe);
+  assert.equal(sqe.available, true);
+  assert.equal(sqe.segments[0].actual.provenance, "manual");
+  assert.equal(sqe.segments[0].actual.activityId, 5);
+  // whole-session pace is carried through as context, from the same accepted activity
+  assert.ok(sqe.wholeSessionPaceSecPerKm != null);
 });
 
 // ── HRA-337: HR, stamina, and pause evidence ────────────────────────────────

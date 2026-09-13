@@ -30,7 +30,7 @@ function report(overrides: Partial<WorkoutReport> = {}): WorkoutReport {
     hr: null,
     stamina: null,
     pauses: null,
-    structuredQualityEvidence: { available: false, reason: "not_implemented" },
+    structuredQualityEvidence: { available: false, reason: "not_applicable" },
     ...overrides,
   };
 }
@@ -153,5 +153,69 @@ describe("WorkoutReportModal", () => {
     render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
 
     expect(await screen.findByText("No workout found.")).toBeInTheDocument();
+  });
+
+  // ── structured quality-workout comparison (HRA-342) ─────────────────────
+
+  it("does not render the quality-workout section for a not_applicable (plain) workout", async () => {
+    installFetch({ [ROUTE]: json(report()) });
+    render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
+
+    expect(await screen.findByText("Original plan unchanged")).toBeInTheDocument();
+    expect(screen.queryByText(/Structured comparison/)).not.toBeInTheDocument();
+  });
+
+  it("renders the repetition comparison with coverage and an unavailable note when nothing is aligned yet", async () => {
+    installFetch({
+      [ROUTE]: json(report({
+        structuredQualityEvidence: {
+          kind: "repetition", available: false,
+          segments: [
+            { segment: { index: 0, role: "work", targetDistanceM: 1000, targetDurationSec: 240, targetPaceSecPerKm: 240, targetPaceSecPerKmEnd: 240 }, actual: { provenance: "unavailable", activityId: null, distanceM: null, durationSec: null, paceSecPerKm: null } },
+          ],
+          totals: {
+            plannedWorkDistanceM: 1000, plannedWorkDurationSec: 240, actualWorkDistanceM: 0, actualWorkDurationSec: 0,
+            weightedActualPaceSecPerKm: null, paceSpreadSecPerKm: null, progressivelyFaster: null,
+            coverage: { totalWorkSegments: 1, alignedWorkSegments: 0 },
+          },
+          wholeSessionPaceSecPerKm: null,
+        },
+      })),
+    });
+    render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
+
+    expect(await screen.findByText(/Structured comparison/)).toBeInTheDocument();
+    expect(screen.getByText("0 of 1 aligned")).toBeInTheDocument();
+    expect(screen.getByText(/isn't reliably available yet/)).toBeInTheDocument();
+  });
+
+  it("aligning a work segment PUTs the alignment and refetches the report", async () => {
+    const acceptedEvidence = [{ activityId: 7, status: "automatic" as const, elapsedSec: 240, activeSec: 240, pausedSec: 0 }];
+    const before = report({
+      actual: { metrics: { distanceM: 1000, approximate: false, durationSec: 240, paceSecPerKm: 240 }, evidence: acceptedEvidence, hasAmbiguousEvidence: false },
+      structuredQualityEvidence: {
+        kind: "repetition", available: false,
+        segments: [{ segment: { index: 0, role: "work", targetDistanceM: 1000, targetDurationSec: 240, targetPaceSecPerKm: 240, targetPaceSecPerKmEnd: 240 }, actual: { provenance: "unavailable", activityId: null, distanceM: null, durationSec: null, paceSecPerKm: null } }],
+        totals: { plannedWorkDistanceM: 1000, plannedWorkDurationSec: 240, actualWorkDistanceM: 0, actualWorkDurationSec: 0, weightedActualPaceSecPerKm: null, paceSpreadSecPerKm: null, progressivelyFaster: null, coverage: { totalWorkSegments: 1, alignedWorkSegments: 0 } },
+        wholeSessionPaceSecPerKm: null,
+      },
+    });
+    const ALIGN_ROUTE = `PUT /api/v1/plan-instances/${INSTANCE_ID}/reports/workouts/${WORKOUT_ID}/quality-alignment/0`;
+    const mock = installFetch({ [ROUTE]: json(before), [ALIGN_ROUTE]: json({ ok: true }) });
+    render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
+
+    const { fireEvent, waitFor } = await import("@testing-library/react");
+    const accordionTrigger = await screen.findByRole("button", { name: "Repetitions / blocks" });
+    fireEvent.click(accordionTrigger);
+    const alignButton = await screen.findByRole("button", { name: /^Align/ });
+    fireEvent.click(alignButton);
+    const saveButton = await screen.findByRole("button", { name: "Save" });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      const putCall = mock.mock.calls.find(([input, init]) =>
+        String(input).includes("quality-alignment/0") && init?.method === "PUT");
+      expect(putCall).toBeTruthy();
+    });
   });
 });

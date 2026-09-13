@@ -272,6 +272,57 @@ export interface WorkoutPauseEvidence {
   hasTrackData: boolean;
 }
 
+// ── structured quality-workout comparison (HRA-342) — mirrors
+// garmin-stats/src/domain/reporting/{quality-workout,quality-evidence}.ts's
+// exported types exactly.
+
+export type QualityWorkoutKind = "repetition" | "threshold" | "tempo" | "progressive";
+export type SegmentEvidenceProvenance = "executed_step" | "lap" | "manual" | "unavailable";
+
+export interface CanonicalWorkSegment {
+  index: number;
+  role: "work" | "recovery";
+  targetDistanceM: number | null;
+  targetDurationSec: number | null;
+  targetPaceSecPerKm: number | null;
+  targetPaceSecPerKmEnd: number | null;
+  restType?: "stand" | "walk" | "jog";
+}
+
+export interface AlignedActual {
+  provenance: SegmentEvidenceProvenance;
+  activityId: number | null;
+  distanceM: number | null;
+  durationSec: number | null;
+  paceSecPerKm: number | null;
+}
+
+export interface AlignedWorkSegment {
+  segment: CanonicalWorkSegment;
+  actual: AlignedActual;
+}
+
+export interface StructuredQualityTotals {
+  plannedWorkDistanceM: number;
+  plannedWorkDurationSec: number;
+  actualWorkDistanceM: number;
+  actualWorkDurationSec: number;
+  weightedActualPaceSecPerKm: number | null;
+  paceSpreadSecPerKm: { fastest: number; slowest: number } | null;
+  progressivelyFaster: boolean | null;
+  coverage: { totalWorkSegments: number; alignedWorkSegments: number };
+}
+
+export interface StructuredQualityComparison {
+  kind: QualityWorkoutKind;
+  available: boolean;
+  segments: AlignedWorkSegment[];
+  totals: StructuredQualityTotals;
+  wholeSessionPaceSecPerKm: number | null;
+}
+
+export type WorkoutStructuredQualityEvidence = StructuredQualityComparison | { available: false; reason: "not_applicable" };
+
 export interface WorkoutReport {
   provenance: {
     planInstanceId: number;
@@ -301,7 +352,7 @@ export interface WorkoutReport {
   hr: WorkoutHrEvidence | null;
   stamina: WorkoutStaminaEvidence | null;
   pauses: WorkoutPauseEvidence | null;
-  structuredQualityEvidence: { available: false; reason: "not_implemented" };
+  structuredQualityEvidence: WorkoutStructuredQualityEvidence;
 }
 
 // ── week and entire-plan reports (HRA-338) — mirrors

@@ -432,6 +432,16 @@ export const api = {
     // identity, not a plan_instance_days row id.
     workoutReport: (instanceId: number, workoutId: string) =>
       request<WorkoutReport>(`/api/v1/plan-instances/${instanceId}/reports/workouts/${encodeURIComponent(workoutId)}`),
+    // PUT/DELETE .../reports/workouts/:workoutId/quality-alignment/:segmentIndex
+    // (HRA-342) — confirm/correct/replace or remove a runner's manual
+    // structured-quality-workout segment alignment. activityId must already
+    // be accepted evidence for this workout (422 otherwise).
+    setQualityAlignment: (instanceId: number, workoutId: string, segmentIndex: number, activityId: number, distanceM: number | null, durationSec: number | null) =>
+      request(`/api/v1/plan-instances/${instanceId}/reports/workouts/${encodeURIComponent(workoutId)}/quality-alignment/${segmentIndex}`, "PUT", undefined, {
+        activity_id: activityId, distance_m: distanceM, duration_sec: durationSec,
+      }),
+    removeQualityAlignment: (instanceId: number, workoutId: string, segmentIndex: number) =>
+      request(`/api/v1/plan-instances/${instanceId}/reports/workouts/${encodeURIComponent(workoutId)}/quality-alignment/${segmentIndex}`, "DELETE"),
     // GET /api/v1/plan-instances/:id/reports/weeks (HRA-338) — the week
     // report, addressed by its own structural slot (section_name +
     // week_number, never a calendar-date span).

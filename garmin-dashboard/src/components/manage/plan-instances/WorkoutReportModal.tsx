@@ -23,6 +23,7 @@ import { fmtDuration, fmtKm, fmtPace, instanceDayDateLabel } from "@/utils/fmt";
 import { Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
 import { PauseInspectionDialog } from "@/components/activity/PauseInspectionDialog";
+import { QualityWorkoutSection } from "./QualityWorkoutSection";
 import type { PauseInspectionRow } from "@/domain/pauses";
 import type { PaceTargetBandModel } from "@/domain/planned-workout";
 import type {
@@ -255,7 +256,7 @@ function RaceSection({ report }: { report: WorkoutReport }) {
 
 export function WorkoutReportModal({ instanceId, workoutId, paceTargetBands, onClose }: Props) {
   const { t } = useTranslation();
-  const { state } = useQuery(() => api.planInstances.workoutReport(instanceId, workoutId), [instanceId, workoutId]);
+  const { state, refetch } = useQuery(() => api.planInstances.workoutReport(instanceId, workoutId), [instanceId, workoutId]);
 
   return (
     <div className="hra-modal-backdrop hra-modal-layer fixed inset-0 flex items-center justify-center p-6">
@@ -278,14 +279,16 @@ export function WorkoutReportModal({ instanceId, workoutId, paceTargetBands, onC
         ) : state.status === "error" ? (
           <ErrorBanner message={errorMessage(state.error)} />
         ) : (
-          <ReportBody report={state.data} paceTargetBands={paceTargetBands} />
+          <ReportBody instanceId={instanceId} workoutId={workoutId} report={state.data} paceTargetBands={paceTargetBands} onChanged={refetch} />
         )}
       </div>
     </div>
   );
 }
 
-function ReportBody({ report, paceTargetBands }: { report: WorkoutReport; paceTargetBands?: PaceTargetBandModel }) {
+function ReportBody({
+  instanceId, workoutId, report, paceTargetBands, onChanged,
+}: { instanceId: number; workoutId: string; report: WorkoutReport; paceTargetBands?: PaceTargetBandModel; onChanged: () => void }) {
   const { t } = useTranslation();
   const { identity, provenance } = report;
   const displayDate = identity.currentDate ?? identity.originalDate;
@@ -358,6 +361,13 @@ function ReportBody({ report, paceTargetBands }: { report: WorkoutReport; paceTa
       </div>
 
       <RaceSection report={report} />
+
+      <QualityWorkoutSection
+        instanceId={instanceId} workoutId={workoutId}
+        structuredQualityEvidence={report.structuredQualityEvidence}
+        acceptedEvidence={report.actual.evidence}
+        onChanged={onChanged}
+      />
 
       <span className="hra-text-muted text-meta">
         {t(

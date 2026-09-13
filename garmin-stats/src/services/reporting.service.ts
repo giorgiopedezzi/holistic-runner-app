@@ -16,6 +16,8 @@
 import type { PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
 import type { WorkoutAssociationsRepo } from "../repositories/workout-associations.repo.ts";
 import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
+import type { WorkoutSegmentAlignmentsRepo } from "../repositories/workout-segment-alignments.repo.ts";
+import type { ManualSegmentAlignment } from "../domain/reporting/quality-evidence.ts";
 import type { PlanInstanceDayRow, WorkoutAssociationRow } from "../db.ts";
 import type { OriginalDaySnapshot } from "../domain/runplan/lineage.ts";
 import { ACCEPTED_STATUSES, type AssociationLookup } from "../domain/reporting/scope.ts";
@@ -31,6 +33,7 @@ import {
 
 export function createReportingService(
   planInstances: PlanInstancesRepo, workoutAssociations: WorkoutAssociationsRepo, activities: ActivitiesRepo,
+  workoutSegmentAlignments: WorkoutSegmentAlignmentsRepo,
 ) {
   function getWorkoutReport(instanceId: number, workoutId: string, asOf?: Date): WorkoutReportResult | undefined {
     const instance = planInstances.instanceById(instanceId);
@@ -71,6 +74,9 @@ export function createReportingService(
       trackPointsByActivity.set(a.activity_id, activities.track(a.activity_id) as unknown as PauseEvidencePointInput[]);
     }
 
+    const manualQualityAlignments: ManualSegmentAlignment[] = workoutSegmentAlignments.byWorkoutId(workoutId)
+      .map(a => ({ segmentIndex: a.segment_index, activityId: a.activity_id, distanceM: a.distance_m, durationSec: a.duration_sec }));
+
     return buildWorkoutReport({
       instance: {
         id: instance.id,
@@ -87,8 +93,35 @@ export function createReportingService(
       associations: associationRows.map(a => ({ activity_id: a.activity_id, status: a.status })),
       activities: activityInputs,
       trackPointsByActivity,
+      manualQualityAlignments,
       asOf,
     });
+  }
+
+  // ── HRA-342: manual quality-workout segment alignment (reliable-evidence
+  // tier 3) — confirm/correct/replace/remove without ever touching the
+  // underlying activity/track_points rows (AC12).
+
+  // A manual alignment may only point at an activity that is ACCEPTED
+  // evidence for this exact workout (automatic/manual_confirmed/
+  // manual_changed) — never an arbitrary/ambiguous activity id, so a manual
+  // segment value always traces back to real, already-trusted evidence for
+  // the session it claims to describe.
+  function isAcceptedActivityForWorkout(workoutId: string, activityId: number): boolean {
+    return workoutAssociations.byWorkoutId(workoutId)
+      .some(a => a.activity_id === activityId && ACCEPTED_STATUSES.includes(a.status));
+  }
+
+  function setQualityAlignment(
+    workoutId: string, segmentIndex: number, activityId: number, distanceM: number | null, durationSec: number | null,
+  ): { ok: true } | { ok: false; reason: "activity_not_accepted_evidence" } {
+    if (!isAcceptedActivityForWorkout(workoutId, activityId)) return { ok: false, reason: "activity_not_accepted_evidence" };
+    workoutSegmentAlignments.upsert(workoutId, segmentIndex, activityId, distanceM, durationSec);
+    return { ok: true };
+  }
+
+  function removeQualityAlignment(workoutId: string, segmentIndex: number): void {
+    workoutSegmentAlignments.remove(workoutId, segmentIndex);
   }
 
   // ── week and entire-plan reports (HRA-338) ────────────────────────────
@@ -281,7 +314,7 @@ export function createReportingService(
     };
   }
 
-  return { getWorkoutReport, getWeekReport, getPlanReport };
+  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment };
 }
 
 export type ReportingService = ReturnType<typeof createReportingService>;

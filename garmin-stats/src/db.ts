@@ -574,6 +574,28 @@ export function initSchema(db: DatabaseSync): void {
       updated_at  TEXT    DEFAULT (datetime('now'))
     );
 
+    -- HRA-342: a runner's manual segment-alignment confirmation/correction for
+    -- one WORK segment of one structured quality workout — reliable-evidence
+    -- tier 3 (domain/reporting/quality-evidence.ts) when no executed-step/lap
+    -- evidence exists (neither is ingested by this app yet). segment_index is
+    -- the 0-based index into that workout_id's own CanonicalQualityStructure
+    -- (domain/reporting/quality-workout.ts) — stable only as long as the
+    -- underlying resolved DSL structure for that day doesn't change. One row
+    -- per (workout_id, segment_index); deleting a row reverts that segment to
+    -- "unavailable" without ever touching activities/track_points (AC12's
+    -- "without changing the underlying activity samples").
+    CREATE TABLE IF NOT EXISTS workout_segment_alignments (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      workout_id    TEXT    NOT NULL,
+      segment_index INTEGER NOT NULL,
+      activity_id   INTEGER NOT NULL REFERENCES activities(id) ON DELETE CASCADE,
+      distance_m    REAL,
+      duration_sec  REAL,
+      created_at    TEXT    DEFAULT (datetime('now')),
+      updated_at    TEXT    DEFAULT (datetime('now')),
+      UNIQUE(workout_id, segment_index)
+    );
+
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
     CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
     CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
@@ -581,6 +603,7 @@ export function initSchema(db: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_plan_instance_days_inst  ON plan_instance_days(instance_id);
     CREATE INDEX IF NOT EXISTS idx_plan_instance_days_date  ON plan_instance_days(date);
     CREATE INDEX IF NOT EXISTS idx_workout_associations_workout ON workout_associations(workout_id);
+    CREATE INDEX IF NOT EXISTS idx_workout_segment_alignments_workout ON workout_segment_alignments(workout_id);
   `);
 
   // Ensure the single settings row exists — CREATE TABLE IF NOT EXISTS above
@@ -1026,6 +1049,19 @@ export interface WorkoutAssociationRow {
   activity_id: number;
   workout_id: string | null;
   status: AssociationStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+// HRA-342: a runner's manual segment-alignment row — see the CREATE TABLE
+// comment above for the reliable-evidence-tier reasoning.
+export interface WorkoutSegmentAlignmentRow {
+  id: number;
+  workout_id: string;
+  segment_index: number;
+  activity_id: number;
+  distance_m: number | null;
+  duration_sec: number | null;
   created_at: string;
   updated_at: string;
 }

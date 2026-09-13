@@ -15,14 +15,20 @@ export interface DistanceTotal { meters: number; approximate: boolean }
 
 const M_PER_KM = 1000;
 
-function distanceFromTarget(target: Target, resolvedPaceSecPerKm: number | null | undefined): DistanceTotal | null {
+// Exported (HRA-342) so quality-workout.ts can compute PER-REPETITION
+// distance/duration for a repetition/threshold interval's own work/rest legs
+// — distanceFromResolvedSegment/durationFromResolvedSegment below already
+// multiply an interval's per-rep total by seg.reps, which is right for a
+// day's own grand total but not for a single repetition's own canonical
+// structure entry.
+export function distanceFromTarget(target: Target, resolvedPaceSecPerKm: number | null | undefined): DistanceTotal | null {
   if (target.kind === "unknown") return null;
   if (target.kind === "distance") return { meters: target.distance_m, approximate: false };
   if (resolvedPaceSecPerKm == null) return null;
   return { meters: (target.duration_sec / resolvedPaceSecPerKm) * M_PER_KM, approximate: true };
 }
 
-function durationFromTarget(target: Target, resolvedPaceSecPerKm: number | null | undefined): number | null {
+export function durationFromTarget(target: Target, resolvedPaceSecPerKm: number | null | undefined): number | null {
   if (target.kind === "unknown") return null;
   if (target.kind === "duration") return target.duration_sec;
   if (resolvedPaceSecPerKm == null) return null;

@@ -64,7 +64,7 @@ function workoutReport(): WorkoutReport {
     actual: { metrics: null, evidence: [], hasAmbiguousEvidence: false },
     race: { isRace: false },
     hr: null, stamina: null, pauses: null,
-    structuredQualityEvidence: { available: false, reason: "not_implemented" },
+    structuredQualityEvidence: { available: false, reason: "not_applicable" },
   };
 }
 

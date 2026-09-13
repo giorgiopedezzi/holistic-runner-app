@@ -7,13 +7,20 @@
  */
 import type { AppContext, Handler } from "../http/context.ts";
 import { send } from "../http/respond.ts";
-import { badRequest, notFound } from "../http/problem.ts";
+import { badRequest, notFound, unprocessable } from "../http/problem.ts";
+import { readJsonBody } from "../http/request.ts";
 import type { ReportRangeMode } from "../domain/reporting/types.ts";
 
 // /api/v1/plan-instances/:id/reports/workouts/:workoutId
 function parseInstanceIdAndWorkoutId(pathname: string): { instanceId: number; workoutId: string } {
   const parts = pathname.split("/");
   return { instanceId: Number(parts[4]), workoutId: decodeURIComponent(parts[7]) };
+}
+
+// /api/v1/plan-instances/:id/reports/workouts/:workoutId/quality-alignment/:segmentIndex
+function parseQualityAlignmentPath(pathname: string): { instanceId: number; workoutId: string; segmentIndex: number } {
+  const parts = pathname.split("/");
+  return { instanceId: Number(parts[4]), workoutId: decodeURIComponent(parts[7]), segmentIndex: Number(parts[9]) };
 }
 
 // /api/v1/plan-instances/:id/reports/weeks and .../reports/plan
@@ -87,5 +94,39 @@ export function createReportingController(ctx: AppContext) {
     return send(res, report);
   };
 
-  return { getWorkoutReport, getWeekReport, getPlanReport };
+  // PUT /api/v1/plan-instances/:id/reports/workouts/:workoutId/quality-alignment/:segmentIndex
+  // Body { activity_id, distance_m?, duration_sec? } — confirms/corrects/
+  // replaces this segment's manual alignment (HRA-342 AC12). activity_id
+  // must already be accepted evidence for this workout — never an arbitrary
+  // activity — so a manual value always traces to real, already-trusted
+  // evidence for the session it describes.
+  const setQualityAlignment: Handler = async (req, res, url) => {
+    const { workoutId, segmentIndex } = parseQualityAlignmentPath(url.pathname);
+    if (!workoutId) throw badRequest("Invalid workout id.");
+    if (!Number.isInteger(segmentIndex) || segmentIndex < 0) throw badRequest("segmentIndex must be a non-negative integer.");
+
+    const body = await readJsonBody<{ activity_id?: unknown; distance_m?: unknown; duration_sec?: unknown }>(req);
+    if (!Number.isInteger(body.activity_id)) throw unprocessable("activity_id must be an integer.");
+    const distanceM = body.distance_m == null ? null : Number(body.distance_m);
+    const durationSec = body.duration_sec == null ? null : Number(body.duration_sec);
+    if (distanceM != null && !Number.isFinite(distanceM)) throw unprocessable("distance_m must be a finite number or null.");
+    if (durationSec != null && !Number.isFinite(durationSec)) throw unprocessable("duration_sec must be a finite number or null.");
+
+    const result = reporting.setQualityAlignment(workoutId, segmentIndex, body.activity_id as number, distanceM, durationSec);
+    if (!result.ok) throw unprocessable(`Activity ${body.activity_id} is not accepted evidence for workout ${workoutId}.`);
+    return send(res, { workout_id: workoutId, segment_index: segmentIndex, activity_id: body.activity_id, distance_m: distanceM, duration_sec: durationSec });
+  };
+
+  // DELETE /api/v1/plan-instances/:id/reports/workouts/:workoutId/quality-alignment/:segmentIndex
+  // Removes a manual alignment (the segment reverts to "unavailable") without
+  // ever touching the underlying activity/track_points rows (AC12).
+  const removeQualityAlignment: Handler = (_req, res, url) => {
+    const { workoutId, segmentIndex } = parseQualityAlignmentPath(url.pathname);
+    if (!workoutId) throw badRequest("Invalid workout id.");
+    if (!Number.isInteger(segmentIndex) || segmentIndex < 0) throw badRequest("segmentIndex must be a non-negative integer.");
+    reporting.removeQualityAlignment(workoutId, segmentIndex);
+    return send(res, { workout_id: workoutId, segment_index: segmentIndex, removed: true });
+  };
+
+  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment };
 }

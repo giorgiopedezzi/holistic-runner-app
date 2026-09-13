@@ -26,6 +26,7 @@ import { createPlanTemplatesRepo } from "../../src/repositories/plan-templates.r
 import { createPlanInstancesRepo } from "../../src/repositories/plan-instances.repo.ts";
 import { createFeedbackRepo } from "../../src/repositories/feedback.repo.ts";
 import { createWorkoutAssociationsRepo } from "../../src/repositories/workout-associations.repo.ts";
+import { createWorkoutSegmentAlignmentsRepo } from "../../src/repositories/workout-segment-alignments.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
@@ -62,6 +63,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const planInstancesRepo = createPlanInstancesRepo(db);
   const feedbackRepo = createFeedbackRepo(db);
   const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
+  const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(db);
 
   const handler = createApiHandler({
     port: 0,
@@ -75,6 +77,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
       activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
       feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
+      workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
     },
     services: {
       activities: createActivitiesService(db, activitiesRepo),
@@ -84,7 +87,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       device: createDeviceService(SRC_DIR),
       planInstances: createPlanInstancesService(db, planInstancesRepo),
       workoutAssociations: createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
-      reporting: createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo),
+      reporting: createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
     },
   });
 

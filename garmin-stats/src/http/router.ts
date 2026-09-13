@@ -119,6 +119,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await demo(planTemplates.remove)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await demo(planTemplates.removeInstance)(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await demo(activities.clearAssociation)(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+\/quality-alignment\/\d+$/.test(route)) return await demo(reporting.removeQualityAlignment)(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL
@@ -144,6 +145,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await demo(activities.setAssociation)(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+\/quality-alignment\/\d+$/.test(route)) return await demo(reporting.setQualityAlignment)(req, res, url);
       }
 
       if (req.method === "PATCH") {

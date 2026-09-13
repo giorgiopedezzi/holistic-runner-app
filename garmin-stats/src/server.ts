@@ -25,6 +25,7 @@ import { createPlanTemplatesRepo } from "./repositories/plan-templates.repo.ts";
 import { createPlanInstancesRepo } from "./repositories/plan-instances.repo.ts";
 import { createFeedbackRepo } from "./repositories/feedback.repo.ts";
 import { createWorkoutAssociationsRepo } from "./repositories/workout-associations.repo.ts";
+import { createWorkoutSegmentAlignmentsRepo } from "./repositories/workout-segment-alignments.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -66,6 +67,7 @@ const planTemplatesRepo = createPlanTemplatesRepo(db);
 const planInstancesRepo = createPlanInstancesRepo(db);
 const feedbackRepo      = createFeedbackRepo(db);
 const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
+const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -75,7 +77,7 @@ const syncService           = createSyncService(__dirname);
 const deviceService   = createDeviceService(__dirname);
 const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
 const workoutAssociationsService = createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo);
-const reportingService = createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo);
+const reportingService = createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
 
 // ── always-on Withings OAuth callback server (port 3002) ─────────────────────
 startWithingsCallbackServer(config, db);
@@ -91,6 +93,7 @@ const server = http.createServer(createApiHandler({
     activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
     activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
     feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
+    workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
   },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
