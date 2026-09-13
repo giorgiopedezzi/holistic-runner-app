@@ -4,12 +4,15 @@
  * SQL for this domain (rest-api-standards §11).
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 import type { AssociationStatus, WorkoutAssociationRow } from "../db.ts";
 
 const FIELDS = "id, activity_id, workout_id, status, created_at, updated_at FROM workout_associations";
 
 export function createWorkoutAssociationsRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const byActivityIdStmt = prepareLive(`SELECT ${FIELDS} WHERE activity_id = ?`);
   const byWorkoutIdStmt = prepareLive(`SELECT ${FIELDS} WHERE workout_id = ?`);
   const allStmt = prepareLive(`SELECT ${FIELDS}`);

@@ -4,7 +4,7 @@
  * that runs SQL for this domain (rest-api-standards §11).
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 import type { PlanTemplateRow } from "../db.ts";
 
 const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, approved_at, created_at FROM plan_templates";
@@ -12,6 +12,9 @@ const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, approved_at, cr
 export type PlanTemplateInput = Omit<PlanTemplateRow, "id" | "created_at" | "approved_at">;
 
 export function createPlanTemplatesRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const listAll   = prepareLive(`SELECT ${SELECT_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
   const countAll  = prepareLive("SELECT COUNT(*) AS count FROM plan_templates");
   const findById  = prepareLive(`SELECT ${SELECT_FIELDS} WHERE id = ?`);

@@ -4,13 +4,23 @@
  * schema (initSchema from src/db.ts) plus a small, deterministic seed dataset.
  *
  * Reused by T2/T3: every test gets its own isolated DB via createTestDb(), so no
- * test can see another's writes and none of them ever touch the real database
- * file resolved from DB_PATH.
+ * test can see another's writes and none of them ever touch a real database file
+ * or each other's data — smoke.test.ts's own "each createTestDb() is isolated"
+ * check enforces this, and it must hold even when two DBs are alive at once (not
+ * just sequentially), which is why this deliberately does NOT go through
+ * src/db.ts's openDb() — that swaps a single module-global "live target" in
+ * place (by design, for jobs/demo-db-restore.ts's live DB-file swap), so two
+ * openDb() calls alive at the same time would silently share one connection,
+ * not two independent ones.
  *
- * We build the DatabaseSync here (not via src/db.ts's openDb(), which opens the
- * real configured DB path) and only borrow initSchema + the typed param builders.
- * Foreign keys are enabled explicitly so track_points CASCADE-delete behaves like
- * production (openDb() sets this pragma; initSchema alone does not).
+ * We build the DatabaseSync directly and only borrow initSchema + the typed
+ * param builders. Every repository (activities.repo.ts, settings.repo.ts, ...)
+ * still works against this real, non-swapping connection: prepareLive() (see
+ * db.ts) detects a `db` argument that ISN'T the swap-aware live proxy and binds
+ * its statements directly to it instead of the module-global live target — see
+ * db.ts's own comment on the fix (this used to throw "Database connection is
+ * not open" the instant any repository call ran against a test DB; HRA-334's
+ * review comment has the original diagnosis).
  */
 import { DatabaseSync } from "node:sqlite";
 import {

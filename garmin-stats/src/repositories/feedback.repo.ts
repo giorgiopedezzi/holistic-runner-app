@@ -4,7 +4,7 @@
  * no list/read route exists (out of scope for this Story).
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 import type { FeedbackRow } from "../db.ts";
 
 export interface NewFeedback {
@@ -17,6 +17,9 @@ export interface NewFeedback {
 }
 
 export function createFeedbackRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const insert = prepareLive(`
     INSERT INTO feedback (free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, app_type_choice)
     VALUES ($free_text, $pricing_choice, $pricing_why_not_free_text, $feature_interest, $feature_interest_other_free_text, $app_type_choice)

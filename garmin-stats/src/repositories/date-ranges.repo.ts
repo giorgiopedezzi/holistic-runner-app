@@ -6,7 +6,7 @@
  * display fields without a second round trip.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 import type { DateRangeRow } from "../db.ts";
 
 const SELECT_FIELDS = `
@@ -18,6 +18,9 @@ const SELECT_FIELDS = `
 `;
 
 export function createDateRangesRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const listAll    = prepareLive(`SELECT ${SELECT_FIELDS} ORDER BY dr.created_at DESC LIMIT ? OFFSET ?`);
   const countAll    = prepareLive("SELECT COUNT(*) AS count FROM date_ranges");
   const findByName  = prepareLive(`SELECT ${SELECT_FIELDS} WHERE dr.name = ?`);

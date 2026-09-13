@@ -6,11 +6,16 @@
  * intention-revealing methods, not raw prepared statements, to the layers above.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 
 type NamedParams = Record<string, string | number | null>;
 
 export function createActivitiesRepo(db: DatabaseSync) {
+  // Bound to THIS repo's own `db` — falls back to the swap-aware global
+  // behavior automatically when `db` is the live proxy (production/jobs);
+  // binds directly to it otherwise (an isolated test connection). See
+  // db.ts's prepareLive() for the full reasoning.
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const range        = prepareLive("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE deleted_at IS NULL");
   const activities   = prepareLive("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC");
   const activitiesPage = prepareLive("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC LIMIT ? OFFSET ?");

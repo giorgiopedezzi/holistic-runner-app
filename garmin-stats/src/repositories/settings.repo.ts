@@ -6,11 +6,14 @@
  * (HRA-29) — behavior is identical.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 
 type NamedParams = Record<string, string | number | null>;
 
 export function createSettingsRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const settingsGet    = prepareLive("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, timezone, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette FROM settings WHERE id = 1");
   // Two dedicated writes, one per Settings card (HRA-40): the Outlier-detection
   // card (three values) and the Overview & Trends card (min_trend_group_size).

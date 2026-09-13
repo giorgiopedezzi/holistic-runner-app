@@ -5,7 +5,7 @@
  * spanning both tables belong to services/plan-instances.service.ts, not here.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
 const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, schedule_timezone, original_start_date, original_days_snapshot, created_at FROM plan_instances";
@@ -19,6 +19,9 @@ export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
 export type PlanInstanceDayWithInstance = PlanInstanceDayRow & { instance_name: string | null };
 
 export function createPlanInstancesRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const findInstanceById = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE id = ?`);
   // HRA-118: the instance card's list view — optionally scoped to one
   // template ("per-template instance list", the Story's own AC1 wording).

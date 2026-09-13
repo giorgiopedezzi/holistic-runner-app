@@ -5,9 +5,12 @@
  * verbatim out of server.ts's `q` object (HRA-29) — behavior is identical.
  */
 import type { DatabaseSync } from "node:sqlite";
-import { prepareLive } from "../db.ts";
+import { prepareLive as prepareLiveGlobal } from "../db.ts";
 
 export function createBodyRepo(db: DatabaseSync) {
+  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
+  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
+  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
   const bodyRange   = prepareLive("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM body_measurements WHERE deleted_at IS NULL");
   const bodyList    = prepareLive("SELECT measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY measured_at ASC");
   const bodyListPage = prepareLive("SELECT measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate FROM body_measurements WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY measured_at ASC LIMIT ? OFFSET ?");

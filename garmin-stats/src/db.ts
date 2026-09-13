@@ -8,8 +8,15 @@ const config  = loadConfig();
 // process.cwd()) — no longer anchored to config.json's directory, since
 // config is now sourced from env vars, not that file. Observable behavior
 // change from the old CONFIG_DIR-relative resolution (HRA-217).
+// ":memory:" is SQLite's own special sentinel for a private, ephemeral,
+// connection-scoped database (used by test/helpers/db.ts, `.env.test`) — it
+// is not a real filesystem path, so path.resolve() must never touch it, or
+// it turns into a path.resolve()-mangled string literally named ":memory:"
+// (and, on Windows, one containing ':', an illegal filename character),
+// which DatabaseSync then fails to open as a real file.
 const DB_PATH_ARG = getArg("--db");
-export const DB_PATH = path.resolve(DB_PATH_ARG ?? config.database.path);
+const rawDbPath = DB_PATH_ARG ?? config.database.path;
+export const DB_PATH = rawDbPath === ":memory:" ? rawDbPath : path.resolve(rawDbPath);
 
 export type Db = DatabaseSync;
 
@@ -40,6 +47,15 @@ function openConnection(): DatabaseSync {
   return conn;
 }
 
+// A marker only the live-following Proxy below answers truthfully for —
+// prepareLive() uses this to tell "the single shared, swappable connection
+// openDb() returned" apart from any other real DatabaseSync a caller might
+// construct directly (e.g. test/helpers/db.ts's own isolated per-test
+// connections). A plain DatabaseSync has no such property, so this is a safe,
+// zero-collision-risk discriminator — never exported, since nothing outside
+// this file needs to ask the question directly.
+const LIVE_PROXY_MARKER = Symbol("liveProxy");
+
 // A thin pass-through Proxy so `db.prepare(...)`, `db.exec(...)`, etc. keep
 // working exactly as before, while actually resolving against whatever
 // `liveTarget` is at call time (not whatever it was when the Proxy was
@@ -47,11 +63,16 @@ function openConnection(): DatabaseSync {
 function makeLiveProxy(): DatabaseSync {
   return new Proxy({}, {
     get(_t, prop) {
+      if (prop === LIVE_PROXY_MARKER) return true;
       if (!liveTarget) throw new Error("Database connection is not open (mid-restore?).");
       const value = (liveTarget as unknown as Record<PropertyKey, unknown>)[prop];
       return typeof value === "function" ? value.bind(liveTarget) : value;
     },
   }) as DatabaseSync;
+}
+
+function isLiveProxy(db: DatabaseSync): boolean {
+  return (db as unknown as Record<symbol, unknown>)[LIVE_PROXY_MARKER] === true;
 }
 
 export function openDb(): DatabaseSync {
@@ -85,7 +106,30 @@ export function reopenDb(): void {
 // each call checks `generation` and recompiles against the current
 // liveTarget when it's changed, instead of using a StatementSync belonging to
 // a connection that closeDbForRestore() already closed.
-export function prepareLive(sql: string): StatementSync {
+//
+// `boundDb` (optional) is for a caller that constructed its OWN real,
+// non-swapping DatabaseSync directly — test/helpers/db.ts's createTestDb(),
+// so multiple isolated test databases can be alive at once (smoke.test.ts's
+// own "each createTestDb() is isolated" check) without silently sharing this
+// module's single liveTarget. Repository factories never call this with
+// `boundDb` themselves (see the "const prepareLive = ..." shadow at the top
+// of each createXRepo(db) below) — they always pass their own constructor's
+// `db` unconditionally; when that `db` IS the live proxy (production/jobs),
+// prepareLive transparently falls back to the liveTarget/generation behavior
+// above, so nothing changes for real usage.
+export function prepareLive(sql: string, boundDb?: DatabaseSync): StatementSync {
+  if (boundDb !== undefined && !isLiveProxy(boundDb)) {
+    // A fixed, real connection — prepare once against it and cache forever.
+    // It never gets swapped mid-lifetime, so there is nothing to invalidate.
+    let boundStmt: StatementSync | undefined;
+    return new Proxy({}, {
+      get(_t, prop) {
+        if (!boundStmt) boundStmt = boundDb.prepare(sql);
+        const value = (boundStmt as unknown as Record<PropertyKey, unknown>)[prop];
+        return typeof value === "function" ? value.bind(boundStmt) : value;
+      },
+    }) as StatementSync;
+  }
   let stmt: StatementSync | undefined;
   let stmtGeneration = -1;
   function current(): StatementSync {
