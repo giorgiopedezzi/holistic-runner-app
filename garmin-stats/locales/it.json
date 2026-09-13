@@ -375,6 +375,7 @@
   "activity.stat.calories": "Calorie",
   "activity.stat.cadence": "Cadenza",
   "activity.stat.avgHr": "FC media",
+  "activity.stat.finalStamina": "Stamina finale",
   "activity.stat.maxHr": "FC massima",
   "activity.stat.elevation": "Dislivello",
   "activity.stat.movingShort": "in movimento",

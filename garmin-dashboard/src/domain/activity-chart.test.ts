@@ -9,7 +9,7 @@ import { setUnitSystem } from "@/utils/units";
 import {
   metricValue, metricUnit, fmtMetricValue, percentile,
   axisDomainCentered, axisDomainMinMax, magnitudeColor, fmtElapsedClock,
-  buildChartData, xTickFormatter, distanceTicks, timeTicks,
+  buildChartData, xTickFormatter, distanceTicks, timeTicks, computeFinalStamina,
 } from "./activity-chart";
 
 afterEach(() => setUnitSystem("metric"));
@@ -29,6 +29,28 @@ describe("percentile", () => {
     expect(percentile([1, 2, 3, 4, 5], 0.5)).toBe(3);
     expect(percentile([10, 20], 0.5)).toBe(15);
     expect(percentile([], 0.5)).toBe(0);
+  });
+});
+
+describe("computeFinalStamina", () => {
+  it("returns the last non-null sample", () => {
+    const points = [pt({ stamina: 90 }), pt({ stamina: 75 }), pt({ stamina: 62 })];
+    expect(computeFinalStamina(points)).toBe(62);
+  });
+  it("skips trailing nulls (sensor dropout at the end)", () => {
+    const points = [pt({ stamina: 90 }), pt({ stamina: 58 }), pt({ stamina: null }), pt({ stamina: null })];
+    expect(computeFinalStamina(points)).toBe(58);
+  });
+  it("a genuine 0 is a valid final value, not treated as missing", () => {
+    const points = [pt({ stamina: 12 }), pt({ stamina: 0 })];
+    expect(computeFinalStamina(points)).toBe(0);
+  });
+  it("returns null when no point has a valid stamina sample", () => {
+    const points = [pt({ stamina: null }), pt({ stamina: null })];
+    expect(computeFinalStamina(points)).toBeNull();
+  });
+  it("returns null for an empty track", () => {
+    expect(computeFinalStamina([])).toBeNull();
   });
 });
 

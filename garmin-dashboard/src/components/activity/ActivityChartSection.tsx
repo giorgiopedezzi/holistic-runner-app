@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
-import { MapPin, Gauge, Heart, AlertTriangle, SlidersHorizontal, Info } from "lucide-react";
+import { MapPin, Gauge, Heart, Zap, AlertTriangle, SlidersHorizontal, Info } from "lucide-react";
 import {
-  axisDomainMinMax, distanceTicks, timeTicks, fmtElapsedClock,
+  axisDomainMinMax, distanceTicks, timeTicks, fmtElapsedClock, computeFinalStamina,
   type MetricKey, type OptionalMetricKey, type SpeedMode, type XMode, type ChartRow,
 } from "@/domain/activity-chart";
 import type { PaceTargetBandModel } from "@/domain/planned-workout";
@@ -509,6 +509,15 @@ export function ActivityChartSection({
     ? { value: fmtSpeed(avgSpeedMs), unit: speedUnitLabel(), label: t("activity.metric.speedLabel", "Speed") }
     : { value: fmtPace(avgPaceMinKm), unit: paceUnitLabel(), label: t("activity.metric.paceLabel", "Pace") };
 
+  // Final stamina (HRA-357): the last chronologically valid, non-null
+  // Real-Time Stamina sample — never an average. Omitted entirely (not
+  // shown as 0%/N/A) when the activity has no valid Stamina data at all;
+  // a genuine 0 is a real, displayable value (computeFinalStamina returns
+  // it, not null). Read off displayTrack, same source every other KPI/chart
+  // metric here already uses — outlier masking only ever nulls speed_ms/
+  // cadence, never stamina, so this is equivalent to the raw track.
+  const finalStaminaPct = useMemo(() => computeFinalStamina(displayTrack), [displayTrack]);
+
 
   // Explicit round tick positions — km/mi in distance mode ("8 to 10 labels,
   // at a perfect km"), 5/10/15-minute marks in time mode ("meaningful
@@ -865,32 +874,40 @@ export function ActivityChartSection({
         </div>
       )}
 
-      {/* Play/Stop moved inside the graph's own controlsRow (dashboard
-          design-system rework) — pinned left, badges pinned right via
-          justify-content: space-between, so the badge group stays
-          right-aligned as a unit regardless of how many badges it holds.
-          Left/right-padded by CHART_HEADER_EXTRA_LEFT/RIGHT so Play/Stop and
-          the badge group line up with the terrain/plotted-line width below,
-          not just ChartCard's own baseline padding (dashboard design-system
-          rework: "the row INSIDE the graph card must be the same width as
-          the terrain/graph lines"). */}
+      {/* HRA-357: the key-facts group (Distance → selected Pace/Speed → Avg
+          HR → Final stamina) now reads FIRST, with Play/Stop pinned to the
+          far end (`ml-auto` on its own group) instead of the earlier
+          left-Play/Stop, right-badges split — that split forced a wide,
+          mostly-empty middle whenever no planned workout was selected. The
+          row now uses natural grouped spacing (flex-wrap + gap) instead of a
+          fixed-column grid, so its width tracks its actual content.
+          Left/right-padded by CHART_HEADER_EXTRA_LEFT/RIGHT so the row still
+          lines up with the terrain/plotted-line width below, not just
+          ChartCard's own baseline padding (dashboard design-system rework:
+          "the row INSIDE the graph card must be the same width as the
+          terrain/graph lines"). */}
       <ChartCard
         controlsRow={
         isPhone ? (
-          // HRA-303 corrective round, section 5: "one compact summary row
-          // with three metrics and the replay control... placed at the
-          // right of the summary... when replay is idle, do not show a
-          // separate Stop button." RunnerPlayButton already IS the single
-          // control that changes state (play → pause → replay icon, see its
-          // own comment) — the only change needed here is not rendering
-          // RunnerStopButton at all while idle/finished, instead of
-          // rendering it disabled. Planned-workout controls (a conditional,
+          // HRA-303 corrective round, section 5 (reordered per HRA-357):
+          // "one compact summary row with three [now four] metrics and the
+          // replay control... placed at the right of the summary... when
+          // replay is idle, do not show a separate Stop button."
+          // RunnerPlayButton already IS the single control that changes
+          // state (play → pause → replay icon, see its own comment) — the
+          // only change needed here is not rendering RunnerStopButton at all
+          // while idle/finished, instead of rendering it disabled.
+          // `hra-activity-chart-kpis--wrap-grid` (index.css) replaces the
+          // plain wrapping row with a real 2-column grid once one row can't
+          // fit all four facts (HRA-357 AC: "wrap in a compact two-column
+          // grid" at 320-390 CSS px), while still collapsing to one row on a
+          // wider phone. Planned-workout controls (a conditional,
           // desktop-parity feature the corrective spec doesn't address)
           // follow as their own line only when a scheduled workout is
           // actually selected — never an empty reserved row.
           <div className="hra-activity-chart-controls-mobile">
             <div className="flex items-center justify-between gap-2">
-              <div className="hra-activity-chart-kpis hra-row-wrap gap-2">
+              <div className="hra-activity-chart-kpis hra-activity-chart-kpis--wrap-grid gap-2">
                 <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
                   value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
                 <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
@@ -899,8 +916,12 @@ export function ActivityChartSection({
                   <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(avgHr)} />} iconColor={hrRunnerColor(avgHr)}
                     valueColor={hrRunnerColor(avgHr)} value={`${avgHr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
                 )}
+                {finalStaminaPct != null && (
+                  <GraphKpiCard icon={<Zap size={16} color={METRIC_DEFS.stamina.color} />} iconColor={METRIC_DEFS.stamina.color}
+                    value={`${Math.round(finalStaminaPct)}`} unit="%" label={t("activity.stat.finalStamina", "Final stamina")} />
+                )}
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0 ml-auto">
                 <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
                 {stopEnabled && <RunnerStopButton disabled={false} onClick={handleStopClick} />}
               </div>
@@ -913,34 +934,14 @@ export function ActivityChartSection({
             {plannedShortNote}
           </div>
         ) : (
-        <div className="hra-activity-chart-controls grid items-center gap-3" style={{
+        <div className="hra-activity-chart-controls flex flex-wrap items-center gap-3" style={{
           "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
           "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
         } as CSSProperties}>
-          {/* Left column: Play/Stop, plus — only when the planned overlay
-              actually runs past the real activity's own distance — a small
-              note underneath explaining why the runner stops short of the
-              planned workout's full length. `mt-2` keeps it visibly
-              separate from the buttons rather than glued to them. */}
-          <div className="flex flex-col items-start gap-2">
-            <div className="flex items-center gap-1.5">
-              <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
-              <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
-            </div>
-            {plannedShortNote}
-          </div>
-          {/* Middle column: the planned-workout pill + card toggle, the
-              Actual/Planned legend while the overlay is actually shown, then
-              the same-day scheduled-workout picker when there's more than
-              one candidate (explicit feedback: "move Planned pill and legend
-              in the middle column"). Pill only rendered once a scheduled
-              workout is actually selected (plannedModel resolves) — the
-              Overlap/Distinct switch this replaces is gone; the pill IS the
-              on/off control now. */}
-          <div className="hra-row-wrap gap-3 justify-center items-center">
-            {plannedControls}
-          </div>
-          <div className="hra-activity-chart-kpis hra-row-wrap gap-2 justify-end">
+          {/* Key-facts group, first (HRA-357 AC: "Distance, selected
+              Pace/Speed, Avg HR, Final stamina as one visually coherent
+              group"). */}
+          <div className="hra-activity-chart-kpis hra-row-wrap gap-2">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
               value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
             <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
@@ -949,6 +950,29 @@ export function ActivityChartSection({
               <GraphKpiCard icon={<Heart size={16} color={hrRunnerColor(avgHr)} />} iconColor={hrRunnerColor(avgHr)}
                 valueColor={hrRunnerColor(avgHr)} value={`${avgHr}`} unit="bpm" label={t("activity.stat.avgHr", "Avg HR")} />
             )}
+            {finalStaminaPct != null && (
+              <GraphKpiCard icon={<Zap size={16} color={METRIC_DEFS.stamina.color} />} iconColor={METRIC_DEFS.stamina.color}
+                value={`${Math.round(finalStaminaPct)}`} unit="%" label={t("activity.stat.finalStamina", "Final stamina")} />
+            )}
+          </div>
+          {/* The planned-workout pill + card toggle, the Actual/Planned
+              legend while the overlay is actually shown, then the same-day
+              scheduled-workout picker when there's more than one candidate —
+              only rendered once a scheduled workout is actually selected
+              (plannedModel resolves). */}
+          <div className="hra-row-wrap gap-3 items-center">
+            {plannedControls}
+          </div>
+          {/* Play/Stop, pinned to the row's far end via `ml-auto` — plus,
+              only when the planned overlay actually runs past the real
+              activity's own distance, a small note underneath explaining why
+              the runner stops short of the planned workout's full length. */}
+          <div className="flex flex-col items-end gap-2 ml-auto">
+            <div className="flex items-center gap-1.5">
+              <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
+              <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+            </div>
+            {plannedShortNote}
           </div>
         </div>
         )

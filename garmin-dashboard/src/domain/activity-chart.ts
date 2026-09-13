@@ -83,6 +83,20 @@ export function fmtMetricValue(key: MetricKey, v: number, speedMode: SpeedMode):
   return v.toFixed(1);
 }
 
+// The card's "Final stamina" value (HRA-357): the last chronologically
+// valid, non-null Real-Time Stamina sample — never an average, and a
+// genuine 0 is a valid result, not "missing." Walking from the end rather
+// than filtering+popping so a run of trailing nulls (sensor dropout right
+// before the activity ends) doesn't get mistaken for "no stamina data at
+// all" the way `.filter(Boolean)` would if 0 were ever treated as falsy.
+export function computeFinalStamina(points: TrackPoint[]): number | null {
+  for (let i = points.length - 1; i >= 0; i--) {
+    const v = points[i].stamina;
+    if (v != null) return v;
+  }
+  return null;
+}
+
 // Linear-interpolated percentile over an ascending-sorted array.
 export function percentile(sortedAsc: number[], p: number): number {
   if (sortedAsc.length === 0) return 0;

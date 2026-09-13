@@ -375,6 +375,7 @@
   "activity.stat.calories": "Calories",
   "activity.stat.cadence": "Cadence",
   "activity.stat.avgHr": "Avg HR",
+  "activity.stat.finalStamina": "Final stamina",
   "activity.stat.maxHr": "Max HR",
   "activity.stat.elevation": "Elevation",
   "activity.stat.movingShort": "moving",

@@ -131,6 +131,64 @@ describe("ActivityDetailBody phone-width KPI rows and overflow menu (HRA-291, re
   });
 });
 
+// HRA-357: the chart-card header's key-facts group. `longTrack()` fixture
+// points all have `stamina: null` — mapping the last point's value is enough
+// to exercise "a valid final sample exists" vs. "no valid sample at all"
+// without needing a bespoke track fixture.
+function trackWithFinalStamina(value: number | null) {
+  const points = longTrack();
+  return points.map((p, i) => (i === points.length - 1 ? { ...p, stamina: value } : p));
+}
+
+describe("ActivityChartSection key-facts group (HRA-357)", () => {
+  it("orders Distance, selected Pace/Speed, Avg HR, then Final stamina, with Final stamina omitted when no valid Stamina sample exists", async () => {
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: longTrack(), // stamina: null throughout
+      "GET /api/v1/settings": settings(),
+    });
+    const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
+
+    await waitFor(() => expect(container.querySelector(".hra-activity-chart-kpis")).toBeInTheDocument());
+    const labels = Array.from(container.querySelectorAll(".hra-activity-chart-kpis .hra-graph-kpi-label"))
+      .map(el => el.textContent);
+    expect(labels).toEqual(["Distance", "Speed", "Avg HR"]);
+    expect(screen.queryByText("Final stamina")).not.toBeInTheDocument();
+  });
+
+  it("shows Final stamina immediately after Avg HR when a valid sample exists, including a genuine 0%", async () => {
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: trackWithFinalStamina(0),
+      "GET /api/v1/settings": settings(),
+    });
+    const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
+
+    await waitFor(() => expect(screen.queryByText("Final stamina")).toBeInTheDocument());
+    const labels = Array.from(container.querySelectorAll(".hra-activity-chart-kpis .hra-graph-kpi-label"))
+      .map(el => el.textContent);
+    expect(labels).toEqual(["Distance", "Speed", "Avg HR", "Final stamina"]);
+    const staminaCard = screen.getByText("Final stamina").closest(".hra-graph-kpi");
+    expect(staminaCard).toHaveTextContent("0");
+    expect(staminaCard).toHaveTextContent("%");
+  });
+
+  it("wraps the key-facts group into a two-column grid at phone width", async () => {
+    stubPhoneWidth(true);
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: trackWithFinalStamina(42),
+      "GET /api/v1/settings": settings(),
+    });
+    const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
+
+    await waitFor(() => expect(container.querySelector(".hra-activity-chart-kpis--wrap-grid")).toBeInTheDocument());
+    const labels = Array.from(container.querySelectorAll(".hra-activity-chart-kpis--wrap-grid .hra-graph-kpi-label"))
+      .map(el => el.textContent);
+    expect(labels).toEqual(["Distance", "Speed", "Avg HR", "Final stamina"]);
+  });
+});
+
 describe("ActivityChartSection pause-threshold input (fix: could not clear, no debounce)", () => {
   afterEach(() => vi.useRealTimers());
 
