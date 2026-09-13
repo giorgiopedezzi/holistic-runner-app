@@ -22,6 +22,7 @@ import {
 } from "@/components/ui";
 import { DateRangeBar } from "@/components/DateRangeBar";
 import { RangeReportModal } from "@/components/manage/plan-instances/RangeReportModal";
+import { CompareReportsModal } from "@/components/manage/plan-instances/CompareReportsModal";
 import { ActivityRow } from "@/components/activity/ActivityRow";
 import { ActivityModal, ActivityDetailBody } from "@/components/ActivityModal";
 import { SPORT_COLOR, type Activity, type SavedDateRange, type SportSummary } from "@/types/api";
@@ -1632,16 +1633,34 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // restores an open range report instead of always reverting to closed.
   const [rangeReportOpen, setRangeReportOpen] = useReportFlag("rangeReport");
   const rangeReportFrom = from === ALL_SENTINEL && rangeMinMax?.min_date ? rangeMinMax.min_date : from;
+  // HRA-340: opens the new "compare two complete report definitions" screen,
+  // seeded from this bar's own Current/Compared-to windows (the same source
+  // RangeReportModal's own from/to already reuses above) so the common case —
+  // "compare what I'm already looking at against its comparison period" —
+  // needs no re-entry; both sides stay fully editable inside the modal.
+  const [compareReportsOpen, setCompareReportsOpen] = useReportFlag("compareReports");
   function renderDateRangeBar(currentActivityCount?: number) {
     return (
       <div className="mb-2 flex flex-col gap-2">
         <DateRangeBar {...range} compare={compareRange} savedRanges={savedRanges}
           currentActivityCount={currentActivityCount} compareActivityCount={compareActivityCount}
           allRangeSpan={rangeMinMax} />
-        <button type="button" className="hra-btn self-start" data-variant="outline" onClick={() => setRangeReportOpen(true)}>
-          {t("rangeReport.open", "Training report")}
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" className="hra-btn self-start" data-variant="outline" onClick={() => setRangeReportOpen(true)}>
+            {t("rangeReport.open", "Training report")}
+          </button>
+          <button type="button" className="hra-btn self-start" data-variant="outline" onClick={() => setCompareReportsOpen(true)}>
+            {t("compareReports.open", "Compare reports")}
+          </button>
+        </div>
         {rangeReportOpen && <RangeReportModal from={rangeReportFrom} to={to} onClose={() => setRangeReportOpen(false)} />}
+        {compareReportsOpen && (
+          <CompareReportsModal
+            initialA={{ kind: "range", from: rangeReportFrom, to, range: "plan_to_date" }}
+            initialB={compareRange.enabled ? { kind: "range", from: compareFrom, to: compareTo, range: "plan_to_date" } : undefined}
+            onClose={() => setCompareReportsOpen(false)}
+          />
+        )}
       </div>
     );
   }
