@@ -26,6 +26,7 @@ import {
 } from "@/domain/runplan-aggregate";
 import { notify } from "@/utils/toast";
 import { useUrlState } from "@/hooks/useUrlState";
+import { useReportNumericSelection } from "@/hooks/useReportNav";
 import { fmtDate, instanceDayDateLabel } from "@/utils/fmt";
 import type { PlanTemplate, PlanInstance, PlanInstanceDay, PlanInstanceWithDays } from "@/types/api";
 import type { EventType, OffsetUnit, PacePolicy, RunPlan } from "@/types/runplan";
@@ -232,7 +233,11 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   const [saveLoading, setSaveLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
   const [regenerateLoading, setRegenerateLoading] = useState(false);
-  const [showPlanReport, setShowPlanReport] = useState(false);
+  // HRA-339: URL-backed (not tied to `editingId`/accordion-expansion state,
+  // which is what a bare `showPlanReport` boolean used to gate this on) so
+  // refresh/direct-link entry restores the open plan report, and collapsing
+  // the accordion row underneath no longer silently closes it.
+  const [planReportInstanceId, setPlanReportInstanceId] = useReportNumericSelection("planReport");
 
   const minEffectiveFrom = startDate > isoToday() ? startDate : isoToday();
   useEffect(() => {
@@ -1114,7 +1119,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         onRestoreClick={onRestoreClick}
         viewMode={viewMode}
         setViewMode={setViewMode}
-        onViewPlanReport={() => setShowPlanReport(true)}
+        onViewPlanReport={() => editingId != null && setPlanReportInstanceId(editingId)}
       />
 
       {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
@@ -1604,8 +1609,14 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         onCancel={() => setConfirmation(null)}
       />
 
-      {showPlanReport && editingId != null && (
-        <PlanReportModal instanceId={editingId} onClose={() => setShowPlanReport(false)} />
+      {planReportInstanceId != null && (
+        <PlanReportModal
+          instanceId={planReportInstanceId}
+          weekKey="planReportWeek"
+          workoutKey="planReportWorkout"
+          modeKey="planReportMode"
+          onClose={() => setPlanReportInstanceId(null)}
+        />
       )}
     </section>
   );

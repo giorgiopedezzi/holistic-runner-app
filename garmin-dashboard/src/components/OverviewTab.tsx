@@ -10,6 +10,7 @@ import { useQuery } from "@/hooks/useQuery";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { useSettings } from "@/hooks/useSettings";
 import { useUrlState } from "@/hooks/useUrlState";
+import { useReportFlag } from "@/hooks/useReportNav";
 import type { DateRangeState } from "@/hooks/useDateRange";
 import type { CompareRangeState } from "@/hooks/useCompareRange";
 import { api } from "@/api/client";
@@ -1627,7 +1628,9 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
   // the real earliest observed activity date, the same real boundary
   // `allRangeSpan` already feeds DateRangeBar's own display; falls back to
   // the sentinel only while rangeMinMax hasn't resolved yet.
-  const [rangeReportOpen, setRangeReportOpen] = useState(false);
+  // HRA-339: URL-backed (was a bare useState) so refresh/direct-link entry
+  // restores an open range report instead of always reverting to closed.
+  const [rangeReportOpen, setRangeReportOpen] = useReportFlag("rangeReport");
   const rangeReportFrom = from === ALL_SENTINEL && rangeMinMax?.min_date ? rangeMinMax.min_date : from;
   function renderDateRangeBar(currentActivityCount?: number) {
     return (

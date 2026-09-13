@@ -33,6 +33,7 @@ import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
+import { useReportStringSelection } from "@/hooks/useReportNav";
 import { isoToday } from "@/utils/date";
 import { notify } from "@/utils/toast";
 import { swapDayContent } from "@/domain/runplan-patch";
@@ -86,10 +87,13 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const readOnlyDays = useMemo(() => (dateKey: string) => dateKey < date, [date]);
   const [swapPending, setSwapPending] = useState<{ a: DayView; b: DayView } | null>(null);
   const [swapping, setSwapping] = useState(false);
-  // HRA-336: the single-workout/race report — reuses the same DayView Agenda
-  // already has in memory (for its paceTargetBands, HRA-173) rather than
-  // fetching it a second time.
-  const [reportDay, setReportDay] = useState<DayView | null>(null);
+  // HRA-336: the single-workout/race report. HRA-339: URL-backed by the
+  // workout_id alone (instanceId comes from `instance`, resolved fresh on
+  // every load) so refresh/direct-link entry restores the open report; the
+  // matching DayView is looked up below (once `sections` is computed) purely
+  // to keep passing the already-computed paceTargetBands (HRA-173) rather
+  // than re-deriving them, not because it's needed for identity.
+  const [reportWorkoutId, setReportWorkoutId] = useReportStringSelection("agendaWorkout");
 
   // HRA-320: a swap (or scheduled-time edit) calls refetch(), which briefly
   // sends `state` back to "loading" with no data at all — the early return
@@ -120,6 +124,9 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   }
   const sections = instance != null ? apiDaysToSections(instance.days, racePaceReference) : [];
   const instanceLabel = instance?.name ?? t("manage.planTemplates.untitled", "Untitled plan");
+  const reportDayView = reportWorkoutId
+    ? sections.flatMap(s => s.weeks).flatMap(w => w.days).find(d => d.workout_id === reportWorkoutId) ?? null
+    : null;
 
   async function handleScheduledTimeEdit(dayId: number, scheduledTime: string | null) {
     if (instance == null) return;
@@ -206,14 +213,14 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
         instanceId={instance?.id}
         onDayPersisted={() => refetch()}
         raceDate={instance?.race_date}
-        onViewReport={day => setReportDay(day)}
+        onViewReport={day => setReportWorkoutId(day.workout_id ?? null)}
       />
-      {reportDay && instance != null && reportDay.workout_id && (
+      {reportWorkoutId && instance != null && (
         <WorkoutReportModal
           instanceId={instance.id}
-          workoutId={reportDay.workout_id}
-          paceTargetBands={reportDay.paceTargetBands}
-          onClose={() => setReportDay(null)}
+          workoutId={reportWorkoutId}
+          paceTargetBands={reportDayView?.paceTargetBands}
+          onClose={() => setReportWorkoutId(null)}
         />
       )}
       <ConfirmModal

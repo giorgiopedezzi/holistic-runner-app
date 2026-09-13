@@ -5,11 +5,18 @@
  * instance) and the EXISTING WorkoutReportModal (per quality workout) — same
  * installFetch/api-stub pattern as PlanReportModal.test.tsx.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { RangeReportModal } from "./RangeReportModal";
 import { installFetch, json, problem } from "@/test/api-stub";
 import type { PlanReport, RangeReport, ReportResult, WorkoutReport } from "@/types/api";
+
+// HRA-339: the modal's own drill-down/toggle state (and its nested
+// PlanReportModal's) is now URL-backed (useUrlState) — reset between tests
+// so a value written by one doesn't leak into the next.
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+});
 
 const FROM = "2026-09-01";
 const TO = "2026-09-30";

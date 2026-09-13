@@ -12,10 +12,11 @@
  * (HRA-336) — one report component per granularity, reused, never
  * duplicated.
  */
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
+import { useDialogA11y } from "@/hooks/useDialogA11y";
+import { useReportRangeMode, useReportStringSelection, useReportWeekSelection } from "@/hooks/useReportNav";
 import { fmtDuration, fmtKm, fmtPace, instanceDayDateLabel } from "@/utils/fmt";
 import { Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import { AggregateHrSection, AggregatePausesSection, ComparableStaminaSection, QualityWorkoutUnavailableNote } from "./ReportEvidenceSections";
@@ -25,6 +26,13 @@ import type { PlanReport, PlanWeekSummary, ReportDatasetMetrics, ReportRangeMode
 
 interface Props {
   instanceId: number;
+  // URL keys backing this plan report's own drill-down/toggle state
+  // (HRA-339) — namespaced per caller (PlanInstancesSection's own top-level
+  // plan report vs. RangeReportModal's nested one use distinct keys) so two
+  // independently-open drill chains never collide with each other.
+  weekKey: string;
+  workoutKey: string;
+  modeKey: string;
   onClose: () => void;
 }
 
@@ -89,7 +97,17 @@ function WeekRow({ week, onOpen }: { week: PlanWeekSummary; onOpen: () => void }
   const { t } = useTranslation();
   const den = week.report.denominators.execution;
   return (
-    <div className="hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap cursor-pointer" onClick={onOpen} role="button" tabIndex={0}>
+    <div
+      className="hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap cursor-pointer"
+      onClick={onOpen}
+      onKeyDown={e => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onOpen();
+      }}
+      role="button"
+      tabIndex={0}
+    >
       <span className="hra-text-primary text-body flex-1 min-w-0">
         {t("reportEvidence.week", `Week ${week.key.week_number}`, { n: week.key.week_number })}
         {week.dateSpan.start && week.dateSpan.end ? ` (${instanceDayDateLabel(week.dateSpan.start)} → ${instanceDayDateLabel(week.dateSpan.end)})` : ""}
@@ -104,18 +122,26 @@ function WeekRow({ week, onOpen }: { week: PlanWeekSummary; onOpen: () => void }
   );
 }
 
-export function PlanReportModal({ instanceId, onClose }: Props) {
+export function PlanReportModal({ instanceId, weekKey, workoutKey, modeKey, onClose }: Props) {
   const { t } = useTranslation();
-  const [range, setRange] = useState<ReportRangeMode>("plan_to_date");
-  const [openWeek, setOpenWeek] = useState<{ section_name: string; week_number: number } | null>(null);
-  const [openWorkoutId, setOpenWorkoutId] = useState<string | null>(null);
+  const [range, setRange] = useReportRangeMode(modeKey);
+  const [openWeek, setOpenWeek] = useReportWeekSelection(weekKey);
+  const [openWorkoutId, setOpenWorkoutId] = useReportStringSelection(workoutKey);
   const { state } = useQuery(() => api.planInstances.planReport(instanceId, range), [instanceId, range]);
+  const dialogRef = useDialogA11y(onClose);
 
   return (
     <div className="hra-modal-backdrop hra-modal-layer fixed inset-0 flex items-center justify-center p-6">
-      <div className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="plan-report-title"
+        className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4"
+      >
         <div className="flex items-center gap-3">
-          <span className="hra-text-primary text-heading font-semibold flex-1 min-w-0">{t("reportEvidence.planTitle", "Plan report")}</span>
+          <span id="plan-report-title" className="hra-text-primary text-heading font-semibold flex-1 min-w-0">{t("reportEvidence.planTitle", "Plan report")}</span>
           <button onClick={onClose} aria-label={t("common.close", "Close")} className="hra-text-muted text-heading border-0 bg-transparent cursor-pointer leading-none px-1">
             ×
           </button>
@@ -127,15 +153,16 @@ export function PlanReportModal({ instanceId, onClose }: Props) {
         ) : state.status === "error" ? (
           <ErrorBanner message={errorMessage(state.error)} />
         ) : (
-          <PlanReportBody report={state.data} onOpenWeek={setOpenWeek} />
+          <PlanReportBody report={state.data} onOpenWeek={week => setOpenWeek({ sectionName: week.section_name, weekNumber: week.week_number })} />
         )}
       </div>
 
       {openWeek && (
         <WeekReportModal
           instanceId={instanceId}
-          sectionName={openWeek.section_name}
-          weekNumber={openWeek.week_number}
+          sectionName={openWeek.sectionName}
+          weekNumber={openWeek.weekNumber}
+          modeKey={`${weekKey}Mode`}
           onClose={() => setOpenWeek(null)}
           onOpenWorkout={setOpenWorkoutId}
         />

@@ -22,6 +22,8 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
+import { useDialogA11y } from "@/hooks/useDialogA11y";
+import { useReportFlag, useReportNumericSelection, useReportRangeMode, useReportWorkoutSelection } from "@/hooks/useReportNav";
 import { fmtDuration, fmtKm, fmtPace, instanceDayDateLabel } from "@/utils/fmt";
 import { ALL_SENTINEL } from "@/utils/date";
 import { AccordionCard, Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
@@ -107,7 +109,17 @@ function InstanceRow({ instance, onOpen }: { instance: RangeInstanceReport; onOp
   const { t } = useTranslation();
   const den = instance.report.denominators.execution;
   return (
-    <div className="hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap cursor-pointer" onClick={onOpen} role="button" tabIndex={0}>
+    <div
+      className="hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap cursor-pointer"
+      onClick={onOpen}
+      onKeyDown={e => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onOpen();
+      }}
+      role="button"
+      tabIndex={0}
+    >
       <span className="hra-text-primary text-body flex-1 min-w-0">
         {instance.planInstanceName ?? t("manage.planTemplates.untitled", "Untitled plan")}
         {instance.dateSpan.start && instance.dateSpan.end ? ` (${instanceDayDateLabel(instance.dateSpan.start)} → ${instanceDayDateLabel(instance.dateSpan.end)})` : ""}
@@ -130,7 +142,17 @@ function QualityWorkoutRow({ entry, onOpen }: { entry: RangeQualityWorkoutEntry;
     : kind === "tempo" ? t("qualityWorkout.kind.tempo", "Tempo")
     : t("qualityWorkout.kind.progressive", "Progressive");
   return (
-    <div className="hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap cursor-pointer" onClick={onOpen} role="button" tabIndex={0}>
+    <div
+      className="hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap cursor-pointer"
+      onClick={onOpen}
+      onKeyDown={e => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onOpen();
+      }}
+      role="button"
+      tabIndex={0}
+    >
       <span className="hra-text-primary text-body flex-1 min-w-0">
         {entry.currentDate ? instanceDayDateLabel(entry.currentDate) : "—"} · {kindLabel}
         {entry.planInstanceName ? ` · ${entry.planInstanceName}` : ""}
@@ -165,17 +187,25 @@ function UnplannedSection({ unplanned }: { unplanned: RangeReport["unplanned"] }
 
 export function RangeReportModal({ from, to, onClose }: Props) {
   const { t } = useTranslation();
-  const [range, setRange] = useState<ReportRangeMode>("plan_to_date");
-  const [openInstanceId, setOpenInstanceId] = useState<number | null>(null);
-  const [openWorkout, setOpenWorkout] = useState<{ instanceId: number; workoutId: string } | null>(null);
-  const [qualityExpanded, setQualityExpanded] = useState(false);
+  const [range, setRange] = useReportRangeMode("rangeReportMode");
+  const [openInstanceId, setOpenInstanceId] = useReportNumericSelection("rangeReportPlan");
+  const [openWorkout, setOpenWorkout] = useReportWorkoutSelection("rangeReportWorkout");
+  const [qualityExpanded, setQualityExpanded] = useReportFlag("rangeReportQualityExpanded");
   const { state } = useQuery(() => api.reports.range(from, to, range), [from, to, range]);
+  const dialogRef = useDialogA11y(onClose);
 
   return (
     <div className="hra-modal-backdrop hra-modal-layer fixed inset-0 flex items-center justify-center p-6">
-      <div className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="range-report-title"
+        className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4"
+      >
         <div className="flex items-center gap-3">
-          <span className="hra-text-primary text-heading font-semibold flex-1 min-w-0">{t("rangeReport.title", "Training report")}</span>
+          <span id="range-report-title" className="hra-text-primary text-heading font-semibold flex-1 min-w-0">{t("rangeReport.title", "Training report")}</span>
           <button onClick={onClose} aria-label={t("common.close", "Close")} className="hra-text-muted text-heading border-0 bg-transparent cursor-pointer leading-none px-1">
             ×
           </button>
@@ -189,11 +219,19 @@ export function RangeReportModal({ from, to, onClose }: Props) {
           <ErrorBanner message={state.error} />
         ) : (
           <RangeReportBody report={state.data} onOpenInstance={setOpenInstanceId} onOpenWorkout={(instanceId, workoutId) => setOpenWorkout({ instanceId, workoutId })}
-            qualityExpanded={qualityExpanded} onToggleQuality={() => setQualityExpanded(v => !v)} />
+            qualityExpanded={qualityExpanded} onToggleQuality={() => setQualityExpanded(!qualityExpanded)} />
         )}
       </div>
 
-      {openInstanceId != null && <PlanReportModal instanceId={openInstanceId} onClose={() => setOpenInstanceId(null)} />}
+      {openInstanceId != null && (
+        <PlanReportModal
+          instanceId={openInstanceId}
+          weekKey="rangeReportPlanWeek"
+          workoutKey="rangeReportPlanWorkout"
+          modeKey="rangeReportPlanMode"
+          onClose={() => setOpenInstanceId(null)}
+        />
+      )}
       {openWorkout && (
         <WorkoutReportModal instanceId={openWorkout.instanceId} workoutId={openWorkout.workoutId} onClose={() => setOpenWorkout(null)} />
       )}

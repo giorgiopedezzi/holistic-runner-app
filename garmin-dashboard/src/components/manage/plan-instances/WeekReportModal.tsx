@@ -14,10 +14,11 @@
  * Actual stack as separate rows by default; they only ever sit side by side
  * from `sm:` up, same convention WorkoutReportModal already uses.
  */
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
+import { useDialogA11y } from "@/hooks/useDialogA11y";
+import { useReportRangeMode } from "@/hooks/useReportNav";
 import { fmtDuration, fmtKm, fmtPace, instanceDayDateLabel } from "@/utils/fmt";
 import { Badge, Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import { AggregateHrSection, AggregatePausesSection, ComparableStaminaSection, QualityWorkoutUnavailableNote } from "./ReportEvidenceSections";
@@ -29,6 +30,11 @@ interface Props {
   instanceId: number;
   sectionName: string;
   weekNumber: number;
+  // URL key backing this week's own Plan-to-date/Full-plan toggle (HRA-339)
+  // — namespaced per caller (PlanReportModal passes a distinct key depending
+  // on whether it's Manage's own top-level plan report or Range's nested
+  // one) so two independently-open drill chains never collide.
+  modeKey: string;
   onClose: () => void;
   onOpenWorkout?: (workoutId: string) => void;
 }
@@ -105,6 +111,11 @@ function WorkoutRow({ identity, report, onOpenWorkout }: { identity: ReportWorko
     <div
       className={["hra-border rounded-lg p-2.5 flex items-center gap-2 flex-wrap", onOpenWorkout ? "cursor-pointer" : ""].filter(Boolean).join(" ")}
       onClick={onOpenWorkout ? () => onOpenWorkout(identity.workoutId) : undefined}
+      onKeyDown={onOpenWorkout ? e => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        onOpenWorkout(identity.workoutId);
+      } : undefined}
       role={onOpenWorkout ? "button" : undefined}
       tabIndex={onOpenWorkout ? 0 : undefined}
     >
@@ -133,16 +144,24 @@ function RangeToggle({ range, onChange }: { range: ReportRangeMode; onChange: (r
   );
 }
 
-export function WeekReportModal({ instanceId, sectionName, weekNumber, onClose, onOpenWorkout }: Props) {
+export function WeekReportModal({ instanceId, sectionName, weekNumber, modeKey, onClose, onOpenWorkout }: Props) {
   const { t } = useTranslation();
-  const [range, setRange] = useState<ReportRangeMode>("plan_to_date");
+  const [range, setRange] = useReportRangeMode(modeKey);
   const { state } = useQuery(() => api.planInstances.weekReport(instanceId, sectionName, weekNumber, range), [instanceId, sectionName, weekNumber, range]);
+  const dialogRef = useDialogA11y(onClose);
 
   return (
     <div className="hra-modal-backdrop hra-modal-layer fixed inset-0 flex items-center justify-center p-6">
-      <div className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="week-report-title"
+        className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4"
+      >
         <div className="flex items-center gap-3">
-          <span className="hra-text-primary text-heading font-semibold flex-1 min-w-0">
+          <span id="week-report-title" className="hra-text-primary text-heading font-semibold flex-1 min-w-0">
             {t("reportEvidence.weekTitle", `Week ${weekNumber} report`, { n: weekNumber })}
           </span>
           <button onClick={onClose} aria-label={t("common.close", "Close")} className="hra-text-muted text-heading border-0 bg-transparent cursor-pointer leading-none px-1">

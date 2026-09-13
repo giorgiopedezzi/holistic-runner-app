@@ -4,11 +4,18 @@
  * stubbed GET .../reports/weeks response, same installFetch/api-stub pattern
  * as WorkoutReportModal.test.tsx.
  */
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { WeekReportModal } from "./WeekReportModal";
 import { installFetch, json, problem } from "@/test/api-stub";
 import type { WeekReport } from "@/types/api";
+
+// HRA-339: modeKey is URL-backed (useUrlState) — reset between tests so a
+// value written by one doesn't leak into the next (same convention
+// useUrlState.test.tsx already follows).
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+});
 
 const INSTANCE_ID = 10;
 const SECTION_NAME = "Base";
@@ -45,7 +52,7 @@ const ROUTE = `GET /api/v1/plan-instances/${INSTANCE_ID}/reports/weeks`;
 describe("WeekReportModal", () => {
   it("renders week datasets, a workout row, and the execution summary", async () => {
     installFetch({ [ROUTE]: json(weekReport()) });
-    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} onClose={() => {}} />);
+    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} modeKey="weekMode" onClose={() => {}} />);
 
     expect(await screen.findByText("Week 1 report")).toBeInTheDocument();
     expect(screen.getAllByText("10.00 km")).toHaveLength(2); // Original and Current datasets, same value
@@ -55,7 +62,7 @@ describe("WeekReportModal", () => {
 
   it("shows the explicit quality-workout unavailable note (HRA-342 not yet built)", async () => {
     installFetch({ [ROUTE]: json(weekReport()) });
-    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} onClose={() => {}} />);
+    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} modeKey="weekMode" onClose={() => {}} />);
 
     expect(await screen.findByText(/Structured quality-workout comparison isn't available yet/)).toBeInTheDocument();
   });
@@ -69,7 +76,7 @@ describe("WeekReportModal", () => {
         },
       })),
     });
-    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} onClose={() => {}} />);
+    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} modeKey="weekMode" onClose={() => {}} />);
 
     expect(await screen.findByText("Moved")).toBeInTheDocument();
   });
@@ -83,7 +90,7 @@ describe("WeekReportModal", () => {
         },
       })),
     });
-    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} onClose={() => {}} />);
+    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} modeKey="weekMode" onClose={() => {}} />);
 
     expect(await screen.findByText("From this scope's own longest run")).toBeInTheDocument();
     expect(screen.getByText("40 pts")).toBeInTheDocument();
@@ -92,7 +99,7 @@ describe("WeekReportModal", () => {
   it("calls onOpenWorkout with the clicked workout's id", async () => {
     installFetch({ [ROUTE]: json(weekReport()) });
     const onOpenWorkout = vi.fn();
-    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} onClose={() => {}} onOpenWorkout={onOpenWorkout} />);
+    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} modeKey="weekMode" onClose={() => {}} onOpenWorkout={onOpenWorkout} />);
 
     const row = await screen.findByRole("button", { name: /run/ });
     fireEvent.click(row);
@@ -101,7 +108,7 @@ describe("WeekReportModal", () => {
 
   it("renders an error banner when the fetch fails", async () => {
     installFetch({ [ROUTE]: problem(404, "No week found.") });
-    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} onClose={() => {}} />);
+    render(<WeekReportModal instanceId={INSTANCE_ID} sectionName={SECTION_NAME} weekNumber={WEEK_NUMBER} modeKey="weekMode" onClose={() => {}} />);
 
     expect(await screen.findByText("No week found.")).toBeInTheDocument();
   });

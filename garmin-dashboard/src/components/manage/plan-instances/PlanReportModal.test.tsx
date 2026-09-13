@@ -5,11 +5,17 @@
  * step stubs its own GET route, same installFetch/api-stub pattern as
  * WorkoutReportModal.test.tsx.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { PlanReportModal } from "./PlanReportModal";
 import { installFetch, json, problem, type StubRequest } from "@/test/api-stub";
 import type { PlanReport, WeekReport, WorkoutReport } from "@/types/api";
+
+// HRA-339: weekKey/workoutKey/modeKey are URL-backed (useUrlState) — reset
+// between tests so a value written by one doesn't leak into the next.
+afterEach(() => {
+  window.history.replaceState(null, "", "/");
+});
 
 const INSTANCE_ID = 10;
 
@@ -75,7 +81,7 @@ const WORKOUT_ROUTE = `GET /api/v1/plan-instances/${INSTANCE_ID}/reports/workout
 describe("PlanReportModal", () => {
   it("renders the overall total and every week, ordered as returned", async () => {
     installFetch({ [PLAN_ROUTE]: json(planReport()) });
-    render(<PlanReportModal instanceId={INSTANCE_ID} onClose={() => {}} />);
+    render(<PlanReportModal instanceId={INSTANCE_ID} weekKey="week" workoutKey="workout" modeKey="mode" onClose={() => {}} />);
 
     expect(await screen.findByText("22.00 km")).toBeInTheDocument(); // overall Current total
     expect(screen.getByText(/Week 1/)).toBeInTheDocument();
@@ -88,7 +94,7 @@ describe("PlanReportModal", () => {
       [WEEK_ROUTE]: (req: StubRequest) => json(weekReport(Number(req.url.searchParams.get("week_number")))),
       [WORKOUT_ROUTE]: json(workoutReport()),
     });
-    render(<PlanReportModal instanceId={INSTANCE_ID} onClose={() => {}} />);
+    render(<PlanReportModal instanceId={INSTANCE_ID} weekKey="week" workoutKey="workout" modeKey="mode" onClose={() => {}} />);
 
     fireEvent.click(await screen.findByText(/Week 1/));
     expect(await screen.findByText("Week 1 report")).toBeInTheDocument();
@@ -99,14 +105,14 @@ describe("PlanReportModal", () => {
 
   it("shows the empty state when the plan has no weeks yet", async () => {
     installFetch({ [PLAN_ROUTE]: json(planReport({ weeks: [] })) });
-    render(<PlanReportModal instanceId={INSTANCE_ID} onClose={() => {}} />);
+    render(<PlanReportModal instanceId={INSTANCE_ID} weekKey="week" workoutKey="workout" modeKey="mode" onClose={() => {}} />);
 
     expect(await screen.findByText("This plan has no weeks yet.")).toBeInTheDocument();
   });
 
   it("renders an error banner when the fetch fails", async () => {
     installFetch({ [PLAN_ROUTE]: problem(404, "No plan instance found.") });
-    render(<PlanReportModal instanceId={INSTANCE_ID} onClose={() => {}} />);
+    render(<PlanReportModal instanceId={INSTANCE_ID} weekKey="week" workoutKey="workout" modeKey="mode" onClose={() => {}} />);
 
     expect(await screen.findByText("No plan instance found.")).toBeInTheDocument();
   });

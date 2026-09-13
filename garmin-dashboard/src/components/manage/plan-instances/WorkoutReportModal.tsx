@@ -19,6 +19,7 @@
 import { useTranslation } from "react-i18next";
 import { api, ApiError } from "@/api/client";
 import { useQuery } from "@/hooks/useQuery";
+import { useDialogA11y } from "@/hooks/useDialogA11y";
 import { fmtDuration, fmtKm, fmtPace, instanceDayDateLabel } from "@/utils/fmt";
 import { Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
@@ -257,12 +258,20 @@ function RaceSection({ report }: { report: WorkoutReport }) {
 export function WorkoutReportModal({ instanceId, workoutId, paceTargetBands, onClose }: Props) {
   const { t } = useTranslation();
   const { state, refetch } = useQuery(() => api.planInstances.workoutReport(instanceId, workoutId), [instanceId, workoutId]);
+  const dialogRef = useDialogA11y(onClose);
 
   return (
     <div className="hra-modal-backdrop hra-modal-layer fixed inset-0 flex items-center justify-center p-6">
-      <div className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4">
+      <div
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="workout-report-title"
+        className="hra-activity-modal hra-bg-surface hra-border rounded-2xl w-full overflow-y-auto p-6 flex flex-col gap-4"
+      >
         <div className="flex items-center gap-3">
-          <span className="hra-text-primary text-heading font-semibold flex-1 min-w-0">
+          <span id="workout-report-title" className="hra-text-primary text-heading font-semibold flex-1 min-w-0">
             {t("workoutReport.title", "Workout report")}
           </span>
           <button
