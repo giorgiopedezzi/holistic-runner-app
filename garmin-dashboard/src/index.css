@@ -3221,8 +3221,16 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    compiles to the legacy `flex-end` keyword) — `flex-end` doesn't reliably
    right-align a CSS Grid's own tracks the way it does a flex row's items, so
    the grid-specific `end` keyword is set here directly rather than via a
-   Tailwind class. */
-.hra-activity-metric-controls { padding-inline: 8px; grid-template-columns: repeat(2, auto); justify-content: end; }
+   Tailwind class.
+   `justify-items: end`: each column's own cell content (a whole
+   MetricLegendChip — pill + its own detail-toggle icon, one flex unit) is
+   right-aligned within its cell, not left-aligned (the grid default). A
+   column's width is set by its widest chip (e.g. "Frequenza cardiaca" vs.
+   "Potenza"), so left-aligning would leave the narrower chip's own icon
+   trailing at whatever short x-position its own label happens to end at —
+   right-aligning instead pins every column's icon to that column's shared
+   right edge, regardless of label length. */
+.hra-activity-metric-controls { padding-inline: 8px; grid-template-columns: repeat(2, auto); justify-content: end; justify-items: end; }
 /* HRA-357: flex row (was a 3-column `auto 1fr auto` grid) — the fixed grid
    pinned Play/Stop and the badge group to opposite edges, forcing a wide,
    mostly-empty middle whenever no planned workout was selected. Flex-wrap +
