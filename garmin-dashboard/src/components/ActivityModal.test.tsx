@@ -173,6 +173,24 @@ describe("ActivityChartSection key-facts group (HRA-357)", () => {
     expect(staminaCard).toHaveTextContent("%");
   });
 
+  it("reflects the selected Pace/Speed mode in the key-facts group's second slot", async () => {
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: trackWithFinalStamina(55),
+      "GET /api/v1/settings": settings(),
+    });
+    const { container } = render(<ActivityDetailBody activityId={ID} onDelete={vi.fn()} />);
+
+    await waitFor(() => expect(container.querySelector(".hra-activity-chart-kpis")).toBeInTheDocument());
+    expect(Array.from(container.querySelectorAll(".hra-activity-chart-kpis .hra-graph-kpi-label")).map(el => el.textContent))
+      .toEqual(["Distance", "Speed", "Avg HR", "Final stamina"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Pace (mm:ss)" }));
+
+    await waitFor(() => expect(Array.from(container.querySelectorAll(".hra-activity-chart-kpis .hra-graph-kpi-label")).map(el => el.textContent))
+      .toEqual(["Distance", "Pace", "Avg HR", "Final stamina"]));
+  });
+
   it("wraps the key-facts group into a two-column grid at phone width", async () => {
     stubPhoneWidth(true);
     installFetch({
