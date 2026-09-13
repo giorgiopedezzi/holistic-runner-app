@@ -19,6 +19,7 @@ import { PlanInstanceEditorActions } from "@/components/manage/PlanInstanceEdito
 import { PlanInstanceRow } from "@/components/manage/PlanInstanceRow";
 import { PlanInstanceMobileActionsMenu } from "@/components/manage/PlanInstanceMobileActionsMenu";
 import { PlanInstanceHelpModal } from "@/components/manage/PlanInstanceHelpModal";
+import { PlanReportModal } from "@/components/manage/plan-instances/PlanReportModal";
 import {
   collectPlanAnchors, resolveIntensityPaceSecPerKm, summarizeInstanceProgress, summarizeTemplatePlan,
   type DayView, type InstanceProgress, type SectionView, type WeekView,
@@ -231,6 +232,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   const [saveLoading, setSaveLoading] = useState(false);
   const [approveLoading, setApproveLoading] = useState(false);
   const [regenerateLoading, setRegenerateLoading] = useState(false);
+  const [showPlanReport, setShowPlanReport] = useState(false);
 
   const minEffectiveFrom = startDate > isoToday() ? startDate : isoToday();
   useEffect(() => {
@@ -1112,6 +1114,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         onRestoreClick={onRestoreClick}
         viewMode={viewMode}
         setViewMode={setViewMode}
+        onViewPlanReport={() => setShowPlanReport(true)}
       />
 
       {/* HRA-158: the picker-based day/week swap block (Select dropdowns + Swap
@@ -1600,6 +1603,10 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
         onConfirm={confirmPendingAction}
         onCancel={() => setConfirmation(null)}
       />
+
+      {showPlanReport && editingId != null && (
+        <PlanReportModal instanceId={editingId} onClose={() => setShowPlanReport(false)} />
+      )}
     </section>
   );
 }

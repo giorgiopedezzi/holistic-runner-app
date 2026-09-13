@@ -186,3 +186,62 @@ test("drill-down carries workout/activity identifiers only — never raw track-p
   assert.deepEqual(result.drillDown.workoutIds, ["w1"]);
   assert.deepEqual(result.drillDown.activityIds.sort(), [1, 2]);
 });
+
+// ── week granularity (HRA-338) ──────────────────────────────────────────
+
+test("week granularity: execution/outcome/datasets are confined to the requested week's own days, never the whole plan (AC: week reports group by workout)", () => {
+  const currentDays = [
+    day({ workout_id: "w1", date: "2026-09-10", week_number: 1 }),
+    day({ workout_id: "w2", date: "2026-09-17", week_number: 2 }),
+  ];
+  const result = buildReport(
+    req({ granularity: "week", week: { section_name: "Base", week_number: 1 }, dimensions: ["execution", "outcome"] }),
+    baseInputs({ currentDays }),
+  );
+  assert.equal(result.comparisons.execution!.length, 1);
+  assert.equal(result.comparisons.execution![0].workout_id, "w1");
+  assert.equal(result.datasets.current.distanceM, 10000, "only week 1's own day, never week 2's");
+});
+
+test("week granularity: a workout moved OUT of the requested week still surfaces there as moved_out, not silently dropped (AC6)", () => {
+  const originalDays = [original({ workout_id: "w1", date: "2026-09-10", week_number: 1 })];
+  const currentDays = [day({ workout_id: "w1", date: "2026-09-17", week_number: 2 })];
+  const result = buildReport(
+    req({ granularity: "week", week: { section_name: "Base", week_number: 1 }, dimensions: ["adaptation"] }),
+    baseInputs({ instance: instance({ original_days_snapshot: JSON.stringify(originalDays) }), currentDays }),
+  );
+  const [entry] = result.comparisons.adaptation!;
+  assert.equal(entry.lineage, "moved");
+  assert.equal(entry.boundaryMovement, "moved_out");
+});
+
+test("week granularity: a workout moved OUT of week 1 does not also appear in week 1's own execution entries (it has no Current placement there)", () => {
+  const originalDays = [original({ workout_id: "w1", date: "2026-09-10", week_number: 1 })];
+  const currentDays = [day({ workout_id: "w1", date: "2026-09-17", week_number: 2 })];
+  const result = buildReport(
+    req({ granularity: "week", week: { section_name: "Base", week_number: 1 }, dimensions: ["execution"] }),
+    baseInputs({ instance: instance({ original_days_snapshot: JSON.stringify(originalDays) }), currentDays }),
+  );
+  assert.deepEqual(result.comparisons.execution, []);
+});
+
+test("week granularity: drill-down workout ids exclude workouts entirely unrelated to the requested week", () => {
+  const currentDays = [
+    day({ workout_id: "w1", date: "2026-09-10", week_number: 1 }),
+    day({ workout_id: "w2", date: "2026-09-17", week_number: 2 }),
+  ];
+  const result = buildReport(
+    req({ granularity: "week", week: { section_name: "Base", week_number: 1 }, dimensions: ["adaptation"] }),
+    baseInputs({ currentDays }),
+  );
+  assert.deepEqual(result.drillDown.workoutIds, ["w1"]);
+});
+
+test("plan granularity's drill-down is unaffected by the week machinery (pre-existing behavior preserved)", () => {
+  const currentDays = [
+    day({ workout_id: "w1", date: "2026-09-10", week_number: 1 }),
+    day({ workout_id: "w2", date: "2026-09-17", week_number: 2 }),
+  ];
+  const result = buildReport(req({ dimensions: ["adaptation"] }), baseInputs({ currentDays }));
+  assert.deepEqual(result.drillDown.workoutIds.sort(), ["w1", "w2"]);
+});

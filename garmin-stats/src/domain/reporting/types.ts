@@ -39,6 +39,15 @@ export interface ReportRequest {
   // AC1: an explicit OR server-resolved `asOf` instant. `undefined` here
   // means "server-resolved" — report.ts's buildReport defaults it to `now`.
   asOf?: Date;
+  // HRA-338: only meaningful when granularity === "week" — identifies a
+  // planned workout's OWN structural slot (mirrors lineage.ts's own
+  // definition of a workout's placement: section_name + week_number, never
+  // a calendar-date span), never a calendar week. A day counts as inside
+  // this week when ITS OWN section_name/week_number match, checked
+  // independently on the Original side and the Current side — so a workout
+  // that moved to/from this exact slot still surfaces as moved_in/moved_out
+  // (AC6) instead of silently vanishing from one side's report.
+  week?: { section_name: string; week_number: number };
 }
 
 // ── scope membership (AC6) ──────────────────────────────────────────────

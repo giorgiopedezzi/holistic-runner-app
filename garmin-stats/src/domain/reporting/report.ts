@@ -102,13 +102,21 @@ function toEvidenceState(status: "pending" | "missed" | "completed"): WorkoutEvi
 
 // AC4: plan_to_date drops `upcoming` rows entirely; full_plan keeps them as
 // context, flagged out of the denominator via includedInDenominator=false.
+// HRA-338: `isInRange` also carries the week-membership filter (a no-op
+// "always true" at plan granularity, so full_plan/plan_to_date-only callers
+// see no behavior change — the `range==="plan_to_date"` skip below already
+// excludes the same future dates isInRange's own range half would) — at week
+// granularity it keeps a week-scoped report's execution/outcome entries
+// confined to THIS week's own days, the same way datasets below already are,
+// rather than leaking the whole plan's entries into a "week" report.
 function buildExecutionEntries(
   currentDays: PlanInstanceDayRow[], acceptedByWorkout: Map<string, AcceptedEvidence>,
-  timeZone: string, asOf: Date, range: ReportRangeMode,
+  timeZone: string, asOf: Date, range: ReportRangeMode, isInRange: (date: string) => boolean,
 ): ExecutionEntry[] {
   const entries: ExecutionEntry[] = [];
   for (const day of currentDays) {
     if (day.workout_type !== "run") continue;
+    if (!isInRange(day.date)) continue;
     const evidence = acceptedByWorkout.get(day.workout_id) ?? null;
     const state = toEvidenceState(computeWorkoutDayStatus(day.date, timeZone, evidence != null, asOf));
     if (state === "upcoming" && range === "plan_to_date") continue;
@@ -124,11 +132,12 @@ function buildExecutionEntries(
 // outcome's own definition and are never fabricated here (AC5/AC14).
 function buildOutcomeEntries(
   originalDays: OriginalDaySnapshot[], acceptedByWorkout: Map<string, AcceptedEvidence>,
-  timeZone: string, asOf: Date, range: ReportRangeMode,
+  timeZone: string, asOf: Date, range: ReportRangeMode, isInRange: (date: string) => boolean,
 ): OutcomeEntry[] {
   const entries: OutcomeEntry[] = [];
   for (const day of originalDays) {
     if (day.workout_type !== "run") continue;
+    if (!isInRange(day.date)) continue;
     const evidence = acceptedByWorkout.get(day.workout_id) ?? null;
     const state = toEvidenceState(computeWorkoutDayStatus(day.date, timeZone, evidence != null, asOf));
     if (state === "upcoming" && range === "plan_to_date") continue;
@@ -151,6 +160,24 @@ function wantsDimension(request: ReportRequest, dimension: ComparisonDimension):
   return request.dimensions.includes(dimension);
 }
 
+// HRA-338: every date belonging to the requested week, checked directly
+// against each day's OWN section_name/week_number (never inferred through a
+// date lookup) — matches lineage.ts's own "moved" definition (structural
+// slot, not calendar date), so a workout whose date shifted but whose
+// section/week didn't is correctly still "this week", and one that moved to
+// a DIFFERENT section/week is correctly excluded even if its old date would
+// otherwise fall inside this week's calendar span.
+function weekMembershipDates(
+  days: { date: string; section_name: string; week_number: number }[],
+  week: { section_name: string; week_number: number },
+): Set<string> {
+  const dates = new Set<string>();
+  for (const d of days) {
+    if (d.section_name === week.section_name && d.week_number === week.week_number) dates.add(d.date);
+  }
+  return dates;
+}
+
 export function buildReport(request: ReportRequest, inputs: ReportInputs): ReportResult {
   const timeZone = inputs.instance.schedule_timezone ?? SCHEDULE_TIMEZONE_BACKFILL_FALLBACK;
   const now = inputs.now ?? new Date();
@@ -159,11 +186,24 @@ export function buildReport(request: ReportRequest, inputs: ReportInputs): Repor
 
   // AC4: full_plan treats every date as "in range" (future stays visible as
   // context); plan_to_date is a hard local-date cutoff at `asOf`.
-  const isInRange = request.range === "full_plan" ? () => true : (date: string) => date <= asOfLocalDate;
+  const rangeFilter = request.range === "full_plan" ? () => true : (date: string) => date <= asOfLocalDate;
 
   const originalDays: OriginalDaySnapshot[] = inputs.instance.original_days_snapshot != null
     ? (JSON.parse(inputs.instance.original_days_snapshot) as OriginalDaySnapshot[])
     : [];
+
+  // HRA-338: granularity "week" ANDs a week-membership filter on top of the
+  // same range filter above — plan_to_date/full_plan still governs future
+  // handling WITHIN the requested week, exactly as it already does for the
+  // whole plan (AC4's "plan-to-date is the default execution scope" applies
+  // identically at week granularity).
+  const weekFilter = request.granularity === "week" && request.week
+    ? (() => {
+      const dates = weekMembershipDates([...originalDays, ...inputs.currentDays], request.week!);
+      return (date: string) => dates.has(date);
+    })()
+    : () => true;
+  const isInRange = (date: string) => rangeFilter(date) && weekFilter(date);
 
   const scope = classifyScopeBoundary(originalDays, inputs.currentDays, isInRange);
 
@@ -177,13 +217,13 @@ export function buildReport(request: ReportRequest, inputs: ReportInputs): Repor
   if (wantsDimension(request, "adaptation")) comparisons.adaptation = scope;
 
   if (wantsDimension(request, "execution")) {
-    const entries = buildExecutionEntries(inputs.currentDays, acceptedByWorkout, timeZone, asOf, request.range);
+    const entries = buildExecutionEntries(inputs.currentDays, acceptedByWorkout, timeZone, asOf, request.range, isInRange);
     comparisons.execution = entries;
     denominators.execution = summarizeDenominator(entries);
   }
 
   if (wantsDimension(request, "outcome")) {
-    const entries = buildOutcomeEntries(originalDays, acceptedByWorkout, timeZone, asOf, request.range);
+    const entries = buildOutcomeEntries(originalDays, acceptedByWorkout, timeZone, asOf, request.range, isInRange);
     comparisons.outcome = entries;
     denominators.outcome = summarizeDenominator(entries);
   }
@@ -202,8 +242,16 @@ export function buildReport(request: ReportRequest, inputs: ReportInputs): Repor
     extraActivities: actual.extra.length,
   };
 
+  // HRA-338: at week granularity, a workout with NEITHER side inside this
+  // week (`not_applicable`) is unrelated to the requested week and never
+  // belongs in ITS drill-down — a moved_in/moved_out workout still qualifies
+  // (exactly one side is `true`), so a week's own adaptation entry stays
+  // reachable. Plan granularity (the pre-existing, already-tested behavior)
+  // is untouched: isInRange has no week component there, so this condition
+  // never excludes anything it didn't already include.
+  const drillDownScope = request.granularity === "week" ? scope.filter(s => s.originalInRange || s.currentInRange) : scope;
   const drillDown: DrillDownIds = {
-    workoutIds: scope.map(s => s.workout_id),
+    workoutIds: drillDownScope.map(s => s.workout_id),
     activityIds: [...actual.accepted, ...actual.ambiguous, ...actual.extra].map(a => a.activity_id),
   };
 

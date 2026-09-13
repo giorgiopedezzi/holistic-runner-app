@@ -11,7 +11,7 @@ import type {
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
-  FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport,
+  FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport, WeekReport, PlanReport, ReportRangeMode,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
@@ -432,6 +432,17 @@ export const api = {
     // identity, not a plan_instance_days row id.
     workoutReport: (instanceId: number, workoutId: string) =>
       request<WorkoutReport>(`/api/v1/plan-instances/${instanceId}/reports/workouts/${encodeURIComponent(workoutId)}`),
+    // GET /api/v1/plan-instances/:id/reports/weeks (HRA-338) — the week
+    // report, addressed by its own structural slot (section_name +
+    // week_number, never a calendar-date span).
+    weekReport: (instanceId: number, sectionName: string, weekNumber: number, range: ReportRangeMode = "plan_to_date") =>
+      request<WeekReport>(`/api/v1/plan-instances/${instanceId}/reports/weeks`, "GET", {
+        section_name: sectionName, week_number: String(weekNumber), range,
+      }),
+    // GET /api/v1/plan-instances/:id/reports/plan (HRA-338) — the
+    // entire-plan report, grouped by week.
+    planReport: (instanceId: number, range: ReportRangeMode = "plan_to_date") =>
+      request<PlanReport>(`/api/v1/plan-instances/${instanceId}/reports/plan`, "GET", { range }),
     // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202) — a binary
     // FIT file, not JSON, so this bypasses the shared request() helper (its
     // unconditional res.json() would choke on the body). Mirrors

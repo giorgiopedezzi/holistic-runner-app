@@ -513,6 +513,81 @@
           "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
         }
       },
+      "ReportResult": {
+        "type": "object",
+        "description": "Response of HRA-335's shared buildReport engine (domain/reporting/report.ts) — the ONE calculation every report scope (week, entire-plan, and future HRA-341 scopes) shares. Never returned bare at the HTTP level; always nested inside WeekReport.report or PlanReport.overall/weeks[].report.",
+        "properties": {
+          "provenance": { "type": "object", "properties": { "instanceId": { "type": "integer" }, "scheduleTimezone": { "type": "string" }, "hasOriginalBaseline": { "type": "boolean" }, "generatedAt": { "type": "string", "format": "date-time" }, "asOf": { "type": "string", "format": "date-time" } } },
+          "scope": { "type": "array", "items": { "type": "object", "properties": { "workout_id": { "type": "string" }, "lineage": { "type": "string", "enum": ["unchanged", "moved", "modified", "moved_and_modified", "removed", "added"] }, "originalInRange": { "type": "boolean" }, "currentInRange": { "type": "boolean" }, "boundaryMovement": { "type": "string", "enum": ["moved_in", "moved_out", "stable", "not_applicable"] } } } },
+          "actual": { "type": "object", "description": "accepted/ambiguous/extra Actual population (HRA-335 AC6/AC7/AC10/AC11).", "properties": { "accepted": { "type": "array", "items": { "type": "object" } }, "ambiguous": { "type": "array", "items": { "type": "object" } }, "extra": { "type": "array", "items": { "type": "object" } } } },
+          "datasets": { "type": "object", "properties": { "original": { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, "current": { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, "actual": { "$ref": "#/components/schemas/WorkoutDatasetMetrics" } }, "description": "Each dataset's fields are present only for the requested metrics — an unrequested field is absent, never a present zero." },
+          "comparisons": { "type": "object", "description": "adaptation (Original-vs-Current), execution (Current-vs-Actual), outcome (Original-vs-Actual) — each independently selectable, never substituting for one another." },
+          "denominators": { "type": "object", "properties": { "execution": { "type": "object", "properties": { "total": { "type": "integer" }, "completed": { "type": "integer" }, "missed": { "type": "integer" }, "upcoming": { "type": "integer" } } }, "outcome": { "type": "object", "properties": { "total": { "type": "integer" }, "completed": { "type": "integer" }, "missed": { "type": "integer" }, "upcoming": { "type": "integer" } } } } },
+          "coverage": { "type": "object", "properties": { "totalActivitiesInScope": { "type": "integer" }, "trustedActivities": { "type": "integer" }, "ambiguousActivities": { "type": "integer" }, "extraActivities": { "type": "integer" } } },
+          "drillDown": { "type": "object", "properties": { "workoutIds": { "type": "array", "items": { "type": "string" } }, "activityIds": { "type": "array", "items": { "type": "integer" } } } },
+          "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
+        }
+      },
+      "WorkoutIdentity": {
+        "type": "object",
+        "description": "Labels a workout_id (report.ts's engine returns only ids) for display — mirrors WorkoutReport.identity's own shape.",
+        "properties": {
+          "workoutId": { "type": "string" }, "sectionName": { "type": ["string", "null"] }, "weekNumber": { "type": ["integer", "null"] },
+          "day": { "type": ["integer", "null"] }, "workoutType": { "type": ["string", "null"] },
+          "originalDate": { "type": ["string", "null"], "format": "date" }, "currentDate": { "type": ["string", "null"], "format": "date" }
+        }
+      },
+      "AggregateEvidence": {
+        "type": "object",
+        "description": "HR/stamina/pause evidence at week/plan (multi-workout) scope (HRA-338, extending HRA-337's rules). HR and pauses are safe to blend across every accepted activity in scope; stamina deliberately is NOT (comparableStamina) — a depletion curve from a short easy day and a long run aren't comparable quantities, so at most ONE session's own stamina series is surfaced, never a blended average.",
+        "properties": {
+          "hr": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutHrEvidence" }, { "type": "null" } ], "description": "null only when there are no accepted activities in scope at all." },
+          "pauses": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutPauseEvidence" }, { "type": "null" } ] },
+          "comparableStamina": {
+            "anyOf": [
+              { "type": "object", "properties": { "workout_id": { "type": "string" }, "activity_id": { "type": "integer" }, "reason": { "type": "string", "enum": ["race", "longest_run"] }, "stamina": { "$ref": "#/components/schemas/WorkoutStaminaEvidence" } } },
+              { "type": "null" }
+            ],
+            "description": "null when nothing in scope qualifies (no race, and no unique strict-max-distance completed run — a tie never guesses)."
+          }
+        }
+      },
+      "WeekReport": {
+        "type": "object",
+        "description": "Response of GET .../plan-instances/{id}/reports/weeks (HRA-338). A 'week' is a planned workout's own structural slot (section_name + week_number, lineage.ts's own definition), never a calendar-date span.",
+        "properties": {
+          "provenance": { "type": "object", "properties": { "instanceId": { "type": "integer" }, "planInstanceName": { "type": ["string", "null"] }, "sectionName": { "type": "string" }, "weekNumber": { "type": "integer" }, "scheduleTimezone": { "type": "string" }, "hasOriginalBaseline": { "type": "boolean" }, "generatedAt": { "type": "string", "format": "date-time" }, "asOf": { "type": "string", "format": "date-time" }, "range": { "type": "string", "enum": ["plan_to_date", "full_plan"] } } },
+          "dateSpan": { "type": "object", "properties": { "start": { "type": ["string", "null"], "format": "date" }, "end": { "type": ["string", "null"], "format": "date" } } },
+          "report": { "$ref": "#/components/schemas/ReportResult" },
+          "workouts": { "type": "array", "items": { "$ref": "#/components/schemas/WorkoutIdentity" }, "description": "One entry per workout with either side inside this week (a moved_in/moved_out workout still appears)." },
+          "evidence": { "$ref": "#/components/schemas/AggregateEvidence" },
+          "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
+        }
+      },
+      "PlanReport": {
+        "type": "object",
+        "description": "Response of GET .../plan-instances/{id}/reports/plan (HRA-338) — the whole plan's own isolated totals plus a per-week breakdown for progression.",
+        "properties": {
+          "provenance": { "type": "object", "properties": { "instanceId": { "type": "integer" }, "planInstanceName": { "type": ["string", "null"] }, "scheduleTimezone": { "type": "string" }, "hasOriginalBaseline": { "type": "boolean" }, "generatedAt": { "type": "string", "format": "date-time" }, "asOf": { "type": "string", "format": "date-time" }, "range": { "type": "string", "enum": ["plan_to_date", "full_plan"] } } },
+          "dateSpan": { "type": "object", "properties": { "start": { "type": ["string", "null"], "format": "date" }, "end": { "type": ["string", "null"], "format": "date" } } },
+          "overall": { "$ref": "#/components/schemas/ReportResult" },
+          "overallEvidence": { "$ref": "#/components/schemas/AggregateEvidence" },
+          "weeks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": { "type": "object", "properties": { "section_name": { "type": "string" }, "week_number": { "type": "integer" } } },
+                "dateSpan": { "type": "object", "properties": { "start": { "type": ["string", "null"], "format": "date" }, "end": { "type": ["string", "null"], "format": "date" } } },
+                "report": { "$ref": "#/components/schemas/ReportResult" },
+                "evidence": { "$ref": "#/components/schemas/AggregateEvidence" }
+              }
+            },
+            "description": "Ordered chronologically by each week's own earliest known date, never lexicographically."
+          },
+          "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
+        }
+      },
       "ParseWarning": {
         "type": "object",
         "description": "A non-fatal parse issue (HRA-113: nothing the parser encounters is a hard error — everything degrades to a warning). Day-scoped warnings live on the day itself; this shape is also used for the plan-scoped list (unrecognized lines, circular pace refs).",
@@ -931,6 +1006,32 @@
           { "name": "as_of", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "description": "Explicit ISO instant for the report's future/missed cutoff; defaults to the server's current time." }
         ],
         "responses": { "200": { "description": "The workout report.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkoutReport" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/plan-instances/{id}/reports/weeks": {
+      "get": {
+        "tags": ["reporting"], "summary": "The week report for one planned week — group-by-workout adaptation/execution/outcome (HRA-338)",
+        "description": "Reuses HRA-335's shared buildReport engine (domain/reporting/report.ts), scoped to ONE week: a planned workout's own structural slot (section_name + week_number, lineage.ts's own 'moved' definition), never a calendar-date span. A workout that moved into or out of this exact slot still surfaces as moved_in/moved_out rather than silently vanishing from one side. evidence.hr/pauses blend across every accepted activity in this week's own date span; evidence.comparableStamina never blends — at most one session (the week's race, else its strict-max-distance completed run) carries its own stamina series.",
+        "parameters": [
+          { "$ref": "#/components/parameters/id" },
+          { "name": "section_name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "The week's own section_name, as returned on any plan_instance_days row for it." },
+          { "name": "week_number", "in": "query", "required": true, "schema": { "type": "integer" }, "description": "The week's own week_number within that section." },
+          { "name": "range", "in": "query", "required": false, "schema": { "type": "string", "enum": ["plan_to_date", "full_plan"], "default": "plan_to_date" }, "description": "plan_to_date (default) excludes future workouts from execution/outcome entirely; full_plan keeps them as upcoming context." },
+          { "name": "as_of", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "description": "Explicit ISO instant for the report's future/missed cutoff; defaults to the server's current time." }
+        ],
+        "responses": { "200": { "description": "The week report.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WeekReport" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/v1/plan-instances/{id}/reports/plan": {
+      "get": {
+        "tags": ["reporting"], "summary": "The entire-plan report — grouped by week for progression, drilling down to workouts (HRA-338)",
+        "description": "Reuses HRA-335's shared buildReport engine once for the whole plan's own isolated totals (overall) and once per week (weeks[], in chronological order) — never a second calculation engine. An empty plan (no days on either side yet) returns an empty report rather than 404ing (the instance itself still exists).",
+        "parameters": [
+          { "$ref": "#/components/parameters/id" },
+          { "name": "range", "in": "query", "required": false, "schema": { "type": "string", "enum": ["plan_to_date", "full_plan"], "default": "plan_to_date" }, "description": "plan_to_date (default) excludes future workouts from execution/outcome entirely; full_plan keeps them as upcoming context. Applies identically to `overall` and every entry in `weeks`." },
+          { "name": "as_of", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "description": "Explicit ISO instant for the report's future/missed cutoff; defaults to the server's current time." }
+        ],
+        "responses": { "200": { "description": "The entire-plan report.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanReport" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}": {

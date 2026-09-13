@@ -38,6 +38,10 @@ interface Props {
   onRestoreClick: (dirty: boolean) => void;
   viewMode: "list" | "agenda";
   setViewMode: (v: "list" | "agenda") => void;
+  // HRA-338: the week/entire-plan reports' own entry point — only meaningful
+  // once the instance has actually been instantiated (editingId != null,
+  // gated below), same precondition Save/Approve already share.
+  onViewPlanReport?: () => void;
 }
 
 export function PlanInstanceEditorActions({
@@ -46,7 +50,7 @@ export function PlanInstanceEditorActions({
   approveLoading, editingId, onApprove, onDeactivate,
   regenerateLoading, regenerateDisabled, regenerateBucketDirty, onRegenerateClick,
   effectiveFrom, setEffectiveFrom, minEffectiveFrom,
-  isDirty, onRestoreClick, viewMode, setViewMode,
+  isDirty, onRestoreClick, viewMode, setViewMode, onViewPlanReport,
 }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
@@ -112,6 +116,13 @@ export function PlanInstanceEditorActions({
               <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled || demoMode} />
             </span>
           </div>
+          {/* HRA-338: only once there's a real instantiated instance to
+              report on — same gate Save/Approve already apply via editingId. */}
+          {onViewPlanReport && editingId != null && (
+            <button className="hra-btn" onClick={onViewPlanReport}>
+              {t("reportEvidence.viewPlanReport", "View plan report")}
+            </button>
+          )}
         </>
       )}
       {/* HRA-159: "Restore" renames to "Reset to previous values" here —

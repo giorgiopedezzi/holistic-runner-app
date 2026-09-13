@@ -304,6 +304,150 @@ export interface WorkoutReport {
   structuredQualityEvidence: { available: false; reason: "not_implemented" };
 }
 
+// ── week and entire-plan reports (HRA-338) — mirrors
+// garmin-stats/src/domain/reporting/{report,plan-report,aggregate-evidence}.ts
+// exactly. GET /api/v1/plan-instances/:id/reports/weeks and .../reports/plan.
+
+export type ReportRangeMode = "plan_to_date" | "full_plan";
+export type WorkoutLineageBoundaryMovement = "moved_in" | "moved_out" | "stable" | "not_applicable";
+
+export interface ScopedWorkout {
+  workout_id: string;
+  lineage: WorkoutLineageStatus;
+  originalInRange: boolean;
+  currentInRange: boolean;
+  boundaryMovement: WorkoutLineageBoundaryMovement;
+}
+
+export interface ReportEvidenceEntry {
+  workout_id: string;
+  status: "automatic" | "manual_confirmed" | "manual_changed";
+  local_date: string;
+}
+
+export interface ExecutionEntry {
+  workout_id: string;
+  scheduled_date: string;
+  state: WorkoutEvidenceState;
+  evidence: ReportEvidenceEntry | null;
+  includedInDenominator: boolean;
+}
+
+export interface OutcomeEntry {
+  workout_id: string;
+  original_date: string;
+  state: WorkoutEvidenceState;
+  evidence: ReportEvidenceEntry | null;
+  includedInDenominator: boolean;
+}
+
+export interface DimensionDenominator {
+  total: number;
+  completed: number;
+  missed: number;
+  upcoming: number;
+}
+
+// The shared engine's own DatasetMetrics — every field optional: an
+// unrequested metric is ABSENT, never present-as-zero (mirrors
+// WorkoutDatasetMetrics but every field is nullable-by-omission here since
+// week/plan requests always ask for the full set today, unlike the
+// single-workout report which never omits any).
+export interface ReportDatasetMetrics {
+  distanceM?: number;
+  approximate?: boolean;
+  durationSec?: number;
+  paceSecPerKm?: number | null;
+}
+
+export interface ReportResult {
+  provenance: {
+    instanceId: number;
+    scheduleTimezone: string;
+    hasOriginalBaseline: boolean;
+    generatedAt: string;
+    asOf: string;
+  };
+  scope: ScopedWorkout[];
+  actual: {
+    accepted: ReportEvidenceEntry[];
+    ambiguous: { activity_id: number; workout_id: string | null }[];
+    extra: { activity_id: number; local_date: string }[];
+  };
+  datasets: { original: ReportDatasetMetrics; current: ReportDatasetMetrics; actual: ReportDatasetMetrics };
+  comparisons: { adaptation?: ScopedWorkout[]; execution?: ExecutionEntry[]; outcome?: OutcomeEntry[] };
+  denominators: { execution?: DimensionDenominator; outcome?: DimensionDenominator };
+  coverage: { totalActivitiesInScope: number; trustedActivities: number; ambiguousActivities: number; extraActivities: number };
+  drillDown: { workoutIds: string[]; activityIds: number[] };
+  structuredQualityEvidence: { available: false; reason: "not_implemented" };
+}
+
+export interface ReportWorkoutIdentity {
+  workoutId: string;
+  sectionName: string | null;
+  weekNumber: number | null;
+  day: number | null;
+  workoutType: string | null;
+  originalDate: string | null;
+  currentDate: string | null;
+}
+
+export interface ComparableStaminaEntry {
+  workout_id: string;
+  activity_id: number;
+  reason: "race" | "longest_run";
+  stamina: WorkoutStaminaEvidence;
+}
+
+export interface AggregateEvidence {
+  hr: WorkoutHrEvidence | null;
+  pauses: WorkoutPauseEvidence | null;
+  comparableStamina: ComparableStaminaEntry | null;
+}
+
+export interface WeekReport {
+  provenance: {
+    instanceId: number;
+    planInstanceName: string | null;
+    sectionName: string;
+    weekNumber: number;
+    scheduleTimezone: string;
+    hasOriginalBaseline: boolean;
+    generatedAt: string;
+    asOf: string;
+    range: ReportRangeMode;
+  };
+  dateSpan: { start: string | null; end: string | null };
+  report: ReportResult;
+  workouts: ReportWorkoutIdentity[];
+  evidence: AggregateEvidence;
+  structuredQualityEvidence: { available: false; reason: "not_implemented" };
+}
+
+export interface PlanWeekSummary {
+  key: { section_name: string; week_number: number };
+  dateSpan: { start: string | null; end: string | null };
+  report: ReportResult;
+  evidence: AggregateEvidence;
+}
+
+export interface PlanReport {
+  provenance: {
+    instanceId: number;
+    planInstanceName: string | null;
+    scheduleTimezone: string;
+    hasOriginalBaseline: boolean;
+    generatedAt: string;
+    asOf: string;
+    range: ReportRangeMode;
+  };
+  dateSpan: { start: string | null; end: string | null };
+  overall: ReportResult;
+  overallEvidence: AggregateEvidence;
+  weeks: PlanWeekSummary[];
+  structuredQualityEvidence: { available: false; reason: "not_implemented" };
+}
+
 // GET /api/v1/plan-instance-days's response shape (HRA-206) — a
 // PlanInstanceDay denormalized with its owning instance's own name, so a
 // same-day picker across multiple instances can label each option without a
