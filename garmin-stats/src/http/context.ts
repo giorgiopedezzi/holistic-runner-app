@@ -25,6 +25,7 @@ import type { SyncService } from "../services/sync.service.ts";
 import type { DeviceService } from "../services/device.service.ts";
 import type { PlanInstancesService } from "../services/plan-instances.service.ts";
 import type { WorkoutAssociationsService } from "../services/workout-associations.service.ts";
+import type { ReportingService } from "../services/reporting.service.ts";
 
 export interface AppContext {
   port: number;          // used by the router to build the URL base
@@ -45,6 +46,7 @@ export interface AppContext {
     device: DeviceService;
     planInstances: PlanInstancesService;
     workoutAssociations: WorkoutAssociationsService;
+    reporting: ReportingService;
   };
 }
 

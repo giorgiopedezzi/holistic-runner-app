@@ -529,7 +529,7 @@ describe("PlanInstancesSection — happy path", () => {
     installFetch({
       "GET /api/v1/plan-instances": () => json(paginated(instancesList)),
       "POST /api/v1/plan-templates/1/instantiate": () => {
-        instancesList = [{ id: 20, template_id: 1, start_date: created.start_date, pace_overrides: null, target_activity_id: null, approved_at: null, name: "Marathon Block", event: "5k", race_name: null, race_date: null, race_url: null, created_at: created.created_at }];
+        instancesList = [{ id: 20, template_id: 1, start_date: created.start_date, pace_overrides: null, target_activity_id: null, approved_at: null, name: "Marathon Block", event: "5k", race_name: null, race_date: null, race_url: null, current_revision: 1, original_revision: 1, created_at: created.created_at }];
         return json(created);
       },
       "PATCH /api/v1/plan-instances/20": () => {

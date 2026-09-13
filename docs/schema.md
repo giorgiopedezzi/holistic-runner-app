@@ -143,6 +143,26 @@ ever appears. **Backfill:** pre-HRA-332 rows get `schedule_timezone` from the ow
 `original_days_snapshot` set to their current `start_date`/days — "Current is Original" is the only
 sane one-time value for legacy rows, since no prior Original ever existed to recover.
 
+**Minimal plan-revision contract (HRA-336):** `current_revision`/`original_revision` (INTEGER,
+`NOT NULL DEFAULT 1`) are the durable revision pair a report reads to prove which mutable Current
+state (and which frozen Original snapshot) it actually saw. `current_revision` is bumped by exactly
+1, inside the same transaction as the mutation itself, by every successful SEMANTIC mutation of
+Current (`plan-instances.service.ts`'s `patchInstance`/`patchDay`/`regenerateFrom`) — a failed
+operation rolls the whole transaction back (nothing to undo), and a semantic no-op (the request
+resends exactly what's already persisted) is detected by `domain/plan-revision.ts` and never bumps at
+all. `original_revision` mirrors `current_revision` in lockstep while Original still mirrors Current
+(pre-freeze, the same `syncOriginalIfNotFrozen` write path HRA-332 already uses) and then stops
+changing forever once the Original baseline freezes — same "mirror until frozen" split
+`original_start_date`/`original_days_snapshot` already have. Both start at 1 at creation (`instantiate`
+never calls the bump — a fresh instance's revision 1 is simply its starting state) and both existing
+pre-HRA-336 rows are migrated to 1/1 via `ALTER TABLE ADD COLUMN ... DEFAULT 1` (no backfill loop
+needed, unlike `workout_id`'s per-row migration below — a single shared constant is correct here since
+there is no earlier revision history to recover). A report's own consistent read boundary
+(`services/reporting.service.ts`) reads the instance row (carrying both revisions) and every other
+input it needs in one synchronous call with no `await` in between — Node's single-threaded,
+synchronous-`node:sqlite` execution model makes that boundary atomic by construction, so a report can
+never mix Current content from one revision with a different reported revision.
+
 **`name`/`event` migration (HRA-114):** rows created before this Story had neither column. The
 migration backfills them from the source template (`name` ← template's `name`, `event` ← template's
 `event`) via a joined `UPDATE`, so no pre-existing instance is left with a `NULL name` — the

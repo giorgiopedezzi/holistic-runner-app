@@ -33,6 +33,7 @@ import { createSyncService } from "../../src/services/sync.service.ts";
 import { createDeviceService } from "../../src/services/device.service.ts";
 import { createPlanInstancesService } from "../../src/services/plan-instances.service.ts";
 import { createWorkoutAssociationsService } from "../../src/services/workout-associations.service.ts";
+import { createReportingService } from "../../src/services/reporting.service.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
 const SRC_DIR = fileURLToPath(new URL("../../src", import.meta.url));
@@ -83,6 +84,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       device: createDeviceService(SRC_DIR),
       planInstances: createPlanInstancesService(db, planInstancesRepo),
       workoutAssociations: createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
+      reporting: createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo),
     },
   });
 

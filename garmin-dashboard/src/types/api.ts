@@ -160,6 +160,12 @@ export interface PlanInstance {
   race_name:           string | null;
   race_date:           string | null;
   race_url:            string | null;
+  // HRA-336: the minimal durable plan-revision contract — current_revision is
+  // bumped exactly once per successful semantic mutation of Current;
+  // original_revision follows it until the Original baseline freezes, then
+  // holds forever. Both start at 1.
+  current_revision:    number;
+  original_revision:   number;
   created_at:          string;
 }
 
@@ -193,6 +199,68 @@ export interface PlanInstanceDay {
 
 export interface PlanInstanceWithDays extends PlanInstance {
   days: PlanInstanceDay[];
+}
+
+// ── single-workout/race report (HRA-336) ────────────────────────────────────
+// Mirrors garmin-stats/src/domain/reporting/workout-report.ts's
+// WorkoutReportResult exactly — response of
+// GET /api/v1/plan-instances/:id/reports/workouts/:workoutId.
+
+export type WorkoutLineageStatus = "unchanged" | "moved" | "modified" | "moved_and_modified" | "removed" | "added";
+export type WorkoutEvidenceState = "completed" | "missed" | "upcoming";
+
+export interface WorkoutDatasetMetrics {
+  distanceM: number;
+  approximate: boolean;
+  durationSec: number;
+  paceSecPerKm: number | null;
+}
+
+export interface WorkoutActualEvidence {
+  activityId: number;
+  status: "automatic" | "manual_confirmed" | "manual_changed";
+  elapsedSec: number | null;
+  activeSec: number | null;
+  pausedSec: number | null;
+}
+
+export interface WorkoutRace {
+  isRace: boolean;
+  targetDistanceM?: number | null;
+  targetDurationSec?: number | null;
+  targetPaceSecPerKm?: number | null;
+  actualElapsedSec?: number | null;
+  actualMovingSec?: number | null;
+  actualSource?: "activity" | "none";
+}
+
+export interface WorkoutReport {
+  provenance: {
+    planInstanceId: number;
+    planInstanceName: string | null;
+    workoutId: string;
+    originalRevision: number;
+    currentRevision: number;
+    scheduleTimezone: string;
+    hasOriginalBaseline: boolean;
+    generatedAt: string;
+    asOf: string;
+  };
+  identity: {
+    sectionName: string | null;
+    weekNumber: number | null;
+    day: number | null;
+    workoutType: string | null;
+    originalDate: string | null;
+    currentDate: string | null;
+  };
+  lineage: WorkoutLineageStatus;
+  originalEqualsCurrent: boolean;
+  state: WorkoutEvidenceState;
+  planned: { original: WorkoutDatasetMetrics | null; current: WorkoutDatasetMetrics | null };
+  actual: { metrics: WorkoutDatasetMetrics | null; evidence: WorkoutActualEvidence[]; hasAmbiguousEvidence: boolean };
+  race: WorkoutRace;
+  structuredQualityEvidence: { available: false; reason: "not_implemented" };
 }
 
 // GET /api/v1/plan-instance-days's response shape (HRA-206) — a

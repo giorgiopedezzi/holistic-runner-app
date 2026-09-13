@@ -467,6 +467,16 @@ export function initSchema(db: DatabaseSync): void {
       -- unjustified until an actual per-day Original query need exists.
       original_start_date     TEXT,
       original_days_snapshot  TEXT,
+      -- HRA-336: the minimal durable plan-revision contract. current_revision
+      -- is monotonic and bumped exactly once per successful semantic mutation
+      -- of Current (see services/plan-instances.service.ts); original_revision
+      -- follows it in lockstep while Original still mirrors Current
+      -- (pre-freeze) and then stops changing forever once frozen, same
+      -- "mirrors until frozen" split original_start_date/original_days_snapshot
+      -- already have. Both start at 1 for a freshly instantiated instance —
+      -- there is no revision 0, matching "Current is Original" at creation.
+      current_revision   INTEGER NOT NULL DEFAULT 1,
+      original_revision  INTEGER NOT NULL DEFAULT 1,
       created_at         TEXT    DEFAULT (datetime('now'))
     );
 
@@ -834,6 +844,21 @@ export function initSchema(db: DatabaseSync): void {
     }
   }
 
+  // HRA-336: current_revision/original_revision, added after plan_instances
+  // already existed. ALTER TABLE ADD COLUMN's own NOT NULL DEFAULT 1 handles
+  // every existing row automatically — no per-row backfill loop needed (unlike
+  // workout_id below, DEFAULT 1 is a single shared constant, not a distinct
+  // value per row). "Current is Original, revision 1" is the only sane
+  // one-time value for a legacy row: there is no earlier revision history to
+  // recover, matching HRA-332's own "Current is Original" backfill reasoning
+  // for original_start_date/original_days_snapshot above.
+  if (!planInstanceCols.some(c => c.name === "current_revision")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN current_revision INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!planInstanceCols.some(c => c.name === "original_revision")) {
+    db.exec("ALTER TABLE plan_instances ADD COLUMN original_revision INTEGER NOT NULL DEFAULT 1");
+  }
+
   // HRA-149: scheduled_time, added after plan_instance_days already existed
   // (HRA-112). Nullable, no backfill — a NULL reads as the 08:00 default at
   // display time only, never written here.
@@ -1056,6 +1081,10 @@ export interface PlanInstanceRow {
   schedule_timezone: string | null;
   original_start_date: string | null;
   original_days_snapshot: string | null;
+  // HRA-336: the minimal durable plan-revision contract — see the CREATE
+  // TABLE comment above for the mirror/freeze semantics.
+  current_revision: number;
+  original_revision: number;
   created_at: string;
 }
 

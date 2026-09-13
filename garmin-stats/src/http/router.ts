@@ -24,6 +24,7 @@ import { createActivityTypesController } from "../controllers/activity-types.con
 import { createPlanTemplatesController } from "../controllers/plan-templates.controller.ts";
 import { createFeedbackController } from "../controllers/feedback.controller.ts";
 import { createSourceFilesController } from "../controllers/source-files.controller.ts";
+import { createReportingController } from "../controllers/reporting.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -39,6 +40,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const locales      = createLocalesController(ctx);
   const feedback     = createFeedbackController(ctx);
   const sourceFiles  = createSourceFilesController(ctx);
+  const reporting    = createReportingController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -98,6 +100,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/plan-instance-days")         return await planTemplates.daysByDate(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/fit$/.test(route)) return await planTemplates.dayFit(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/fit$/.test(route)) return await planTemplates.scopeFit(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+$/.test(route)) return await reporting.getWorkoutReport(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))    return await planTemplates.instanceById(req, res, url);
         if (/^\/api\/v1\/locales\/[^/]+$/.test(route))     return await locales.get(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);

@@ -194,6 +194,8 @@ export const planInstance = (overrides: Partial<PlanInstance> = {}): PlanInstanc
   race_name: null,
   race_date: null,
   race_url: null,
+  current_revision: 1,
+  original_revision: 1,
   created_at: "2026-08-20T00:00:00Z",
   ...overrides,
 });

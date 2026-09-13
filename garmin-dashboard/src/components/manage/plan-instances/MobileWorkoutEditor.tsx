@@ -52,9 +52,12 @@ interface Props {
   // build a cross-week target list from (the mobile current-week-only
   // preview ribbon), in which case no swap entry point is offered there.
   onSwap?: () => void;
+  // HRA-336: opens the single-workout/race report for this same day — only
+  // ever offered when the day carries a stable workout_id.
+  onViewReport?: () => void;
 }
 
-export function MobileWorkoutEditor({ day, instanceId, onClose, onSaved, onSwap }: Props) {
+export function MobileWorkoutEditor({ day, instanceId, onClose, onSaved, onSwap, onViewReport }: Props) {
   const { t } = useTranslation();
   const dayId = day.id!;
   const dayPrefix = day.dsl.match(DAY_PREFIX_RE)?.[0] ?? "";
@@ -233,6 +236,12 @@ export function MobileWorkoutEditor({ day, instanceId, onClose, onSaved, onSwap 
           >
             <ArrowLeftRight size={16} aria-hidden="true" />
             {t("manage.planInstances.mobileEditor.swapButton", "Swap with…")}
+          </button>
+        )}
+
+        {onViewReport && (
+          <button type="button" className="hra-btn" onClick={onViewReport}>
+            {t("workoutReport.viewReport", "View report")}
           </button>
         )}
 

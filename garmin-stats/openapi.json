@@ -18,6 +18,7 @@
     { "name": "date-ranges", "description": "Saved named date ranges, optionally linked to the race a training block led up to" },
     { "name": "activity-types", "description": "The fixed Training/Race lookup used to tag an activity" },
     { "name": "plan-templates", "description": "Reusable RunPlan DSL v1 templates + resolved instances (HRA-111/HRA-112)" },
+    { "name": "reporting", "description": "Original vs Current vs Actual trust reports (HRA-335/HRA-336)" },
     { "name": "locales", "description": "i18n translation bundles" },
     { "name": "source-files", "description": "Server-side source-file text extraction (.txt/.csv/.pdf) for hand-off into training-plan template generation (HRA-327)" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
@@ -390,8 +391,84 @@
           "schedule_timezone": { "type": ["string", "null"], "description": "HRA-332: IANA timezone governing plan-date interpretation, activity local-date conversion, report asOf boundaries, and missed-workout eligibility. Correctable via PATCH until the Original baseline freezes, then rejected with 409." },
           "original_start_date": { "type": ["string", "null"], "format": "date", "description": "HRA-332: the Original baseline's start_date — mirrors Current until frozen, then untouched forever." },
           "original_days_snapshot": { "type": ["string", "null"], "description": "HRA-332: JSON-serialized Original baseline day snapshot (same per-day shape as PlanInstanceDay, without id/instance_id) — mirrors Current until frozen, then untouched forever." },
+          "current_revision": { "type": "integer", "description": "HRA-336: monotonic, bumped exactly once per successful semantic mutation of Current (edits, moves, swaps, additions, removals, start-date changes, regeneration). Starts at 1." },
+          "original_revision": { "type": "integer", "description": "HRA-336: follows current_revision while Original still mirrors Current (pre-freeze); stops changing forever once the Original baseline freezes. Starts at 1." },
           "created_at": { "type": "string" },
           "days": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDay" } }
+        }
+      },
+      "WorkoutDatasetMetrics": {
+        "type": "object",
+        "description": "One dataset's totals for a single workout (HRA-336) — an isolated Original/Current/Actual measurement, never averaged across activities.",
+        "properties": {
+          "distanceM": { "type": "number" },
+          "approximate": { "type": "boolean", "description": "true if the distance was itself derived from a duration->distance conversion." },
+          "durationSec": { "type": "number" },
+          "paceSecPerKm": { "type": ["number", "null"], "description": "distance-total / time-total; null when nothing resolves, never 0." }
+        }
+      },
+      "WorkoutActualEvidence": {
+        "type": "object",
+        "description": "One accepted activity's evidence for this workout (HRA-334 status + HRA-335's elapsed/active/paused split).",
+        "properties": {
+          "activityId": { "type": "integer" },
+          "status": { "type": "string", "enum": ["automatic", "manual_confirmed", "manual_changed"] },
+          "elapsedSec": { "type": ["number", "null"] },
+          "activeSec": { "type": ["number", "null"] },
+          "pausedSec": { "type": ["number", "null"] }
+        }
+      },
+      "WorkoutReport": {
+        "type": "object",
+        "description": "Response of GET .../plan-instances/{id}/reports/workouts/{workoutId} (HRA-336).",
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "properties": {
+              "planInstanceId": { "type": "integer" }, "planInstanceName": { "type": ["string", "null"] },
+              "workoutId": { "type": "string" },
+              "originalRevision": { "type": "integer" }, "currentRevision": { "type": "integer" },
+              "scheduleTimezone": { "type": "string" }, "hasOriginalBaseline": { "type": "boolean" },
+              "generatedAt": { "type": "string", "format": "date-time" }, "asOf": { "type": "string", "format": "date-time" }
+            }
+          },
+          "identity": {
+            "type": "object",
+            "properties": {
+              "sectionName": { "type": ["string", "null"] }, "weekNumber": { "type": ["integer", "null"] }, "day": { "type": ["integer", "null"] },
+              "workoutType": { "type": ["string", "null"] }, "originalDate": { "type": ["string", "null"], "format": "date" },
+              "currentDate": { "type": ["string", "null"], "format": "date" }
+            }
+          },
+          "lineage": { "type": "string", "enum": ["unchanged", "moved", "modified", "moved_and_modified", "removed", "added"] },
+          "originalEqualsCurrent": { "type": "boolean", "description": "true only for lineage 'unchanged' — the UI collapses to one Planned column in this case." },
+          "state": { "type": "string", "enum": ["completed", "missed", "upcoming"] },
+          "planned": {
+            "type": "object",
+            "properties": {
+              "original": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, { "type": "null" } ] },
+              "current": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, { "type": "null" } ] }
+            }
+          },
+          "actual": {
+            "type": "object",
+            "properties": {
+              "metrics": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutDatasetMetrics" }, { "type": "null" } ] },
+              "evidence": { "type": "array", "items": { "$ref": "#/components/schemas/WorkoutActualEvidence" } },
+              "hasAmbiguousEvidence": { "type": "boolean", "description": "true when at least one 'unresolved' association exists for this workout — visible, never trusted (AC11)." }
+            }
+          },
+          "race": {
+            "type": "object",
+            "description": "isRace=false for a non-race workout. When true: target* comes from the planned segments (Current, falling back to Original), actual comparison is always elapsed time (never moving/active) — no official-result data source exists yet, so actualSource is always 'activity' or 'none'.",
+            "properties": {
+              "isRace": { "type": "boolean" },
+              "targetDistanceM": { "type": ["number", "null"] }, "targetDurationSec": { "type": ["number", "null"] }, "targetPaceSecPerKm": { "type": ["number", "null"] },
+              "actualElapsedSec": { "type": ["number", "null"] }, "actualMovingSec": { "type": ["number", "null"] },
+              "actualSource": { "type": "string", "enum": ["activity", "none"] }
+            }
+          },
+          "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
         }
       },
       "ParseWarning": {
@@ -801,6 +878,18 @@
         "responses": { "200": { "description": "The updated instance, with its resolved days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       },
       "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+    },
+    "/api/v1/plan-instances/{id}/reports/workouts/{workoutId}": {
+      "get": {
+        "tags": ["reporting"], "summary": "The single-workout/race report for one planned workout (HRA-336)",
+        "description": "Reads Original, Current, their revisions, accepted HRA-334 association evidence, and asOf from one consistent application-level read boundary (services/reporting.service.ts) — the result never mixes plan content from one revision with a different reported revision. Reuses HRA-333's lineage classifier and HRA-335's shared metrics primitives rather than a second calculation engine. A workout counts as the plan's race day when its own placement date equals the instance's race_date (HRA-121); race actual comparison always uses elapsed time, never moving/active time. No official-result data source exists yet — race.actualSource is always 'activity' or 'none'.",
+        "parameters": [
+          { "$ref": "#/components/parameters/id" },
+          { "name": "workoutId", "in": "path", "required": true, "schema": { "type": "string" }, "description": "The stable HRA-333 workout_id (not a plan_instance_days row id)." },
+          { "name": "as_of", "in": "query", "required": false, "schema": { "type": "string", "format": "date-time" }, "description": "Explicit ISO instant for the report's future/missed cutoff; defaults to the server's current time." }
+        ],
+        "responses": { "200": { "description": "The workout report.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/WorkoutReport" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}": {
       "patch": {

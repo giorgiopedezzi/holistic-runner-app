@@ -1273,11 +1273,16 @@ interface Props {
   // Omitted entirely disables that one rule (never a false positive), never
   // blocks the swap entry point itself.
   raceDate?: string | null;
+  // HRA-336: opens the single-workout/race report for the clicked day —
+  // offered from both DayEditModal (desktop) and MobileWorkoutEditor (phone)
+  // whenever the day carries a stable workout_id. Omitted at any call site
+  // not yet wired for it, which simply hides the button (fully additive).
+  onViewReport?: (day: DayView) => void;
 }
 
 export function PlanInstanceCalendar({
   sections, readOnlyDays, readOnlyScheduledTime, onScheduledTimeEdit, onDaySwap, initialDate, onDayEdit, onNavigateToActivity,
-  instanceId, onDayPersisted, raceDate,
+  instanceId, onDayPersisted, raceDate, onViewReport,
 }: Props) {
   // HRA-300: read once, near the top, since both the ribbon-vs-grid branch
   // further down AND the mobile-editor-vs-DayEditModal choice above it need
@@ -1582,6 +1587,7 @@ export function PlanInstanceCalendar({
         // swap flow for the same day — the two full-screen surfaces are
         // mutually exclusive (editingDayId/swappingDayId never both set).
         onSwap={() => { setSwappingDayId(editingDay.id!); setEditingDayId(null); }}
+        onViewReport={onViewReport && editingDay.workout_id ? () => onViewReport(editingDay) : undefined}
       />
     ) : (
       <DayEditModal
@@ -1595,6 +1601,7 @@ export function PlanInstanceCalendar({
         readOnlyDays={onDayEdit == null ? true : resolveReadOnly(readOnlyDays, editingDay.date)}
         onEdit={onDayEdit ? patch => onDayEdit(editingDay.id!, patch) : undefined}
         onClose={() => setEditingDayId(null)}
+        onViewReport={onViewReport && editingDay.workout_id ? () => onViewReport(editingDay) : undefined}
       />
     )
   );

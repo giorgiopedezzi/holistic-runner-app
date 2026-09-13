@@ -22,9 +22,13 @@ interface Props {
   readOnlyDays: boolean;
   onEdit?: (patch: { dsl?: string; notes?: string }) => void;
   onClose: () => void;
+  // HRA-336: opens the single-workout/race report for this same day — only
+  // ever offered when the day carries a stable workout_id (an instance day;
+  // a template day, which has none, never gets this button).
+  onViewReport?: () => void;
 }
 
-export function DayEditModal({ day, readOnlyDays, onEdit, onClose }: Props) {
+export function DayEditModal({ day, readOnlyDays, onEdit, onClose, onViewReport }: Props) {
   const { t } = useTranslation();
   // Same prefix-strip/reattach convention InstanceDayRow already uses — see
   // that component's own comments for why the D-prefix and trailing note are
@@ -73,6 +77,12 @@ export function DayEditModal({ day, readOnlyDays, onEdit, onClose }: Props) {
               placeholder={t("runplan.accordion.notePlaceholder", "Optional note")}
             />
           </label>
+        )}
+
+        {onViewReport && (
+          <button type="button" className="hra-btn mt-3" onClick={onViewReport}>
+            {t("workoutReport.viewReport", "View report")}
+          </button>
         )}
       </div>
     </div>

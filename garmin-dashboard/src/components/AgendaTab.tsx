@@ -41,6 +41,7 @@ import { apiDaysToSections, racePaceReferenceFromPlan } from "@/components/manag
 import type { RunPlan } from "@/types/runplan";
 import type { PlanInstanceWithDays } from "@/types/api";
 import { CategoryLegend, PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
+import { WorkoutReportModal } from "@/components/manage/plan-instances/WorkoutReportModal";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import { Empty, ErrorBanner, LoadingSpinner, ConfirmModal } from "@/components/ui";
@@ -85,6 +86,10 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const readOnlyDays = useMemo(() => (dateKey: string) => dateKey < date, [date]);
   const [swapPending, setSwapPending] = useState<{ a: DayView; b: DayView } | null>(null);
   const [swapping, setSwapping] = useState(false);
+  // HRA-336: the single-workout/race report — reuses the same DayView Agenda
+  // already has in memory (for its paceTargetBands, HRA-173) rather than
+  // fetching it a second time.
+  const [reportDay, setReportDay] = useState<DayView | null>(null);
 
   // HRA-320: a swap (or scheduled-time edit) calls refetch(), which briefly
   // sends `state` back to "loading" with no data at all — the early return
@@ -201,7 +206,16 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
         instanceId={instance?.id}
         onDayPersisted={() => refetch()}
         raceDate={instance?.race_date}
+        onViewReport={day => setReportDay(day)}
       />
+      {reportDay && instance != null && reportDay.workout_id && (
+        <WorkoutReportModal
+          instanceId={instance.id}
+          workoutId={reportDay.workout_id}
+          paceTargetBands={reportDay.paceTargetBands}
+          onClose={() => setReportDay(null)}
+        />
+      )}
       <ConfirmModal
         open={swapPending != null}
         title={

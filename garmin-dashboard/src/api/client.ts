@@ -11,7 +11,7 @@ import type {
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
-  FeedbackSubmission, FeedbackEntry, AssociationView,
+  FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
@@ -427,6 +427,11 @@ export const api = {
     // ActivityDetailBody calls for a running activity to find same-day
     // scheduled workouts; a plain array (possibly empty), no envelope.
     byDate: (date: string) => request<PlanInstanceDayWithInstance[]>("/api/v1/plan-instance-days", "GET", { date }),
+    // GET /api/v1/plan-instances/:id/reports/workouts/:workoutId (HRA-336) —
+    // the single-workout/race report. workoutId is the stable HRA-333
+    // identity, not a plan_instance_days row id.
+    workoutReport: (instanceId: number, workoutId: string) =>
+      request<WorkoutReport>(`/api/v1/plan-instances/${instanceId}/reports/workouts/${encodeURIComponent(workoutId)}`),
     // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202) — a binary
     // FIT file, not JSON, so this bypasses the shared request() helper (its
     // unconditional res.json() would choke on the body). Mirrors

@@ -8,10 +8,14 @@ import type { DatabaseSync } from "node:sqlite";
 import { prepareLive as prepareLiveGlobal } from "../db.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
-const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, schedule_timezone, original_start_date, original_days_snapshot, created_at FROM plan_instances";
+const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, schedule_timezone, original_start_date, original_days_snapshot, current_revision, original_revision, created_at FROM plan_instances";
 const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time, customized_at, workout_id FROM plan_instance_days";
 
-export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at">;
+// HRA-336: current_revision/original_revision are never caller-supplied at
+// creation — both always start at 1 via the column's own DEFAULT (see
+// insertInstance below, which never references either column), the same way
+// approved_at is omitted here rather than accepted as a creation-time input.
+export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at" | "current_revision" | "original_revision">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
 // HRA-206: a plan_instance_days row denormalized with its owning instance's
 // own name — GET /api/v1/plan-instance-days needs this to label a same-day
@@ -209,7 +213,15 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   // service after every pre-freeze Current mutation — see
   // plan-instances.service.ts's syncOriginalIfNotFrozen.
   const updateScheduleTimezoneStmt = prepareLive("UPDATE plan_instances SET schedule_timezone = ? WHERE id = ?");
-  const updateOriginalStmt = prepareLive("UPDATE plan_instances SET original_start_date = ?, original_days_snapshot = ? WHERE id = ?");
+  const updateOriginalStmt = prepareLive(
+    "UPDATE plan_instances SET original_start_date = ?, original_days_snapshot = ?, original_revision = ? WHERE id = ?",
+  );
+  // HRA-336: bumped exactly once per successful semantic mutation of Current
+  // — the service layer decides WHETHER a call changed anything (a failed or
+  // semantic no-op operation never calls this), always inside the same
+  // transaction as the mutation itself, so a rolled-back mutation never
+  // leaves a stray bump behind.
+  const bumpCurrentRevisionStmt = prepareLive("UPDATE plan_instances SET current_revision = current_revision + 1 WHERE id = ?");
   // ON DELETE CASCADE (plan_instance_days.instance_id) removes the instance's days too.
   const deleteInstanceStmt = prepareLive("DELETE FROM plan_instances WHERE id = ?");
 
@@ -279,9 +291,10 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       updateStartDateAndPaceOverridesStmt.run(startDate, paceOverrides, id);
     },
     updateScheduleTimezone: (id: number, scheduleTimezone: string) => { updateScheduleTimezoneStmt.run(scheduleTimezone, id); },
-    updateOriginal: (id: number, originalStartDate: string, originalDaysSnapshot: string) => {
-      updateOriginalStmt.run(originalStartDate, originalDaysSnapshot, id);
+    updateOriginal: (id: number, originalStartDate: string, originalDaysSnapshot: string, originalRevision: number) => {
+      updateOriginalStmt.run(originalStartDate, originalDaysSnapshot, originalRevision, id);
     },
+    bumpCurrentRevision: (id: number) => { bumpCurrentRevisionStmt.run(id); },
     // HRA-149: dsl-derived columns for one day, re-parsed+resolved by the caller.
     updateDayFromDsl: (dayId: number, d: {
       day: number; suffix: string | null; category: string | null; workout_type: string; segments: string;

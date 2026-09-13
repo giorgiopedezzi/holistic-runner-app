@@ -13,6 +13,7 @@ import { instantiatePlan, type InstantiateOptions } from "../domain/runplan/inst
 import type { RunPlan } from "../domain/runplan/types.ts";
 import { isOriginalFrozen } from "../domain/plan-timezone.ts";
 import { newWorkoutId } from "../domain/runplan/workout-identity.ts";
+import { dayPatchChanged, daySetChanged, type RevisionComparableDay } from "../domain/plan-revision.ts";
 
 // HRA-333: the bulk days-replace's own per-day input — like
 // PlanInstanceDayInput minus instance_id, but workout_id is a caller
@@ -34,7 +35,33 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     const instance = instances.instanceById(instanceId);
     if (!instance || !instance.schedule_timezone || !instance.original_start_date) return;
     if (isOriginalFrozen(instance.original_start_date, instance.schedule_timezone)) return;
-    instances.updateOriginal(instanceId, instance.start_date, JSON.stringify(instances.daysByInstance(instanceId)));
+    // HRA-336: original_revision follows current_revision in lockstep while
+    // still pre-freeze — read AFTER any bumpCurrentRevision() this same
+    // transaction already applied, so the two numbers can never disagree for
+    // an instance that hasn't frozen yet.
+    instances.updateOriginal(
+      instanceId, instance.start_date, JSON.stringify(instances.daysByInstance(instanceId)), instance.current_revision,
+    );
+  }
+
+  // HRA-336: bumps current_revision exactly once, but only when the caller
+  // has already determined a real semantic change occurred — a failed
+  // operation never reaches this (the surrounding BEGIN/COMMIT rolls back),
+  // and a semantic no-op simply never calls it.
+  function bumpIfChanged(instanceId: number, changed: boolean): void {
+    if (changed) instances.bumpCurrentRevision(instanceId);
+  }
+
+  function toRevisionComparable(d: { section_name: string; week_number: number; day: number; date: string;
+    suffix: string | null; category: string | null; workout_type: string; segments: string;
+    activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number | boolean },
+  ): RevisionComparableDay {
+    return {
+      section_name: d.section_name, week_number: d.week_number, day: d.day, date: d.date,
+      suffix: d.suffix, category: d.category, workout_type: d.workout_type, segments: d.segments,
+      activity_target: d.activity_target, activity_description: d.activity_description, notes: d.notes,
+      needs_review: typeof d.needs_review === "boolean" ? (d.needs_review ? 1 : 0) : d.needs_review,
+    };
   }
 
   function instantiate(
@@ -96,7 +123,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       // exist — an instance whose start_date is already in the past is
       // frozen from this very write onward (syncOriginalIfNotFrozen isn't
       // used here: creation always establishes Original once, unconditionally).
-      instances.updateOriginal(instance.id, options.startDate, JSON.stringify(instances.daysByInstance(instance.id)));
+      instances.updateOriginal(
+        instance.id, options.startDate, JSON.stringify(instances.daysByInstance(instance.id)), instance.current_revision,
+      );
       db.exec("COMMIT");
       return { instance: instances.instanceById(instance.id)!, days: instances.daysByInstance(instance.id) };
     } catch (e) {
@@ -127,8 +156,10 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     // loaded anyway to build the freeze check's own error message.
     scheduleTimezone?: string,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
+    const instanceBefore = instances.instanceById(instanceId)!;
     db.exec("BEGIN");
     try {
+      let daysChanged = false;
       if (days) {
         // HRA-333: read BEFORE the delete below wipes them — a day/week
         // swap, section move, or plain re-save of an untouched day all
@@ -138,16 +169,30 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
         // recognize. Never trust a workout_id the caller supplies that
         // doesn't match one of THESE rows — that would let a stale or
         // cross-instance value silently steal another workout's lineage.
-        const currentWorkoutIds = new Set(instances.daysByInstance(instanceId).map(d => d.workout_id));
+        const daysBefore = instances.daysByInstance(instanceId);
+        const currentWorkoutIds = new Set(daysBefore.map(d => d.workout_id));
+        // HRA-336: no-op detection compares SLOT (section/week/day) + content,
+        // never workout_id — a re-save that doesn't echo any workout_id back
+        // still mints fresh ones below, which must never itself count as a
+        // change (see domain/plan-revision.ts).
+        daysChanged = daySetChanged(daysBefore.map(toRevisionComparable), days.map(toRevisionComparable));
         instances.deleteDaysByInstance(instanceId);
         for (const day of days) {
           const workoutId = day.workout_id && currentWorkoutIds.has(day.workout_id) ? day.workout_id : newWorkoutId();
           instances.createDay({ ...day, instance_id: instanceId, workout_id: workoutId });
         }
       }
+      const fieldsChanged = (fields.name !== undefined && fields.name !== instanceBefore.name)
+        || (fields.race_name !== undefined && fields.race_name !== instanceBefore.race_name)
+        || (fields.race_date !== undefined && fields.race_date !== instanceBefore.race_date)
+        || (fields.race_url !== undefined && fields.race_url !== instanceBefore.race_url);
+      const timezoneChanged = scheduleTimezone !== undefined && scheduleTimezone !== instanceBefore.schedule_timezone;
       instances.updateFields(instanceId, fields);
       if (scheduleTimezone) instances.updateScheduleTimezone(instanceId, scheduleTimezone);
       instances.clearApproval(instanceId);
+      // HRA-336: exactly one bump for this whole call, regardless of how many
+      // of days/fields/timezone actually changed together.
+      bumpIfChanged(instanceId, daysChanged || fieldsChanged || timezoneChanged);
       // HRA-332: mirrors the (possibly just-replaced) days and/or the
       // just-corrected timezone into Original — a no-op once frozen.
       syncOriginalIfNotFrozen(instanceId);
@@ -188,7 +233,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     // (see AgendaTab.tsx/MobileWorkoutSwap.tsx) silently drop this write.
     workoutId?: string,
   ): PlanInstanceDayRow {
-    const instanceId = instances.dayById(dayId)!.instance_id;
+    const dayBefore = instances.dayById(dayId)!;
+    const instanceId = dayBefore.instance_id;
+    const changed = dayPatchChanged(dayBefore, { dslFields, notes, scheduledTime, workoutId });
     db.exec("BEGIN");
     try {
       if (dslFields) {
@@ -207,6 +254,8 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       if (workoutId !== undefined) {
         instances.updateDayWorkoutId(dayId, workoutId);
       }
+      // HRA-336: this single day's edit is the whole semantic mutation here.
+      bumpIfChanged(instanceId, changed);
       // HRA-332: mirrors this day's change into Original — a no-op once frozen.
       syncOriginalIfNotFrozen(instanceId);
       db.exec("COMMIT");
@@ -231,6 +280,26 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
     instanceId: number, plan: RunPlan, options: InstantiateOptions, effectiveFrom: string,
   ): { instance: PlanInstanceRow; days: PlanInstanceDayRow[] } {
     const regeneratedDays = instantiatePlan(plan, options).filter(d => d.date >= effectiveFrom);
+
+    const instanceBefore = instances.instanceById(instanceId)!;
+    // HRA-336: the affected slice's own before-state, captured before any
+    // delete below — compared against regeneratedDays (which already only
+    // contains this same slice) to detect a genuine no-op regenerate (e.g.
+    // re-running with identical start_date/pace_overrides against an
+    // already-up-to-date instance).
+    const daysBeforeInScope = instances.daysByInstance(instanceId).filter(d => d.date >= effectiveFrom);
+    const newPaceOverridesJson = options.paceOverrides ? JSON.stringify(options.paceOverrides) : null;
+    const startOrPaceChanged = options.startDate !== instanceBefore.start_date
+      || newPaceOverridesJson !== instanceBefore.pace_overrides;
+    const daysChanged = daySetChanged(
+      daysBeforeInScope.map(toRevisionComparable),
+      regeneratedDays.map(d => toRevisionComparable({
+        section_name: d.section_name, week_number: d.week_number, day: d.day, date: d.date,
+        suffix: d.suffix ?? null, category: d.category ?? null, workout_type: d.workout_type,
+        segments: JSON.stringify(d.segments), activity_target: d.activity_target ? JSON.stringify(d.activity_target) : null,
+        activity_description: d.activity_description ?? null, notes: d.notes ?? null, needs_review: d.needs_review,
+      })),
+    );
 
     db.exec("BEGIN");
     try {
@@ -294,6 +363,9 @@ export function createPlanInstancesService(db: DatabaseSync, instances: PlanInst
       // persisted day content, exactly the class of edit that revokes
       // approval.
       instances.clearApproval(instanceId);
+      // HRA-336: one bump for the whole regenerate, whether the change was to
+      // start_date/pace_overrides, the regenerated day content, or both.
+      bumpIfChanged(instanceId, startOrPaceChanged || daysChanged);
       // HRA-332: mirrors the regenerated days + new start_date into
       // Original — a no-op once frozen.
       syncOriginalIfNotFrozen(instanceId);

@@ -56,7 +56,9 @@ function canonicalContent(day: ContentFields) {
   };
 }
 
-function deepEqual(a: unknown, b: unknown): boolean {
+// Exported for domain/plan-revision.ts's own no-op detection — the same
+// "compare parsed structural content, not JSON text" reasoning applies there.
+export function deepEqual(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
   if (Array.isArray(a) || Array.isArray(b)) {

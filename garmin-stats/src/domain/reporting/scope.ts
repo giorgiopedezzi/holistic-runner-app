@@ -37,7 +37,9 @@ export function classifyScopeBoundary(
 // The accepted set (AC11's "trusted" evidence) — 'unresolved' is deliberately
 // excluded here (see classifyActualPopulation below), matching docs/schema.md's
 // own "only manual_confirmed/manual_changed/automatic count as accepted".
-const ACCEPTED_STATUSES: AssociationStatus[] = ["automatic", "manual_confirmed", "manual_changed"];
+// Exported so workout-report.ts (HRA-336) can apply the exact same trust
+// boundary at single-workout granularity rather than re-deriving it.
+export const ACCEPTED_STATUSES: AssociationStatus[] = ["automatic", "manual_confirmed", "manual_changed"];
 
 export interface AssociationLookup {
   activity_id: number;

@@ -32,6 +32,7 @@ import { createSyncService } from "./services/sync.service.ts";
 import { createDeviceService } from "./services/device.service.ts";
 import { createPlanInstancesService } from "./services/plan-instances.service.ts";
 import { createWorkoutAssociationsService } from "./services/workout-associations.service.ts";
+import { createReportingService } from "./services/reporting.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -74,6 +75,7 @@ const syncService           = createSyncService(__dirname);
 const deviceService   = createDeviceService(__dirname);
 const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
 const workoutAssociationsService = createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo);
+const reportingService = createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo);
 
 // ── always-on Withings OAuth callback server (port 3002) ─────────────────────
 startWithingsCallbackServer(config, db);
@@ -93,7 +95,7 @@ const server = http.createServer(createApiHandler({
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
     sync: syncService, device: deviceService, planInstances: planInstancesService,
-    workoutAssociations: workoutAssociationsService,
+    workoutAssociations: workoutAssociationsService, reporting: reportingService,
   },
 }));
 
