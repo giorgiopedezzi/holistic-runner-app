@@ -8,7 +8,10 @@
  */
 import type { TrackPoint } from "@/types/api";
 
-export interface Pause { afterIndex: number; durationSec: number; }
+// HRA-337 AC8: `recorded` distinguishes a real device recording gap
+// (timestamp-based detection) from the near-zero-speed heuristic fallback —
+// "recorded" vs "inferred" provenance, never blended together.
+export interface Pause { afterIndex: number; durationSec: number; recorded: boolean; }
 export interface HrRecoveryFlag { afterIndex: number; delta: number; }
 
 const PAUSE_SPEED_EPS = 0.3; // m/s
@@ -23,7 +26,7 @@ export function detectPausesFromTimestamps(points: TrackPoint[], thresholdSec: n
     const a = points[i].timestamp_unix, b = points[i + 1].timestamp_unix;
     if (a == null || b == null) continue;
     const gap = b - a;
-    if (gap >= thresholdSec) pauses.push({ afterIndex: i, durationSec: gap });
+    if (gap >= thresholdSec) pauses.push({ afterIndex: i, durationSec: gap, recorded: true });
   }
   return pauses;
 }
@@ -41,7 +44,7 @@ export function detectPausesHeuristic(points: TrackPoint[], thresholdSec: number
     if (a == null || b == null) continue;
     const gap = b - a;
     if (gap >= thresholdSec) {
-      pauses.push({ afterIndex: i, durationSec: gap });
+      pauses.push({ afterIndex: i, durationSec: gap, recorded: false });
       flaggedIndices.add(i);
     }
   }
@@ -53,7 +56,7 @@ export function detectPausesHeuristic(points: TrackPoint[], thresholdSec: number
     if (runStart !== null && lastSlowIdx !== null && lastSlowIdx > runStart && !flaggedIndices.has(runStart)) {
       const a = points[runStart].elapsed_sec, b = points[lastSlowIdx].elapsed_sec;
       if (a != null && b != null && b - a >= thresholdSec) {
-        pauses.push({ afterIndex: runStart, durationSec: b - a });
+        pauses.push({ afterIndex: runStart, durationSec: b - a, recorded: false });
       }
     }
     runStart = null;
@@ -152,21 +155,35 @@ function nearestDistance(points: TrackPoint[], startIdx: number, dir: 1 | -1): n
   return null;
 }
 
-// HRA-311: one row per pause for the "Pauses (N)" inspection dialog — built
-// from the exact same `pauses` (afterIndex order, already chronological by
-// construction — see detectPausesFromTimestamps/detectPausesHeuristic) and
-// `points` the chart itself uses, so the dialog can never carry an
-// independent/stale copy. hrBefore/hrAfter reuse nearestHr the same way
-// computeHrRecovery does, but keep both raw values (not just the delta) —
-// the dialog's AC needs "start HR → recovered HR" displayed, not only the
-// magnitude computeHrRecovery/HrRecoveryFlag report.
+function nearestStamina(points: TrackPoint[], startIdx: number, dir: 1 | -1): number | null {
+  for (let i = startIdx; i >= 0 && i < points.length; i += dir) {
+    if (points[i].stamina != null) return points[i].stamina;
+  }
+  return null;
+}
+
+// HRA-311 (elapsed position + stamina context added HRA-337): one row per
+// pause for the "Pauses (N)" inspection dialog — built from the exact same
+// `pauses` (afterIndex order, already chronological by construction — see
+// detectPausesFromTimestamps/detectPausesHeuristic) and `points` the chart
+// itself uses, so the dialog can never carry an independent/stale copy.
+// hrBefore/hrAfter reuse nearestHr the same way computeHrRecovery does, but
+// keep both raw values (not just the delta) — the dialog's AC needs "start
+// HR → recovered HR" displayed, not only the magnitude computeHrRecovery/
+// HrRecoveryFlag report. staminaBefore/staminaAfter are the same
+// nearest-neighbor read applied to the stamina column (AC7's "reliable
+// stamina context around the pause") — never a fabricated interpolation.
 export interface PauseInspectionRow {
   afterIndex: number;
+  elapsedSec: number | null;
   durationSec: number;
   distanceM: number | null;
   hrBefore: number | null;
   hrAfter: number | null;
   hrDelta: number | null;
+  staminaBefore: number | null;
+  staminaAfter: number | null;
+  recorded: boolean; // HRA-337 AC8: a real recording gap vs the near-zero-speed heuristic
 }
 
 export function buildPauseInspectionRows(points: TrackPoint[], pauses: Pause[]): PauseInspectionRow[] {
@@ -175,11 +192,15 @@ export function buildPauseInspectionRows(points: TrackPoint[], pauses: Pause[]):
     const hrAfter = nearestHr(points, p.afterIndex + 1, 1);
     return {
       afterIndex: p.afterIndex,
+      elapsedSec: points[p.afterIndex]?.elapsed_sec ?? null,
       durationSec: p.durationSec,
       distanceM: nearestDistance(points, p.afterIndex, -1),
       hrBefore,
       hrAfter,
       hrDelta: hrBefore != null && hrAfter != null ? hrBefore - hrAfter : null,
+      staminaBefore: nearestStamina(points, p.afterIndex, -1),
+      staminaAfter: nearestStamina(points, p.afterIndex + 1, 1),
+      recorded: p.recorded,
     };
   });
 }

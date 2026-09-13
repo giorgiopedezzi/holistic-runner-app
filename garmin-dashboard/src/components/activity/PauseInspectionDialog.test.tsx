@@ -22,7 +22,10 @@ function stubPhoneWidth(isPhone: boolean) {
 }
 
 function row(overrides: Partial<PauseInspectionRow> = {}): PauseInspectionRow {
-  return { afterIndex: 0, durationSec: 60, distanceM: 1000, hrBefore: 150, hrAfter: 130, hrDelta: 20, ...overrides };
+  return {
+    afterIndex: 0, elapsedSec: 600, durationSec: 60, distanceM: 1000, hrBefore: 150, hrAfter: 130, hrDelta: 20,
+    staminaBefore: 70, staminaAfter: 68, recorded: true, ...overrides,
+  };
 }
 
 afterEach(() => {
@@ -90,6 +93,20 @@ describe("PauseInspectionDialog", () => {
     render(<PauseInspectionDialog rows={[row({ distanceM: 1609.344 })]} />);
     fireEvent.click(screen.getByRole("button", { name: "Pauses (1)" }));
     expect(screen.getAllByRole("row")[1]).toHaveTextContent("1.00 mi");
+  });
+
+  it("shows elapsed position, stamina context, and recorded/inferred provenance per pause (HRA-337 AC7/AC8)", () => {
+    stubPhoneWidth(false);
+    render(<PauseInspectionDialog rows={[
+      row({ elapsedSec: 615, staminaBefore: 70, staminaAfter: 68, recorded: true }),
+      row({ afterIndex: 20, elapsedSec: 1900, staminaBefore: null, staminaAfter: null, recorded: false }),
+    ]} />);
+    fireEvent.click(screen.getByRole("button", { name: "Pauses (2)" }));
+    const dataRows = screen.getAllByRole("row").slice(1);
+    expect(dataRows[0]).toHaveTextContent("70 → 68");
+    expect(dataRows[0]).toHaveTextContent("Recorded");
+    expect(dataRows[1]).toHaveTextContent("Unavailable");
+    expect(dataRows[1]).toHaveTextContent("Inferred");
   });
 
   it("dialog close returns to a plain closed state without any replay-control side effects (dialog has no play/stop of its own)", () => {

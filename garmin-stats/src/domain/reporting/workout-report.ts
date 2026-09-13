@@ -13,6 +13,10 @@ import { SCHEDULE_TIMEZONE_BACKFILL_FALLBACK } from "../plan-timezone.ts";
 import { ACCEPTED_STATUSES } from "./scope.ts";
 import { activityTimeBreakdown, aggregatePaceSecPerKm, raceComparisonTimeSec, type DistanceTimeRecord } from "./metrics.ts";
 import { computePlannedDayDistance, computePlannedDayDurationSec } from "./planned-metrics.ts";
+import {
+  computeHrEvidence, computePauseEvidence, computeStaminaEvidence,
+  type HrEvidence, type PauseEvidence, type PauseEvidencePointInput, type StaminaEvidence,
+} from "./evidence.ts";
 import type { WorkoutEvidenceState } from "./types.ts";
 
 export interface WorkoutReportInstanceInput {
@@ -42,6 +46,8 @@ export interface WorkoutReportActivityInput {
   distance_m: number | null;
   duration_sec: number | null;
   moving_time_sec: number | null;
+  avg_hr: number | null;
+  max_hr: number | null;
 }
 
 export interface WorkoutReportInputs {
@@ -58,6 +64,12 @@ export interface WorkoutReportInputs {
   associations: WorkoutReportAssociationInput[];
   // The activities referenced by `associations`, for evidence metrics only.
   activities: WorkoutReportActivityInput[];
+  // HRA-337: track_points for the ACCEPTED evidence activities only, keyed by
+  // activity_id — the caller (services/reporting.service.ts) loads these,
+  // this module never queries the DB. "The one recorded stamina series"
+  // (AC3) and pause detail/count/longest (AC5/AC7) both come from here;
+  // never loaded for Original/Current or for non-accepted activities.
+  trackPointsByActivity?: Map<number, PauseEvidencePointInput[]>;
   now?: Date;
   asOf?: Date;
 }
@@ -125,6 +137,13 @@ export interface WorkoutReportResult {
   planned: { original: WorkoutDatasetMetrics | null; current: WorkoutDatasetMetrics | null };
   actual: { metrics: WorkoutDatasetMetrics | null; evidence: WorkoutActualEvidence[]; hasAmbiguousEvidence: boolean };
   race: RaceReport | { isRace: false };
+  // HRA-337: Actual-only HR/stamina/pause evidence — null whenever there is
+  // no accepted activity to read it from (never a fabricated zero, AC1/AC13).
+  hr: HrEvidence | null;
+  // "The one recorded stamina series" (AC3) — from the FIRST accepted
+  // activity's own track_points only; never averaged across activities.
+  stamina: StaminaEvidence | null;
+  pauses: PauseEvidence | null;
   structuredQualityEvidence: { available: false; reason: "not_implemented" };
 }
 
@@ -146,7 +165,7 @@ function toEvidenceState(status: "pending" | "missed" | "completed"): WorkoutEvi
 }
 
 export function buildWorkoutReport(inputs: WorkoutReportInputs): WorkoutReportResult {
-  const { instance, workoutId, original, current, associations, activities } = inputs;
+  const { instance, workoutId, original, current, associations, activities, trackPointsByActivity } = inputs;
   const timeZone = instance.schedule_timezone ?? SCHEDULE_TIMEZONE_BACKFILL_FALLBACK;
   const now = inputs.now ?? new Date();
   const asOf = inputs.asOf ?? now;
@@ -186,6 +205,40 @@ export function buildWorkoutReport(inputs: WorkoutReportInputs): WorkoutReportRe
     const breakdown = activity ? activityTimeBreakdown(activity) : { elapsedSec: null, activeSec: null, pausedSec: null };
     return { activityId: a.activity_id, status: a.status, ...breakdown };
   });
+
+  // HRA-337: HR is cheap (activities.avg_hr/max_hr only) — computed over
+  // every accepted activity. Stamina/pauses need track_points, only ever
+  // loaded by the caller for accepted activities (never Original/Current,
+  // never non-accepted ones) — see WorkoutReportInputs.trackPointsByActivity.
+  const hr = acceptedActivities.length === 0 ? null : computeHrEvidence(acceptedActivities);
+
+  const firstAcceptedTrack = acceptedActivities.length > 0 && trackPointsByActivity
+    ? trackPointsByActivity.get(acceptedActivities[0].activity_id)
+    : undefined;
+  const stamina = firstAcceptedTrack ? computeStaminaEvidence(firstAcceptedTrack) : null;
+
+  // Pauses: aggregate detection across every accepted activity's own track
+  // (normally exactly one — a split run across two device files is the only
+  // case with more than one).
+  const pauses: PauseEvidence | null = (() => {
+    if (acceptedActivities.length === 0 || !trackPointsByActivity) return null;
+    let pauseCount = 0;
+    let longestPauseSec: number | null = null;
+    let totalPausedFromPausesSec: number | null = null;
+    const details: PauseEvidence["details"] = [];
+    let hasTrackData = false;
+    for (const a of acceptedActivities) {
+      const track = trackPointsByActivity.get(a.activity_id);
+      if (!track) continue;
+      const result = computePauseEvidence(track);
+      if (result.hasTrackData) hasTrackData = true;
+      pauseCount += result.pauseCount;
+      if (result.longestPauseSec != null) longestPauseSec = longestPauseSec == null ? result.longestPauseSec : Math.max(longestPauseSec, result.longestPauseSec);
+      if (result.totalPausedFromPausesSec != null) totalPausedFromPausesSec = (totalPausedFromPausesSec ?? 0) + result.totalPausedFromPausesSec;
+      details.push(...result.details);
+    }
+    return { pauseCount, longestPauseSec, totalPausedFromPausesSec, details, hasTrackData };
+  })();
 
   const referenceDate = current?.date ?? original?.date ?? null;
   const state: WorkoutEvidenceState = referenceDate == null
@@ -241,6 +294,9 @@ export function buildWorkoutReport(inputs: WorkoutReportInputs): WorkoutReportRe
     planned: { original: plannedOriginal, current: plannedCurrent },
     actual: { metrics: actualMetrics, evidence, hasAmbiguousEvidence },
     race,
+    hr,
+    stamina,
+    pauses,
     structuredQualityEvidence: { available: false, reason: "not_implemented" },
   };
 }

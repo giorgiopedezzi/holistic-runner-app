@@ -418,9 +418,48 @@
           "pausedSec": { "type": ["number", "null"] }
         }
       },
+      "WorkoutHrEvidence": {
+        "type": "object",
+        "description": "Actual-only HR evidence (HRA-337) — duration-weighted average across every accepted activity, never a planned value.",
+        "properties": {
+          "avgHr": { "type": ["number", "null"] }, "maxHr": { "type": ["number", "null"] },
+          "coverage": { "type": "object", "properties": { "withHr": { "type": "integer" }, "total": { "type": "integer" } } }
+        }
+      },
+      "WorkoutStaminaEvidence": {
+        "type": "object",
+        "description": "The ONE recorded stamina series (HRA-337, from the first accepted activity's track_points.stamina) — firstValid is never assumed to be 100%.",
+        "properties": {
+          "firstValid": { "type": ["number", "null"] }, "finish": { "type": ["number", "null"] },
+          "depletionPoints": { "type": ["number", "null"], "description": "firstValid - finish, in percentage points." },
+          "minimum": { "type": ["number", "null"] },
+          "coverage": { "type": "object", "properties": { "withStamina": { "type": "integer" }, "total": { "type": "integer" } } }
+        }
+      },
+      "WorkoutPauseDetail": {
+        "type": "object",
+        "description": "One detected pause (HRA-337) — same fields the existing frontend PauseInspectionDialog already renders for an activity viewed directly.",
+        "properties": {
+          "index": { "type": "integer", "description": "1-based, chronological." },
+          "elapsedSec": { "type": ["number", "null"] }, "distanceM": { "type": ["number", "null"] }, "durationSec": { "type": "number" },
+          "hrBefore": { "type": ["number", "null"] }, "hrAfter": { "type": ["number", "null"] }, "hrRecoveryDelta": { "type": ["number", "null"] },
+          "staminaBefore": { "type": ["number", "null"] }, "staminaAfter": { "type": ["number", "null"] },
+          "provenance": { "type": "string", "enum": ["recorded", "inferred"], "description": "'recorded' = a real device recording gap; 'inferred' = the near-zero-speed heuristic." }
+        }
+      },
+      "WorkoutPauseEvidence": {
+        "type": "object",
+        "description": "Pause evidence for this workout's accepted activities (HRA-337) — reuses domain/workout-metrics.ts's canonical detectPauseEvents, never a second detection algorithm.",
+        "properties": {
+          "pauseCount": { "type": "integer" }, "longestPauseSec": { "type": ["number", "null"] },
+          "totalPausedFromPausesSec": { "type": ["number", "null"] },
+          "details": { "type": "array", "items": { "$ref": "#/components/schemas/WorkoutPauseDetail" } },
+          "hasTrackData": { "type": "boolean", "description": "false when no track_points existed to run detection over at all — distinct from a real zero-pauses result." }
+        }
+      },
       "WorkoutReport": {
         "type": "object",
-        "description": "Response of GET .../plan-instances/{id}/reports/workouts/{workoutId} (HRA-336).",
+        "description": "Response of GET .../plan-instances/{id}/reports/workouts/{workoutId} (HRA-336; hr/stamina/pauses added HRA-337).",
         "properties": {
           "provenance": {
             "type": "object",
@@ -468,6 +507,9 @@
               "actualSource": { "type": "string", "enum": ["activity", "none"] }
             }
           },
+          "hr": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutHrEvidence" }, { "type": "null" } ], "description": "null when there is no accepted evidence activity (HRA-337)." },
+          "stamina": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutStaminaEvidence" }, { "type": "null" } ], "description": "null when there is no accepted evidence activity, or track_points weren't loaded for it (HRA-337)." },
+          "pauses": { "anyOf": [ { "$ref": "#/components/schemas/WorkoutPauseEvidence" }, { "type": "null" } ], "description": "null when there is no accepted evidence activity, or track_points weren't loaded for it (HRA-337)." },
           "structuredQualityEvidence": { "type": "object", "description": "HRA-342 slot — always {available: false, reason: 'not_implemented'} today." }
         }
       },

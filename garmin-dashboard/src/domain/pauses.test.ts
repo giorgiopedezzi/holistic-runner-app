@@ -141,12 +141,12 @@ describe("nearestHr / computeHrRecovery", () => {
   it("computes before−after HR delta per pause", () => {
     // pause afterIndex 1: HR 160 before (idx1), 120 after (idx2) → delta 40
     const points = [pt({ heart_rate: 155 }), pt({ heart_rate: 160 }), pt({ heart_rate: 120 })];
-    const flags = computeHrRecovery(points, [{ afterIndex: 1, durationSec: 300 }]);
+    const flags = computeHrRecovery(points, [{ afterIndex: 1, durationSec: 300, recorded: true }]);
     expect(flags).toEqual([{ afterIndex: 1, delta: 40 }]);
   });
 });
 
-describe("buildPauseInspectionRows (HRA-311 — Pauses (N) dialog)", () => {
+describe("buildPauseInspectionRows (HRA-311 — Pauses (N) dialog; elapsed/stamina/provenance added HRA-337)", () => {
   it("builds one row per pause, in the same chronological order, with distance + HR before/after/delta", () => {
     const points = [
       pt({ distance_m: 1000, heart_rate: 160 }),
@@ -154,31 +154,52 @@ describe("buildPauseInspectionRows (HRA-311 — Pauses (N) dialog)", () => {
       pt({ distance_m: 3000, heart_rate: 170 }),
       pt({ distance_m: 3500, heart_rate: 130 }),
     ];
-    const pauses = [{ afterIndex: 0, durationSec: 60 }, { afterIndex: 2, durationSec: 90 }];
+    const pauses = [{ afterIndex: 0, durationSec: 60, recorded: true }, { afterIndex: 2, durationSec: 90, recorded: false }];
     const rows = buildPauseInspectionRows(points, pauses);
     expect(rows).toEqual([
-      { afterIndex: 0, durationSec: 60, distanceM: 1000, hrBefore: 160, hrAfter: 120, hrDelta: 40 },
-      { afterIndex: 2, durationSec: 90, distanceM: 3000, hrBefore: 170, hrAfter: 130, hrDelta: 40 },
+      {
+        afterIndex: 0, elapsedSec: null, durationSec: 60, distanceM: 1000, hrBefore: 160, hrAfter: 120, hrDelta: 40,
+        staminaBefore: null, staminaAfter: null, recorded: true,
+      },
+      {
+        afterIndex: 2, elapsedSec: null, durationSec: 90, distanceM: 3000, hrBefore: 170, hrAfter: 130, hrDelta: 40,
+        staminaBefore: null, staminaAfter: null, recorded: false,
+      },
     ]);
   });
   it("reports hrBefore/hrAfter/hrDelta as null (never fabricated) when HR is missing on both sides", () => {
     const points = [pt({ distance_m: 1000 }), pt({ distance_m: 1500 })];
-    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45 }]);
-    expect(rows).toEqual([{ afterIndex: 0, durationSec: 45, distanceM: 1000, hrBefore: null, hrAfter: null, hrDelta: null }]);
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45, recorded: true }]);
+    expect(rows).toEqual([{
+      afterIndex: 0, elapsedSec: null, durationSec: 45, distanceM: 1000, hrBefore: null, hrAfter: null, hrDelta: null,
+      staminaBefore: null, staminaAfter: null, recorded: true,
+    }]);
   });
   it("reports hrDelta as null when only one side of HR is known", () => {
     const points = [pt({ distance_m: 1000, heart_rate: 160 }), pt({ distance_m: 1500 })];
-    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45 }]);
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45, recorded: true }]);
     expect(rows[0].hrBefore).toBe(160);
     expect(rows[0].hrAfter).toBeNull();
     expect(rows[0].hrDelta).toBeNull();
   });
   it("reports distanceM as null when no point around the pause has a known distance", () => {
     const points = [pt({ heart_rate: 160 }), pt({ heart_rate: 120 })];
-    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45 }]);
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 0, durationSec: 45, recorded: true }]);
     expect(rows[0].distanceM).toBeNull();
   });
   it("returns [] for no pauses", () => {
     expect(buildPauseInspectionRows([pt({})], [])).toEqual([]);
+  });
+  it("reports elapsedSec as the pause's own start position, and stamina before/after around it", () => {
+    const points = [
+      pt({ elapsed_sec: 600, stamina: 70 }),
+      pt({ elapsed_sec: 601, stamina: 68 }),
+      pt({ elapsed_sec: 646, stamina: 68 }),
+    ];
+    const rows = buildPauseInspectionRows(points, [{ afterIndex: 1, durationSec: 45, recorded: true }]);
+    expect(rows[0].elapsedSec).toBe(601);
+    expect(rows[0].staminaBefore).toBe(68);
+    expect(rows[0].staminaAfter).toBe(68);
+    expect(rows[0].recorded).toBe(true);
   });
 });

@@ -27,6 +27,9 @@ function report(overrides: Partial<WorkoutReport> = {}): WorkoutReport {
     planned: { original: { distanceM: 10000, approximate: false, durationSec: 3000, paceSecPerKm: 300 }, current: { distanceM: 10000, approximate: false, durationSec: 3000, paceSecPerKm: 300 } },
     actual: { metrics: null, evidence: [], hasAmbiguousEvidence: false },
     race: { isRace: false },
+    hr: null,
+    stamina: null,
+    pauses: null,
     structuredQualityEvidence: { available: false, reason: "not_implemented" },
     ...overrides,
   };
@@ -98,6 +101,51 @@ describe("WorkoutReportModal", () => {
     render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
 
     expect(await screen.findByText(/No accepted result yet/)).toBeInTheDocument();
+  });
+
+  it("renders HR average/max and coverage note when partial (HRA-337)", async () => {
+    installFetch({
+      [ROUTE]: json(report({
+        hr: { avgHr: 152.4, maxHr: 178, coverage: { withHr: 1, total: 2 } },
+      })),
+    });
+    render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
+
+    expect(await screen.findByText("152 bpm")).toBeInTheDocument();
+    expect(screen.getByText("178 bpm")).toBeInTheDocument();
+    expect(screen.getByText("HR available for 1 of 2 accepted activities.")).toBeInTheDocument();
+  });
+
+  it("renders stamina start/finish/depletion/minimum, never assuming a 100% start (HRA-337)", async () => {
+    installFetch({
+      [ROUTE]: json(report({
+        stamina: { firstValid: 82, finish: 48, depletionPoints: 34, minimum: 40, coverage: { withStamina: 4, total: 5 } },
+      })),
+    });
+    render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
+
+    expect(await screen.findByText("82")).toBeInTheDocument();
+    expect(screen.getByText("48")).toBeInTheDocument();
+    expect(screen.getByText("34 pts")).toBeInTheDocument();
+    expect(screen.getByText("40")).toBeInTheDocument();
+  });
+
+  it("renders pause count/longest/total and a direct-inspection dialog — no animation involved (HRA-337 AC5/AC6)", async () => {
+    installFetch({
+      [ROUTE]: json(report({
+        pauses: {
+          pauseCount: 1, longestPauseSec: 45, totalPausedFromPausesSec: 45, hasTrackData: true,
+          details: [{
+            index: 1, elapsedSec: 601, distanceM: 200, durationSec: 45, hrBefore: 158, hrAfter: 130,
+            hrRecoveryDelta: 28, staminaBefore: 68, staminaAfter: 68, provenance: "recorded",
+          }],
+        },
+      })),
+    });
+    render(<WorkoutReportModal instanceId={INSTANCE_ID} workoutId={WORKOUT_ID} onClose={() => {}} />);
+
+    expect(await screen.findByRole("button", { name: "Pauses (1)" })).toBeInTheDocument();
+    expect(screen.getAllByText("0:45")).toHaveLength(2); // longest + total, both 45s
   });
 
   it("renders an error banner when the fetch fails", async () => {

@@ -139,7 +139,7 @@ describe("buildChartData", () => {
   });
 
   it("inserts a null-value break row for a pause, carrying its duration", () => {
-    const rows = buildChartData(three.slice(0, 2), [{ afterIndex: 0, durationSec: 360 }], "distance", ["speed"], "speed");
+    const rows = buildChartData(three.slice(0, 2), [{ afterIndex: 0, durationSec: 360, recorded: true }], "distance", ["speed"], "speed");
     const brk = rows.find(r => r.realX === null);
     expect(brk).toBeDefined();
     expect(brk!.pauseDurationSec).toBe(360);

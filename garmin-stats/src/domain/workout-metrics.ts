@@ -49,7 +49,7 @@ export function computePaceStdDev(points: WorkoutTrackPoint[]): number | null {
 // no speed heuristics needed, whenever that field is available. The speed-
 // threshold heuristic is only the fallback for data that doesn't have it
 // (Strava streams, or pre-backfill Garmin rows).
-interface Pause { afterIndex: number; durationSec: number; }
+export interface Pause { afterIndex: number; durationSec: number; recorded: boolean; }
 
 const PAUSE_SPEED_EPS = 0.3; // m/s — matches ActivityModal.tsx
 const PAUSE_RESUME_TOLERANCE_SEC = 10;
@@ -60,7 +60,7 @@ function detectPausesFromTimestamps(points: WorkoutTrackPoint[], thresholdSec: n
     const a = points[i].timestamp_unix, b = points[i + 1].timestamp_unix;
     if (a == null || b == null) continue;
     const gap = b - a;
-    if (gap >= thresholdSec) pauses.push({ afterIndex: i, durationSec: gap });
+    if (gap >= thresholdSec) pauses.push({ afterIndex: i, durationSec: gap, recorded: true });
   }
   return pauses;
 }
@@ -74,7 +74,7 @@ function detectPausesHeuristic(points: WorkoutTrackPoint[], thresholdSec: number
     if (a == null || b == null) continue;
     const gap = b - a;
     if (gap >= thresholdSec) {
-      pauses.push({ afterIndex: i, durationSec: gap });
+      pauses.push({ afterIndex: i, durationSec: gap, recorded: false });
       flaggedIndices.add(i);
     }
   }
@@ -86,7 +86,7 @@ function detectPausesHeuristic(points: WorkoutTrackPoint[], thresholdSec: number
     if (runStart !== null && lastSlowIdx !== null && lastSlowIdx > runStart && !flaggedIndices.has(runStart)) {
       const a = points[runStart].elapsed_sec, b = points[lastSlowIdx].elapsed_sec;
       if (a != null && b != null && b - a >= thresholdSec) {
-        pauses.push({ afterIndex: runStart, durationSec: b - a });
+        pauses.push({ afterIndex: runStart, durationSec: b - a, recorded: false });
       }
     }
     runStart = null;
@@ -114,16 +114,26 @@ function detectPausesHeuristic(points: WorkoutTrackPoint[], thresholdSec: number
   return pauses.sort((x, y) => x.afterIndex - y.afterIndex);
 }
 
-// Counts stops lasting >= thresholdSec — social stops, water breaks, traffic
-// lights. Points must be chronologically ordered (same convention as
-// server.ts's q.track: "ORDER BY COALESCE(elapsed_sec,distance_m) ASC").
-export function countZeroPaceEvents(points: WorkoutTrackPoint[], thresholdSec = 5): number {
-  if (points.length < 2) return 0;
+// Dispatch: timestamps when every point has one (a real recording gap, no
+// speed heuristics needed), the near-zero-speed heuristic otherwise (Strava,
+// or pre-timestamp_unix-backfill Garmin rows). Points must be chronologically
+// ordered (same convention as server.ts's q.track:
+// "ORDER BY COALESCE(elapsed_sec,distance_m) ASC"). The one canonical pause
+// detector this backend has — countZeroPaceEvents (classifier) and HRA-337's
+// reporting evidence (domain/reporting/evidence.ts) both call this rather
+// than each re-implementing the timestamp/heuristic split.
+export function detectPauseEvents(points: WorkoutTrackPoint[], thresholdSec: number): Pause[] {
+  if (thresholdSec <= 0 || points.length < 2) return [];
   const hasRealTimestamps = points.every(p => p.timestamp_unix != null);
-  const pauses = hasRealTimestamps
+  return hasRealTimestamps
     ? detectPausesFromTimestamps(points, thresholdSec)
     : detectPausesHeuristic(points, thresholdSec);
-  return pauses.length;
+}
+
+// Counts stops lasting >= thresholdSec — social stops, water breaks, traffic
+// lights.
+export function countZeroPaceEvents(points: WorkoutTrackPoint[], thresholdSec = 5): number {
+  return detectPauseEvents(points, thresholdSec).length;
 }
 
 // ── Splits ─────────────────────────────────────────────────────────────────

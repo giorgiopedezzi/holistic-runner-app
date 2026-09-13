@@ -22,8 +22,12 @@ import { useQuery } from "@/hooks/useQuery";
 import { fmtDuration, fmtKm, fmtPace, instanceDayDateLabel } from "@/utils/fmt";
 import { Empty, ErrorBanner, LoadingSpinner } from "@/components/ui";
 import { PlannedPaceTargetChart } from "@/components/PlannedPaceTargetChart";
+import { PauseInspectionDialog } from "@/components/activity/PauseInspectionDialog";
+import type { PauseInspectionRow } from "@/domain/pauses";
 import type { PaceTargetBandModel } from "@/domain/planned-workout";
-import type { WorkoutDatasetMetrics, WorkoutEvidenceState, WorkoutReport } from "@/types/api";
+import type {
+  WorkoutDatasetMetrics, WorkoutEvidenceState, WorkoutHrEvidence, WorkoutPauseEvidence, WorkoutReport, WorkoutStaminaEvidence,
+} from "@/types/api";
 
 interface Props {
   instanceId: number;
@@ -69,6 +73,133 @@ function DatasetCard({ title, metrics, empty }: { title: string; metrics: Workou
         </>
       ) : (
         <span className="hra-text-muted text-meta">{empty}</span>
+      )}
+    </div>
+  );
+}
+
+// HRA-337: Actual-only HR/stamina/pause evidence sections. Each renders an
+// explicit empty/unavailable state rather than a zero when the report's own
+// field is null (AC1/AC13) — never a card that looks like real data.
+
+function HrSection({ hr }: { hr: WorkoutHrEvidence | null }) {
+  const { t } = useTranslation();
+  if (!hr) return null;
+  return (
+    <div className="hra-border rounded-lg p-3 flex flex-col gap-1.5">
+      <span className="hra-text-secondary text-label font-semibold">{t("workoutReport.hr.title", "Heart rate")}</span>
+      {hr.avgHr == null && hr.maxHr == null ? (
+        <span className="hra-text-muted text-meta">{t("workoutReport.hr.empty", "No HR evidence recorded.")}</span>
+      ) : (
+        <>
+          <div className="hra-fact-row">
+            <span className="hra-text-muted text-meta">{t("workoutReport.hr.avg", "Average")}</span>
+            <span className="hra-text-primary text-body">{hr.avgHr != null ? `${Math.round(hr.avgHr)} bpm` : "—"}</span>
+          </div>
+          <div className="hra-fact-row">
+            <span className="hra-text-muted text-meta">{t("workoutReport.hr.max", "Max")}</span>
+            <span className="hra-text-primary text-body">{hr.maxHr != null ? `${hr.maxHr} bpm` : "—"}</span>
+          </div>
+        </>
+      )}
+      {hr.coverage.withHr < hr.coverage.total && (
+        <span className="hra-text-muted text-meta">
+          {t("workoutReport.hr.partialCoverage", `HR available for ${hr.coverage.withHr} of ${hr.coverage.total} accepted activities.`,
+            { withHr: hr.coverage.withHr, total: hr.coverage.total })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function StaminaSection({ stamina }: { stamina: WorkoutStaminaEvidence | null }) {
+  const { t } = useTranslation();
+  if (!stamina) return null;
+  if (stamina.coverage.withStamina === 0) {
+    return (
+      <div className="hra-border rounded-lg p-3 flex flex-col gap-1.5">
+        <span className="hra-text-secondary text-label font-semibold">{t("workoutReport.stamina.title", "Stamina")}</span>
+        <span className="hra-text-muted text-meta">{t("workoutReport.stamina.empty", "No stamina evidence recorded.")}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="hra-border rounded-lg p-3 flex flex-col gap-1.5">
+      <span className="hra-text-secondary text-label font-semibold">{t("workoutReport.stamina.title", "Stamina")}</span>
+      <div className="hra-fact-row">
+        <span className="hra-text-muted text-meta">{t("workoutReport.stamina.start", "Start (first valid)")}</span>
+        <span className="hra-text-primary text-body">{stamina.firstValid != null ? stamina.firstValid : "—"}</span>
+      </div>
+      <div className="hra-fact-row">
+        <span className="hra-text-muted text-meta">{t("workoutReport.stamina.finish", "Finish")}</span>
+        <span className="hra-text-primary text-body">{stamina.finish != null ? stamina.finish : "—"}</span>
+      </div>
+      <div className="hra-fact-row">
+        <span className="hra-text-muted text-meta">{t("workoutReport.stamina.depletion", "Depletion")}</span>
+        <span className="hra-text-primary text-body">{stamina.depletionPoints != null ? `${stamina.depletionPoints} pts` : "—"}</span>
+      </div>
+      <div className="hra-fact-row">
+        <span className="hra-text-muted text-meta">{t("workoutReport.stamina.minimum", "Minimum")}</span>
+        <span className="hra-text-primary text-body">{stamina.minimum != null ? stamina.minimum : "—"}</span>
+      </div>
+    </div>
+  );
+}
+
+// Reshapes the backend's WorkoutPauseDetail[] into the exact PauseInspectionRow
+// shape PauseInspectionDialog already renders (ActivityDetailBody's own
+// per-activity dialog) — one inspector component, never a second one for the
+// report (AC6's "reuse the existing pause inspector").
+function toPauseInspectionRows(pauses: WorkoutPauseEvidence): PauseInspectionRow[] {
+  return pauses.details.map(d => ({
+    afterIndex: d.index - 1,
+    elapsedSec: d.elapsedSec,
+    durationSec: d.durationSec,
+    distanceM: d.distanceM,
+    hrBefore: d.hrBefore,
+    hrAfter: d.hrAfter,
+    hrDelta: d.hrRecoveryDelta,
+    staminaBefore: d.staminaBefore,
+    staminaAfter: d.staminaAfter,
+    recorded: d.provenance === "recorded",
+  }));
+}
+
+function PausesSection({ pauses }: { pauses: WorkoutPauseEvidence | null }) {
+  const { t } = useTranslation();
+  if (!pauses) return null;
+  if (!pauses.hasTrackData) {
+    return (
+      <div className="hra-border rounded-lg p-3 flex flex-col gap-1.5">
+        <span className="hra-text-secondary text-label font-semibold">{t("workoutReport.pauses.title", "Pauses")}</span>
+        <span className="hra-text-muted text-meta">{t("workoutReport.pauses.noTrackData", "No track data available to detect pauses.")}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="hra-border rounded-lg p-3 flex flex-col gap-1.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <span className="hra-text-secondary text-label font-semibold">{t("workoutReport.pauses.title", "Pauses")}</span>
+        {/* HRA-337 AC6: direct inspection from the report itself — no animation to play */}
+        <PauseInspectionDialog rows={toPauseInspectionRows(pauses)} />
+      </div>
+      {pauses.pauseCount === 0 ? (
+        <span className="hra-text-muted text-meta">{t("workoutReport.pauses.empty", "No pauses detected.")}</span>
+      ) : (
+        <>
+          <div className="hra-fact-row">
+            <span className="hra-text-muted text-meta">{t("workoutReport.pauses.count", "Count")}</span>
+            <span className="hra-text-primary text-body">{pauses.pauseCount}</span>
+          </div>
+          <div className="hra-fact-row">
+            <span className="hra-text-muted text-meta">{t("workoutReport.pauses.longest", "Longest")}</span>
+            <span className="hra-text-primary text-body">{fmtDuration(pauses.longestPauseSec)}</span>
+          </div>
+          <div className="hra-fact-row">
+            <span className="hra-text-muted text-meta">{t("workoutReport.pauses.total", "Total paused")}</span>
+            <span className="hra-text-primary text-body">{fmtDuration(pauses.totalPausedFromPausesSec)}</span>
+          </div>
+        </>
       )}
     </div>
   );
@@ -219,6 +350,12 @@ function ReportBody({ report, paceTargetBands }: { report: WorkoutReport; paceTa
           {t("workoutReport.ambiguous", "An unresolved activity link exists for this workout — visible, but not counted above until confirmed.")}
         </span>
       )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <HrSection hr={report.hr} />
+        <StaminaSection stamina={report.stamina} />
+        <PausesSection pauses={report.pauses} />
+      </div>
 
       <RaceSection report={report} />
 

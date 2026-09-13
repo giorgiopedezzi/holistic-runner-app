@@ -234,6 +234,44 @@ export interface WorkoutRace {
   actualSource?: "activity" | "none";
 }
 
+// ── HR/stamina/pause evidence (HRA-337) — mirrors
+// garmin-stats/src/domain/reporting/evidence.ts's exported types exactly.
+
+export interface WorkoutHrEvidence {
+  avgHr: number | null;
+  maxHr: number | null;
+  coverage: { withHr: number; total: number };
+}
+
+export interface WorkoutStaminaEvidence {
+  firstValid: number | null;
+  finish: number | null;
+  depletionPoints: number | null;
+  minimum: number | null;
+  coverage: { withStamina: number; total: number };
+}
+
+export interface WorkoutPauseDetail {
+  index: number;
+  elapsedSec: number | null;
+  distanceM: number | null;
+  durationSec: number;
+  hrBefore: number | null;
+  hrAfter: number | null;
+  hrRecoveryDelta: number | null;
+  staminaBefore: number | null;
+  staminaAfter: number | null;
+  provenance: "recorded" | "inferred";
+}
+
+export interface WorkoutPauseEvidence {
+  pauseCount: number;
+  longestPauseSec: number | null;
+  totalPausedFromPausesSec: number | null;
+  details: WorkoutPauseDetail[];
+  hasTrackData: boolean;
+}
+
 export interface WorkoutReport {
   provenance: {
     planInstanceId: number;
@@ -260,6 +298,9 @@ export interface WorkoutReport {
   planned: { original: WorkoutDatasetMetrics | null; current: WorkoutDatasetMetrics | null };
   actual: { metrics: WorkoutDatasetMetrics | null; evidence: WorkoutActualEvidence[]; hasAmbiguousEvidence: boolean };
   race: WorkoutRace;
+  hr: WorkoutHrEvidence | null;
+  stamina: WorkoutStaminaEvidence | null;
+  pauses: WorkoutPauseEvidence | null;
   structuredQualityEvidence: { available: false; reason: "not_implemented" };
 }
 
