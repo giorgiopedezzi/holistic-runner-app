@@ -847,13 +847,22 @@ export function ActivityChartSection({
             {chartOptionsFields}
             <PauseInspectionDialog rows={pauseInspectionRows} />
           </div>
-          <div className="hra-activity-metric-controls hra-row-wrap gap-4 justify-end">
+          <div className="hra-activity-metric-controls grid items-center gap-4 justify-end">
             {/* HRA-303 AC14/section 6: "Include heart rate, cadence, and power
                 only when the activity contains those data" — an unavailable
                 metric's chip is omitted outright now, not shown disabled (the
                 pre-Story behavior MetricLegendChip's own `available`/disabled
                 path still supports, for any future caller that doesn't
-                pre-filter). */}
+                pre-filter).
+                HRA-357 corrective round: a real 2-column CSS grid (row-major
+                fill via `.hra-activity-metric-controls`'s own
+                `grid-template-columns`, index.css) — was a flex-wrap row,
+                which right-aligned each wrapped LINE's own last chip
+                (Cadence, Stamina) but left each line's FIRST chip (Heart
+                rate, Power) starting whereever that line's own content
+                happened to begin, so the column boundary between the two
+                never lined up. A grid gives every column a shared width
+                instead, so Heart rate/Power's right edges now align too. */}
             {OPTIONAL_METRIC_ORDER.filter(key => availableMetrics[key]).map(key => (
               <MetricLegendChip
                 key={key}
@@ -874,18 +883,17 @@ export function ActivityChartSection({
         </div>
       )}
 
-      {/* HRA-357: the key-facts group (Distance → selected Pace/Speed → Avg
-          HR → Final stamina) now reads FIRST, with Play/Stop pinned to the
-          far end (`ml-auto` on its own group) instead of the earlier
-          left-Play/Stop, right-badges split — that split forced a wide,
-          mostly-empty middle whenever no planned workout was selected. The
-          row now uses natural grouped spacing (flex-wrap + gap) instead of a
-          fixed-column grid, so its width tracks its actual content.
-          Left/right-padded by CHART_HEADER_EXTRA_LEFT/RIGHT so the row still
-          lines up with the terrain/plotted-line width below, not just
-          ChartCard's own baseline padding (dashboard design-system rework:
-          "the row INSIDE the graph card must be the same width as the
-          terrain/graph lines"). */}
+      {/* HRA-357 corrective round: Play/Stop is back on the LEFT and the
+          key-facts group (Distance → selected Pace/Speed → Avg HR → Final
+          stamina) back on the RIGHT (`ml-auto` on the facts group, not
+          Play/Stop) — restoring the pre-Story left/right split per explicit
+          feedback, while keeping this Story's own flex-based row (not the
+          earlier fixed-column grid) so there's still no wide, mostly-empty
+          middle when no planned workout is selected. Left/right-padded by
+          CHART_HEADER_EXTRA_LEFT/RIGHT so the row still lines up with the
+          terrain/plotted-line width below, not just ChartCard's own baseline
+          padding (dashboard design-system rework: "the row INSIDE the graph
+          card must be the same width as the terrain/graph lines"). */}
       <ChartCard
         controlsRow={
         isPhone ? (
@@ -938,10 +946,29 @@ export function ActivityChartSection({
           "--chart-controls-left": `${CHART_HEADER_EXTRA_LEFT}px`,
           "--chart-controls-right": `${CHART_HEADER_EXTRA_RIGHT}px`,
         } as CSSProperties}>
-          {/* Key-facts group, first (HRA-357 AC: "Distance, selected
-              Pace/Speed, Avg HR, Final stamina as one visually coherent
-              group"). */}
-          <div className="hra-activity-chart-kpis hra-row-wrap gap-2">
+          {/* Play/Stop, first (left) — plus, only when the planned overlay
+              actually runs past the real activity's own distance, a small
+              note underneath explaining why the runner stops short of the
+              planned workout's full length. */}
+          <div className="flex flex-col items-start gap-2">
+            <div className="flex items-center gap-1.5">
+              <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
+              <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
+            </div>
+            {plannedShortNote}
+          </div>
+          {/* The planned-workout pill + card toggle, the Actual/Planned
+              legend while the overlay is actually shown, then the same-day
+              scheduled-workout picker when there's more than one candidate —
+              only rendered once a scheduled workout is actually selected
+              (plannedModel resolves). */}
+          <div className="hra-row-wrap gap-3 items-center">
+            {plannedControls}
+          </div>
+          {/* Key-facts group (Distance, selected Pace/Speed, Avg HR, Final
+              stamina as one visually coherent group — HRA-357 AC), pinned to
+              the row's far end via `ml-auto`. */}
+          <div className="hra-activity-chart-kpis hra-row-wrap gap-2 ml-auto">
             <GraphKpiCard icon={<MapPin size={16} />} iconColor="var(--accent)"
               value={distanceKm.main} unit={distanceKm.unit} label={t("activity.stat.distance", "Distance")} />
             <GraphKpiCard icon={<Gauge size={16} />} iconColor="var(--accent)"
@@ -954,25 +981,6 @@ export function ActivityChartSection({
               <GraphKpiCard icon={<Zap size={16} color={METRIC_DEFS.stamina.color} />} iconColor={METRIC_DEFS.stamina.color}
                 value={`${Math.round(finalStaminaPct)}`} unit="%" label={t("activity.stat.finalStamina", "Final stamina")} />
             )}
-          </div>
-          {/* The planned-workout pill + card toggle, the Actual/Planned
-              legend while the overlay is actually shown, then the same-day
-              scheduled-workout picker when there's more than one candidate —
-              only rendered once a scheduled workout is actually selected
-              (plannedModel resolves). */}
-          <div className="hra-row-wrap gap-3 items-center">
-            {plannedControls}
-          </div>
-          {/* Play/Stop, pinned to the row's far end via `ml-auto` — plus,
-              only when the planned overlay actually runs past the real
-              activity's own distance, a small note underneath explaining why
-              the runner stops short of the planned workout's full length. */}
-          <div className="flex flex-col items-end gap-2 ml-auto">
-            <div className="flex items-center gap-1.5">
-              <RunnerPlayButton status={playStatus} onClick={handlePlayClick} disabled={!runnerReady} />
-              <RunnerStopButton disabled={!stopEnabled} onClick={handleStopClick} />
-            </div>
-            {plannedShortNote}
           </div>
         </div>
         )

@@ -3211,7 +3211,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   background: var(--legend-color, var(--accent));
 }
 .hra-activity-metric-card { margin-top: var(--section-gap); }
-.hra-activity-metric-controls { padding-inline: 8px; }
+/* HRA-357 corrective round: a genuine 2-column grid (was a flex-wrap row) so
+   the two columns get a shared width each — see the JSX call site's own
+   comment for why a wrapping flex row couldn't align Heart rate/Power's own
+   right edges. `grid-auto-flow` is left at its `row` default, so
+   OPTIONAL_METRIC_ORDER's four entries (heart_rate, cadence, power, stamina)
+   fill row-major: heart rate+cadence on row 1, power+stamina on row 2. */
+.hra-activity-metric-controls { padding-inline: 8px; grid-template-columns: repeat(2, auto); }
 /* HRA-357: flex row (was a 3-column `auto 1fr auto` grid) — the fixed grid
    pinned Play/Stop and the badge group to opposite edges, forcing a wide,
    mostly-empty middle whenever no planned workout was selected. Flex-wrap +
