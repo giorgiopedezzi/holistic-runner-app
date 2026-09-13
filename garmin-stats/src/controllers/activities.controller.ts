@@ -27,8 +27,10 @@ function parseId(pathname: string): number {
 export function createActivitiesController(ctx: AppContext) {
   const repo = ctx.repos.activities;
   const activityTypes = ctx.repos.activityTypes;
+  const planInstances = ctx.repos.planInstances;
   const service = ctx.services.activities;
   const classification = ctx.services.classification;
+  const associations = ctx.services.workoutAssociations;
 
   const range: Handler = (_req, res) => send(res, repo.dateRange());
 
@@ -167,6 +169,47 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, repo.byId(id));
   };
 
+  // GET /api/v1/activities/:id/association — this activity's current
+  // planned-workout link, or a nulled-out AssociationView when none exists
+  // yet (a legitimate steady state — "extra/unplanned" — not an error).
+  const getAssociation: Handler = (_req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association$/)![1]);
+    if (!repo.byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, associations.getForActivity(id));
+  };
+
+  // GET /api/v1/activities/:id/association-candidates — every "run" plan day
+  // (across any instance) sharing this activity's own local calendar date,
+  // for the manual replace/confirm picker (HRA-334, AC3).
+  const associationCandidates: Handler = (_req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association-candidates$/)![1]);
+    if (!repo.byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, associations.candidatesForActivity(id));
+  };
+
+  // PUT /api/v1/activities/:id/association — body { workout_id }. Full
+  // replacement of this sub-resource (same "own path per concern" pattern as
+  // setType above) — sets/replaces/confirms a human-made link. workout_id
+  // must name a CURRENT plan day (any workout_type — a manual override may
+  // legitimately point at a day that moved, HRA-334 Scope).
+  const setAssociation: Handler = async (req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association$/)![1]);
+    if (!repo.byId(id)) throw notFound(`Activity ${id} not found.`);
+    const body = await readJsonBody<{ workout_id?: unknown }>(req);
+    if (typeof body.workout_id !== "string" || !body.workout_id) throw unprocessable("workout_id must be a non-empty string.");
+    if (!planInstances.dayByWorkoutId(body.workout_id)) throw unprocessable(`Unknown workout_id ${body.workout_id}.`);
+    return send(res, associations.setAssociation(id, body.workout_id));
+  };
+
+  // DELETE /api/v1/activities/:id/association — explicitly marks this
+  // activity as not part of any plan (HRA-334 Scope: "represent extra/
+  // unplanned activities truthfully"), immune to later automatic matching.
+  const clearAssociation: Handler = (_req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association$/)![1]);
+    if (!repo.byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, associations.clearAssociation(id));
+  };
+
   // POST /api/activities/confirm — bulk-equivalent of thumbs-up. Body { ids, method? }.
   const confirm: Handler = async (req, res) => {
     const body = await readJsonBody<{ ids?: unknown; method?: unknown }>(req);
@@ -188,5 +231,8 @@ export function createActivitiesController(ctx: AppContext) {
     return send(res, purge ? service.purge(ids) : service.restore(ids));
   };
 
-  return { range, list, count, races, trash, getById, track, deleteRange, deleteById, classify, feedback, setType, confirm, restorePurge };
+  return {
+    range, list, count, races, trash, getById, track, deleteRange, deleteById, classify, feedback, setType, confirm, restorePurge,
+    getAssociation, associationCandidates, setAssociation, clearAssociation,
+  };
 }

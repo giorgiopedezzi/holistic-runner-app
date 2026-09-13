@@ -13,6 +13,10 @@ import { loadConfig, requireGarminConfig, getArg, hasFlag } from "../config.ts";
 import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
 import { parseFit } from "../domain/fit-parser.ts";
 import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
+import { createActivitiesRepo } from "../repositories/activities.repo.ts";
+import { createPlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
+import { createWorkoutAssociationsRepo } from "../repositories/workout-associations.repo.ts";
+import { createWorkoutAssociationsService } from "../services/workout-associations.service.ts";
 
 // Handle ESM path resolution requirements natively
 const __filename = fileURLToPath(import.meta.url);
@@ -223,6 +227,14 @@ async function main(): Promise<void> {
 
   // 2. Parse the archive directory state into SQLite
   await processLocalSync(fitArchivePath);
+
+  // 3. HRA-334: re-run the conservative planned-workout/activity matcher now
+  // that new activities may exist — this script runs as its own process with
+  // its own DB connection, so the server's in-process wiring never sees these
+  // imports on its own.
+  createWorkoutAssociationsService(
+    db, createActivitiesRepo(db), createPlanInstancesRepo(db), createWorkoutAssociationsRepo(db),
+  ).reconcile();
 }
 
 main();

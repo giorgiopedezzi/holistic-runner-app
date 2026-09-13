@@ -101,6 +101,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))    return await planTemplates.instanceById(req, res, url);
         if (/^\/api\/v1\/locales\/[^/]+$/.test(route))     return await locales.get(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/track$/.test(route)) return await activities.track(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/association-candidates$/.test(route)) return await activities.associationCandidates(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await activities.getAssociation(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await activities.getById(req, res, url);
       }
 
@@ -111,6 +113,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await demo(dateRanges.remove)(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await demo(planTemplates.remove)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await demo(planTemplates.removeInstance)(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await demo(activities.clearAssociation)(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL
@@ -133,6 +136,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/language")        return await settings.updateLanguage(req, res, url);
         if (route === "/api/v1/settings/palette")         return await settings.updatePalette(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await demo(activities.setType)(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await demo(activities.setAssociation)(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);
         if (/^\/api\/v1\/plan-templates\/\d+$/.test(route))   return await planTemplates.update(req, res, url);
       }

@@ -137,6 +137,32 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
   const deleteDayByIdentityStmt = prepareLive(
     "DELETE FROM plan_instance_days WHERE instance_id = ? AND section_name = ? AND week_number = ? AND day = ?",
   );
+  // HRA-334: the automatic-matcher's own candidate pool — every "run"-type
+  // day across every instance (any approved_at state, same "any instance may
+  // contain candidates" scope as findDaysByDateAndWorkoutTypeStmt above),
+  // paired with its owning instance's schedule_timezone so the matcher can
+  // convert an activity's UTC-ish activity_date into the SAME local calendar
+  // frame this day's own `date` was authored in (AC3). REST/OTHER/etc. are
+  // never included — the matcher never even sees them (AC5/AC6).
+  const runDaysWithTimezoneStmt = prepareLive(`
+    SELECT pid.workout_id, pid.date, pi.schedule_timezone
+    FROM plan_instance_days pid JOIN plan_instances pi ON pi.id = pid.instance_id
+    WHERE pid.workout_type = 'run'
+  `);
+  // HRA-334: the CURRENT plan day a given workout_id resolves to right now
+  // (a workout_id survives a swap/regenerate, but the row it lives on can
+  // change) — undefined once the workout has been removed from Current
+  // entirely (e.g. its instance was deleted). Denormalized with the owning
+  // instance's name, same convenience findDaysByDateAndWorkoutTypeStmt above
+  // already provides.
+  const dayByWorkoutIdStmt = prepareLive(`
+    SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
+           pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
+           pid.scheduled_time, pid.customized_at, pid.workout_id, pi.name AS instance_name
+    FROM plan_instance_days pid
+    JOIN plan_instances pi ON pi.id = pid.instance_id
+    WHERE pid.workout_id = ?
+  `);
   const clearApprovalStmt = prepareLive("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
   const approveStmt = prepareLive("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
   // HRA-249: the candidate's own resolved date range for the overlap check
@@ -202,6 +228,10 @@ export function createPlanInstancesRepo(db: DatabaseSync) {
       findDaysByDateAndWorkoutTypeStmt.all(date, workoutType) as unknown as PlanInstanceDayWithInstance[],
     activeInstanceIdForDate: (date: string): number | undefined =>
       (findActiveInstanceIdForDateStmt.get(date) as { id: number } | undefined)?.id,
+    runDaysWithTimezone: (): { workout_id: string; date: string; schedule_timezone: string | null }[] =>
+      runDaysWithTimezoneStmt.all() as unknown as { workout_id: string; date: string; schedule_timezone: string | null }[],
+    dayByWorkoutId: (workoutId: string): PlanInstanceDayWithInstance | undefined =>
+      dayByWorkoutIdStmt.get(workoutId) as unknown as PlanInstanceDayWithInstance | undefined,
     createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
       const info = insertInstance.run({
         $template_id: i.template_id, $start_date: i.start_date,

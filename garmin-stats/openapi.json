@@ -358,6 +358,21 @@
           "instance_name": { "type": ["string", "null"], "description": "The owning plan_instances.name — nullable only for the same legacy-migration reason PlanInstance.name is (HRA-114)." }
         }
       },
+      "AssociationView": {
+        "type": "object",
+        "description": "HRA-334: one activity's link to a planned workout (plan_instance_days.workout_id), denormalized with its CURRENT plan-day context. workout_id/status and every plan-day field are null when no association exists yet (extra/unplanned — a legitimate state, not an error) or once the linked workout has left Current entirely.",
+        "required": ["activity_id", "workout_id", "status", "instance_id", "instance_name", "section_name", "week_number", "date"],
+        "properties": {
+          "activity_id": { "type": "integer" },
+          "workout_id": { "type": ["string", "null"] },
+          "status": { "type": ["string", "null"], "enum": ["automatic", "manual_confirmed", "manual_changed", "unresolved", null] },
+          "instance_id": { "type": ["integer", "null"] },
+          "instance_name": { "type": ["string", "null"] },
+          "section_name": { "type": ["string", "null"] },
+          "week_number": { "type": ["integer", "null"] },
+          "date": { "type": ["string", "null"], "format": "date" }
+        }
+      },
       "PlanInstance": {
         "type": "object",
         "description": "One resolved instantiation of a plan template for a specific race.",
@@ -457,6 +472,31 @@
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_type_id"], "properties": { "activity_type_id": { "type": "integer" }, "name": { "type": "string" } } } } } },
         "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/activities/{id}/association": {
+      "get": {
+        "tags": ["activities"], "summary": "Get this activity's current planned-workout link (HRA-334)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "The link, or all-null fields when none exists yet (extra/unplanned — not an error).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssociationView" } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
+      },
+      "put": {
+        "tags": ["activities"], "summary": "Set/replace/confirm this activity's planned-workout link (replace sub-resource)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["workout_id"], "properties": { "workout_id": { "type": "string", "description": "A plan_instance_days.workout_id naming a CURRENT plan day." } } } } } },
+        "responses": { "200": { "description": "The updated link.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssociationView" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "delete": {
+        "tags": ["activities"], "summary": "Explicitly mark this activity as not part of any plan (HRA-334)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "The cleared link (workout_id null, status manual_changed).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AssociationView" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/activities/{id}/association-candidates": {
+      "get": {
+        "tags": ["activities"], "summary": "List 'run' plan days sharing this activity's own local calendar date (manual picker)",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "Candidate plan days.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/PlanInstanceDayWithInstance" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } }
       }
     },
     "/api/v1/activities/{id}/classify": {

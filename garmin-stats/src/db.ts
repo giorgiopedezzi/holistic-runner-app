@@ -494,12 +494,39 @@ export function initSchema(db: DatabaseSync): void {
       created_at                    TEXT    DEFAULT (datetime('now'))
     );
 
+    -- HRA-334: the persisted link between one actual activity and one planned
+    -- workout (plan_instance_days.workout_id — HRA-333's stable identity, not
+    -- plan_instance_days.id, so the link survives a day/week swap or a
+    -- regenerate). One row per activity (activity_id UNIQUE) — an activity's
+    -- own evidence belongs to at most one planned workout at a time — but
+    -- workout_id itself is NOT unique here, so many activities (e.g. a run
+    -- split across two device files) can share one planned workout when a
+    -- human manually links both (docs/schema.md).
+    -- status is the provenance: 'automatic' (this Story's own uniqueness-only
+    -- matcher), 'manual_confirmed' (a human accepted the current workout_id,
+    -- whether it started automatic or was freshly picked), 'manual_changed'
+    -- (a human pointed this activity at a different workout_id, INCLUDING
+    -- workout_id = NULL to explicitly record "not part of any plan" — see
+    -- clearAssociation), or 'unresolved' (a previously-'automatic' row whose
+    -- uniqueness broke on a later import — see reconcileAssociations). Only
+    -- 'manual_confirmed'/'manual_changed' are immune to reconciliation; every
+    -- other status is re-evaluated on every sync.
+    CREATE TABLE IF NOT EXISTS workout_associations (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      activity_id INTEGER NOT NULL UNIQUE REFERENCES activities(id) ON DELETE CASCADE,
+      workout_id  TEXT,
+      status      TEXT    NOT NULL,
+      created_at  TEXT    DEFAULT (datetime('now')),
+      updated_at  TEXT    DEFAULT (datetime('now'))
+    );
+
     CREATE INDEX IF NOT EXISTS idx_activities_date ON activities(date_only);
     CREATE INDEX IF NOT EXISTS idx_track_activity  ON track_points(activity_id);
     CREATE INDEX IF NOT EXISTS idx_body_date       ON body_measurements(date_only);
     CREATE INDEX IF NOT EXISTS idx_plan_instances_template  ON plan_instances(template_id);
     CREATE INDEX IF NOT EXISTS idx_plan_instance_days_inst  ON plan_instance_days(instance_id);
     CREATE INDEX IF NOT EXISTS idx_plan_instance_days_date  ON plan_instance_days(date);
+    CREATE INDEX IF NOT EXISTS idx_workout_associations_workout ON workout_associations(workout_id);
   `);
 
   // Ensure the single settings row exists — CREATE TABLE IF NOT EXISTS above
@@ -920,6 +947,18 @@ export interface FeedbackRow {
   feature_interest_other_free_text: string | null;
   app_type_choice: string | null;
   created_at: string;
+}
+
+// HRA-334: one activity's link to a planned workout (plan_instance_days.
+// workout_id — see the CREATE TABLE comment above for the status taxonomy).
+export type AssociationStatus = "automatic" | "manual_confirmed" | "manual_changed" | "unresolved";
+export interface WorkoutAssociationRow {
+  id: number;
+  activity_id: number;
+  workout_id: string | null;
+  status: AssociationStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 // A race-type activity (activity_type_id != Training), as offered on the

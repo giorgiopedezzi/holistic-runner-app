@@ -8,6 +8,7 @@ import { Stat, StatGrid, ErrorBanner, LoadingSpinner, Badge, AccordionCard, Empt
 import { ClassificationCard } from "../ClassificationCard";
 import { ActivityTypePicker } from "./ActivityTypePicker";
 import { ActivityActionsMenu } from "./ActivityActionsMenu";
+import { WorkoutAssociationControl } from "./WorkoutAssociationControl";
 import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
 import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
@@ -479,6 +480,8 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 </StatGrid>
               );
             })()}
+
+            {activity.sport === "running" && <WorkoutAssociationControl activityId={activity.id} />}
 
             {track.length <= 5 && (
               // Distance/Speed-Pace moved inside the graph (see above) —

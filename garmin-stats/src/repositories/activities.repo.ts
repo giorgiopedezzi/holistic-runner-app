@@ -25,6 +25,14 @@ export function createActivitiesRepo(db: DatabaseSync) {
   // any recently-viewed range.
   const races         = prepareLive("SELECT id,date_only,activity_type_id,activity_name,distance_m FROM activities WHERE activity_type_id != 1 AND deleted_at IS NULL ORDER BY date_only DESC LIMIT ? OFFSET ?");
   const racesCount     = prepareLive("SELECT COUNT(*) AS count FROM activities WHERE activity_type_id != 1 AND deleted_at IS NULL");
+  // HRA-334: the automatic-matcher's own candidate pool — every non-deleted
+  // running activity, id + activity_date only (the matcher recomputes each
+  // one's LOCAL date itself, per the compared workout's own schedule_timezone
+  // — see domain/workout-association.ts — never activities.date_only, which
+  // isn't timezone-aware the same way).
+  const runningActivitiesForAssociation = prepareLive(
+    "SELECT id, activity_date FROM activities WHERE sport = 'running' AND deleted_at IS NULL",
+  );
 
   // delete (soft) / trash / restore / purge
   const deleteActivitiesRange = prepareLive("UPDATE activities SET deleted_at = datetime('now') WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
@@ -107,6 +115,8 @@ export function createActivitiesRepo(db: DatabaseSync) {
     updateType:       (p: NamedParams) => updateActivityType.run(p),
     races:            (limit: number, offset: number) => races.all(limit, offset),
     racesCount:       () => racesCount.get(),
+    runningActivitiesForAssociation: (): { id: number; activity_date: string }[] =>
+      runningActivitiesForAssociation.all() as unknown as { id: number; activity_date: string }[],
   };
 }
 

@@ -11,7 +11,7 @@ import type {
   UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
-  FeedbackSubmission, FeedbackEntry,
+  FeedbackSubmission, FeedbackEntry, AssociationView,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
 
@@ -196,6 +196,14 @@ export const api = {
     setType: (id: number, activityTypeId: number, name: string | null) =>
       request<Activity>(`/api/v1/activities/${id}/type`, "PUT", undefined, { activity_type_id: activityTypeId, name }),
     races: async () => (await request<Paginated<RaceActivity>>("/api/v1/activities/races", "GET", { limit: ALL })).data,
+    // HRA-334: the persisted planned-workout link — see docs/schema.md's
+    // workout_associations section. get() returns an all-null AssociationView
+    // (never a 404) when nothing has been linked yet.
+    association: (id: number) => request<AssociationView>(`/api/v1/activities/${id}/association`),
+    associationCandidates: (id: number) => request<PlanInstanceDayWithInstance[]>(`/api/v1/activities/${id}/association-candidates`),
+    setAssociation: (id: number, workoutId: string) =>
+      request<AssociationView>(`/api/v1/activities/${id}/association`, "PUT", undefined, { workout_id: workoutId }),
+    clearAssociation: (id: number) => request<AssociationView>(`/api/v1/activities/${id}/association`, "DELETE"),
   },
   activityTypes: {
     list: async () => (await request<Paginated<ActivityType>>("/api/v1/activity-types", "GET", { limit: ALL })).data,

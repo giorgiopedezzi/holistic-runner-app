@@ -15,6 +15,10 @@ import { loadConfig, getArg, hasFlag } from "../config.ts";
 import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
 import { getValidToken } from "../integrations/strava.ts";
 import type { ActivityRow, TrackPointRow } from "../db.ts";
+import { createActivitiesRepo } from "../repositories/activities.repo.ts";
+import { createPlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
+import { createWorkoutAssociationsRepo } from "../repositories/workout-associations.repo.ts";
+import { createWorkoutAssociationsService } from "../services/workout-associations.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -276,6 +280,13 @@ async function main(): Promise<void> {
   // logged separately too since "already-imported" and "matched an existing
   // Garmin activity" are useful to tell apart when reading the console.
   console.log(`\nResults:\n  Imported  : ${imported}\n  Skipped   : ${skipped + duplicates}\n  Duplicates: ${duplicates}\n  Errors    : ${errors}`);
+
+  // HRA-334: re-run the conservative planned-workout/activity matcher now
+  // that new activities may exist — see sync-garmin.ts's own call for why
+  // this lives here rather than in the server process.
+  createWorkoutAssociationsService(
+    db, createActivitiesRepo(db), createPlanInstancesRepo(db), createWorkoutAssociationsRepo(db),
+  ).reconcile();
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

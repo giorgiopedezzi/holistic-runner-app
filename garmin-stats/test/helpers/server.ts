@@ -25,12 +25,14 @@ import { createActivityTypesRepo } from "../../src/repositories/activity-types.r
 import { createPlanTemplatesRepo } from "../../src/repositories/plan-templates.repo.ts";
 import { createPlanInstancesRepo } from "../../src/repositories/plan-instances.repo.ts";
 import { createFeedbackRepo } from "../../src/repositories/feedback.repo.ts";
+import { createWorkoutAssociationsRepo } from "../../src/repositories/workout-associations.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
 import { createSyncService } from "../../src/services/sync.service.ts";
 import { createDeviceService } from "../../src/services/device.service.ts";
 import { createPlanInstancesService } from "../../src/services/plan-instances.service.ts";
+import { createWorkoutAssociationsService } from "../../src/services/workout-associations.service.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
 const SRC_DIR = fileURLToPath(new URL("../../src", import.meta.url));
@@ -58,6 +60,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const planTemplatesRepo = createPlanTemplatesRepo(db);
   const planInstancesRepo = createPlanInstancesRepo(db);
   const feedbackRepo = createFeedbackRepo(db);
+  const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
 
   const handler = createApiHandler({
     port: 0,
@@ -70,7 +73,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     repos: {
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
       activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
-      feedback: feedbackRepo,
+      feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
     },
     services: {
       activities: createActivitiesService(db, activitiesRepo),
@@ -79,6 +82,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       sync: createSyncService(SRC_DIR),
       device: createDeviceService(SRC_DIR),
       planInstances: createPlanInstancesService(db, planInstancesRepo),
+      workoutAssociations: createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
     },
   });
 

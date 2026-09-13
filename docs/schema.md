@@ -301,6 +301,67 @@ a single synthetic `rest_block` segment carrying `rest_type` from the template's
 metadata (`jog` if unset) — reuses the existing `ResolvedSegment` shape rather than adding a new
 column. Implemented in `domain/runplan/instantiate.ts`'s `instantiatePlan()`.
 
+### `workout_associations`
+Persisted link between one actual `activities` row and one planned workout — HRA-334, "Associate
+planned workouts with actual activities conservatively". Columns: `id`, `activity_id` (`UNIQUE`,
+`ON DELETE CASCADE` — an activity's own evidence belongs to at most one planned workout at a time),
+`workout_id` (nullable TEXT — `plan_instance_days.workout_id`, HRA-333's stable identity, **not**
+`plan_instance_days.id`, so the link survives a day/week swap or a regenerate), `status`
+(`'automatic' | 'manual_confirmed' | 'manual_changed' | 'unresolved'`), `created_at`, `updated_at`.
+`workout_id` is deliberately **not** unique — many activities (e.g. a run split across two device
+files) can share one planned workout once a human manually links both (AC1's "zero, one, or multiple
+actual activities per planned workout where manually permitted").
+
+**Provenance (AC8):** `'automatic'` — this Story's own uniqueness-only matcher (below) set it, never
+touched by a human. `'manual_confirmed'` — a human accepted the current `workout_id`, whether it
+started `'automatic'` or was freshly picked. `'manual_changed'` — a human pointed this activity at a
+different `workout_id`, **including `workout_id = NULL`** to explicitly record "not part of any
+plan" (`DELETE /api/v1/activities/:id/association` — see below; recorded as a row, not a deleted one,
+so a later import can never silently re-attach it). `'unresolved'` — a previously-`'automatic'` row
+whose uniqueness broke on a later import (AC10). Only `'manual_confirmed'`/`'manual_changed'` are
+immune to reconciliation (AC9); every other status is re-evaluated on every sync.
+
+**Automatic matching (`domain/workout-association.ts`'s `reconcileAssociations`, pure, no I/O):**
+conservative and symmetric — a "run"-type `plan_instance_days` row and a `sport = 'running'` activity
+pair up automatically **only** when each is the OTHER's sole remaining compatible candidate on the
+SAME local calendar date (AC2/AC4). "Local date" is computed via `domain/plan-timezone.ts`'s
+`localDateInTimeZone(activity_date, schedule_timezone)` — the OWNING plan instance's own persisted
+`schedule_timezone` (HRA-332), never `activities.date_only` and never a shared/global timezone (AC3;
+this is also what makes travel/DST correctness fall out for free — each candidate workout's own
+instance timezone is used independently). No distance/duration/pace/title/similarity scoring is ever
+introduced (Story's own out-of-scope list) — uniqueness is the only signal. REST/`OTHER`/`todo`/
+`cross`/`strength` plan days are never even passed into the matcher — only `workout_type = 'run'` days
+are candidates at all (AC5/AC6), so an activity landing on a REST day is simply never treated as
+matching one. A human-locked row (`'manual_confirmed'`/`'manual_changed'`) removes BOTH the workout
+and the activity from the matching pool entirely (AC9) — never reassigned, never demoted. Re-run on
+every activity sync (`sync-garmin.ts`/`sync-strava.ts`, each opens its own DB connection as a separate
+process — see `services/workout-associations.service.ts`'s `reconcile()`): a currently-`'automatic'`
+row whose uniqueness broke (a later import introduced a competing candidate, or its workout left
+Current entirely) is demoted to `'unresolved'` rather than deleted or silently left accepted (AC10) —
+kept, not deleted, so the case stays inspectable instead of looking "never evaluated." An
+`'unresolved'` row is likewise re-evaluated every run and can resolve back to `'automatic'` if the
+ambiguity clears (e.g. the competing activity is later removed).
+
+**Manual endpoints** (`controllers/activities.controller.ts`): `GET /api/v1/activities/:id/association`
+returns the current link (an `AssociationView` with `workout_id`/`status` all `null` when none exists
+yet — a legitimate "extra/unplanned" steady state, not a 404). `GET
+/api/v1/activities/:id/association-candidates` returns every "run" day (any instance) sharing this
+activity's own local date (AC3), for a manual replace/confirm picker. `PUT
+/api/v1/activities/:id/association` (body `{workout_id}`) sets/replaces/confirms the link — 422 if
+`workout_id` doesn't name a current plan day; `'manual_confirmed'` if `workout_id` is unchanged from
+what's already on record, `'manual_changed'` otherwise (including a first-ever manual pick — AC8).
+`DELETE /api/v1/activities/:id/association` explicitly marks the activity as not part of any plan
+(`workout_id = NULL`, `'manual_changed'` — Scope: "represent extra/unplanned activities truthfully").
+
+**Workout-day status (AC11/AC12, `domain/workout-association.ts`'s `computeWorkoutDayStatus`, pure):**
+a future/current local plan day is always `pending` regardless of evidence; a past one is `completed`
+only when an accepted association exists for its `workout_id` (`'automatic'`/`'manual_confirmed'`/
+`'manual_changed'` all count — `'unresolved'` does not, since it is explicitly not-yet-resolved) and
+otherwise `missed`. `completed` never implies targets were achieved — only that accepted evidence
+exists. Not yet wired into any Agenda/Calendar UI surface (out of scope for this Story's slice — see
+its own "Relevant existing areas," none of which name those screens); the pure predicate exists and is
+tested, ready for a future Story to surface it.
+
 ### `feedback`
 Anonymous visitor feedback (HRA-226) — one row per `POST /api/v1/feedback` submission, no
 visitor/session identity captured (no dedup, no rate limiting). Columns: `id`, `free_text`,

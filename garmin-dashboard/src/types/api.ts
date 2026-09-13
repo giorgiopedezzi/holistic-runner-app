@@ -203,6 +203,22 @@ export interface PlanInstanceDayWithInstance extends PlanInstanceDay {
   instance_name: string | null;
 }
 
+// HRA-334: one activity's link to a planned workout — see docs/schema.md's
+// workout_associations section. workout_id/status and every plan-day field
+// are null when no association exists yet (a legitimate "extra/unplanned"
+// steady state) or once the linked workout has left Current entirely.
+export type AssociationStatus = "automatic" | "manual_confirmed" | "manual_changed" | "unresolved";
+export interface AssociationView {
+  activity_id:    number;
+  workout_id:     string | null;
+  status:         AssociationStatus | null;
+  instance_id:    number | null;
+  instance_name:  string | null;
+  section_name:   string | null;
+  week_number:    number | null;
+  date:           string | null;
+}
+
 export interface SportSummary {
   sport:              string;
   total_activities:   number;
