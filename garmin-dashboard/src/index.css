@@ -3217,7 +3217,12 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
    right edges. `grid-auto-flow` is left at its `row` default, so
    OPTIONAL_METRIC_ORDER's four entries (heart_rate, cadence, power, stamina)
    fill row-major: heart rate+cadence on row 1, power+stamina on row 2. */
-.hra-activity-metric-controls { padding-inline: 8px; grid-template-columns: repeat(2, auto); }
+/* `justify-content: end` (not Tailwind's `justify-end` utility, which
+   compiles to the legacy `flex-end` keyword) — `flex-end` doesn't reliably
+   right-align a CSS Grid's own tracks the way it does a flex row's items, so
+   the grid-specific `end` keyword is set here directly rather than via a
+   Tailwind class. */
+.hra-activity-metric-controls { padding-inline: 8px; grid-template-columns: repeat(2, auto); justify-content: end; }
 /* HRA-357: flex row (was a 3-column `auto 1fr auto` grid) — the fixed grid
    pinned Play/Stop and the badge group to opposite edges, forcing a wide,
    mostly-empty middle whenever no planned workout was selected. Flex-wrap +

@@ -847,7 +847,7 @@ export function ActivityChartSection({
             {chartOptionsFields}
             <PauseInspectionDialog rows={pauseInspectionRows} />
           </div>
-          <div className="hra-activity-metric-controls grid items-center gap-4 justify-end">
+          <div className="hra-activity-metric-controls grid items-center gap-4">
             {/* HRA-303 AC14/section 6: "Include heart rate, cadence, and power
                 only when the activity contains those data" — an unavailable
                 metric's chip is omitted outright now, not shown disabled (the
