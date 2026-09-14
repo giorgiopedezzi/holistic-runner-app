@@ -11,11 +11,12 @@ import { clientQueryable } from "../db/query.ts";
 import type { UserRow } from "../db.ts";
 import { isRegistrationAllowed, type RegistrationMode } from "../domain/identity/registration-gate.ts";
 import { isAccountUsable } from "../domain/identity/authorization.ts";
+import { isValidIanaTimeZone } from "../domain/plan-timezone.ts";
 import {
   computeSessionExpiry, encodeSessionCookieValue, decodeSessionCookieValue,
   isSessionExpired, issueSessionCredentials, secretMatches,
 } from "../domain/identity/session-lifecycle.ts";
-import type { IdentityRepo } from "../repositories/identity.repo.ts";
+import type { IdentityRepo, ProfileUpdate } from "../repositories/identity.repo.ts";
 
 export interface RegistrationGateConfig { mode: RegistrationMode; founderAllowlist: readonly string[] }
 export interface SessionLifetimeConfig { idleSeconds: number; absoluteSeconds: number }
@@ -60,6 +61,19 @@ export function createIdentityService(db: PostgresDatabase, identity: IdentityRe
     const user = await transaction(repo => repo.createUserWithExternalIdentity(login));
     await identity.recordSecurityEvent({ eventType: "login_success", userId: user.id, externalIssuer: login.issuer, externalSubject: login.subject, detail: "registered" });
     return { outcome: "authenticated", user };
+  }
+
+  // AC1's "validated IANA profile timezone" — enforced here, the one place
+  // that writes it, rather than as a DB CHECK (Postgres has no IANA-aware
+  // constraint; domain/plan-timezone.ts's isValidIanaTimeZone is the same
+  // check plan_instances.schedule_timezone already relies on).
+  async function updateProfile(userId: string, profile: ProfileUpdate): Promise<UserRow> {
+    if (profile.timezone !== null && !isValidIanaTimeZone(profile.timezone)) {
+      throw new Error(`identity.service: '${profile.timezone}' is not a valid IANA timezone`);
+    }
+    const user = await identity.updateProfile(userId, profile);
+    if (!user) throw new Error("identity.service: updateProfile targeted a missing user");
+    return user;
   }
 
   // Issues a fresh session and, when `previousSessionId` names a real
@@ -108,6 +122,6 @@ export function createIdentityService(db: PostgresDatabase, identity: IdentityRe
     return { userId: user.id, role: user.role, sessionId: session.id };
   }
 
-  return { resolveExternalLogin, rotateSession, revokeSessionByCookie, validateSessionCookie };
+  return { resolveExternalLogin, updateProfile, rotateSession, revokeSessionByCookie, validateSessionCookie };
 }
 export type IdentityService = ReturnType<typeof createIdentityService>;

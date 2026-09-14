@@ -197,3 +197,20 @@ test("security events: a login and a denied registration each record a security 
     assert.equal(denied.outcome, "registration_denied");
   } finally { await cleanup(); }
 });
+
+test("updateProfile persists valid IANA timezones and rejects an invalid one before writing anything", async () => {
+  const { service, repo, cleanup } = await setup();
+  try {
+    const authenticated = await service.resolveExternalLogin(login(), OPEN);
+    assert.equal(authenticated.outcome, "authenticated");
+    if (authenticated.outcome !== "authenticated") return;
+
+    const updated = await service.updateProfile(authenticated.user.id, { displayName: "Runner", locale: "en", unitSystem: "metric", timezone: "Europe/Rome" });
+    assert.equal(updated.timezone, "Europe/Rome");
+    assert.equal(updated.display_name, "Runner");
+
+    await assert.rejects(() => service.updateProfile(authenticated.user.id, { displayName: "Runner", locale: "en", unitSystem: "metric", timezone: "Not/AZone" }));
+    const reloaded = await repo.getUserById(authenticated.user.id);
+    assert.equal(reloaded?.timezone, "Europe/Rome"); // unchanged — the rejected call never wrote
+  } finally { await cleanup(); }
+});

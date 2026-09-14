@@ -18,11 +18,21 @@ const SESSION_COLUMNS = "id, user_id, secret_hash, created_at, last_seen_at, idl
 
 export interface NewExternalLogin { issuer: string; subject: string; provider: string | null; email: string | null }
 export interface NewSession { id: string; userId: string; secretHash: string; idleExpiresAt: Date; absoluteExpiresAt: Date }
+export interface ProfileUpdate { displayName: string | null; locale: string | null; unitSystem: "metric" | "imperial" | null; timezone: string | null }
 
 export function createIdentityRepo(db: Queryable) {
   const repo = {
     // ── users ──────────────────────────────────────────────────────────
     getUserById: (id: string) => db.get<UserRow>(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [id]),
+
+    // Whole-row replace of the profile fields (AC1) — validation (e.g.
+    // isValidIanaTimeZone) is the caller's (services/identity.service.ts)
+    // responsibility; this layer only persists.
+    updateProfile: (userId: string, profile: ProfileUpdate) =>
+      db.get<UserRow>(
+        `UPDATE users SET display_name = $1, locale = $2, unit_system = $3, timezone = $4, updated_at = now() WHERE id = $5 RETURNING ${USER_COLUMNS}`,
+        [profile.displayName, profile.locale, profile.unitSystem, profile.timezone, userId],
+      ),
 
     // ── external identities (AC2: unique by (issuer, subject) — the only
     // authoritative lookup key; never by email) ─────────────────────────
