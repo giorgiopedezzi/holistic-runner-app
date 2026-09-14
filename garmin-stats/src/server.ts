@@ -25,6 +25,7 @@ import { createPlanInstancesRepo } from "./repositories/plan-instances.repo.ts";
 import { createFeedbackRepo } from "./repositories/feedback.repo.ts";
 import { createWorkoutAssociationsRepo } from "./repositories/workout-associations.repo.ts";
 import { createWorkoutSegmentAlignmentsRepo } from "./repositories/workout-segment-alignments.repo.ts";
+import { createIdentityRepo } from "./repositories/identity.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -33,6 +34,7 @@ import { createDeviceService } from "./services/device.service.ts";
 import { createPlanInstancesService } from "./services/plan-instances.service.ts";
 import { createWorkoutAssociationsService } from "./services/workout-associations.service.ts";
 import { createReportingService } from "./services/reporting.service.ts";
+import { createIdentityService } from "./services/identity.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -67,6 +69,7 @@ const planInstancesRepo = createPlanInstancesRepo(db);
 const feedbackRepo      = createFeedbackRepo(db);
 const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
 const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(db);
+const identityRepo = createIdentityRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -77,6 +80,7 @@ const deviceService   = createDeviceService(__dirname);
 const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
 const workoutAssociationsService = createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo);
 const reportingService = createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
+const identityService = createIdentityService(db, identityRepo);
 
 // ── always-on Withings OAuth callback server (port 3002) ─────────────────────
 startWithingsCallbackServer(config, db);
@@ -93,11 +97,13 @@ const server = http.createServer(createApiHandler({
     activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
     feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
     workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
+    identity: identityRepo,
   },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
     sync: syncService, device: deviceService, planInstances: planInstancesService,
     workoutAssociations: workoutAssociationsService, reporting: reportingService,
+    identity: identityService,
   },
 }));
 

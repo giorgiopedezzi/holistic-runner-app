@@ -65,6 +65,10 @@ function make(status: number, title: string, detail?: string, extra?: Partial<Pr
 
 // 400 — the request itself is malformed (unparseable body, bad path param).
 export const badRequest      = (detail?: string, extra?: Partial<Problem>) => make(400, "Bad Request", detail, extra);
+// 401 — request identity is missing/invalid (no session/token, expired, wrong
+// issuer/audience, bad signature, revoked session, disabled account). Detail
+// is deliberately generic (HRA-348 AC12): never reveal which check failed.
+export const unauthorized    = (detail = "Authentication is required.", extra?: Partial<Problem>) => make(401, "Unauthorized", detail, extra);
 // 403 — the request is understood but rejected on policy grounds (DEMO_MODE).
 export const forbidden       = (detail?: string, extra?: Partial<Problem>) => make(403, "Forbidden", detail, extra);
 // 404 — the resource doesn't exist (or the caller may not know it exists).

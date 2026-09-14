@@ -27,6 +27,7 @@ import { createPlanInstancesRepo } from "../../src/repositories/plan-instances.r
 import { createFeedbackRepo } from "../../src/repositories/feedback.repo.ts";
 import { createWorkoutAssociationsRepo } from "../../src/repositories/workout-associations.repo.ts";
 import { createWorkoutSegmentAlignmentsRepo } from "../../src/repositories/workout-segment-alignments.repo.ts";
+import { createIdentityRepo } from "../../src/repositories/identity.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
@@ -35,6 +36,7 @@ import { createDeviceService } from "../../src/services/device.service.ts";
 import { createPlanInstancesService } from "../../src/services/plan-instances.service.ts";
 import { createWorkoutAssociationsService } from "../../src/services/workout-associations.service.ts";
 import { createReportingService } from "../../src/services/reporting.service.ts";
+import { createIdentityService } from "../../src/services/identity.service.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
 const SRC_DIR = fileURLToPath(new URL("../../src", import.meta.url));
@@ -65,6 +67,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const feedbackRepo = createFeedbackRepo(runtimeDb);
   const workoutAssociationsRepo = createWorkoutAssociationsRepo(runtimeDb);
   const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(runtimeDb);
+  const identityRepo = createIdentityRepo(runtimeDb);
 
   const handler = createApiHandler({
     port: 0,
@@ -79,6 +82,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
       feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
       workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
+      identity: identityRepo,
     },
     services: {
       activities: createActivitiesService(runtimeDb, activitiesRepo),
@@ -89,6 +93,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       planInstances: createPlanInstancesService(runtimeDb, planInstancesRepo),
       workoutAssociations: createWorkoutAssociationsService(runtimeDb, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
       reporting: createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
+      identity: createIdentityService(runtimeDb, identityRepo),
     },
   });
 

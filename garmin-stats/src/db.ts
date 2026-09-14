@@ -957,6 +957,72 @@ export function initSchema(db: DatabaseSync): void {
 
 // ── Typed row shapes ──────────────────────────────────────────────────────
 
+// HRA-348: the internal user + external-identity domain
+// (docs/architecture/AUTHENTICATION-TENANCY-ADR.md). Persisted by
+// db/migrations/003_identity_domain.sql on the real PostgreSQL runtime — see
+// repositories/identity.repo.ts. locale/unit_system/timezone are nullable
+// profile fields, not display-preference settings (those remain on
+// SettingsRow, keyed separately — see the HRA-348 review comment for why the
+// two aren't merged in this Story).
+export type AccountStatus = "active" | "disabled" | "deletion_pending";
+export type UserRole = "user" | "admin";
+
+export interface UserRow {
+  id: string;
+  display_name: string | null;
+  locale: string | null;
+  unit_system: "metric" | "imperial" | null;
+  timezone: string | null;
+  status: AccountStatus;
+  role: UserRole;
+  created_at: string;
+  updated_at: string;
+}
+
+// Unique by (issuer, subject) — the only authoritative identity key.
+// provider/email_at_link_time are non-authoritative metadata (AC2/AC3).
+export interface ExternalIdentityRow {
+  id: number;
+  user_id: string;
+  issuer: string;
+  subject: string;
+  provider: string | null;
+  email_at_link_time: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Opaque session state (AC6) — secret_hash is a SHA-256 digest; the raw
+// bearer secret is never persisted (domain/identity/session-lifecycle.ts).
+export interface SessionRow {
+  id: string;
+  user_id: string;
+  secret_hash: string;
+  created_at: string;
+  last_seen_at: string;
+  idle_expires_at: string;
+  absolute_expires_at: string;
+  revoked_at: string | null;
+}
+
+export interface UserEntitlementRow {
+  user_id: string;
+  entitlement: string;
+  granted_at: string;
+}
+
+// Minimum useful auth/session lifecycle facts (AC13) — detail is a short
+// non-sensitive label; never a credential, provider token, or payload.
+export interface SecurityEventRow {
+  id: number;
+  event_type: string;
+  user_id: string | null;
+  external_issuer: string | null;
+  external_subject: string | null;
+  detail: string | null;
+  created_at: string;
+}
+
 export interface ActivityRow {
   id: number;
   filename: string;

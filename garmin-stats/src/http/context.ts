@@ -19,6 +19,7 @@ import type { PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
 import type { FeedbackRepo } from "../repositories/feedback.repo.ts";
 import type { WorkoutAssociationsRepo } from "../repositories/workout-associations.repo.ts";
 import type { WorkoutSegmentAlignmentsRepo } from "../repositories/workout-segment-alignments.repo.ts";
+import type { IdentityRepo } from "../repositories/identity.repo.ts";
 import type { ActivitiesService } from "../services/activities.service.ts";
 import type { BodyService } from "../services/body.service.ts";
 import type { ClassificationService } from "../services/classification.service.ts";
@@ -27,6 +28,7 @@ import type { DeviceService } from "../services/device.service.ts";
 import type { PlanInstancesService } from "../services/plan-instances.service.ts";
 import type { WorkoutAssociationsService } from "../services/workout-associations.service.ts";
 import type { ReportingService } from "../services/reporting.service.ts";
+import type { IdentityService } from "../services/identity.service.ts";
 
 export interface AppContext {
   port: number;          // used by the router to build the URL base
@@ -39,6 +41,7 @@ export interface AppContext {
     activityTypes: ActivityTypesRepo; planTemplates: PlanTemplatesRepo; planInstances: PlanInstancesRepo;
     feedback: FeedbackRepo; workoutAssociations: WorkoutAssociationsRepo;
     workoutSegmentAlignments: WorkoutSegmentAlignmentsRepo;
+    identity: IdentityRepo;
   };
   services: {
     activities: ActivitiesService;
@@ -49,6 +52,7 @@ export interface AppContext {
     planInstances: PlanInstancesService;
     workoutAssociations: WorkoutAssociationsService;
     reporting: ReportingService;
+    identity: IdentityService;
   };
 }
 

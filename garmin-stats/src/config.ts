@@ -48,6 +48,25 @@ export interface Config {
     apiKey?: string;
     model?: string;
   };
+  // HRA-348/HRA-347 identity domain — off by default. AUTH_ENABLED is the
+  // explicit production gate: deriveRequestIdentity() (http/auth-context.ts)
+  // refuses every request when this is false, so an incomplete/misconfigured
+  // deployment fails closed rather than silently accepting tokens. No route
+  // in this Story reads this yet — it exists for the future login/callback
+  // wiring to consume (see the HRA-348 review comment).
+  auth: {
+    enabled: boolean;
+    issuerUrl?: string;
+    discoveryUrl?: string;
+    audience?: string;
+    // "founders_only" (default) permits only an explicit allowlisted email to
+    // register a first-ever internal user; "open" allows any unknown identity
+    // to register (AC5).
+    registrationMode: "founders_only" | "open";
+    founderAllowlist: string[];
+    sessionIdleSeconds: number;
+    sessionAbsoluteSeconds: number;
+  };
 }
 
 // "true" (case-insensitive) is the only truthy string; anything else,
@@ -55,6 +74,19 @@ export interface Config {
 function parseBoolEnv(value: string | undefined, defaultValue: boolean): boolean {
   if (value === undefined) return defaultValue;
   return value.toLowerCase() === "true";
+}
+
+function parseIntEnv(value: string | undefined, defaultValue: number): number {
+  const parsed = Number(value);
+  return value !== undefined && Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : defaultValue;
+}
+
+// Comma-separated list, trimmed, empty entries dropped. AUTH_FOUNDER_ALLOWLIST
+// is a list of emails per the ADR — never (issuer, subject) pairs, since the
+// allowlist gate runs before any internal identity exists to key off.
+function parseListEnv(value: string | undefined): string[] {
+  if (!value) return [];
+  return value.split(",").map(entry => entry.trim()).filter(entry => entry.length > 0);
 }
 
 // PostgreSQL is validated by openPostgresDatabase at the runtime boundary.
@@ -91,6 +123,17 @@ export function loadConfig(): Config {
       endpoint: process.env.PLAN_TEMPLATE_AI_ENDPOINT,
       apiKey: process.env.PLAN_TEMPLATE_AI_API_KEY,
       model: process.env.PLAN_TEMPLATE_AI_MODEL,
+    },
+    auth: {
+      enabled: parseBoolEnv(process.env.AUTH_ENABLED, false),
+      issuerUrl: process.env.AUTH_ISSUER_URL,
+      discoveryUrl: process.env.AUTH_DISCOVERY_URL,
+      audience: process.env.AUTH_AUDIENCE,
+      registrationMode: process.env.AUTH_REGISTRATION_MODE === "open" ? "open" : "founders_only",
+      founderAllowlist: parseListEnv(process.env.AUTH_FOUNDER_ALLOWLIST),
+      // ADR defaults: 30 min idle / 12h absolute.
+      sessionIdleSeconds: parseIntEnv(process.env.AUTH_SESSION_IDLE_SECONDS, 1800),
+      sessionAbsoluteSeconds: parseIntEnv(process.env.AUTH_SESSION_ABSOLUTE_SECONDS, 43200),
     },
   };
 }
@@ -136,6 +179,13 @@ export function requirePlanTemplateAiConfig(config: Config): { endpoint: string;
     apiKey: "PLAN_TEMPLATE_AI_API_KEY",
     model: "PLAN_TEMPLATE_AI_MODEL",
   });
+}
+
+export function requireAuthConfig(config: Config): { issuerUrl: string; discoveryUrl: string; audience: string } {
+  return requireEnv(
+    { issuerUrl: config.auth.issuerUrl, discoveryUrl: config.auth.discoveryUrl, audience: config.auth.audience },
+    { issuerUrl: "AUTH_ISSUER_URL", discoveryUrl: "AUTH_DISCOVERY_URL", audience: "AUTH_AUDIENCE" },
+  );
 }
 
 export function getArg(flag: string): string | null {

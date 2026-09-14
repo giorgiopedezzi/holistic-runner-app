@@ -5,6 +5,55 @@
 
 ## Database schema (SQLite)
 
+## Identity domain (PostgreSQL — HRA-348)
+
+Persisted by `db/migrations/003_identity_domain.sql` on top of `users`/`external_identities`
+from `001_postgresql_foundation.sql`. Domain/persistence models only — see
+`docs/architecture/AUTHENTICATION-TENANCY-ADR.md` for the full authentication design; no
+login/callback HTTP route exists yet, and nothing here is wired into the existing single-tenant
+(`FOUNDER_USER_ID`) controllers.
+
+### `users`
+The internal, stable Runs Free identity (AC1). `id` (UUID) is immutable and non-enumerable —
+never derived from an email or provider identifier (see `db/founder.ts`'s `FOUNDER_USER_ID`
+for the existing precedent). `display_name`/`locale`/`unit_system`/`timezone` are nullable
+profile fields (unset until a real login flow collects them) — deliberately **not** the same
+column as `user_settings.timezone`/`unit_system`/`language`, which remain the app's *display
+preference* store; the two aren't reconciled by this Story (see the HRA-348 review comment).
+`timezone` is validated app-side via `domain/plan-timezone.ts`'s `isValidIanaTimeZone`, not a DB
+CHECK. `status` (`active | disabled | deletion_pending`, default `active`) is enforced before
+private controller logic by `services/identity.service.ts`'s session/token validation (AC8).
+`role` (`user | admin`, default `user`) is intentionally coarse — feature/subscription
+capabilities live in `user_entitlements` instead (AC9), and no code path lets `role` substitute
+for per-resource ownership (AC10, see `domain/identity/authorization.ts`'s `ownsResource`).
+
+### `external_identities`
+Unique by `(issuer, subject)` — the only authoritative identity key (AC2). `provider` and
+`email_at_link_time` are non-authoritative metadata: a provider email change updates
+`email_at_link_time` in place and never touches the owning `users` row (AC3). Two different
+`(issuer, subject)` pairs sharing the same email are never merged (AC4) —
+`repositories/identity.repo.ts`'s `findExternalIdentity` only ever looks up by the pair, never
+by email.
+
+### `sessions`
+Opaque session state (AC6): `id` is a non-secret lookup key; `secret_hash` is a SHA-256 digest
+of the bearer secret the caller holds — the raw secret is never persisted, only ever returned
+once at issuance (`domain/identity/session-lifecycle.ts`). `idle_expires_at`/
+`absolute_expires_at` are tracked independently so idle renewal can never extend a session past
+its absolute lifetime (ADR: 30 min idle / 12h absolute, `AUTH_SESSION_IDLE_SECONDS`/
+`AUTH_SESSION_ABSOLUTE_SECONDS`). Successful authentication always rotates: the previous session
+is revoked and a new `(id, secret)` pair is issued, preventing fixation (AC7).
+
+### `user_entitlements`
+Feature/subscription capabilities, keyed `(user_id, entitlement)` — deliberately separate from
+`users.role` (AC9) so entitlements can be granted/revoked without touching the role boundary.
+
+### `security_events`
+The minimum useful authentication/session lifecycle facts (AC13): `event_type`, the acting
+`user_id` (nullable — e.g. a denied registration for an unknown identity has none),
+`external_issuer`/`external_subject` (safe, non-secret identifiers), and a short `detail` label.
+This table must never receive credentials, provider tokens, raw FIT data, or training payloads.
+
 ### `activities`
 | Column | Type | Notes |
 |---|---|---|
