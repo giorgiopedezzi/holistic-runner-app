@@ -9,14 +9,14 @@
  */
 import http from "http";
 import { URL } from "url";
-import type { DatabaseSync } from "node:sqlite";
+import type { Queryable } from "../db/query.ts";
 import type { Config } from "../config.ts";
 import { exchangeCode } from "../integrations/withings.ts";
 import { oauthState, oauthCallbackPage } from "./oauth.ts";
 
 const WITHINGS_CALLBACK_PORT = 3002;
 
-export function startWithingsCallbackServer(config: Config, db: DatabaseSync): void {
+export function startWithingsCallbackServer(config: Config, db: Queryable): void {
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${WITHINGS_CALLBACK_PORT}`);
     if (url.pathname !== "/callback") { res.writeHead(404); res.end(); return; }

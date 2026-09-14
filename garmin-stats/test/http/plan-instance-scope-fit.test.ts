@@ -120,7 +120,7 @@ test("GET .../fit skips a needs_review day and reports it, downloading the rest"
   try {
     const { instanceId, days } = await setUp(server);
     const flagged = days.find((d: any) => d.date === "2026-09-01");
-    server.db.prepare("UPDATE plan_instance_days SET needs_review = 1 WHERE id = ?").run(flagged.id);
+    await server.db.run("UPDATE plan_instance_workouts w SET needs_review = true FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1", [flagged.id]);
 
     const { res, bytes } = await fetchZip(server, `/api/v1/plan-instances/${instanceId}/fit?section_name=Base`);
     assert.equal(res.status, 200);
@@ -140,7 +140,7 @@ test("GET .../fit 422s and downloads nothing when every day in scope is non-expo
   const server = await startTestServer();
   try {
     const { instanceId } = await setUp(server);
-    server.db.prepare("UPDATE plan_instance_days SET needs_review = 1 WHERE instance_id = ?").run(instanceId);
+    await server.db.run("UPDATE plan_instance_workouts SET needs_review = true WHERE instance_id = $1", [instanceId]);
 
     const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit?section_name=Base`);
     assert.equal(res.status, 422, JSON.stringify(res.json));

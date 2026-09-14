@@ -4,7 +4,7 @@
  * instantiation, and carried across the mutation paths that must preserve a
  * planned workout's identity independent of its placement: the bulk
  * days-replace (PATCH /plan-instances/:id), the single-day PATCH
- * (.../days/:dayId, the swap flows' own persistence path), and regenerate.
+ * (.../days/:dayId), the atomic swap (POST .../workouts/swap), and regenerate.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -129,7 +129,16 @@ test("PATCH days: a workout_id that doesn't belong to this instance's own curren
   }
 });
 
-test("PATCH .../days/:dayId: a swap flow's own two-call persistence moves workout_id with the swapped-in dsl", async () => {
+// POST /api/v1/plan-instances/:id/workouts/swap (HRA-333 follow-up) — the
+// single atomic operation that replaced the old two-call PATCH
+// .../days/:dayId persistence above: each of those two calls was its own
+// transaction, so the deferred (instance_id, workout_id) unique constraint
+// on plan_instance_days could never actually resolve — the first call's row
+// still collided with the second (as yet untouched) row at THAT call's own
+// commit (500 "ON CONFLICT does not support deferrable unique constraints"
+// under load, or a plain duplicate-key error at commit — see
+// docs/architecture/POSTGRESQL-MIGRATION.md).
+test("POST .../workouts/swap: exchanges workout_id (and its content) between two slots; each slot's own id/date never move", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, days } = await setUp(server);
@@ -137,19 +146,151 @@ test("PATCH .../days/:dayId: a swap flow's own two-call persistence moves workou
     const dayB = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 3);
     assert.ok(dayA && dayB);
 
-    const resA = await server.api(`/api/v1/plan-instances/${instanceId}/days/${dayA.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dsl: reconstructDsl({ ...dayB, day: dayA.day }), workout_id: dayB.workout_id }),
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/workouts/swap`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day_a_id: dayA.id, day_b_id: dayB.id }),
     });
-    assert.equal(resA.status, 200, JSON.stringify(resA.json));
-    assert.equal((resA.json as any).workout_id, dayB.workout_id, "row A now holds B's content, so it must carry B's workout_id");
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const { day_a: afterA, day_b: afterB } = res.json as any;
 
-    const resB = await server.api(`/api/v1/plan-instances/${instanceId}/days/${dayB.id}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dsl: reconstructDsl({ ...dayA, day: dayB.day }), workout_id: dayA.workout_id }),
+    // Slot identity (id, date) never moves.
+    assert.equal(afterA.id, dayA.id);
+    assert.equal(afterA.date, dayA.date);
+    assert.equal(afterB.id, dayB.id);
+    assert.equal(afterB.date, dayB.date);
+
+    // Workout identity — and the content that comes along with it via the
+    // plan_instance_workouts join — exchanges slots.
+    assert.equal(afterA.workout_id, dayB.workout_id, "slot A now holds B's workout");
+    assert.equal(afterB.workout_id, dayA.workout_id, "slot B now holds A's workout");
+    assert.equal(JSON.parse(afterA.segments)[0].target.distance_m, JSON.parse(dayB.segments)[0].target.distance_m);
+    assert.equal(JSON.parse(afterB.segments)[0].target.distance_m, JSON.parse(dayA.segments)[0].target.distance_m);
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../workouts/swap: workout customization follows the workout identity, not the slot", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, days } = await setUp(server);
+    const dayA = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 1);
+    const dayB = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 3);
+    assert.ok(dayA && dayB);
+
+    // Mark dayA's workout customized (any single-day PATCH with dsl sets
+    // customized_at) — dayB is left untouched, so its customized_at stays null.
+    const patched = await server.api(`/api/v1/plan-instances/${instanceId}/days/${dayA.id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dsl: reconstructDsl(dayA) }),
     });
-    assert.equal(resB.status, 200, JSON.stringify(resB.json));
-    assert.equal((resB.json as any).workout_id, dayA.workout_id, "row B now holds A's content, so it must carry A's workout_id");
+    assert.equal(patched.status, 200, JSON.stringify(patched.json));
+    assert.ok((patched.json as any).customized_at, "dayA's workout should now be customized");
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/workouts/swap`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day_a_id: dayA.id, day_b_id: dayB.id }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+    const { day_a: afterA, day_b: afterB } = res.json as any;
+
+    assert.equal(afterA.customized_at, null, "slot A now holds B's never-customized workout");
+    assert.ok(afterB.customized_at, "slot B now holds A's customized workout, so the marker travels with it");
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../workouts/swap: an existing workout association stays attached to the same logical workout, unaffected by the swap", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, days } = await setUp(server);
+    const dayA = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 1);
+    const dayB = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 3);
+    assert.ok(dayA && dayB);
+
+    const activity = await server.db.get<{ id: number }>(`
+      INSERT INTO activities (user_id, filename, activity_date, date_only, sport, source)
+      VALUES ('00000000-0000-4000-8000-000000000001', 'swap-fixture.fit', '2026-09-01T07:00:00', '2026-09-01', 'running', 'garmin')
+      RETURNING id
+    `);
+    if (!activity) throw new Error("fixture activity insert did not return an id");
+
+    const assoc = await server.api(`/api/v1/activities/${activity.id}/association`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workout_id: dayA.workout_id }),
+    });
+    assert.equal(assoc.status, 200, JSON.stringify(assoc.json));
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/workouts/swap`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day_a_id: dayA.id, day_b_id: dayB.id }),
+    });
+    assert.equal(res.status, 200, JSON.stringify(res.json));
+
+    const after = await server.api(`/api/v1/activities/${activity.id}/association`);
+    assert.equal(after.status, 200);
+    assert.equal((after.json as any).workout_id, dayA.workout_id, "the association must still point at the same logical workout, wherever it now sits");
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../workouts/swap: rejects a cross-instance swap and leaves both instances' days untouched", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, days } = await setUp(server);
+    const dayA = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 1);
+
+    const other = await setUp(server);
+    const foreignDay = other.days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 1);
+    assert.ok(dayA && foreignDay);
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/workouts/swap`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day_a_id: dayA.id, day_b_id: foreignDay.id }),
+    });
+    assert.equal(res.status, 404, JSON.stringify(res.json));
+
+    const stillA = await server.db.get<{ workout_id: string }>("SELECT workout_id FROM plan_instance_days WHERE id=$1", [dayA.id]);
+    const stillForeign = await server.db.get<{ workout_id: string }>("SELECT workout_id FROM plan_instance_days WHERE id=$1", [foreignDay.id]);
+    assert.equal(stillA?.workout_id, dayA.workout_id, "the transaction must roll back completely — dayA untouched");
+    assert.equal(stillForeign?.workout_id, foreignDay.workout_id, "the transaction must roll back completely — the other instance's day untouched");
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../workouts/swap: rejects a missing slot and leaves the valid slot untouched", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, days } = await setUp(server);
+    const dayA = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 1);
+    assert.ok(dayA);
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/workouts/swap`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day_a_id: dayA.id, day_b_id: 999999999 }),
+    });
+    assert.equal(res.status, 404, JSON.stringify(res.json));
+
+    const stillA = await server.db.get<{ workout_id: string }>("SELECT workout_id FROM plan_instance_days WHERE id=$1", [dayA.id]);
+    assert.equal(stillA?.workout_id, dayA.workout_id, "the transaction must roll back completely — dayA untouched");
+  } finally {
+    await server.close();
+  }
+});
+
+test("POST .../workouts/swap: rejects swapping a slot with itself", async () => {
+  const server = await startTestServer();
+  try {
+    const { instanceId, days } = await setUp(server);
+    const dayA = days.find((d: any) => d.section_name === "Base" && d.week_number === 1 && d.day === 1);
+    assert.ok(dayA);
+
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/workouts/swap`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day_a_id: dayA.id, day_b_id: dayA.id }),
+    });
+    assert.equal(res.status, 422, JSON.stringify(res.json));
   } finally {
     await server.close();
   }

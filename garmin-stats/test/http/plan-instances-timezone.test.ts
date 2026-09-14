@@ -113,11 +113,9 @@ test("instantiate: Original mirrors Current at creation (start_date + full day s
     const templateId = await createTemplate(server);
     const res = await instantiate(server, templateId, { schedule_timezone: "Europe/Rome" });
     const instanceId = (res.json as any).id as number;
-    const row = server.db.prepare("SELECT original_start_date, original_days_snapshot FROM plan_instances WHERE id = ?").get(instanceId) as {
-      original_start_date: string; original_days_snapshot: string;
-    };
+    const row = (await server.db.get<{ original_start_date: string; original_days_snapshot: unknown }>("SELECT original_start_date, original_days_snapshot FROM plan_instances WHERE id = $1", [instanceId]))!;
     assert.equal(row.original_start_date, futureStart);
-    assert.equal(JSON.parse(row.original_days_snapshot).length, 7);
+    assert.equal((typeof row.original_days_snapshot === "string" ? JSON.parse(row.original_days_snapshot) : row.original_days_snapshot as unknown[]).length, 7);
   } finally {
     await server.close();
   }
@@ -151,7 +149,7 @@ test("PATCH schedule_timezone: rejected with 409 once Original has frozen (start
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ schedule_timezone: "America/New_York" }),
     });
     assert.equal(res.status, 409, JSON.stringify(res.json));
-    const row = server.db.prepare("SELECT schedule_timezone FROM plan_instances WHERE id = ?").get(instanceId) as { schedule_timezone: string };
+    const row = (await server.db.get<{ schedule_timezone: string }>("SELECT schedule_timezone FROM plan_instances WHERE id = $1", [instanceId]))!;
     assert.equal(row.schedule_timezone, "Europe/Rome", "the rejected write must not have applied");
   } finally {
     await server.close();
@@ -187,8 +185,8 @@ test("PATCH days: pre-freeze, Original mirrors the replaced day set", async () =
     });
     assert.equal(res.status, 200, JSON.stringify(res.json));
 
-    const row = server.db.prepare("SELECT original_days_snapshot FROM plan_instances WHERE id = ?").get(instanceId) as { original_days_snapshot: string };
-    const snapshot = JSON.parse(row.original_days_snapshot);
+    const row = (await server.db.get<{ original_days_snapshot: unknown }>("SELECT original_days_snapshot FROM plan_instances WHERE id = $1", [instanceId]))!;
+    const snapshot = typeof row.original_days_snapshot === "string" ? JSON.parse(row.original_days_snapshot) : row.original_days_snapshot as any[];
     assert.equal(snapshot.length, 1, "Original was re-mirrored to the just-replaced (single-day) Current set");
   } finally {
     await server.close();
@@ -201,8 +199,8 @@ test("PATCH days: post-freeze, Original is left completely untouched", async () 
     const templateId = await createTemplate(server);
     const created = await instantiate(server, templateId, { schedule_timezone: "Europe/Rome", start_date: pastStart });
     const instanceId = (created.json as any).id as number;
-    const before = server.db.prepare("SELECT original_days_snapshot FROM plan_instances WHERE id = ?").get(instanceId) as { original_days_snapshot: string };
-    assert.equal(JSON.parse(before.original_days_snapshot).length, 7, "frozen at creation with the full 7-day set");
+    const before = (await server.db.get<{ original_days_snapshot: unknown }>("SELECT original_days_snapshot FROM plan_instances WHERE id = $1", [instanceId]))!;
+    assert.equal((typeof before.original_days_snapshot === "string" ? JSON.parse(before.original_days_snapshot) : before.original_days_snapshot as unknown[]).length, 7, "frozen at creation with the full 7-day set");
 
     const res = await server.api(`/api/v1/plan-instances/${instanceId}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
@@ -210,8 +208,8 @@ test("PATCH days: post-freeze, Original is left completely untouched", async () 
     });
     assert.equal(res.status, 200, JSON.stringify(res.json));
 
-    const after = server.db.prepare("SELECT original_days_snapshot FROM plan_instances WHERE id = ?").get(instanceId) as { original_days_snapshot: string };
-    assert.equal(JSON.parse(after.original_days_snapshot).length, 7, "Original still holds its frozen 7-day snapshot, unaffected by the post-freeze Current edit");
+    const after = (await server.db.get<{ original_days_snapshot: unknown }>("SELECT original_days_snapshot FROM plan_instances WHERE id = $1", [instanceId]))!;
+    assert.equal((typeof after.original_days_snapshot === "string" ? JSON.parse(after.original_days_snapshot) : after.original_days_snapshot as unknown[]).length, 7, "Original still holds its frozen 7-day snapshot, unaffected by the post-freeze Current edit");
   } finally {
     await server.close();
   }
@@ -230,8 +228,8 @@ test("PATCH one day: pre-freeze, Original's snapshot is refreshed to match", asy
     });
     assert.equal(res.status, 200, JSON.stringify(res.json));
 
-    const row = server.db.prepare("SELECT original_days_snapshot FROM plan_instances WHERE id = ?").get(instanceId) as { original_days_snapshot: string };
-    const snapshot = JSON.parse(row.original_days_snapshot);
+    const row = (await server.db.get<{ original_days_snapshot: unknown }>("SELECT original_days_snapshot FROM plan_instances WHERE id = $1", [instanceId]))!;
+    const snapshot = typeof row.original_days_snapshot === "string" ? JSON.parse(row.original_days_snapshot) : row.original_days_snapshot as any[];
     assert.equal(snapshot.find((d: any) => d.id === dayId).notes, "swapped shoes");
   } finally {
     await server.close();

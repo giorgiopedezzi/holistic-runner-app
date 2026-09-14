@@ -1,338 +1,70 @@
-/**
- * repositories/plan-instances.repo.ts
- * Data access for resolved plan instances + their days (HRA-112) — the only
- * layer that runs SQL for this domain (rest-api-standards §11). Transactions
- * spanning both tables belong to services/plan-instances.service.ts, not here.
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
+import type { Queryable } from "../db/query.ts";
 import type { PlanInstanceDayRow, PlanInstanceRow } from "../db.ts";
 
-const INSTANCE_FIELDS = "id, template_id, start_date, pace_overrides, target_activity_id, approved_at, name, event, race_name, race_date, race_url, schedule_timezone, original_start_date, original_days_snapshot, current_revision, original_revision, created_at FROM plan_instances";
-const DAY_FIELDS = "id, instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, scheduled_time, customized_at, workout_id FROM plan_instance_days";
-
-// HRA-336: current_revision/original_revision are never caller-supplied at
-// creation — both always start at 1 via the column's own DEFAULT (see
-// insertInstance below, which never references either column), the same way
-// approved_at is omitted here rather than accepted as a creation-time input.
+const IF = "id,template_id,start_date,pace_overrides::text AS pace_overrides,target_activity_id,approved_at,name,event,race_name,race_date,race_url,schedule_timezone,original_start_date,original_days_snapshot::text AS original_days_snapshot,current_revision,original_revision,created_at";
+const DF = "d.id,d.instance_id,w.section_name,w.week_number,d.date,w.day,w.suffix,w.category,w.workout_type,w.segments::text AS segments,w.activity_target::text AS activity_target,w.activity_description,w.notes,w.needs_review,d.scheduled_time,w.customized_at,d.workout_id";
+const DAYS = ` FROM plan_instance_days d JOIN plan_instance_workouts w ON w.instance_id=d.instance_id AND w.workout_id=d.workout_id`;
 export type PlanInstanceInput = Omit<PlanInstanceRow, "id" | "created_at" | "approved_at" | "current_revision" | "original_revision">;
 export type PlanInstanceDayInput = Omit<PlanInstanceDayRow, "id">;
-// HRA-206: a plan_instance_days row denormalized with its owning instance's
-// own name — GET /api/v1/plan-instance-days needs this to label a same-day
-// picker across multiple instances without a second round trip per row.
 export type PlanInstanceDayWithInstance = PlanInstanceDayRow & { instance_name: string | null };
 
-export function createPlanInstancesRepo(db: DatabaseSync) {
-  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
-  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const findInstanceById = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE id = ?`);
-  // HRA-118: the instance card's list view — optionally scoped to one
-  // template ("per-template instance list", the Story's own AC1 wording).
-  // Separate prepared statements per shape (all vs. by-template) rather than
-  // one query with a nullable bound param reused twice, matching this repo's
-  // existing style of one statement per query shape.
-  const listAllStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
-  const countAllStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances");
-  // HRA-341: the date-range/race-range report's own "which instances might
-  // this window touch" scan — unpaginated, same "no envelope, internal
-  // reporting read" convention as workout-associations.repo.ts's all() /
-  // activities.repo.ts's list(). This app is single-user with a modest
-  // instance count, so a full scan (then filtered in JS against each
-  // instance's own Original+Current date span, since Original lives in a
-  // JSON snapshot column no SQL predicate can range over) costs nothing
-  // worth a second, more fragile query shape.
-  const listEveryInstanceStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} ORDER BY created_at DESC`);
-  const listByTemplateStmt = prepareLive(`SELECT ${INSTANCE_FIELDS} WHERE template_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`);
-  const countByTemplateStmt = prepareLive("SELECT COUNT(*) AS count FROM plan_instances WHERE template_id = ?");
-  const insertInstance = prepareLive(`
-    INSERT INTO plan_instances
-      (template_id, start_date, pace_overrides, target_activity_id, name, event, race_name, race_date, race_url,
-       schedule_timezone, original_start_date, original_days_snapshot)
-    VALUES
-      ($template_id, $start_date, $pace_overrides, $target_activity_id, $name, $event, $race_name, $race_date, $race_url,
-       $schedule_timezone, $original_start_date, $original_days_snapshot)
-  `);
-  const findDaysByInstance = prepareLive(`SELECT ${DAY_FIELDS} WHERE instance_id = ? ORDER BY date ASC, day ASC`);
-  const findDayByIdStmt = prepareLive(`SELECT ${DAY_FIELDS} WHERE id = ?`);
-  // HRA-203: the section/week .fit-zip export's own scoping queries — same
-  // DAY_FIELDS projection and date/day ordering as findDaysByInstance above,
-  // just narrowed by section_name (and, for the week variant, week_number
-  // too). Two prepared statements rather than one with a nullable bound
-  // param, matching this repo's existing "one statement per query shape"
-  // style (see findDaysByDateAndWorkoutTypeStmt's own comment above).
-  const findDaysBySectionStmt = prepareLive(`SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? ORDER BY date ASC, day ASC`);
-  const findDaysBySectionAndWeekStmt = prepareLive(
-    `SELECT ${DAY_FIELDS} WHERE instance_id = ? AND section_name = ? AND week_number = ? ORDER BY date ASC, day ASC`,
-  );
-  // HRA-206: every run-type plan_instance_day matching a calendar date,
-  // across every instance (any approved_at state, per the Story's own scope)
-  // — joined with the owning instance's name so ActivityDetailBody's picker
-  // can label each option without a second lookup per match. Newest-instance
-  // first, matching this repo's other list queries' own default ordering.
-  const findDaysByDateAndWorkoutTypeStmt = prepareLive(`
-    SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
-           pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
-           pid.scheduled_time, pid.customized_at, pid.workout_id, pi.name AS instance_name
-    FROM plan_instance_days pid
-    JOIN plan_instances pi ON pi.id = pid.instance_id
-    WHERE pid.date = ? AND pid.workout_type = ?
-    ORDER BY pi.created_at DESC
-  `);
-  // HRA-248: "Your agenda"'s today-centered home view — the one APPROVED
-  // instance (approved_at IS NOT NULL) whose resolved days cover a given
-  // date. No workout_type filter, unlike findDaysByDateAndWorkoutTypeStmt
-  // above — a REST day is a real dated row too (HRA-124) and must resolve
-  // just as well as a workout day. Newest-instance-first on the (out of
-  // scope here, see the sibling overlap-detection Story) chance more than
-  // one approved instance's days cover the same date.
-  const findActiveInstanceIdForDateStmt = prepareLive(`
-    SELECT pi.id
-    FROM plan_instance_days pid
-    JOIN plan_instances pi ON pi.id = pid.instance_id
-    WHERE pid.date = ? AND pi.approved_at IS NOT NULL
-    ORDER BY pi.created_at DESC
-    LIMIT 1
-  `);
-  const insertDay = prepareLive(`
-    INSERT INTO plan_instance_days
-      (instance_id, section_name, week_number, date, day, suffix, category, workout_type, segments, activity_target, activity_description, notes, needs_review, workout_id)
-    VALUES
-      ($instance_id, $section_name, $week_number, $date, $day, $suffix, $category, $workout_type, $segments, $activity_target, $activity_description, $notes, $needs_review, $workout_id)
-  `);
-  const deleteDaysByInstanceStmt = prepareLive("DELETE FROM plan_instance_days WHERE instance_id = ?");
-  // HRA-333: the previous occupant of a (section_name, week_number, day)
-  // slot, looked up BEFORE deleteDayByIdentity removes it — regenerateFrom's
-  // own way of carrying that slot's workout_id over to the freshly
-  // regenerated row replacing it, same positional-identity reasoning
-  // deleteDayByIdentity itself already relies on.
-  const dayByIdentityStmt = prepareLive(
-    "SELECT workout_id FROM plan_instance_days WHERE instance_id = ? AND section_name = ? AND week_number = ? AND day = ?",
-  );
-  // HRA-149: PATCH /api/v1/plan-instances/:id/days/:dayId — a single day's
-  // dsl-derived columns (re-parsed+resolved) vs. its independent notes/
-  // scheduled_time overrides are separate statements, run conditionally by
-  // the service, same "one statement per field" style as updateFields above.
-  const updateDayFromDslStmt = prepareLive(`
-    UPDATE plan_instance_days SET
-      day = ?, suffix = ?, category = ?, workout_type = ?, segments = ?,
-      activity_target = ?, activity_description = ?, notes = ?, needs_review = ?
-    WHERE id = ?
-  `);
-  const updateDayNotesStmt = prepareLive("UPDATE plan_instance_days SET notes = ? WHERE id = ?");
-  const updateDayScheduledTimeStmt = prepareLive("UPDATE plan_instance_days SET scheduled_time = ? WHERE id = ?");
-  // HRA-333: PATCH .../days/:dayId's own way of moving identity onto a row
-  // whose dsl just became a swap partner's content — see
-  // plan-instances.service.ts's patchDay.
-  const updateDayWorkoutIdStmt = prepareLive("UPDATE plan_instance_days SET workout_id = ? WHERE id = ?");
-  // HRA-299: sets the customization provenance marker on one day — called
-  // whenever that day's workout content is individually edited or swapped
-  // (never for a notes-only or scheduled_time-only patch, and never for a
-  // bulk days-replace/regenerate, both of which recreate the row from
-  // scratch with this column left NULL — see the schema comment in db.ts).
-  const markDayCustomizedStmt = prepareLive("UPDATE plan_instance_days SET customized_at = datetime('now') WHERE id = ?");
-  // HRA-299: every day of an instance, from `effective_from` onward, that
-  // still carries a customization marker — the regenerate preflight's own
-  // detection query, run against the CURRENTLY persisted rows before any
-  // mutation. Text comparison on ISO YYYY-MM-DD dates sorts chronologically,
-  // same reasoning as instanceDateRangeStmt/overlappingApprovedStmt above.
-  const customizedDaysFromStmt = prepareLive(`
-    SELECT ${DAY_FIELDS} WHERE instance_id = ? AND date >= ? AND customized_at IS NOT NULL ORDER BY date ASC, day ASC
-  `);
-  // HRA-155: replaces the earlier HRA-132 `deleteDaysFromDate` (a raw
-  // `date >= fromDate` threshold) — that comparison silently broke whenever
-  // `start_date` changed as part of the same regenerate call, since the OLD
-  // rows' dates and the FRESHLY regenerated rows' dates are then computed
-  // from two different baselines, so a single date threshold can't reliably
-  // tell which old row a fresh one is replacing (produced orphaned stale
-  // rows and/or duplicate rows for the same day). Deleting by day identity
-  // instead — the caller only ever calls this once per day about to be
-  // (re)inserted (services/plan-instances.service.ts's regenerateFrom) — so
-  // that day's previous row, whatever date it happened to carry, is always
-  // removed first, with no dependence on dates lining up across the change.
-  const deleteDayByIdentityStmt = prepareLive(
-    "DELETE FROM plan_instance_days WHERE instance_id = ? AND section_name = ? AND week_number = ? AND day = ?",
-  );
-  // HRA-334: the automatic-matcher's own candidate pool — every "run"-type
-  // day across every instance (any approved_at state, same "any instance may
-  // contain candidates" scope as findDaysByDateAndWorkoutTypeStmt above),
-  // paired with its owning instance's schedule_timezone so the matcher can
-  // convert an activity's UTC-ish activity_date into the SAME local calendar
-  // frame this day's own `date` was authored in (AC3). REST/OTHER/etc. are
-  // never included — the matcher never even sees them (AC5/AC6).
-  const runDaysWithTimezoneStmt = prepareLive(`
-    SELECT pid.workout_id, pid.date, pi.schedule_timezone
-    FROM plan_instance_days pid JOIN plan_instances pi ON pi.id = pid.instance_id
-    WHERE pid.workout_type = 'run'
-  `);
-  // HRA-334: the CURRENT plan day a given workout_id resolves to right now
-  // (a workout_id survives a swap/regenerate, but the row it lives on can
-  // change) — undefined once the workout has been removed from Current
-  // entirely (e.g. its instance was deleted). Denormalized with the owning
-  // instance's name, same convenience findDaysByDateAndWorkoutTypeStmt above
-  // already provides.
-  const dayByWorkoutIdStmt = prepareLive(`
-    SELECT pid.id, pid.instance_id, pid.section_name, pid.week_number, pid.date, pid.day, pid.suffix, pid.category,
-           pid.workout_type, pid.segments, pid.activity_target, pid.activity_description, pid.notes, pid.needs_review,
-           pid.scheduled_time, pid.customized_at, pid.workout_id, pi.name AS instance_name
-    FROM plan_instance_days pid
-    JOIN plan_instances pi ON pi.id = pid.instance_id
-    WHERE pid.workout_id = ?
-  `);
-  const clearApprovalStmt = prepareLive("UPDATE plan_instances SET approved_at = NULL WHERE id = ?");
-  const approveStmt = prepareLive("UPDATE plan_instances SET approved_at = datetime('now') WHERE id = ?");
-  // HRA-249: the candidate's own resolved date range for the overlap check
-  // below — MIN/MAX over its days rather than a dedicated stored range,
-  // since plan_instance_days.date is already the source of truth. Text
-  // comparison on ISO YYYY-MM-DD strings sorts chronologically, so this
-  // (and overlappingApprovedStmt below) never needs a Date object and is
-  // immune to the timezone boundary defects a Date-based comparison risks.
-  const instanceDateRangeStmt = prepareLive(
-    "SELECT MIN(date) AS start_date, MAX(date) AS end_date FROM plan_instance_days WHERE instance_id = ?",
-  );
-  // HRA-249: every OTHER approved instance whose own [MIN(date), MAX(date)]
-  // range overlaps a given [start, end] inclusively — start/end-boundary,
-  // full containment either direction, and a shared boundary date all count
-  // (standard inclusive interval overlap: existing.end >= candidateStart AND
-  // existing.start <= candidateEnd). `pi.id != ?` excludes the candidate
-  // itself (re-activating/re-approving never conflicts with itself);
-  // `approved_at IS NOT NULL` excludes every not-yet-approved instance.
-  const overlappingApprovedStmt = prepareLive(`
-    SELECT pi.id, pi.name, MIN(pid.date) AS start_date, MAX(pid.date) AS end_date
-    FROM plan_instances pi
-    JOIN plan_instance_days pid ON pid.instance_id = pi.id
-    WHERE pi.approved_at IS NOT NULL AND pi.id != ?
-    GROUP BY pi.id
-    HAVING MAX(pid.date) >= ? AND MIN(pid.date) <= ?
-  `);
-  const updateNameStmt = prepareLive("UPDATE plan_instances SET name = ? WHERE id = ?");
-  // HRA-135: one statement per field, run conditionally in updateFields() —
-  // same granular-primitive style as updateName/updateStartDateAndPaceOverrides
-  // above, so a PATCH that omits a field never touches its column.
-  const updateRaceNameStmt = prepareLive("UPDATE plan_instances SET race_name = ? WHERE id = ?");
-  const updateRaceDateStmt = prepareLive("UPDATE plan_instances SET race_date = ? WHERE id = ?");
-  const updateRaceUrlStmt = prepareLive("UPDATE plan_instances SET race_url = ? WHERE id = ?");
-  // HRA-132: written together — a regenerate always resolves both (falling
-  // back to the instance's own current value for whichever the caller didn't
-  // supply) before running instantiatePlan, so both columns stay consistent
-  // with whatever was actually used to produce the regenerated days.
-  const updateStartDateAndPaceOverridesStmt = prepareLive("UPDATE plan_instances SET start_date = ?, pace_overrides = ? WHERE id = ?");
-  // HRA-332: schedule_timezone correction (rejected by the service once
-  // Original is frozen) and the Original-baseline mirror write, run by the
-  // service after every pre-freeze Current mutation — see
-  // plan-instances.service.ts's syncOriginalIfNotFrozen.
-  const updateScheduleTimezoneStmt = prepareLive("UPDATE plan_instances SET schedule_timezone = ? WHERE id = ?");
-  const updateOriginalStmt = prepareLive(
-    "UPDATE plan_instances SET original_start_date = ?, original_days_snapshot = ?, original_revision = ? WHERE id = ?",
-  );
-  // HRA-336: bumped exactly once per successful semantic mutation of Current
-  // — the service layer decides WHETHER a call changed anything (a failed or
-  // semantic no-op operation never calls this), always inside the same
-  // transaction as the mutation itself, so a rolled-back mutation never
-  // leaves a stray bump behind.
-  const bumpCurrentRevisionStmt = prepareLive("UPDATE plan_instances SET current_revision = current_revision + 1 WHERE id = ?");
-  // ON DELETE CASCADE (plan_instance_days.instance_id) removes the instance's days too.
-  const deleteInstanceStmt = prepareLive("DELETE FROM plan_instances WHERE id = ?");
-
-  return {
-    instanceById: (id: number): PlanInstanceRow | undefined => findInstanceById.get(id) as unknown as PlanInstanceRow | undefined,
-    listPage: (limit: number, offset: number, templateId?: number): PlanInstanceRow[] =>
-      (templateId != null
-        ? listByTemplateStmt.all(templateId, limit, offset)
-        : listAllStmt.all(limit, offset)) as unknown as PlanInstanceRow[],
-    count: (templateId?: number): { count: number } =>
-      (templateId != null ? countByTemplateStmt.get(templateId) : countAllStmt.get()) as unknown as { count: number },
-    allInstances: (): PlanInstanceRow[] => listEveryInstanceStmt.all() as unknown as PlanInstanceRow[],
-    daysByInstance: (instanceId: number): PlanInstanceDayRow[] => findDaysByInstance.all(instanceId) as unknown as PlanInstanceDayRow[],
-    dayById: (id: number): PlanInstanceDayRow | undefined => findDayByIdStmt.get(id) as unknown as PlanInstanceDayRow | undefined,
-    daysBySection: (instanceId: number, sectionName: string): PlanInstanceDayRow[] =>
-      findDaysBySectionStmt.all(instanceId, sectionName) as unknown as PlanInstanceDayRow[],
-    daysBySectionAndWeek: (instanceId: number, sectionName: string, weekNumber: number): PlanInstanceDayRow[] =>
-      findDaysBySectionAndWeekStmt.all(instanceId, sectionName, weekNumber) as unknown as PlanInstanceDayRow[],
-    daysByDateAndWorkoutType: (date: string, workoutType: string): PlanInstanceDayWithInstance[] =>
-      findDaysByDateAndWorkoutTypeStmt.all(date, workoutType) as unknown as PlanInstanceDayWithInstance[],
-    activeInstanceIdForDate: (date: string): number | undefined =>
-      (findActiveInstanceIdForDateStmt.get(date) as { id: number } | undefined)?.id,
-    runDaysWithTimezone: (): { workout_id: string; date: string; schedule_timezone: string | null }[] =>
-      runDaysWithTimezoneStmt.all() as unknown as { workout_id: string; date: string; schedule_timezone: string | null }[],
-    dayByWorkoutId: (workoutId: string): PlanInstanceDayWithInstance | undefined =>
-      dayByWorkoutIdStmt.get(workoutId) as unknown as PlanInstanceDayWithInstance | undefined,
-    createInstance: (i: PlanInstanceInput): PlanInstanceRow => {
-      const info = insertInstance.run({
-        $template_id: i.template_id, $start_date: i.start_date,
-        $pace_overrides: i.pace_overrides, $target_activity_id: i.target_activity_id,
-        $name: i.name, $event: i.event, $race_name: i.race_name, $race_date: i.race_date, $race_url: i.race_url,
-        $schedule_timezone: i.schedule_timezone, $original_start_date: i.original_start_date,
-        $original_days_snapshot: i.original_days_snapshot,
-      });
-      return findInstanceById.get(Number(info.lastInsertRowid)) as unknown as PlanInstanceRow;
-    },
-    createDay: (d: PlanInstanceDayInput) => {
-      insertDay.run({
-        $instance_id: d.instance_id, $section_name: d.section_name, $week_number: d.week_number,
-        $date: d.date, $day: d.day, $suffix: d.suffix, $category: d.category, $workout_type: d.workout_type,
-        $segments: d.segments, $activity_target: d.activity_target, $activity_description: d.activity_description,
-        $notes: d.notes, $needs_review: d.needs_review, $workout_id: d.workout_id,
-      });
-    },
-    // HRA-333: undefined when no day currently occupies that slot (a
-    // template DSL change introducing a new day the previous version didn't
-    // have) — the caller mints a fresh workout_id in that case.
-    dayByIdentity: (instanceId: number, sectionName: string, weekNumber: number, day: number): string | undefined =>
-      (dayByIdentityStmt.get(instanceId, sectionName, weekNumber, day) as { workout_id: string } | undefined)?.workout_id,
-    // Compound operations (delete+insert+clear-approval) belong to
-    // services/plan-instances.service.ts, which owns the transaction — these
-    // are the single-statement primitives it composes (rest-api-standards §11).
-    deleteDaysByInstance: (instanceId: number) => { deleteDaysByInstanceStmt.run(instanceId); },
-    deleteDayByIdentity: (instanceId: number, sectionName: string, weekNumber: number, day: number) => {
-      deleteDayByIdentityStmt.run(instanceId, sectionName, weekNumber, day);
-    },
-    clearApproval: (id: number) => { clearApprovalStmt.run(id); },
-    // HRA-135: PATCH /api/v1/plan-instances/:id — each field is applied only
-    // if the caller actually supplied it (checked via `!== undefined`, not
-    // truthiness — an explicit null clears a nullable race_* column).
-    updateFields: (id: number, fields: Partial<{ name: string; race_name: string | null; race_date: string | null; race_url: string | null }>) => {
-      if (fields.name !== undefined) updateNameStmt.run(fields.name, id);
-      if (fields.race_name !== undefined) updateRaceNameStmt.run(fields.race_name, id);
-      if (fields.race_date !== undefined) updateRaceDateStmt.run(fields.race_date, id);
-      if (fields.race_url !== undefined) updateRaceUrlStmt.run(fields.race_url, id);
-    },
-    updateStartDateAndPaceOverrides: (id: number, startDate: string, paceOverrides: string | null) => {
-      updateStartDateAndPaceOverridesStmt.run(startDate, paceOverrides, id);
-    },
-    updateScheduleTimezone: (id: number, scheduleTimezone: string) => { updateScheduleTimezoneStmt.run(scheduleTimezone, id); },
-    updateOriginal: (id: number, originalStartDate: string, originalDaysSnapshot: string, originalRevision: number) => {
-      updateOriginalStmt.run(originalStartDate, originalDaysSnapshot, originalRevision, id);
-    },
-    bumpCurrentRevision: (id: number) => { bumpCurrentRevisionStmt.run(id); },
-    // HRA-149: dsl-derived columns for one day, re-parsed+resolved by the caller.
-    updateDayFromDsl: (dayId: number, d: {
-      day: number; suffix: string | null; category: string | null; workout_type: string; segments: string;
-      activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number;
-    }) => {
-      updateDayFromDslStmt.run(
-        d.day, d.suffix, d.category, d.workout_type, d.segments,
-        d.activity_target, d.activity_description, d.notes, d.needs_review, dayId,
-      );
-    },
-    updateDayNotes: (dayId: number, notes: string | null) => { updateDayNotesStmt.run(notes, dayId); },
-    updateDayScheduledTime: (dayId: number, scheduledTime: string | null) => { updateDayScheduledTimeStmt.run(scheduledTime, dayId); },
-    updateDayWorkoutId: (dayId: number, workoutId: string) => { updateDayWorkoutIdStmt.run(workoutId, dayId); },
-    markDayCustomized: (dayId: number) => { markDayCustomizedStmt.run(dayId); },
-    customizedDaysFrom: (instanceId: number, effectiveFrom: string): PlanInstanceDayRow[] =>
-      customizedDaysFromStmt.all(instanceId, effectiveFrom) as unknown as PlanInstanceDayRow[],
-    approve: (id: number): PlanInstanceRow => {
-      approveStmt.run(id);
-      return findInstanceById.get(id) as unknown as PlanInstanceRow;
-    },
-    dateRangeForInstance: (id: number): { start_date: string; end_date: string } | undefined => {
-      const row = instanceDateRangeStmt.get(id) as { start_date: string | null; end_date: string | null };
-      return row.start_date != null && row.end_date != null ? { start_date: row.start_date, end_date: row.end_date } : undefined;
-    },
-    overlappingApproved: (excludeId: number, startDate: string, endDate: string): { id: number; name: string | null; start_date: string; end_date: string }[] =>
-      overlappingApprovedStmt.all(excludeId, startDate, endDate) as unknown as { id: number; name: string | null; start_date: string; end_date: string }[],
-    remove: (id: number) => { deleteInstanceStmt.run(id); },
+export function createPlanInstancesRepo(db: Queryable) {
+  const repo = {
+    deferConstraints: () => db.run("SET CONSTRAINTS ALL DEFERRED"),
+    instanceById: (id: number) => db.get<PlanInstanceRow>(`SELECT ${IF} FROM plan_instances WHERE id=$1`, [id]),
+    listPage: (limit:number,offset:number,templateId?:number) => db.all<PlanInstanceRow>(`SELECT ${IF} FROM plan_instances ${templateId == null ? "" : "WHERE template_id=$3"} ORDER BY created_at DESC LIMIT $1 OFFSET $2`, templateId == null ? [limit,offset] : [limit,offset,templateId]),
+    count: (templateId?:number) => db.get<{count:number}>(`SELECT COUNT(*)::int count FROM plan_instances ${templateId == null ? "" : "WHERE template_id=$1"}`, templateId == null ? [] : [templateId]),
+    allInstances: () => db.all<PlanInstanceRow>(`SELECT ${IF} FROM plan_instances ORDER BY created_at DESC`),
+    daysByInstance: (id:number) => db.all<PlanInstanceDayRow>(`SELECT ${DF}${DAYS} WHERE d.instance_id=$1 ORDER BY d.date,w.day`,[id]),
+    dayById: (id:number) => db.get<PlanInstanceDayRow>(`SELECT ${DF}${DAYS} WHERE d.id=$1`,[id]),
+    daysBySection: (id:number,section:string) => db.all<PlanInstanceDayRow>(`SELECT ${DF}${DAYS} WHERE d.instance_id=$1 AND w.section_name=$2 ORDER BY d.date,w.day`,[id,section]),
+    daysBySectionAndWeek:(id:number,section:string,week:number)=>db.all<PlanInstanceDayRow>(`SELECT ${DF}${DAYS} WHERE d.instance_id=$1 AND w.section_name=$2 AND w.week_number=$3 ORDER BY d.date,w.day`,[id,section,week]),
+    daysByDateAndWorkoutType:(date:string,type:string)=>db.all<PlanInstanceDayWithInstance>(`SELECT ${DF},pi.name instance_name${DAYS} JOIN plan_instances pi ON pi.id=d.instance_id WHERE d.date=$1 AND w.workout_type=$2 ORDER BY pi.created_at DESC`,[date,type]),
+    activeInstanceIdForDate: async (date:string) => (await db.get<{id:number}>(`SELECT pi.id FROM plan_instance_days d JOIN plan_instances pi ON pi.id=d.instance_id WHERE d.date=$1 AND pi.approved_at IS NOT NULL ORDER BY pi.created_at DESC LIMIT 1`,[date]))?.id,
+    runDaysWithTimezone:()=>db.all<{workout_id:string;date:string;schedule_timezone:string|null;instance_id:number}>(`SELECT d.workout_id,d.date,pi.schedule_timezone,d.instance_id FROM plan_instance_days d JOIN plan_instance_workouts w ON w.instance_id=d.instance_id AND w.workout_id=d.workout_id JOIN plan_instances pi ON pi.id=d.instance_id WHERE w.workout_type='run'`),
+    dayByWorkoutId:(id:string)=>db.get<PlanInstanceDayWithInstance>(`SELECT ${DF},pi.name instance_name${DAYS} JOIN plan_instances pi ON pi.id=d.instance_id WHERE d.workout_id=$1`,[id]),
+    createInstance:(i:PlanInstanceInput)=>db.get<PlanInstanceRow>(`INSERT INTO plan_instances (user_id,template_id,start_date,pace_overrides,target_activity_id,name,event,race_name,race_date,race_url,schedule_timezone,original_start_date,original_days_snapshot) VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1),$1,$2,$3::jsonb,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb) RETURNING ${IF}`,[i.template_id,i.start_date,i.pace_overrides,i.target_activity_id,i.name,i.event,i.race_name,i.race_date,i.race_url,i.schedule_timezone,i.original_start_date,i.original_days_snapshot]),
+    async createDay(d:PlanInstanceDayInput) { await db.run(`INSERT INTO plan_instance_workouts (instance_id,workout_id,user_id,section_name,week_number,day,suffix,category,workout_type,segments,activity_target,activity_description,notes,needs_review,customized_at) VALUES ($1,$2,(SELECT user_id FROM plan_instances WHERE id=$1),$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12,$13::boolean,$14) ON CONFLICT (instance_id,workout_id) DO UPDATE SET section_name=excluded.section_name,week_number=excluded.week_number,day=excluded.day,suffix=excluded.suffix,category=excluded.category,workout_type=excluded.workout_type,segments=excluded.segments,activity_target=excluded.activity_target,activity_description=excluded.activity_description,notes=excluded.notes,needs_review=excluded.needs_review,customized_at=excluded.customized_at`,[d.instance_id,d.workout_id,d.section_name,d.week_number,d.day,d.suffix,d.category,d.workout_type,d.segments,d.activity_target,d.activity_description,d.notes,d.needs_review,d.customized_at]); await db.run(`INSERT INTO plan_instance_days (instance_id,workout_id,user_id,date,scheduled_time) VALUES ($1,$2,(SELECT user_id FROM plan_instances WHERE id=$1),$3,$4)`,[d.instance_id,d.workout_id,d.date,d.scheduled_time]); },
+    dayByIdentity:async(instanceId:number,section:string,week:number,day:number)=>(await db.get<{workout_id:string}>(`SELECT w.workout_id${DAYS} WHERE d.instance_id=$1 AND w.section_name=$2 AND w.week_number=$3 AND w.day=$4`,[instanceId,section,week,day]))?.workout_id,
+    deleteDaysByInstance:(id:number)=>db.run("DELETE FROM plan_instance_days WHERE instance_id=$1",[id]),
+    deleteDayByIdentity:(id:number,section:string,week:number,day:number)=>db.run(`DELETE FROM plan_instance_days d USING plan_instance_workouts w WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.instance_id=$1 AND w.section_name=$2 AND w.week_number=$3 AND w.day=$4`,[id,section,week,day]),
+    clearApproval:(id:number)=>db.run("UPDATE plan_instances SET approved_at=NULL WHERE id=$1",[id]),
+    async updateFields(id:number,f:Partial<{name:string;race_name:string|null;race_date:string|null;race_url:string|null}>) { const fields: string[]=[]; const values:unknown[]=[]; for(const [column,value] of Object.entries(f)){if(value!==undefined){values.push(value);fields.push(`${column}=$${values.length+1}`)}} if(fields.length) await db.run(`UPDATE plan_instances SET ${fields.join(",")} WHERE id=$1`,[id,...values]); },
+    updateStartDateAndPaceOverrides:(id:number,start:string,pace:string|null)=>db.run("UPDATE plan_instances SET start_date=$2,pace_overrides=$3::jsonb WHERE id=$1",[id,start,pace]),
+    updateScheduleTimezone:(id:number,tz:string)=>db.run("UPDATE plan_instances SET schedule_timezone=$2 WHERE id=$1",[id,tz]),
+    updateOriginal:(id:number,start:string,snapshot:string,revision:number)=>db.run("UPDATE plan_instances SET original_start_date=$2,original_days_snapshot=$3::jsonb,original_revision=$4 WHERE id=$1",[id,start,snapshot,revision]),
+    bumpCurrentRevision:(id:number)=>db.run("UPDATE plan_instances SET current_revision=current_revision+1 WHERE id=$1",[id]),
+    updateDayFromDsl:(id:number,d: {day:number;suffix:string|null;category:string|null;workout_type:string;segments:string;activity_target:string|null;activity_description:string|null;notes:string|null;needs_review:number})=>db.run(`UPDATE plan_instance_workouts w SET day=$2,suffix=$3,category=$4,workout_type=$5,segments=$6::jsonb,activity_target=$7,activity_description=$8,notes=$9,needs_review=$10::boolean FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1`,[id,d.day,d.suffix,d.category,d.workout_type,d.segments,d.activity_target,d.activity_description,d.notes,d.needs_review]),
+    updateDayNotes:(id:number,notes:string|null)=>db.run(`UPDATE plan_instance_workouts w SET notes=$2 FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1`,[id,notes]),
+    updateDayScheduledTime:(id:number,time:string|null)=>db.run("UPDATE plan_instance_days SET scheduled_time=$2 WHERE id=$1",[id,time]),
+    updateDayWorkoutId:(id:number,workoutId:string)=>db.run("UPDATE plan_instance_days SET workout_id=$2 WHERE id=$1",[id,workoutId]),
+    // HRA-333 follow-up: locks both slot rows for the atomic swap below —
+    // returns whichever of the two ids actually exist (0, 1, or 2 rows), each
+    // with its own instance_id so the caller can verify same-instance
+    // membership itself; a WHERE instance_id=$1 filter here would collapse
+    // "doesn't exist" and "belongs to another instance" into the same empty
+    // result, losing the distinction the swap's own validation wants.
+    lockDaysForSwap:(dayIdA:number,dayIdB:number)=>db.all<{id:number;instance_id:number;workout_id:string}>("SELECT id,instance_id,workout_id FROM plan_instance_days WHERE id IN ($1,$2) FOR UPDATE",[dayIdA,dayIdB]),
+    // The (instance_id, workout_id) unique constraint on plan_instance_days
+    // is DEFERRABLE precisely for this: exchanging two rows' workout_id
+    // within one statement is already atomic, but Postgres still validates
+    // uniqueness per-row as it writes, so without deferring, the first row's
+    // new value can transiently collide with the second row's still-old
+    // value mid-statement.
+    deferWorkoutIdentityConstraint:()=>db.run("SET CONSTRAINTS plan_instance_days_instance_id_workout_id_key DEFERRED"),
+    // Exchanges workout_id between two slot rows in one statement — neither
+    // row's own id/date/scheduled_time moves, and plan_instance_workouts
+    // (content, customization) and workout_associations (keyed by
+    // (instance_id, workout_id)) are never touched, so both stay attached to
+    // the logical workout, not the slot.
+    swapWorkoutIds:(dayIdA:number,workoutIdA:string,dayIdB:number,workoutIdB:string)=>db.run("UPDATE plan_instance_days SET workout_id=CASE id WHEN $1 THEN $2 WHEN $3 THEN $4 END WHERE id IN ($1,$3)",[dayIdA,workoutIdA,dayIdB,workoutIdB]),
+    markDayCustomized:(id:number)=>db.run(`UPDATE plan_instance_workouts w SET customized_at=to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1`,[id]),
+    customizedDaysFrom:(id:number,from:string)=>db.all<PlanInstanceDayRow>(`SELECT ${DF}${DAYS} WHERE d.instance_id=$1 AND d.date >= $2 AND w.customized_at IS NOT NULL ORDER BY d.date,w.day`,[id,from]),
+    approve:(id:number)=>db.get<PlanInstanceRow>(`UPDATE plan_instances SET approved_at=to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') WHERE id=$1 RETURNING ${IF}`,[id]),
+    async dateRangeForInstance(id:number){const r=await db.get<{start_date:string|null;end_date:string|null}>("SELECT MIN(date) start_date,MAX(date) end_date FROM plan_instance_days WHERE instance_id=$1",[id]);return r?.start_date&&r.end_date?{start_date:r.start_date,end_date:r.end_date}:undefined;},
+    overlappingApproved:(id:number,start:string,end:string)=>db.all<{id:number;name:string|null;start_date:string;end_date:string}>("SELECT pi.id,pi.name,MIN(d.date) start_date,MAX(d.date) end_date FROM plan_instances pi JOIN plan_instance_days d ON d.instance_id=pi.id WHERE pi.approved_at IS NOT NULL AND pi.id != $1 GROUP BY pi.id HAVING MAX(d.date)>=$2 AND MIN(d.date)<=$3",[id,start,end]),
+    remove:(id:number)=>db.run("DELETE FROM plan_instances WHERE id=$1",[id]),
   };
+  return { ...repo, withDb: (query: Queryable) => createPlanInstancesRepo(query) };
 }
-
-export type PlanInstancesRepo = ReturnType<typeof createPlanInstancesRepo>;
+export type PlanInstancesRepo=ReturnType<typeof createPlanInstancesRepo>;

@@ -112,7 +112,7 @@ test("GET .../days/:dayId/fit 422s a day flagged needs_review, downloading nothi
     // Directly flip needs_review at the DB layer — the PATCH endpoint itself
     // refuses to persist a still-needs-review day, so this test reaches for
     // the DB to set up the state under test rather than fighting that gate.
-    server.db.prepare("UPDATE plan_instance_days SET needs_review = 1 WHERE id = ?").run(runDayId);
+    await server.db.run("UPDATE plan_instance_workouts w SET needs_review = true FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1", [runDayId]);
 
     const res = await server.api(`/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`);
     assert.equal(res.status, 422, JSON.stringify(res.json));
@@ -126,7 +126,7 @@ test("GET .../days/:dayId/fit 422s a day whose workout_type isn't run/rest", asy
   const server = await startTestServer();
   try {
     const { instanceId, runDayId } = await setUp(server);
-    server.db.prepare("UPDATE plan_instance_days SET workout_type = 'cross' WHERE id = ?").run(runDayId);
+    await server.db.run("UPDATE plan_instance_workouts w SET workout_type = 'cross' FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1", [runDayId]);
 
     const res = await server.api(`/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`);
     assert.equal(res.status, 422, JSON.stringify(res.json));

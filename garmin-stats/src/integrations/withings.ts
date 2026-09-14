@@ -6,7 +6,7 @@
  * and server.ts (in-app login button + status check).
  */
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Queryable } from "../db/query.ts";
 import { requireWithingsConfig, type Config } from "../config.ts";
 import type { WithingsTokenRow } from "../db.ts";
 
@@ -34,43 +34,43 @@ async function requestToken(params: URLSearchParams): Promise<TokenBody> {
   return json.body;
 }
 
-function saveToken(db: DatabaseSync, body: TokenBody): void {
+async function saveToken(db: Queryable, body: TokenBody): Promise<void> {
   const expires_at = Math.floor(Date.now() / 1000) + body.expires_in;
-  db.prepare(`
-    INSERT INTO withings_tokens (id, access_token, refresh_token, expires_at, scope)
-    VALUES (1, $at, $rt, $ea, $sc)
-    ON CONFLICT(id) DO UPDATE SET
-      access_token=$at, refresh_token=$rt, expires_at=$ea, scope=$sc, updated_at=datetime('now')
-  `).run({ $at: body.access_token, $rt: body.refresh_token, $ea: expires_at, $sc: body.scope });
+  await db.run(`
+    INSERT INTO withings_tokens (user_id, access_token, refresh_token, expires_at, scope)
+    VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1), $1, $2, $3, $4)
+    ON CONFLICT (user_id) DO UPDATE SET
+      access_token=EXCLUDED.access_token, refresh_token=EXCLUDED.refresh_token, expires_at=EXCLUDED.expires_at, scope=EXCLUDED.scope, updated_at=now()
+  `, [body.access_token, body.refresh_token, expires_at, body.scope]);
 }
 
-export async function exchangeCode(config: Config, db: DatabaseSync, code: string): Promise<void> {
+export async function exchangeCode(config: Config, db: Queryable, code: string): Promise<void> {
   const { client_id, client_secret, redirect_uri } = requireWithingsConfig(config);
   const body = await requestToken(new URLSearchParams({
     action: "requesttoken", grant_type: "authorization_code",
     client_id, client_secret,
     code, redirect_uri,
   }));
-  saveToken(db, body);
+  await saveToken(db, body);
 }
 
-async function refreshToken(config: Config, db: DatabaseSync, token: WithingsTokenRow): Promise<string> {
+async function refreshToken(config: Config, db: Queryable, token: WithingsTokenRow): Promise<string> {
   const { client_id, client_secret } = requireWithingsConfig(config);
   const body = await requestToken(new URLSearchParams({
     action: "requesttoken", grant_type: "refresh_token",
     client_id, client_secret,
     refresh_token: token.refresh_token,
   }));
-  saveToken(db, body);
+  await saveToken(db, body);
   return body.access_token;
 }
 
-export function loadToken(db: DatabaseSync): WithingsTokenRow | undefined {
-  return db.prepare("SELECT * FROM withings_tokens WHERE id = 1").get() as WithingsTokenRow | undefined;
+export function loadToken(db: Queryable): Promise<WithingsTokenRow | undefined> {
+  return db.get<WithingsTokenRow>("SELECT 1 AS id, access_token, refresh_token, expires_at, scope FROM withings_tokens ORDER BY updated_at DESC LIMIT 1");
 }
 
-export async function getValidToken(config: Config, db: DatabaseSync): Promise<string> {
-  const token = loadToken(db);
+export async function getValidToken(config: Config, db: Queryable): Promise<string> {
+  const token = await loadToken(db);
   if (!token) throw new Error("No token. Run: npm run auth:withings");
   return (token.expires_at - Math.floor(Date.now() / 1000) < 300)
     ? refreshToken(config, db, token) : token.access_token;
@@ -89,8 +89,8 @@ export interface WithingsStatus {
 // is near/past expiry is only knowable by actually trying to refresh it —
 // success means valid (and persists the refreshed token), failure (e.g. a
 // revoked refresh token) means invalid.
-export async function getTokenStatus(config: Config, db: DatabaseSync): Promise<WithingsStatus> {
-  const token = loadToken(db);
+export async function getTokenStatus(config: Config, db: Queryable): Promise<WithingsStatus> {
+  const token = await loadToken(db);
   if (!token) return { present: false, valid: false };
 
   const secondsLeft = token.expires_at - Math.floor(Date.now() / 1000);
@@ -100,7 +100,7 @@ export async function getTokenStatus(config: Config, db: DatabaseSync): Promise<
 
   try {
     await refreshToken(config, db, token);
-    const fresh = loadToken(db)!;
+    const fresh = (await loadToken(db))!;
     return { present: true, valid: true, expiresAt: fresh.expires_at, scope: fresh.scope ?? undefined };
   } catch (e) {
     return { present: true, valid: false, error: e instanceof Error ? e.message : String(e) };

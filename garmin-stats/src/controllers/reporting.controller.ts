@@ -53,19 +53,19 @@ function parseRange(url: URL): ReportRangeMode {
 export function createReportingController(ctx: AppContext) {
   const { reporting } = ctx.services;
 
-  const getWorkoutReport: Handler = (_req, res, url) => {
+  const getWorkoutReport: Handler = async (_req, res, url) => {
     const { instanceId, workoutId } = parseInstanceIdAndWorkoutId(url.pathname);
     if (!Number.isInteger(instanceId)) throw badRequest("Invalid plan instance id.");
     if (!workoutId) throw badRequest("Invalid workout id.");
 
     const asOf = parseAsOf(url);
-    const report = reporting.getWorkoutReport(instanceId, workoutId, asOf);
+    const report = await reporting.getWorkoutReport(instanceId, workoutId, asOf);
     if (!report) throw notFound(`No workout ${workoutId} found on plan instance ${instanceId}.`);
     return send(res, report);
   };
 
   // GET /api/v1/plan-instances/:id/reports/weeks?section_name=&week_number=&range=&as_of=
-  const getWeekReport: Handler = (_req, res, url) => {
+  const getWeekReport: Handler = async (_req, res, url) => {
     const instanceId = parseInstanceId(url.pathname);
     if (!Number.isInteger(instanceId)) throw badRequest("Invalid plan instance id.");
 
@@ -78,20 +78,20 @@ export function createReportingController(ctx: AppContext) {
     const range = parseRange(url);
     const asOf = parseAsOf(url);
 
-    const report = reporting.getWeekReport(instanceId, sectionName, weekNumber, range, asOf);
+    const report = await reporting.getWeekReport(instanceId, sectionName, weekNumber, range, asOf);
     if (!report) throw notFound(`No week "${sectionName}" #${weekNumber} found on plan instance ${instanceId}.`);
     return send(res, report);
   };
 
   // GET /api/v1/plan-instances/:id/reports/plan?range=&as_of=
-  const getPlanReport: Handler = (_req, res, url) => {
+  const getPlanReport: Handler = async (_req, res, url) => {
     const instanceId = parseInstanceId(url.pathname);
     if (!Number.isInteger(instanceId)) throw badRequest("Invalid plan instance id.");
 
     const range = parseRange(url);
     const asOf = parseAsOf(url);
 
-    const report = reporting.getPlanReport(instanceId, range, asOf);
+    const report = await reporting.getPlanReport(instanceId, range, asOf);
     if (!report) throw notFound(`No plan instance ${instanceId} found.`);
     return send(res, report);
   };
@@ -114,7 +114,7 @@ export function createReportingController(ctx: AppContext) {
     if (distanceM != null && !Number.isFinite(distanceM)) throw unprocessable("distance_m must be a finite number or null.");
     if (durationSec != null && !Number.isFinite(durationSec)) throw unprocessable("duration_sec must be a finite number or null.");
 
-    const result = reporting.setQualityAlignment(workoutId, segmentIndex, body.activity_id as number, distanceM, durationSec);
+    const result = await reporting.setQualityAlignment(workoutId, segmentIndex, body.activity_id as number, distanceM, durationSec);
     if (!result.ok) throw unprocessable(`Activity ${body.activity_id} is not accepted evidence for workout ${workoutId}.`);
     return send(res, { workout_id: workoutId, segment_index: segmentIndex, activity_id: body.activity_id, distance_m: distanceM, duration_sec: durationSec });
   };
@@ -122,11 +122,11 @@ export function createReportingController(ctx: AppContext) {
   // DELETE /api/v1/plan-instances/:id/reports/workouts/:workoutId/quality-alignment/:segmentIndex
   // Removes a manual alignment (the segment reverts to "unavailable") without
   // ever touching the underlying activity/track_points rows (AC12).
-  const removeQualityAlignment: Handler = (_req, res, url) => {
+  const removeQualityAlignment: Handler = async (_req, res, url) => {
     const { workoutId, segmentIndex } = parseQualityAlignmentPath(url.pathname);
     if (!workoutId) throw badRequest("Invalid workout id.");
     if (!Number.isInteger(segmentIndex) || segmentIndex < 0) throw badRequest("segmentIndex must be a non-negative integer.");
-    reporting.removeQualityAlignment(workoutId, segmentIndex);
+    await reporting.removeQualityAlignment(workoutId, segmentIndex);
     return send(res, { workout_id: workoutId, segment_index: segmentIndex, removed: true });
   };
 
@@ -137,7 +137,7 @@ export function createReportingController(ctx: AppContext) {
   // race-range is just a saved date_ranges row's own {from,to} resolved by
   // the caller before this call — no separate race-range endpoint exists,
   // since the window is the only thing this report actually needs.
-  const getRangeReport: Handler = (_req, res, url) => {
+  const getRangeReport: Handler = async (_req, res, url) => {
     const from = url.searchParams.get("from");
     const to = url.searchParams.get("to");
     if (!from || !ISO_DATE.test(from) || !to || !ISO_DATE.test(to)) throw badRequest("from and to are required dates in YYYY-MM-DD format.");
@@ -146,7 +146,7 @@ export function createReportingController(ctx: AppContext) {
     const range = parseRange(url);
     const asOf = parseAsOf(url);
 
-    return send(res, reporting.getRangeReport(from, to, range, asOf));
+    return send(res, await reporting.getRangeReport(from, to, range, asOf));
   };
 
   return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment, getRangeReport };

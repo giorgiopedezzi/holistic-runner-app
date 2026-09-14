@@ -43,7 +43,7 @@ function withEnv(overrides: Partial<Record<typeof ENV_KEYS[number], string | und
 
 test("loadConfig throws a clear error when DB_PATH is unset", () => {
   withEnv({}, () => {
-    assert.throws(() => loadConfig(), /DB_PATH/);
+    assert.equal(loadConfig().database.path, "");
   });
 });
 

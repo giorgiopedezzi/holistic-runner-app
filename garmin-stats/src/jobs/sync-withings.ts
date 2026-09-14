@@ -5,7 +5,7 @@
  */
 
 import { loadConfig, getArg, hasFlag } from "../config.ts";
-import { openDb, initSchema, bodyMeasurementParams } from "../db.ts";
+import { openPostgresDatabase } from "../db/postgres.ts";
 import { getValidToken } from "../integrations/withings.ts";
 import type { BodyMeasurementRow } from "../db.ts";
 
@@ -112,8 +112,7 @@ function decodeGroup(grp: MeasGroup, heightM: number | null): BodyMeasurementRow
 
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Sync Withings ===\n");
-  const db = openDb();
-  initSchema(db);
+  const db = openPostgresDatabase();
   const accessToken = await getValidToken(config, db);
 
   const heightHistory = await fetchHeightHistory(accessToken);
@@ -123,7 +122,7 @@ async function main(): Promise<void> {
     console.log(`Using height ${heightHistory[heightHistory.length - 1].heightM.toFixed(2)} m for BMI`);
   }
 
-  const last = db.prepare("SELECT MAX(measured_at) AS last FROM body_measurements").get() as { last: string | null };
+  const last = await db.get<{ last: string | null }>("SELECT MAX(measured_at) AS last FROM body_measurements");
   const startTs = FROM ? Math.floor(new Date(FROM).getTime() / 1000)
     : last?.last ? Math.floor(new Date(last.last).getTime() / 1000) - 86400
     : Math.floor(Date.now() / 1000) - 2 * 365 * 86400;
@@ -134,31 +133,21 @@ async function main(): Promise<void> {
   const groups = await fetchMeasurements(accessToken, startTs, endTs);
   console.log(`  Total groups: ${groups.length}`);
 
-  const stmt = db.prepare(`
-    INSERT OR IGNORE INTO body_measurements
-      (measured_at, date_only, weight_kg, fat_ratio, fat_mass_kg,
-       muscle_mass_kg, hydration_kg, bone_mass_kg, bmi, heart_rate)
-    VALUES
-      ($measured_at, $date_only, $weight_kg, $fat_ratio, $fat_mass_kg,
-       $muscle_mass_kg, $hydration_kg, $bone_mass_kg, $bmi, $heart_rate)
-  `);
-
   let imported = 0, skipped = 0;
-  db.exec("BEGIN");
-  try {
+  await db.transaction(async client => {
     for (const grp of groups) {
       const row = decodeGroup(grp, heightAt(heightHistory, grp.date));
       if (!row) { skipped++; continue; }
-      const info = stmt.run(bodyMeasurementParams(row));
-      if (info.changes > 0) {
+      const info = await client.query(`INSERT INTO body_measurements (user_id, measured_at, date_only, weight_kg, fat_ratio, fat_mass_kg, muscle_mass_kg, hydration_kg, bone_mass_kg, bmi, heart_rate) VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (measured_at) DO NOTHING`, [row.measured_at, row.date_only, row.weight_kg, row.fat_ratio, row.fat_mass_kg, row.muscle_mass_kg, row.hydration_kg, row.bone_mass_kg, row.bmi, row.heart_rate]);
+      if ((info.rowCount ?? 0) > 0) {
         imported++;
         if (VERBOSE) console.log(`  ✓  ${row.date_only}  ${row.weight_kg?.toFixed(1)} kg`);
       } else skipped++;
     }
-    db.exec("COMMIT");
-  } catch (e) { db.exec("ROLLBACK"); throw e; }
+  });
 
   console.log(`\nResults:\n  Imported : ${imported}\n  Skipped  : ${skipped}`);
+  await db.close();
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

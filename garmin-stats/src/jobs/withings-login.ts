@@ -13,7 +13,7 @@ import http from "http";
 import { exec } from "child_process";
 import { URL } from "url";
 import { loadConfig } from "../config.ts";
-import { openDb, initSchema } from "../db.ts";
+import { openPostgresDatabase } from "../db/postgres.ts";
 import { getAuthUrl, exchangeCode, loadToken } from "../integrations/withings.ts";
 
 const config = loadConfig();
@@ -39,14 +39,14 @@ const server = http.createServer(async (req, res) => {
 
   if (!code || retState !== state) { console.error("Auth failed: missing code or state mismatch."); server.close(); return; }
   try {
-    const db = openDb();
-    initSchema(db);
+    const db = openPostgresDatabase();
     await exchangeCode(config, db, code);
-    const token = loadToken(db)!;
+    const token = (await loadToken(db))!;
     console.log("\n✓ Authentication successful! Tokens saved to DB.");
     console.log(`  Scope   : ${token.scope}`);
     console.log(`  Expires : ${new Date(token.expires_at * 1000).toLocaleString()}`);
     console.log("\nYou can now run: npm run sync:withings");
+    await db.close();
   } catch (e) {
     console.error("Token exchange failed:", e);
   } finally {

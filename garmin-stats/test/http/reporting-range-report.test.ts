@@ -54,12 +54,10 @@ async function createInstance(server: Awaited<ReturnType<typeof startTestServer>
   return { instanceId: (inst.json as any).id as number, workoutId: (inst.json as any).days[0].workout_id as string };
 }
 
-function insertActivity(server: Awaited<ReturnType<typeof startTestServer>>, distanceM: number, durationSec: number): number {
-  const info = server.db.prepare(`
-    INSERT INTO activities (filename, activity_date, date_only, sport, source, distance_m, duration_sec, moving_time_sec)
-    VALUES (?, ?, ?, 'running', 'garmin', ?, ?, ?)
-  `).run(`range-report-fixture-${Math.random()}.fit`, `${startDate}T07:00:00`, startDate, distanceM, durationSec, durationSec);
-  return Number(info.lastInsertRowid);
+async function insertActivity(server: Awaited<ReturnType<typeof startTestServer>>, distanceM: number, durationSec: number): Promise<number> {
+  const row = await server.db.get<{ id: number }>("INSERT INTO activities (user_id,filename,activity_date,date_only,sport,source,distance_m,duration_sec,moving_time_sec) VALUES ('00000000-0000-4000-8000-000000000001',$1,$2,$3,'running','garmin',$4,$5,$5) RETURNING id", [`range-report-fixture-${Math.random()}.fit`, `${startDate}T07:00:00`, startDate, distanceM, durationSec]);
+  if (!row) throw new Error("fixture activity insert did not return an id");
+  return row.id;
 }
 
 async function linkActivity(server: Awaited<ReturnType<typeof startTestServer>>, activityId: number, workoutId: string) {
@@ -108,7 +106,7 @@ test("200: one instance in scope with accepted evidence is reflected in both the
   const server = await startTestServer();
   try {
     const { instanceId, workoutId } = await createInstance(server, "Range report solo instance");
-    const activityId = insertActivity(server, 10000, 3000);
+    const activityId = await insertActivity(server, 10000, 3000);
     await linkActivity(server, activityId, workoutId);
 
     const res = await server.api(`/api/v1/reports/range?from=${from}&to=${to}&range=full_plan`);
@@ -131,7 +129,7 @@ test("200: two DIFFERENT plan instances in the same window never leak evidence i
   try {
     const a = await createInstance(server, "Range report instance A");
     const b = await createInstance(server, "Range report instance B");
-    const activityA = insertActivity(server, 10000, 3000);
+    const activityA = await insertActivity(server, 10000, 3000);
     await linkActivity(server, activityA, a.workoutId);
 
     const res = await server.api(`/api/v1/reports/range?from=${from}&to=${to}&range=full_plan`);
@@ -153,7 +151,7 @@ test("200: an activity with no plan association at all is reported as unplanned 
   const server = await startTestServer();
   try {
     await createInstance(server, "Range report unplanned fixture");
-    const extraActivityId = insertActivity(server, 5000, 1500);
+    const extraActivityId = await insertActivity(server, 5000, 1500);
 
     const res = await server.api(`/api/v1/reports/range?from=${from}&to=${to}`);
     assert.equal(res.status, 200, JSON.stringify(res.json));
@@ -171,7 +169,7 @@ test("200: a repetition-classified workout with accepted (but unaligned) evidenc
   const server = await startTestServer();
   try {
     const { workoutId } = await createInstance(server, "Range report quality fixture", QUALITY_DSL);
-    const activityId = insertActivity(server, 3600, 900);
+    const activityId = await insertActivity(server, 3600, 900);
     await linkActivity(server, activityId, workoutId);
 
     const res = await server.api(`/api/v1/reports/range?from=${from}&to=${to}`);

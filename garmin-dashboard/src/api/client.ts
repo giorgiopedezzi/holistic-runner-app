@@ -402,10 +402,24 @@ export const api = {
     // this exclusively for scheduled_time, so a day edit persists immediately
     // rather than waiting for the whole-day bulk Save.
     // workout_id (HRA-333, optional) moves this row's stable identity onto
-    // the content it now holds — the swap flows below supply the OTHER
-    // swapped day's workout_id alongside its swapped-in dsl.
+    // the content it now holds. No longer used by the swap flows — see
+    // swapWorkouts below.
     patchDay: (instanceId: number, dayId: number, body: Partial<{ dsl: string; notes: string | null; scheduled_time: string | null; workout_id: string }>) =>
       request<PlanInstanceDay>(`/api/v1/plan-instances/${instanceId}/days/${dayId}`, "PATCH", undefined, body),
+    // POST /api/v1/plan-instances/:id/workouts/swap (HRA-333 follow-up) — one
+    // atomic exchange of which logical workout occupies each of the two
+    // given calendar slots (both plan_instance_days ids). Replaces the old
+    // two-call PATCH .../days/:dayId workaround (each call its own
+    // transaction, each echoing the other's workout_id — never actually
+    // atomic, and could violate the backend's deferred uniqueness constraint
+    // at commit; see docs/architecture/POSTGRESQL-MIGRATION.md). Neither
+    // day's own id/date/scheduled_time moves, and each workout's own
+    // content/customization/activity associations follow its workout_id, not
+    // the slot — so the caller no longer needs to resend dsl at all.
+    swapWorkouts: (instanceId: number, dayAId: number, dayBId: number) =>
+      request<{ day_a: PlanInstanceDay; day_b: PlanInstanceDay }>(
+        `/api/v1/plan-instances/${instanceId}/workouts/swap`, "POST", undefined, { day_a_id: dayAId, day_b_id: dayBId },
+      ),
     // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162) —
     // parse-only preview, never persists (mirrors planTemplates.generate's
     // own preview-vs-persist split above). What List view's per-day editor

@@ -79,11 +79,13 @@ the source/archive. No operation here changes deployed Railway SQLite data.
 - publication
 - audit/security-event model
 
-## Current implementation boundary
+## Runtime boundary
 
-This commit supplies the explicit schema, bootstrap, and importer foundation.
-The existing normal server and sync jobs still use synchronous `node:sqlite`;
-they must be converted to the asynchronous PostgreSQL repository layer before
-`DATABASE_URL` can become the normal local runtime. Do not point the current
-server at PostgreSQL until that conversion and representative-flow verification
-are complete.
+The local server, sync jobs, archived FIT reprocessor, and plan-date cleanup
+use PostgreSQL. SQLite remains only as the read-only source for the explicit
+SQLite importer and legacy migration/archive tests.
+
+The former demo database restore has been removed: replacing a live SQLite
+file has no safe PostgreSQL equivalent and is not a supported runtime feature.
+`DEMO_DB_BACKUP_PATH` now fails startup explicitly so it cannot be mistaken for
+a working reset mechanism.

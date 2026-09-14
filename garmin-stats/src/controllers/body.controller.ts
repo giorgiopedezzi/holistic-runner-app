@@ -14,43 +14,43 @@ export function createBodyController(ctx: AppContext) {
   const repo = ctx.repos.body;
   const service = ctx.services.body;
 
-  const range: Handler = (_req, res) => send(res, repo.dateRange());
+  const range: Handler = async (_req, res) => send(res, await repo.dateRange());
 
-  const list: Handler = (_req, res, url) => {
+  const list: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = (repo.countInRange(from, to) as { count: number }).count;
-    return send(res, paginated(repo.listPage(from, to, limit, offset), total, limit, offset));
+    const total = (await repo.countInRange(from, to))?.count ?? 0;
+    return send(res, paginated(await repo.listPage(from, to, limit, offset), total, limit, offset));
   };
 
-  const count: Handler = (_req, res, url) => {
+  const count: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, repo.countInRange(from, to));
+    return send(res, await repo.countInRange(from, to));
   };
 
-  const monthly: Handler = (_req, res, url) => {
+  const monthly: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, wholePage(repo.monthly(from, to) as unknown[]));
+    return send(res, wholePage(await repo.monthly(from, to)));
   };
 
-  const trash: Handler = (_req, res, url) => {
+  const trash: Handler = async (_req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = (repo.trashCount() as { count: number }).count;
-    return send(res, paginated(repo.trashPage(limit, offset), total, limit, offset));
+    const total = (await repo.trashCount())?.count ?? 0;
+    return send(res, paginated(await repo.trashPage(limit, offset), total, limit, offset));
   };
 
-  const correlation: Handler = (_req, res, url) => {
+  const correlation: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
     // HRA-32: an empty correlation is a normal 200 with [] — not a 204. "No
     // overlapping data" is data (an empty set), and a collection endpoint should
     // return the same list shape whether or not it's empty.
-    const { rows } = service.correlation(from, to);
-    return send(res, wholePage(rows as unknown[]));
+    const { rows } = await service.correlation(from, to);
+    return send(res, wholePage(rows));
   };
 
-  const deleteRange: Handler = (_req, res, url) => {
+  const deleteRange: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, service.softDeleteRange(from, to));
+    return send(res, await service.softDeleteRange(from, to));
   };
 
   // POST /api/body-measurements/restore | /api/body-measurements/purge — body { ids: number[] }.
@@ -59,7 +59,7 @@ export function createBodyController(ctx: AppContext) {
     const ids = Array.isArray(body.ids) ? body.ids.filter((n): n is number => Number.isInteger(n)) : [];
     if (ids.length === 0) throw unprocessable("ids must be a non-empty array of integers.");
     const purge = url.pathname.endsWith("/purge");
-    return send(res, purge ? service.purge(ids) : service.restore(ids));
+    return send(res, purge ? await service.purge(ids) : await service.restore(ids));
   };
 
   return { range, list, count, monthly, trash, correlation, deleteRange, restorePurge };

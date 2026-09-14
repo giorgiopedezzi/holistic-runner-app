@@ -256,12 +256,18 @@ a template DSL change introducing a new day — mints a fresh one); the **bulk d
 and echoes it back only when it names one of that instance's own *current* days (never trusted
 blindly — a stale or cross-instance value is silently replaced with a fresh id instead), which is
 how a day/week swap (the frontend exchanges `workout_id` alongside `dsl` between the two swapped
-slots) survives the wholesale delete+recreate; the **single-day PATCH** (`.../days/:dayId`) accepts
-the same optional `workout_id` for the swap flows that persist via two of these calls instead of the
-bulk replace (`AgendaTab.tsx`, `MobileWorkoutSwap.tsx`) — trusted without a same-instance check there,
-since the paired swap partner call may commit first and briefly move that exact value off of every
-current row (an order-dependent check would make the very race `Promise.all` already accepts for
-`scheduled_time` silently drop the identity write). `domain/runplan/lineage.ts`'s
+slots) survives the wholesale delete+recreate. **A live swap** (`AgendaTab.tsx`,
+`MobileWorkoutSwap.tsx` — as opposed to the desktop drag-swap's local-only edit, staged until the
+next bulk Save above) no longer persists via two separate single-day `PATCH .../days/:dayId` calls:
+each call was its own transaction, so `plan_instance_days`' own `(instance_id, workout_id)` unique
+constraint — `DEFERRABLE INITIALLY IMMEDIATE` precisely so one statement can exchange two rows'
+`workout_id` without transiently violating it mid-statement — could never actually resolve, since
+the first call's row still collided with the second (as yet untouched) row at *that call's own*
+commit. **`POST /api/v1/plan-instances/:id/workouts/swap`** (HRA-333 follow-up) replaces that
+workaround: one transaction locks both slot rows, verifies both exist and belong to the requested
+instance (404 + full rollback otherwise), defers the constraint, and exchanges `workout_id` between
+them in one statement — real same-instance verification, not the trusted-as-given shortcut the old
+per-day PATCH accepted for this case. `domain/runplan/lineage.ts`'s
 `classifyWorkoutLineage(originalDays, currentDays)` — pure, no I/O — matches Original's
 `original_days_snapshot` days to Current's `plan_instance_days` rows by `workout_id` and classifies
 each as `unchanged | moved | modified | moved_and_modified | removed | added`: **moved** compares the

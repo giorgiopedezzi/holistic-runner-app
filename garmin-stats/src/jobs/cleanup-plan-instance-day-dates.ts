@@ -1,108 +1,35 @@
-/**
- * cleanup-plan-instance-day-dates.ts
- * One-time cleanup (HRA-155): repairs plan_instance_days rows corrupted by
- * two overlapping bugs — (1) rows created before HRA-122's per-day date-
- * offset fix, which persisted every day in a week under the same shared
- * date, and (2) rows left duplicated/orphaned by the regenerateFrom bug this
- * same Story fixes (a raw date-threshold delete that broke once start_date
- * changed mid-regenerate, see services/plan-instances.service.ts).
- *
- * For every plan_instance, recomputes each day's CORRECT date the exact same
- * way instantiatePlan would — matched by day identity (section_name/
- * week_number/day), never touching segments/notes/workout_type/etc., since
- * those may have been legitimately hand-edited and must survive this cleanup
- * untouched. Where an identity has more than one row (duplicate), keeps the
- * row already carrying the correct date if one exists, otherwise keeps the
- * lowest id and logs a warning; every other row for that identity is
- * deleted. Where the single surviving row's date doesn't match the correct
- * one, it's corrected in place.
- * Usage: npm run cleanup:plan-instance-dates
- */
-import { openDb, initSchema } from "../db.ts";
+/** One-time PostgreSQL repair for historical plan-slot dates and duplicates. */
+import { openPostgresDatabase } from "../db/postgres.ts";
 import { instantiatePlan } from "../domain/runplan/instantiate.ts";
-import type { RunPlan, PacePolicy } from "../domain/runplan/types.ts";
+import type { PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 
-interface InstanceRow { id: number; template_id: number; start_date: string; pace_overrides: string | null }
-interface DayRow { id: number; section_name: string; week_number: number; day: number; date: string }
+type Instance = { id: number; start_date: string; pace_overrides: unknown; parsed_plan: unknown };
+type Day = { id: number; section_name: string; week_number: number; day: number; date: string };
+const key = (section: string, week: number, day: number) => `${section}\u0000${week}\u0000${day}`;
+const json = <T>(value: unknown): T => typeof value === "string" ? JSON.parse(value) as T : value as T;
 
-function dayKey(sectionName: string, weekNumber: number, day: number): string {
-  return `${sectionName} ${weekNumber} ${day}`;
+async function main(): Promise<void> {
+  const db = openPostgresDatabase();
+  try {
+    const instances = await db.all<Instance>("SELECT pi.id,pi.start_date,pi.pace_overrides,pt.parsed_plan FROM plan_instances pi JOIN plan_templates pt ON pt.id=pi.template_id");
+    let fixed = 0;
+    for (const instance of instances) {
+      const expected = new Map(instantiatePlan(json<RunPlan>(instance.parsed_plan), { startDate: instance.start_date, paceOverrides: instance.pace_overrides == null ? undefined : json<PacePolicy>(instance.pace_overrides) }).map(day => [key(day.section_name, day.week_number, day.day), day.date]));
+      const days = await db.all<Day>("SELECT d.id,w.section_name,w.week_number,w.day,d.date FROM plan_instance_days d JOIN plan_instance_workouts w ON w.instance_id=d.instance_id AND w.workout_id=d.workout_id WHERE d.instance_id=$1", [instance.id]);
+      const groups = new Map<string, Day[]>();
+      for (const day of days) groups.set(key(day.section_name, day.week_number, day.day), [...(groups.get(key(day.section_name, day.week_number, day.day)) ?? []), day]);
+      await db.transaction(async client => {
+        for (const [identity, rows] of groups) {
+          const correctDate = expected.get(identity);
+          if (!correctDate) continue;
+          const survivor = rows.find(row => row.date === correctDate) ?? rows.sort((a, b) => a.id - b.id)[0];
+          for (const row of rows) if (row.id !== survivor.id) { await client.query("DELETE FROM plan_instance_days WHERE id=$1", [row.id]); fixed++; }
+          if (survivor.date !== correctDate) { await client.query("UPDATE plan_instance_days SET date=$1 WHERE id=$2", [correctDate, survivor.id]); fixed++; }
+        }
+      });
+    }
+    console.log(`Repaired ${fixed} plan-instance slot row(s).`);
+  } finally { await db.close(); }
 }
 
-function main(): void {
-  console.log("=== Garmin Stats — Cleanup Plan Instance Day Dates (HRA-155) ===\n");
-
-  const db = openDb();
-  initSchema(db);
-
-  const instances = db.prepare(
-    "SELECT id, template_id, start_date, pace_overrides FROM plan_instances",
-  ).all() as unknown as InstanceRow[];
-  const templateStmt = db.prepare("SELECT parsed_plan FROM plan_templates WHERE id = ?");
-  const daysStmt = db.prepare("SELECT id, section_name, week_number, day, date FROM plan_instance_days WHERE instance_id = ?");
-  const deleteByIdStmt = db.prepare("DELETE FROM plan_instance_days WHERE id = ?");
-  const updateDateStmt = db.prepare("UPDATE plan_instance_days SET date = ? WHERE id = ?");
-
-  let totalDuplicatesRemoved = 0;
-  let totalDatesFixed = 0;
-  let instancesTouched = 0;
-
-  for (const instance of instances) {
-    const templateRow = templateStmt.get(instance.template_id) as { parsed_plan: string } | undefined;
-    if (!templateRow) {
-      console.warn(`Instance ${instance.id}: source template ${instance.template_id} no longer exists, skipped.`);
-      continue;
-    }
-    const plan = JSON.parse(templateRow.parsed_plan) as RunPlan;
-    const paceOverrides = instance.pace_overrides ? (JSON.parse(instance.pace_overrides) as PacePolicy) : undefined;
-    const fresh = instantiatePlan(plan, { startDate: instance.start_date, paceOverrides });
-    const correctDateByKey = new Map<string, string>();
-    for (const day of fresh) correctDateByKey.set(dayKey(day.section_name, day.week_number, day.day), day.date);
-
-    const rows = daysStmt.all(instance.id) as unknown as DayRow[];
-    const byKey = new Map<string, DayRow[]>();
-    for (const row of rows) {
-      const key = dayKey(row.section_name, row.week_number, row.day);
-      const group = byKey.get(key);
-      if (group) group.push(row); else byKey.set(key, [row]);
-    }
-
-    let instanceDuplicatesRemoved = 0;
-    let instanceDatesFixed = 0;
-
-    for (const [key, group] of byKey) {
-      const correctDate = correctDateByKey.get(key);
-      let survivor = group[0];
-      if (group.length > 1) {
-        const matching = correctDate != null ? group.find(r => r.date === correctDate) : undefined;
-        survivor = matching ?? group.reduce((a, b) => (a.id < b.id ? a : b));
-        for (const row of group) {
-          if (row.id === survivor.id) continue;
-          deleteByIdStmt.run(row.id);
-          instanceDuplicatesRemoved++;
-        }
-        if (!matching) {
-          console.warn(
-            `Instance ${instance.id}, ${key.replace(/ /g, "/")}: no duplicate matched the recomputed date ` +
-            `(${correctDate ?? "n/a"}); kept row id ${survivor.id} (date ${survivor.date}).`,
-          );
-        }
-      }
-      if (correctDate != null && survivor.date !== correctDate) {
-        updateDateStmt.run(correctDate, survivor.id);
-        instanceDatesFixed++;
-      }
-    }
-
-    if (instanceDuplicatesRemoved > 0 || instanceDatesFixed > 0) {
-      instancesTouched++;
-      totalDuplicatesRemoved += instanceDuplicatesRemoved;
-      totalDatesFixed += instanceDatesFixed;
-      console.log(`Instance ${instance.id}: removed ${instanceDuplicatesRemoved} duplicate row(s), fixed ${instanceDatesFixed} date(s).`);
-    }
-  }
-
-  console.log(`\nDone. ${instancesTouched} instance(s) touched, ${totalDuplicatesRemoved} duplicate row(s) removed, ${totalDatesFixed} date(s) fixed.`);
-}
-
-main();
+void main();

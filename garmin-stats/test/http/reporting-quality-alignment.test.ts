@@ -46,12 +46,10 @@ async function setUp(server: Awaited<ReturnType<typeof startTestServer>>) {
   return { instanceId, workoutId };
 }
 
-function insertActivity(server: Awaited<ReturnType<typeof startTestServer>>, distanceM: number, durationSec: number): number {
-  const info = server.db.prepare(`
-    INSERT INTO activities (filename, activity_date, date_only, sport, source, distance_m, duration_sec, moving_time_sec)
-    VALUES (?, ?, ?, 'running', 'garmin', ?, ?, ?)
-  `).run(`qa-fixture-${Math.random()}.fit`, `${startDate}T07:00:00`, startDate, distanceM, durationSec, durationSec);
-  return Number(info.lastInsertRowid);
+async function insertActivity(server: Awaited<ReturnType<typeof startTestServer>>, distanceM: number, durationSec: number): Promise<number> {
+  const row = await server.db.get<{ id: number }>("INSERT INTO activities (user_id,filename,activity_date,date_only,sport,source,distance_m,duration_sec,moving_time_sec) VALUES ('00000000-0000-4000-8000-000000000001',$1,$2,$3,'running','garmin',$4,$5,$5) RETURNING id", [`qa-fixture-${Math.random()}.fit`, `${startDate}T07:00:00`, startDate, distanceM, durationSec]);
+  if (!row) throw new Error("fixture activity insert did not return an id");
+  return row.id;
 }
 
 test("workout report classifies the interval day as 'repetition' with 3 work + 3 recovery entries, unavailable with no evidence", async () => {
@@ -73,7 +71,7 @@ test("422: setting a manual alignment against an activity that isn't accepted ev
   const server = await startTestServer();
   try {
     const { instanceId, workoutId } = await setUp(server);
-    const activityId = insertActivity(server, 1000, 240);
+    const activityId = await insertActivity(server, 1000, 240);
     // never linked to workoutId via the association endpoint
     const res = await server.api(`/api/v1/plan-instances/${instanceId}/reports/workouts/${workoutId}/quality-alignment/0`, {
       method: "PUT", headers: { "Content-Type": "application/json" },
@@ -89,7 +87,7 @@ test("200: a manual alignment against an accepted activity is persisted and refl
   const server = await startTestServer();
   try {
     const { instanceId, workoutId } = await setUp(server);
-    const activityId = insertActivity(server, 3600, 900);
+    const activityId = await insertActivity(server, 3600, 900);
     const link = await server.api(`/api/v1/activities/${activityId}/association`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workout_id: workoutId }),
     });
@@ -118,7 +116,7 @@ test("200: removing a manual alignment reverts the segment to unavailable, witho
   const server = await startTestServer();
   try {
     const { instanceId, workoutId } = await setUp(server);
-    const activityId = insertActivity(server, 3600, 900);
+    const activityId = await insertActivity(server, 3600, 900);
     await server.api(`/api/v1/activities/${activityId}/association`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workout_id: workoutId }),
     });

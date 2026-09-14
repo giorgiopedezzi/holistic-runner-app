@@ -175,6 +175,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-instances\/\d+\/regenerate$/.test(route))  return await demo(planTemplates.regenerateInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route)) return await planTemplates.validateInstanceDay(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/workouts\/swap$/.test(route))      return await demo(planTemplates.swapWorkouts)(req, res, url);
         // HRA-226: deliberately NOT wrapped in demo() — this is the one write
         // route DEMO_MODE must not block, since demo visitors are a primary
         // source of feedback submissions. Do not reflexively wrap this in

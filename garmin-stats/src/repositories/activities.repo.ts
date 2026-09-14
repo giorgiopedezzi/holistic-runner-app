@@ -1,128 +1,31 @@
-/**
- * repositories/activities.repo.ts
- * Data access for activities + track points + the workout-classifier columns.
- * The ONLY layer that runs SQL for this domain (rest-api-standards §11). SQL moved
- * verbatim out of server.ts's `q` object (HRA-29) — behavior is identical. Exposes
- * intention-revealing methods, not raw prepared statements, to the layers above.
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
-
+import type { Queryable } from "../db/query.ts";
 type NamedParams = Record<string, string | number | null>;
-
-export function createActivitiesRepo(db: DatabaseSync) {
-  // Bound to THIS repo's own `db` — falls back to the swap-aware global
-  // behavior automatically when `db` is the live proxy (production/jobs);
-  // binds directly to it otherwise (an isolated test connection). See
-  // db.ts's prepareLive() for the full reasoning.
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const range        = prepareLive("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE deleted_at IS NULL");
-  const activities   = prepareLive("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC");
-  const activitiesPage = prepareLive("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL ORDER BY activity_date DESC LIMIT ? OFFSET ?");
-  const activityById = prepareLive("SELECT id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name FROM activities WHERE id = ? AND deleted_at IS NULL");
-  const summary      = prepareLive("SELECT sport,COUNT(*) AS total_activities,ROUND(SUM(distance_m)/1000,2) AS total_km,ROUND(SUM(duration_sec)/3600,2) AS total_hours,SUM(calories) AS total_calories,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace,ROUND(SUM(ascent_m)) AS total_ascent FROM activities WHERE date_only BETWEEN ? AND ? AND sport IS NOT NULL AND deleted_at IS NULL GROUP BY sport ORDER BY total_km DESC");
-  const weekly       = prepareLive("SELECT strftime('%Y-W%W',date_only) AS week,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY week ORDER BY week");
-  const monthly      = prepareLive("SELECT strftime('%Y-%m',date_only) AS month,COUNT(*) AS runs,ROUND(SUM(distance_m)/1000,2) AS km,ROUND(AVG(avg_hr)) AS avg_hr,ROUND(AVG(avg_pace_minkm),2) AS avg_pace,ROUND(SUM(ascent_m)) AS ascent FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL GROUP BY month ORDER BY month");
-  const track        = prepareLive("SELECT elapsed_sec,timestamp_unix,distance_m,heart_rate,speed_ms,cadence,altitude_m,temperature,power,stamina FROM track_points WHERE activity_id=? ORDER BY COALESCE(elapsed_sec,distance_m) ASC");
-  // Race-type activities only (activity_type_id != Training's fixed id 1),
-  // full history — feeds the "link a race" dropdown when saving a date range
-  // (date-ranges.controller.ts). No date filter: a race can be far outside
-  // any recently-viewed range.
-  const races         = prepareLive("SELECT id,date_only,activity_type_id,activity_name,distance_m FROM activities WHERE activity_type_id != 1 AND deleted_at IS NULL ORDER BY date_only DESC LIMIT ? OFFSET ?");
-  const racesCount     = prepareLive("SELECT COUNT(*) AS count FROM activities WHERE activity_type_id != 1 AND deleted_at IS NULL");
-  // HRA-334: the automatic-matcher's own candidate pool — every non-deleted
-  // running activity, id + activity_date only (the matcher recomputes each
-  // one's LOCAL date itself, per the compared workout's own schedule_timezone
-  // — see domain/workout-association.ts — never activities.date_only, which
-  // isn't timezone-aware the same way).
-  const runningActivitiesForAssociation = prepareLive(
-    "SELECT id, activity_date FROM activities WHERE sport = 'running' AND deleted_at IS NULL",
-  );
-
-  // delete (soft) / trash / restore / purge
-  const deleteActivitiesRange = prepareLive("UPDATE activities SET deleted_at = datetime('now') WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
-  const deleteActivityById    = prepareLive("UPDATE activities SET deleted_at = datetime('now') WHERE id = ? AND deleted_at IS NULL");
-  const countInRange          = prepareLive("SELECT COUNT(*) AS count FROM activities WHERE date_only BETWEEN ? AND ? AND deleted_at IS NULL");
-  const activitiesTrash       = prepareLive("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC");
-  const activitiesTrashPage   = prepareLive("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged = 0 ORDER BY deleted_at DESC LIMIT ? OFFSET ?");
-  const activitiesTrashCount  = prepareLive("SELECT COUNT(*) AS count FROM activities WHERE deleted_at IS NOT NULL AND purged = 0");
-  const restoreActivityById   = prepareLive("UPDATE activities SET deleted_at = NULL WHERE id = ? AND purged = 0");
-  const deleteTrackPointsByActivity = prepareLive("DELETE FROM track_points WHERE activity_id = ?");
-  // Purge (empty the trash): wipes track_points + every heavy/summary column to
-  // reclaim space, but deliberately keeps filename (+ date/sport/source) —
-  // sync-garmin.ts's dedup check reads filenames unconditionally, so keeping it
-  // is what stops a resync from reimporting a deliberately-deleted activity.
-  const purgeActivityById = prepareLive(`
-    UPDATE activities SET
-      purged = 1, distance_m = NULL, avg_pace_minkm = NULL, calories = NULL,
-      avg_hr = NULL, max_hr = NULL, avg_cadence = NULL, ascent_m = NULL,
-      descent_m = NULL, avg_speed_ms = NULL, max_speed_ms = NULL,
-      moving_time_sec = NULL, duration_sec = NULL
-    WHERE id = ?
-  `);
-
-  // AI workout classifier + feedback. updateAi/updateStatistical each write only
-  // their own method's column pair (running one never touches the other's stored
-  // result) and both reset the four shared-verdict columns to NULL (a fresh/re-run
-  // classification is "pending review" again). confirmById is the bulk thumbs-up:
-  // it takes an explicit $source rather than guessing a slot.
-  const classifyUpdateAi = prepareLive(`
-    UPDATE activities SET
-      ai_classification = $classification, ai_explanation = $explanation,
-      user_feedback = NULL, user_correction_reason = NULL, final_classification = NULL, classification_method = NULL
-    WHERE id = $id
-  `);
-  const classifyUpdateStatistical = prepareLive(`
-    UPDATE activities SET
-      statistical_classification = $classification, statistical_explanation = $explanation,
-      user_feedback = NULL, user_correction_reason = NULL, final_classification = NULL, classification_method = NULL
-    WHERE id = $id
-  `);
-  const feedbackUpdate = prepareLive(`
-    UPDATE activities SET
-      user_feedback = $user_feedback, user_correction_reason = $user_correction_reason,
-      final_classification = $final_classification, classification_method = $classification_method
-    WHERE id = $id
-  `);
-  const updateActivityType = prepareLive("UPDATE activities SET activity_type_id = $activity_type_id, activity_name = $activity_name WHERE id = $id");
-  const confirmActivityById = prepareLive(`
-    UPDATE activities SET
-      user_feedback = 'approved',
-      final_classification = CASE WHEN $source = 'ai' THEN ai_classification ELSE statistical_classification END,
-      classification_method = $source,
-      user_correction_reason = NULL
-    WHERE id = $id
-      AND (CASE WHEN $source = 'ai' THEN ai_classification ELSE statistical_classification END) IS NOT NULL
-  `);
-
-  return {
-    dateRange:    () => range.get(),
-    list:         (from: string, to: string) => activities.all(from, to),
-    listPage:     (from: string, to: string, limit: number, offset: number) => activitiesPage.all(from, to, limit, offset),
-    byId:         (id: number) => activityById.get(id),
-    summary:      (from: string, to: string) => summary.all(from, to),
-    weekly:       (from: string, to: string) => weekly.all(from, to),
-    monthly:      (from: string, to: string) => monthly.all(from, to),
-    track:        (id: number) => track.all(id),
-    countInRange: (from: string, to: string) => countInRange.get(from, to),
-    trash:        () => activitiesTrash.all(),
-    trashPage:    (limit: number, offset: number) => activitiesTrashPage.all(limit, offset),
-    trashCount:   () => activitiesTrashCount.get(),
-    softDeleteRange:  (from: string, to: string) => deleteActivitiesRange.run(from, to),
-    softDeleteById:   (id: number) => deleteActivityById.run(id),
-    restoreById:      (id: number) => restoreActivityById.run(id),
-    deleteTrackPoints:(id: number) => deleteTrackPointsByActivity.run(id),
-    purgeById:        (id: number) => purgeActivityById.run(id),
-    updateAiClassification:          (p: NamedParams) => classifyUpdateAi.run(p),
-    updateStatisticalClassification: (p: NamedParams) => classifyUpdateStatistical.run(p),
-    updateFeedback:   (p: NamedParams) => feedbackUpdate.run(p),
-    confirmById:      (p: NamedParams) => confirmActivityById.run(p),
-    updateType:       (p: NamedParams) => updateActivityType.run(p),
-    races:            (limit: number, offset: number) => races.all(limit, offset),
-    racesCount:       () => racesCount.get(),
-    runningActivitiesForAssociation: (): { id: number; activity_date: string }[] =>
-      runningActivitiesForAssociation.all() as unknown as { id: number; activity_date: string }[],
-  };
-}
-
+const FIELDS = "id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name";
+export function createActivitiesRepo(db: Queryable) { const repo = {
+  dateRange: () => db.get("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE deleted_at IS NULL"),
+  list: (from: string, to: string) => db.all(`SELECT ${FIELDS} FROM activities WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL ORDER BY activity_date DESC`, [from, to]),
+  listPage: (from: string, to: string, limit: number, offset: number) => db.all(`SELECT ${FIELDS} FROM activities WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL ORDER BY activity_date DESC LIMIT $3 OFFSET $4`, [from, to, limit, offset]),
+  byId: (id: number) => db.get(`SELECT ${FIELDS} FROM activities WHERE id=$1 AND deleted_at IS NULL`, [id]),
+  summary: (from: string, to: string) => db.all("SELECT sport,COUNT(*)::int AS total_activities,ROUND((SUM(distance_m)/1000)::numeric,2) AS total_km,ROUND((SUM(duration_sec)/3600)::numeric,2) AS total_hours,SUM(calories)::int AS total_calories,ROUND(AVG(avg_hr))::int AS avg_hr,ROUND(AVG(avg_pace_minkm)::numeric,2) AS avg_pace,ROUND(SUM(ascent_m)) AS total_ascent FROM activities WHERE date_only BETWEEN $1 AND $2 AND sport IS NOT NULL AND deleted_at IS NULL GROUP BY sport ORDER BY total_km DESC", [from, to]),
+  weekly: (from: string, to: string) => db.all("SELECT to_char(to_date(date_only, 'YYYY-MM-DD'), 'IYYY-\"W\"IW') AS week,COUNT(*)::int AS runs,ROUND((SUM(distance_m)/1000)::numeric,2) AS km,ROUND(AVG(avg_hr))::int AS avg_hr,ROUND(AVG(avg_pace_minkm)::numeric,2) AS avg_pace FROM activities WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL GROUP BY week ORDER BY week", [from, to]),
+  monthly: (from: string, to: string) => db.all("SELECT substring(date_only, 1, 7) AS month,COUNT(*)::int AS runs,ROUND((SUM(distance_m)/1000)::numeric,2) AS km,ROUND(AVG(avg_hr))::int AS avg_hr,ROUND(AVG(avg_pace_minkm)::numeric,2) AS avg_pace,ROUND(SUM(ascent_m)) AS ascent FROM activities WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL GROUP BY month ORDER BY month", [from, to]),
+  track: (id: number) => db.all("SELECT elapsed_sec,timestamp_unix,distance_m,heart_rate,speed_ms,cadence,altitude_m,temperature,power,stamina FROM track_points WHERE activity_id=$1 ORDER BY COALESCE(elapsed_sec,distance_m) ASC", [id]),
+  countInRange: (from: string, to: string) => db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM activities WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL", [from, to]),
+  trash: () => db.all("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged=false ORDER BY deleted_at DESC"),
+  trashPage: (limit: number, offset: number) => db.all("SELECT id,filename,date_only,sport,distance_m,source,deleted_at FROM activities WHERE deleted_at IS NOT NULL AND purged=false ORDER BY deleted_at DESC LIMIT $1 OFFSET $2", [limit, offset]),
+  trashCount: () => db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM activities WHERE deleted_at IS NOT NULL AND purged=false"),
+  softDeleteRange: (from: string, to: string) => db.run("UPDATE activities SET deleted_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL", [from, to]),
+  softDeleteById: (id: number) => db.run("UPDATE activities SET deleted_at=to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') WHERE id=$1 AND deleted_at IS NULL", [id]),
+  restoreById: (id: number) => db.run("UPDATE activities SET deleted_at=NULL WHERE id=$1 AND purged=false", [id]),
+  deleteTrackPoints: (id: number) => db.run("DELETE FROM track_points WHERE activity_id=$1", [id]),
+  purgeById: (id: number) => db.run("UPDATE activities SET purged=true,distance_m=NULL,avg_pace_minkm=NULL,calories=NULL,avg_hr=NULL,max_hr=NULL,avg_cadence=NULL,ascent_m=NULL,descent_m=NULL,avg_speed_ms=NULL,max_speed_ms=NULL,moving_time_sec=NULL,duration_sec=NULL WHERE id=$1", [id]),
+  updateAiClassification: (p: NamedParams) => db.run("UPDATE activities SET ai_classification=$1,ai_explanation=$2,user_feedback=NULL,user_correction_reason=NULL,final_classification=NULL,classification_method=NULL WHERE id=$3", [p.$classification, p.$explanation, p.$id]),
+  updateStatisticalClassification: (p: NamedParams) => db.run("UPDATE activities SET statistical_classification=$1,statistical_explanation=$2,user_feedback=NULL,user_correction_reason=NULL,final_classification=NULL,classification_method=NULL WHERE id=$3", [p.$classification, p.$explanation, p.$id]),
+  updateFeedback: (p: NamedParams) => db.run("UPDATE activities SET user_feedback=$1,user_correction_reason=$2,final_classification=$3,classification_method=$4 WHERE id=$5", [p.$user_feedback,p.$user_correction_reason,p.$final_classification,p.$classification_method,p.$id]),
+  confirmById: (p: NamedParams) => db.run("UPDATE activities SET user_feedback='approved',final_classification=CASE WHEN $1='ai' THEN ai_classification ELSE statistical_classification END,classification_method=$1,user_correction_reason=NULL WHERE id=$2 AND (CASE WHEN $1='ai' THEN ai_classification ELSE statistical_classification END) IS NOT NULL", [p.$source,p.$id]),
+  updateType: (p: NamedParams) => db.run("UPDATE activities SET activity_type_id=$1,activity_name=$2 WHERE id=$3", [p.$activity_type_id,p.$activity_name,p.$id]),
+  races: (limit: number, offset: number) => db.all("SELECT id,date_only,activity_type_id,activity_name,distance_m FROM activities WHERE activity_type_id!=1 AND deleted_at IS NULL ORDER BY date_only DESC LIMIT $1 OFFSET $2", [limit,offset]),
+  racesCount: () => db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM activities WHERE activity_type_id!=1 AND deleted_at IS NULL"),
+  runningActivitiesForAssociation: () => db.all<{ id: number; activity_date: string }>("SELECT id,activity_date FROM activities WHERE sport='running' AND deleted_at IS NULL"),
+}; return { ...repo, withDb: (query: Queryable) => createActivitiesRepo(query) }; }
 export type ActivitiesRepo = ReturnType<typeof createActivitiesRepo>;

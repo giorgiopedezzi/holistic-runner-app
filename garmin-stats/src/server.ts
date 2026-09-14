@@ -1,6 +1,6 @@
 /**
  * server.ts
- * Local REST API — uses node:sqlite (Node 24 native).
+ * Local REST API backed by PostgreSQL.
  * Usage: node src/server.ts [-- --port 3001]
  *
  * Wiring only: open the DB, build the repositories + services, start the two HTTP
@@ -12,8 +12,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import { loadConfig, getArg } from "./config.ts";
-import { openDb, initSchema, DB_PATH } from "./db.ts";
-import { scheduleDemoDbRestore } from "./jobs/demo-db-restore.ts";
+import { openPostgresDatabase } from "./db/postgres.ts";
 import { createApiHandler } from "./http/router.ts";
 import { startWithingsCallbackServer } from "./http/withings-callback.ts";
 import { createActivitiesRepo } from "./repositories/activities.repo.ts";
@@ -41,16 +40,16 @@ const __dirname  = path.dirname(__filename);
 const config = loadConfig();
 const PORT   = parseInt(getArg("--port") ?? "3001");
 
-const db = openDb();
-initSchema(db);
+const db = openPostgresDatabase();
+// `pg` pools connect lazily. Probe before binding HTTP ports so a startup log
+// never claims the local API is usable when DATABASE_URL is invalid.
+await db.get<{ ok: number }>("SELECT 1 AS ok");
 
 // Hosted-demo self-heal: periodically reset the DB back to a pristine backup
 // copy (see jobs/demo-db-restore.ts). Gated only on the backup path being
 // configured — independent of demoMode (a write-guard concern), so this
 // works even with DEMO_MODE unset/false. Unset in every other environment.
-if (config.demoDbBackupPath) {
-  scheduleDemoDbRestore(db, DB_PATH, config.demoDbBackupPath);
-}
+if (process.env.DEMO_DB_BACKUP_PATH) throw new Error("DEMO_DB_BACKUP_PATH is not supported by the PostgreSQL runtime.");
 
 // Custom-uploaded backgrounds land here (gitignored). Created up front so the
 // settings controller can read/write it.

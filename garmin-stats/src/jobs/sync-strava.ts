@@ -12,7 +12,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { loadConfig, getArg, hasFlag } from "../config.ts";
-import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
+import { openPostgresDatabase } from "../db/postgres.ts";
 import { getValidToken } from "../integrations/strava.ts";
 import type { ActivityRow, TrackPointRow } from "../db.ts";
 import { createActivitiesRepo } from "../repositories/activities.repo.ts";
@@ -176,11 +176,10 @@ function decodeStreams(streams: StreamSet, sport: string): TrackPointRow[] {
 
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Sync Strava ===\n");
-  const db = openDb();
-  initSchema(db);
+  const db = openPostgresDatabase();
   const accessToken = await getValidToken(config, db);
 
-  const last = db.prepare("SELECT MAX(activity_date) AS last FROM activities WHERE source = 'strava'").get() as { last: string | null };
+  const last = await db.get<{ last: string | null }>("SELECT MAX(activity_date) AS last FROM activities WHERE source = 'strava'");
   const startTs = FROM ? Math.floor(new Date(FROM).getTime() / 1000)
     : last?.last ? Math.floor(new Date(last.last).getTime() / 1000) - 86400
     : Math.floor(Date.now() / 1000) - 2 * 365 * 86400;
@@ -191,40 +190,11 @@ async function main(): Promise<void> {
   const list = await fetchActivityList(accessToken, startTs, endTs);
   console.log(`  Found ${list.length} activities on Strava in range`);
 
-  const stmtGetByFilename = db.prepare("SELECT id FROM activities WHERE filename = ?");
-  const stmtDedup = db.prepare(`
-    SELECT id FROM activities
-    WHERE ABS(julianday(activity_date) - julianday($activity_date)) < (10.0 / 1440)
-      AND (
-        distance_m IS NULL OR $distance_m IS NULL
-        OR ABS(distance_m - $distance_m) <= MAX(distance_m, $distance_m) * 0.1
-      )
-    LIMIT 1
-  `);
-  const stmtInsertPoint = db.prepare(`
-    INSERT INTO track_points
-    (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms,
-     cadence, altitude_m, temperature, power, lat, lon, stamina)
-    VALUES
-        ($activity_id, $elapsed_sec, $timestamp_unix, $distance_m, $heart_rate, $speed_ms,
-         $cadence, $altitude_m, $temperature, $power, $lat, $lon, $stamina)
-  `);
-  const stmtInsertActivity = db.prepare(`
-    INSERT OR IGNORE INTO activities
-    (filename, activity_date, date_only, sport, duration_sec, distance_m,
-     avg_pace_minkm, calories, avg_hr, max_hr, avg_cadence,
-     ascent_m, descent_m, avg_speed_ms, max_speed_ms, source, moving_time_sec)
-    VALUES
-    ($filename, $activity_date, $date_only, $sport, $duration_sec, $distance_m,
-     $avg_pace_minkm, $calories, $avg_hr, $max_hr, $avg_cadence,
-     $ascent_m, $descent_m, $avg_speed_ms, $max_speed_ms, $source, $moving_time_sec)
-  `);
-
   let imported = 0, skipped = 0, duplicates = 0, errors = 0;
 
   for (const summary of list) {
     const filename = `strava-${summary.id}.json`;
-    if (stmtGetByFilename.get(filename)) { skipped++; continue; }
+    if (await db.get("SELECT id FROM activities WHERE filename=$1", [filename])) { skipped++; continue; }
 
     try {
       const detail  = await stravaFetch<DetailedActivity>(accessToken, `${API_BASE}/activities/${summary.id}`);
@@ -241,28 +211,22 @@ async function main(): Promise<void> {
 
       const row = decodeActivity(detail);
 
-      const dup = stmtDedup.get({ $activity_date: row.activity_date, $distance_m: row.distance_m }) as { id: number } | undefined;
+      const dup = await db.get<{ id: number }>(`SELECT id FROM activities WHERE ABS(EXTRACT(EPOCH FROM (activity_date - $1::timestamp))) < 600 AND (distance_m IS NULL OR $2::double precision IS NULL OR ABS(distance_m - $2) <= GREATEST(distance_m, $2) * 0.1) LIMIT 1`, [row.activity_date, row.distance_m]);
       if (dup) {
         duplicates++;
         if (VERBOSE) console.log(`  ~  ${row.date_only}  ${row.sport}  matches existing activity #${dup.id} — skipped as duplicate`);
         continue;
       }
 
-      db.exec("BEGIN");
-      try {
-        stmtInsertActivity.run(activityParams(row));
-
-        const inserted = stmtGetByFilename.get(filename) as { id: number } | undefined;
+      await db.transaction(async client => {
+        const result = await client.query<{ id: number }>(`INSERT INTO activities (user_id, filename, activity_date, date_only, sport, duration_sec, distance_m, avg_pace_minkm, calories, avg_hr, max_hr, avg_cadence, ascent_m, descent_m, avg_speed_ms, max_speed_ms, source, moving_time_sec) VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (filename) DO NOTHING RETURNING id`, [row.filename, row.activity_date, row.date_only, row.sport, row.duration_sec, row.distance_m, row.avg_pace_minkm, row.calories, row.avg_hr, row.max_hr, row.avg_cadence, row.ascent_m, row.descent_m, row.avg_speed_ms, row.max_speed_ms, row.source, row.moving_time_sec]);
+        const inserted = result.rows[0];
         if (!inserted) throw new Error("Insert did not produce a row id");
 
         for (const pt of decodeStreams(streams, row.sport ?? "other")) {
-          stmtInsertPoint.run(trackPointParams({ ...pt, activity_id: inserted.id }));
+          await client.query(`INSERT INTO track_points (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms, cadence, altitude_m, temperature, power, lat, lon, stamina) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [inserted.id, pt.elapsed_sec, pt.timestamp_unix, pt.distance_m, pt.heart_rate, pt.speed_ms, pt.cadence, pt.altitude_m, pt.temperature, pt.power, pt.lat, pt.lon, pt.stamina]);
         }
-        db.exec("COMMIT");
-      } catch (e) {
-        db.exec("ROLLBACK");
-        throw e;
-      }
+      });
 
       imported++;
       if (VERBOSE) {
@@ -284,9 +248,10 @@ async function main(): Promise<void> {
   // HRA-334: re-run the conservative planned-workout/activity matcher now
   // that new activities may exist — see sync-garmin.ts's own call for why
   // this lives here rather than in the server process.
-  createWorkoutAssociationsService(
+  await createWorkoutAssociationsService(
     db, createActivitiesRepo(db), createPlanInstancesRepo(db), createWorkoutAssociationsRepo(db),
   ).reconcile();
+  await db.close();
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

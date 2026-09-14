@@ -14,19 +14,19 @@ export function createTrendsController(ctx: AppContext) {
   // Aggregates are bounded (one row per sport / week / month), so they're
   // wrapped whole in the list envelope for shape consistency (HRA-38) — there's
   // nothing to page through.
-  const summary: Handler = (_req, res, url) => {
+  const summary: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, wholePage(repo.summary(from, to) as unknown[]));
+    return send(res, wholePage(await repo.summary(from, to) as unknown[]));
   };
 
-  const weekly: Handler = (_req, res, url) => {
+  const weekly: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, wholePage(repo.weekly(from, to) as unknown[]));
+    return send(res, wholePage(await repo.weekly(from, to) as unknown[]));
   };
 
-  const monthly: Handler = (_req, res, url) => {
+  const monthly: Handler = async (_req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, wholePage(repo.monthly(from, to) as unknown[]));
+    return send(res, wholePage(await repo.monthly(from, to) as unknown[]));
   };
 
   return { summary, weekly, monthly };

@@ -44,11 +44,11 @@ export function createReportingService(
   planInstances: PlanInstancesRepo, workoutAssociations: WorkoutAssociationsRepo, activities: ActivitiesRepo,
   workoutSegmentAlignments: WorkoutSegmentAlignmentsRepo,
 ) {
-  function getWorkoutReport(instanceId: number, workoutId: string, asOf?: Date): WorkoutReportResult | undefined {
-    const instance = planInstances.instanceById(instanceId);
+  async function getWorkoutReport(instanceId: number, workoutId: string, asOf?: Date): Promise<WorkoutReportResult | undefined> {
+    const instance = await planInstances.instanceById(instanceId);
     if (!instance) return undefined;
 
-    const currentDays = planInstances.daysByInstance(instanceId);
+    const currentDays = await planInstances.daysByInstance(instanceId);
     const current = currentDays.find(d => d.workout_id === workoutId) ?? null;
 
     const originalDays: OriginalDaySnapshot[] = instance.original_days_snapshot != null
@@ -58,9 +58,9 @@ export function createReportingService(
 
     if (!current && !original) return undefined; // this workout_id never belonged to this instance
 
-    const associationRows = workoutAssociations.byWorkoutId(workoutId);
-    const activityInputs = associationRows.map(a => {
-      const row = activities.byId(a.activity_id) as {
+    const associationRows = await workoutAssociations.byWorkoutId(workoutId);
+    const activityInputs = (await Promise.all(associationRows.map(async a => {
+      const row = await activities.byId(a.activity_id) as {
         id: number; activity_date: string; distance_m: number | null; duration_sec: number | null; moving_time_sec: number | null;
         avg_hr: number | null; max_hr: number | null;
       } | undefined;
@@ -70,7 +70,7 @@ export function createReportingService(
           moving_time_sec: row.moving_time_sec, avg_hr: row.avg_hr, max_hr: row.max_hr,
         }
         : null;
-    }).filter((a): a is NonNullable<typeof a> => a != null);
+    }))).filter((a): a is NonNullable<typeof a> => a != null);
 
     // HRA-337: track_points loaded ONLY for the accepted evidence activities
     // (never Original/Current, never ambiguous/extra ones) — the pure domain
@@ -80,10 +80,10 @@ export function createReportingService(
     const trackPointsByActivity = new Map<number, PauseEvidencePointInput[]>();
     for (const a of associationRows) {
       if (!ACCEPTED_STATUSES.includes(a.status)) continue;
-      trackPointsByActivity.set(a.activity_id, activities.track(a.activity_id) as unknown as PauseEvidencePointInput[]);
+      trackPointsByActivity.set(a.activity_id, await activities.track(a.activity_id) as unknown as PauseEvidencePointInput[]);
     }
 
-    const manualQualityAlignments: ManualSegmentAlignment[] = workoutSegmentAlignments.byWorkoutId(workoutId)
+    const manualQualityAlignments: ManualSegmentAlignment[] = (await workoutSegmentAlignments.byWorkoutId(workoutId))
       .map(a => ({ segmentIndex: a.segment_index, activityId: a.activity_id, distanceM: a.distance_m, durationSec: a.duration_sec }));
 
     return buildWorkoutReport({
@@ -116,21 +116,21 @@ export function createReportingService(
   // manual_changed) — never an arbitrary/ambiguous activity id, so a manual
   // segment value always traces back to real, already-trusted evidence for
   // the session it claims to describe.
-  function isAcceptedActivityForWorkout(workoutId: string, activityId: number): boolean {
-    return workoutAssociations.byWorkoutId(workoutId)
+  async function isAcceptedActivityForWorkout(workoutId: string, activityId: number): Promise<boolean> {
+    return (await workoutAssociations.byWorkoutId(workoutId))
       .some(a => a.activity_id === activityId && ACCEPTED_STATUSES.includes(a.status));
   }
 
-  function setQualityAlignment(
+  async function setQualityAlignment(
     workoutId: string, segmentIndex: number, activityId: number, distanceM: number | null, durationSec: number | null,
-  ): { ok: true } | { ok: false; reason: "activity_not_accepted_evidence" } {
-    if (!isAcceptedActivityForWorkout(workoutId, activityId)) return { ok: false, reason: "activity_not_accepted_evidence" };
-    workoutSegmentAlignments.upsert(workoutId, segmentIndex, activityId, distanceM, durationSec);
+  ): Promise<{ ok: true } | { ok: false; reason: "activity_not_accepted_evidence" }> {
+    if (!await isAcceptedActivityForWorkout(workoutId, activityId)) return { ok: false, reason: "activity_not_accepted_evidence" };
+    await workoutSegmentAlignments.upsert(workoutId, segmentIndex, activityId, distanceM, durationSec);
     return { ok: true };
   }
 
-  function removeQualityAlignment(workoutId: string, segmentIndex: number): void {
-    workoutSegmentAlignments.remove(workoutId, segmentIndex);
+  async function removeQualityAlignment(workoutId: string, segmentIndex: number): Promise<void> {
+    await workoutSegmentAlignments.remove(workoutId, segmentIndex);
   }
 
   // ── week and entire-plan reports (HRA-338) ────────────────────────────
@@ -154,8 +154,8 @@ export function createReportingService(
   // top-of-file comment already documents; `allAssociations` is loaded once
   // by the caller (workout_associations has no per-instance index) and
   // filtered down here to only the activities actually in scope.
-  function loadActivitiesInRange(from: string, to: string): { activityInputs: ReportActivityInput[]; rowsById: Map<number, ReportingActivityRow> } {
-    const rows = activities.list(from, to) as unknown as ReportingActivityRow[];
+  async function loadActivitiesInRange(from: string, to: string): Promise<{ activityInputs: ReportActivityInput[]; rowsById: Map<number, ReportingActivityRow> }> {
+    const rows = await activities.list(from, to) as unknown as ReportingActivityRow[];
     return {
       activityInputs: rows.map(r => ({ activity_id: r.id, activity_date: r.activity_date, distance_m: r.distance_m, duration_sec: r.duration_sec })),
       rowsById: new Map(rows.map(r => [r.id, r])),
@@ -180,10 +180,10 @@ export function createReportingService(
   // accepted evidence activities (HRA-337's own rule, extended here from "one
   // workout's accepted activities" to "this report scope's accepted
   // activities" — never for Original/Current, never for ambiguous/extra).
-  function computeAggregateEvidence(
+  async function computeAggregateEvidence(
     accepted: AcceptedEvidence[], rowsById: Map<number, ReportingActivityRow>,
     currentDateByWorkoutId: Map<string, string>, raceDate: string | null,
-  ): AggregateEvidence {
+  ): Promise<AggregateEvidence> {
     if (accepted.length === 0) return { hr: null, pauses: null, comparableStamina: null };
 
     const hr = computeHrEvidence(accepted.map(e => {
@@ -192,7 +192,7 @@ export function createReportingService(
     }));
 
     const trackPointsByActivity = new Map<number, PauseEvidencePointInput[]>();
-    for (const e of accepted) trackPointsByActivity.set(e.activity_id, activities.track(e.activity_id) as unknown as PauseEvidencePointInput[]);
+    for (const e of accepted) trackPointsByActivity.set(e.activity_id, await activities.track(e.activity_id) as unknown as PauseEvidencePointInput[]);
     const pauses = aggregatePauseEvidence(accepted.map(e => e.activity_id), trackPointsByActivity);
 
     const candidate = selectComparableStaminaCandidate(
@@ -207,13 +207,13 @@ export function createReportingService(
     return { hr, pauses, comparableStamina };
   }
 
-  function getWeekReport(
+  async function getWeekReport(
     instanceId: number, sectionName: string, weekNumber: number, range: ReportRangeMode, asOf?: Date,
-  ): WeekReportResult | undefined {
-    const instance = planInstances.instanceById(instanceId);
+  ): Promise<WeekReportResult | undefined> {
+    const instance = await planInstances.instanceById(instanceId);
     if (!instance) return undefined;
 
-    const currentDays = planInstances.daysByInstance(instanceId);
+    const currentDays = await planInstances.daysByInstance(instanceId);
     const originalDays = loadOriginalDays(instance);
     const week: PlanWeekKey = { section_name: sectionName, week_number: weekNumber };
     const belongsToWeek = (d: { section_name: string; week_number: number }) => d.section_name === sectionName && d.week_number === weekNumber;
@@ -223,8 +223,8 @@ export function createReportingService(
     if (!currentDays.some(belongsToWeek) && !originalDays.some(belongsToWeek)) return undefined;
 
     const span = weekDateSpan(originalDays, currentDays, week);
-    const { activityInputs, rowsById } = loadActivitiesInRange(span.start!, span.end!);
-    const associationLookups = associationsForActivities(workoutAssociations.all(), new Set(activityInputs.map(a => a.activity_id)));
+    const { activityInputs, rowsById } = await loadActivitiesInRange(span.start!, span.end!);
+    const associationLookups = associationsForActivities(await workoutAssociations.all(), new Set(activityInputs.map(a => a.activity_id)));
 
     const request: ReportRequest = {
       instanceId, range, granularity: "week", week,
@@ -244,7 +244,7 @@ export function createReportingService(
     const relevantScope = report.scope.filter(s => s.originalInRange || s.currentInRange);
     const workouts = buildWorkoutIdentities(relevantScope, originalById, currentById);
 
-    const evidence = computeAggregateEvidence(report.actual.accepted, rowsById, buildCurrentDateLookup(currentDays), instance.race_date);
+    const evidence = await computeAggregateEvidence(report.actual.accepted, rowsById, buildCurrentDateLookup(currentDays), instance.race_date);
 
     return {
       provenance: {
@@ -260,11 +260,11 @@ export function createReportingService(
     };
   }
 
-  function getPlanReport(instanceId: number, range: ReportRangeMode, asOf?: Date): PlanReportResult | undefined {
-    const instance = planInstances.instanceById(instanceId);
+  async function getPlanReport(instanceId: number, range: ReportRangeMode, asOf?: Date): Promise<PlanReportResult | undefined> {
+    const instance = await planInstances.instanceById(instanceId);
     if (!instance) return undefined;
 
-    const currentDays = planInstances.daysByInstance(instanceId);
+    const currentDays = await planInstances.daysByInstance(instanceId);
     const originalDays = loadOriginalDays(instance);
     const span = planDateSpan(originalDays, currentDays);
 
@@ -272,9 +272,9 @@ export function createReportingService(
     // days on either side yet never queries activities at all — an empty
     // report, not a fabricated one.
     const { activityInputs, rowsById } = span.start != null && span.end != null
-      ? loadActivitiesInRange(span.start, span.end)
+      ? await loadActivitiesInRange(span.start, span.end)
       : { activityInputs: [] as ReportActivityInput[], rowsById: new Map<number, ReportingActivityRow>() };
-    const allAssociations = workoutAssociations.all();
+    const allAssociations = await workoutAssociations.all();
     const associationLookups = associationsForActivities(allAssociations, new Set(activityInputs.map(a => a.activity_id)));
     const currentDateByWorkoutId = buildCurrentDateLookup(currentDays);
 
@@ -288,7 +288,7 @@ export function createReportingService(
       dimensions: ["adaptation", "execution", "outcome"], metrics: ["distance", "duration", "pace"], asOf,
     };
     const overall = buildReport(overallRequest, { instance: instanceInput, currentDays, associations: associationLookups, activities: activityInputs });
-    const overallEvidence = computeAggregateEvidence(overall.actual.accepted, rowsById, currentDateByWorkoutId, instance.race_date);
+    const overallEvidence = await computeAggregateEvidence(overall.actual.accepted, rowsById, currentDateByWorkoutId, instance.race_date);
 
     // AC "entire-plan reports group by week": each week gets its OWN
     // buildReport call, scoped to ITS OWN activities-in-range query (never
@@ -296,18 +296,18 @@ export function createReportingService(
     // getWeekReport's own standalone endpoint gives a single week, so a
     // week's own accepted/coverage population here matches exactly what
     // requesting that week directly would return.
-    const weeks: PlanWeekSummary[] = collectPlanWeeks(originalDays, currentDays).map(key => {
+    const weeks: PlanWeekSummary[] = await Promise.all(collectPlanWeeks(originalDays, currentDays).map(async key => {
       const weekSpan = weekDateSpan(originalDays, currentDays, key);
-      const { activityInputs: weekActivityInputs, rowsById: weekRowsById } = loadActivitiesInRange(weekSpan.start!, weekSpan.end!);
+      const { activityInputs: weekActivityInputs, rowsById: weekRowsById } = await loadActivitiesInRange(weekSpan.start!, weekSpan.end!);
       const weekAssociations = associationsForActivities(allAssociations, new Set(weekActivityInputs.map(a => a.activity_id)));
       const weekRequest: ReportRequest = {
         instanceId, range, granularity: "week", week: key,
         dimensions: ["adaptation", "execution", "outcome"], metrics: ["distance", "duration", "pace"], asOf,
       };
       const weekReport = buildReport(weekRequest, { instance: instanceInput, currentDays, associations: weekAssociations, activities: weekActivityInputs });
-      const weekEvidence = computeAggregateEvidence(weekReport.actual.accepted, weekRowsById, currentDateByWorkoutId, instance.race_date);
+      const weekEvidence = await computeAggregateEvidence(weekReport.actual.accepted, weekRowsById, currentDateByWorkoutId, instance.race_date);
       return { key, dateSpan: weekSpan, report: weekReport, evidence: weekEvidence };
-    });
+    }));
 
     return {
       provenance: {
@@ -353,13 +353,11 @@ export function createReportingService(
     return status === "pending" ? "upcoming" : status;
   }
 
-  function getRangeReport(from: string, to: string, range: ReportRangeMode, asOf?: Date): RangeReportResult {
+  async function getRangeReport(from: string, to: string, range: ReportRangeMode, asOf?: Date): Promise<RangeReportResult> {
     const now = new Date();
     const effectiveAsOf = asOf ?? now;
 
-    const allInstances = planInstances.allInstances();
-    const allAssociations = workoutAssociations.all();
-    const { activityInputs, rowsById } = loadActivitiesInRange(from, to);
+    const [allInstances, allAssociations, { activityInputs, rowsById }] = await Promise.all([planInstances.allInstances(), workoutAssociations.all(), loadActivitiesInRange(from, to)]);
 
     // Range-wide trust classification — the FULL association map, never a
     // per-instance-filtered one, so an activity accepted for SOME instance
@@ -368,12 +366,12 @@ export function createReportingService(
     const globalAssociationsByActivity = new Map<number, AssociationLookup>(allAssociations.map(a => [a.activity_id, a]));
     const classification = classifyActualPopulation(activityInputs, globalAssociationsByActivity, SCHEDULE_TIMEZONE_BACKFILL_FALLBACK);
 
-    const candidates = allInstances.map(instance => {
-      const currentDays = planInstances.daysByInstance(instance.id);
+    const candidates = await Promise.all(allInstances.map(async instance => {
+      const currentDays = await planInstances.daysByInstance(instance.id);
       const originalDays = loadOriginalDays(instance);
       const span = planDateSpan(originalDays, currentDays);
       return { instance, currentDays, originalDays, span };
-    });
+    }));
     const included = candidates.filter(c => c.span.start != null && c.span.end != null && c.span.start! <= to && c.span.end! >= from);
 
     const instances: RangeInstanceReport[] = [];
@@ -419,7 +417,7 @@ export function createReportingService(
           .map(a => rowsById.get(a.activity_id))
           .filter((a): a is ReportingActivityRow => a != null);
         const wholeSessionPace = aggregatePaceSecPerKm(workoutAcceptedActivities.map(a => ({ distanceM: a.distance_m, timeSec: a.duration_sec })));
-        const manualAlignments = workoutSegmentAlignments.byWorkoutId(day.workout_id)
+        const manualAlignments = (await workoutSegmentAlignments.byWorkoutId(day.workout_id))
           .map(a => ({ segmentIndex: a.segment_index, activityId: a.activity_id, distanceM: a.distance_m, durationSec: a.duration_sec }));
 
         qualityEntries.push({

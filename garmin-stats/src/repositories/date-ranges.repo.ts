@@ -1,49 +1,13 @@
-/**
- * repositories/date-ranges.repo.ts
- * Data access for named date ranges the user saves for later recall (rest-api-standards
- * §11 — the only layer that runs SQL for this domain). Optionally links the race the
- * training block led up to (LEFT JOIN activities) so a list read carries the race's
- * display fields without a second round trip.
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
+import type { Queryable } from "../db/query.ts";
 import type { DateRangeRow } from "../db.ts";
-
-const SELECT_FIELDS = `
-  dr.id, dr.name, dr.from_date, dr.to_date, dr.activity_id, dr.created_at,
-  a.date_only AS race_date_only, a.activity_name AS race_activity_name,
-  a.distance_m AS race_distance_m, a.activity_type_id AS race_activity_type_id
-  FROM date_ranges dr
-  LEFT JOIN activities a ON a.id = dr.activity_id
-`;
-
-export function createDateRangesRepo(db: DatabaseSync) {
-  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
-  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const listAll    = prepareLive(`SELECT ${SELECT_FIELDS} ORDER BY dr.created_at DESC LIMIT ? OFFSET ?`);
-  const countAll    = prepareLive("SELECT COUNT(*) AS count FROM date_ranges");
-  const findByName  = prepareLive(`SELECT ${SELECT_FIELDS} WHERE dr.name = ?`);
-  const findById    = prepareLive(`SELECT ${SELECT_FIELDS} WHERE dr.id = ?`);
-  const insert      = prepareLive("INSERT INTO date_ranges (name, from_date, to_date, activity_id) VALUES ($name, $from_date, $to_date, $activity_id)");
-  const update      = prepareLive("UPDATE date_ranges SET name = $name, from_date = $from_date, to_date = $to_date, activity_id = $activity_id WHERE id = $id");
-  const deleteById  = prepareLive("DELETE FROM date_ranges WHERE id = ?");
-
-  return {
-    listPage: (limit: number, offset: number): DateRangeRow[] => listAll.all(limit, offset) as unknown as DateRangeRow[],
-    count:    (): { count: number } => countAll.get() as unknown as { count: number },
-    byName:   (name: string): DateRangeRow | undefined => findByName.get(name) as unknown as DateRangeRow | undefined,
-    byId:     (id: number): DateRangeRow | undefined => findById.get(id) as unknown as DateRangeRow | undefined,
-    create:   (name: string, from: string, to: string, activityId: number | null): DateRangeRow => {
-      const info = insert.run({ $name: name, $from_date: from, $to_date: to, $activity_id: activityId });
-      return findById.get(Number(info.lastInsertRowid)) as unknown as DateRangeRow;
-    },
-    update:   (id: number, name: string, from: string, to: string, activityId: number | null): DateRangeRow => {
-      update.run({ $id: id, $name: name, $from_date: from, $to_date: to, $activity_id: activityId });
-      return findById.get(id) as unknown as DateRangeRow;
-    },
-    remove:   (id: number) => deleteById.run(id),
-  };
-}
-
+const FIELDS = `dr.id, dr.name, dr.from_date, dr.to_date, dr.activity_id, dr.created_at, a.date_only AS race_date_only, a.activity_name AS race_activity_name, a.distance_m AS race_distance_m, a.activity_type_id AS race_activity_type_id FROM date_ranges dr LEFT JOIN activities a ON a.id = dr.activity_id`;
+export function createDateRangesRepo(db: Queryable) { return {
+  listPage: (limit: number, offset: number) => db.all<DateRangeRow>(`SELECT ${FIELDS} ORDER BY dr.created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+  count: () => db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM date_ranges"),
+  byName: (name: string) => db.get<DateRangeRow>(`SELECT ${FIELDS} WHERE dr.name = $1`, [name]),
+  byId: (id: number) => db.get<DateRangeRow>(`SELECT ${FIELDS} WHERE dr.id = $1`, [id]),
+  create: (name: string, from: string, to: string, activityId: number | null) => db.get<DateRangeRow>(`INSERT INTO date_ranges (user_id, name, from_date, to_date, activity_id) VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1), $1, $2, $3, $4) RETURNING id, name, from_date, to_date, activity_id, created_at`, [name, from, to, activityId]),
+  update: (id: number, name: string, from: string, to: string, activityId: number | null) => db.get<DateRangeRow>(`UPDATE date_ranges SET name = $2, from_date = $3, to_date = $4, activity_id = $5 WHERE id = $1 RETURNING id, name, from_date, to_date, activity_id, created_at`, [id, name, from, to, activityId]),
+  remove: (id: number) => db.run("DELETE FROM date_ranges WHERE id = $1", [id]),
+}; }
 export type DateRangesRepo = ReturnType<typeof createDateRangesRepo>;

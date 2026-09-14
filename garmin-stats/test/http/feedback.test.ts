@@ -34,7 +34,7 @@ test("POST /api/v1/feedback accepts free_text alone and returns 201 with one per
     const row = res.json as { id: number; free_text: string };
     assert.equal(row.free_text, "Would love a coach mode.");
 
-    const count = server.db.prepare("SELECT COUNT(*) AS count FROM feedback").get() as { count: number };
+    const count = (await server.db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM feedback"))!;
     assert.equal(count.count, 1);
   } finally {
     await server.close();

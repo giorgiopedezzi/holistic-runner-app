@@ -120,11 +120,9 @@ test("200: an accepted association in week 1 shows up in week 1's own evidence a
   const server = await startTestServer();
   try {
     const { instanceId, week1, week2 } = await setUp(server);
-    const info = server.db.prepare(`
-      INSERT INTO activities (filename, activity_date, date_only, sport, source, distance_m, duration_sec, moving_time_sec, avg_hr, max_hr)
-      VALUES ('week-report-fixture.fit', ?, ?, 'running', 'garmin', 10100, 3050, 3000, 150, 170)
-    `).run(`${week1.date}T07:00:00`, week1.date);
-    const activityId = Number(info.lastInsertRowid);
+    const row = await server.db.get<{ id: number }>("INSERT INTO activities (user_id,filename,activity_date,date_only,sport,source,distance_m,duration_sec,moving_time_sec,avg_hr,max_hr) VALUES ('00000000-0000-4000-8000-000000000001','week-report-fixture.fit',$1,$2,'running','garmin',10100,3050,3000,150,170) RETURNING id", [`${week1.date}T07:00:00`, week1.date]);
+    if (!row) throw new Error("fixture activity insert did not return an id");
+    const activityId = row.id;
 
     const link = await server.api(`/api/v1/activities/${activityId}/association`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workout_id: week1.workout_id }),

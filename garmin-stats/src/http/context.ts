@@ -7,7 +7,7 @@
  */
 import type http from "http";
 import type { URL } from "url";
-import type { DatabaseSync } from "node:sqlite";
+import type { PostgresDatabase } from "../db/postgres.ts";
 import type { Config } from "../config.ts";
 import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
 import type { BodyRepo } from "../repositories/body.repo.ts";
@@ -33,7 +33,7 @@ export interface AppContext {
   scriptsDir: string;    // src root; sync jobs in jobs/, ps1 helpers in powershell/
   backgroundsDir: string;
   config: Config;
-  db: DatabaseSync;
+  db: PostgresDatabase;
   repos: {
     activities: ActivitiesRepo; body: BodyRepo; settings: SettingsRepo; dateRanges: DateRangesRepo;
     activityTypes: ActivityTypesRepo; planTemplates: PlanTemplatesRepo; planInstances: PlanInstancesRepo;

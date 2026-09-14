@@ -12,7 +12,7 @@ export function createActivityTypesController(ctx: AppContext) {
 
   // Small, fixed reference set — wrapped whole for shape consistency with
   // every other collection endpoint (envelope.ts), not offset-paginated.
-  const list: Handler = (_req, res) => send(res, wholePage(repo.list()));
+  const list: Handler = async (_req, res) => send(res, wholePage(await repo.list()));
 
   return { list };
 }

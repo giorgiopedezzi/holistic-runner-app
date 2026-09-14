@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { spawn } from "child_process";
 import readline from "readline";
 import { loadConfig, requireGarminConfig, getArg, hasFlag } from "../config.ts";
-import { openDb, initSchema, activityParams, trackPointParams } from "../db.ts";
+import { openPostgresDatabase } from "../db/postgres.ts";
 import { parseFit } from "../domain/fit-parser.ts";
 import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
 import { createActivitiesRepo } from "../repositories/activities.repo.ts";
@@ -25,38 +25,11 @@ const __dirname = path.dirname(__filename);
 const config  = loadConfig();
 const VERBOSE = hasFlag("--verbose") || hasFlag("-v");
 
-const db = openDb();
-initSchema(db);
-
-// Prepared statements for robust transaction control
-const stmtInsertActivity = db.prepare(`
-    INSERT OR IGNORE INTO activities
-    (filename, activity_date, date_only, sport, duration_sec, distance_m,
-     avg_pace_minkm, calories, avg_hr, max_hr, avg_cadence,
-     ascent_m, descent_m, avg_speed_ms, max_speed_ms, source, moving_time_sec)
-  VALUES
-    ($filename, $activity_date, $date_only, $sport, $duration_sec, $distance_m,
-    $avg_pace_minkm, $calories, $avg_hr, $max_hr, $avg_cadence,
-    $ascent_m, $descent_m, $avg_speed_ms, $max_speed_ms, $source, $moving_time_sec)
-`);
-
-const stmtInsertPoint = db.prepare(`
-    INSERT INTO track_points
-    (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms,
-     cadence, altitude_m, temperature, power, lat, lon, stamina)
-    VALUES
-        ($activity_id, $elapsed_sec, $timestamp_unix, $distance_m, $heart_rate, $speed_ms,
-         $cadence, $altitude_m, $temperature, $power, $lat, $lon, $stamina)
-`);
-
-const stmtGetId = db.prepare("SELECT id FROM activities WHERE filename = ?");
-const stmtGetAllFilenames = db.prepare("SELECT filename FROM activities");
+const db = openPostgresDatabase();
 
 // Shared across both phases: what's already imported, so the PS1 script knows
 // what to skip and the import phase can size its progress total up front.
-const existingFilenames = new Set(
-  (stmtGetAllFilenames.all() as { filename: string }[]).map(row => row.filename)
-);
+const existingFilenames = new Set<string>();
 
 // Emits machine-readable "PROGRESS <phase> <current> <total> [<label>]" lines
 // on our own stdout (in addition to normal log lines) so a caller — either a
@@ -162,8 +135,7 @@ async function processLocalSync(targetFolder: string): Promise<void> {
 
   let imported = 0, skipped = 0, errors = 0, done = 0;
 
-  db.exec("BEGIN");
-  try {
+  await db.transaction(async client => {
     for (const fname of files) {
       if (existingFilenames.has(fname) && config.sync.skip_duplicates) {
         if (VERBOSE) console.log(`  skip  ${fname}`);
@@ -179,13 +151,16 @@ async function processLocalSync(targetFolder: string): Promise<void> {
         // fit-file-parser-validate.ts for why this stays a side channel.
         await crossValidateFitParser(buf, fname, parsed);
 
-        stmtInsertActivity.run(activityParams({ ...activity, source: "garmin" }));
-
-        const row = stmtGetId.get(fname) as { id: number } | undefined;
+        const inserted = await client.query<{ id: number }>(`INSERT INTO activities
+          (user_id, filename, activity_date, date_only, sport, duration_sec, distance_m, avg_pace_minkm, calories, avg_hr, max_hr, avg_cadence, ascent_m, descent_m, avg_speed_ms, max_speed_ms, source, moving_time_sec)
+          VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          ON CONFLICT (filename) DO NOTHING RETURNING id`, [activity.filename, activity.activity_date, activity.date_only, activity.sport, activity.duration_sec, activity.distance_m, activity.avg_pace_minkm, activity.calories, activity.avg_hr, activity.max_hr, activity.avg_cadence, activity.ascent_m, activity.descent_m, activity.avg_speed_ms, activity.max_speed_ms, "garmin", activity.moving_time_sec]);
+        const row = inserted.rows[0] ?? (await client.query<{ id: number }>("SELECT id FROM activities WHERE filename=$1", [fname])).rows[0];
         if (!row) { errors++; done++; emitProgress("import", done, pending.length, fname); continue; }
 
         for (const pt of trackPoints) {
-          stmtInsertPoint.run(trackPointParams({ activity_id: row.id, ...pt }));
+          await client.query(`INSERT INTO track_points (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms, cadence, altitude_m, temperature, power, lat, lon, stamina)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [row.id, pt.elapsed_sec, pt.timestamp_unix, pt.distance_m, pt.heart_rate, pt.speed_ms, pt.cadence, pt.altitude_m, pt.temperature, pt.power, pt.lat, pt.lon, pt.stamina]);
         }
 
         imported++;
@@ -202,17 +177,13 @@ async function processLocalSync(targetFolder: string): Promise<void> {
         emitProgress("import", done, pending.length, fname);
       }
     }
-    db.exec("COMMIT");
-  } catch (e) {
-    db.exec("ROLLBACK");
-    throw e;
-  }
+  });
 
   console.log(`\n\nExecution Metrics:`);
   console.log(`  Imported : ${imported}`);
   console.log(`  Skipped  : ${skipped}`);
   console.log(`  Errors   : ${errors}`);
-  console.log(`  DB Store : ${path.resolve(config.database.path)}`);
+  console.log("  DB Store : PostgreSQL");
 }
 
 // Permanent archive of raw .FIT files, kept alongside the DB (not under src/,
@@ -222,19 +193,22 @@ const fitArchivePath = path.resolve(__dirname, "../../fit-archive");
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Controlled Native PowerShell Sync ===\n");
 
+  for (const row of await db.all<{ filename: string }>("SELECT filename FROM activities")) existingFilenames.add(row.filename);
+
   // 1. Run safely via the OS-level infrastructure
   await runMtpExtractionPipeline(fitArchivePath);
 
-  // 2. Parse the archive directory state into SQLite
+  // 2. Parse the archive directory state into PostgreSQL
   await processLocalSync(fitArchivePath);
 
   // 3. HRA-334: re-run the conservative planned-workout/activity matcher now
   // that new activities may exist — this script runs as its own process with
   // its own DB connection, so the server's in-process wiring never sees these
   // imports on its own.
-  createWorkoutAssociationsService(
+  await createWorkoutAssociationsService(
     db, createActivitiesRepo(db), createPlanInstancesRepo(db), createWorkoutAssociationsRepo(db),
   ).reconcile();
+  await db.close();
 }
 
-main();
+void main().catch(error => { console.error(error); process.exitCode = 1; });

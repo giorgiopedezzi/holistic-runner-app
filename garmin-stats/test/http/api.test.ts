@@ -86,7 +86,7 @@ test("GET /api/v1/summary groups by sport", async () => {
 
 test("GET /api/v1/activities/:id and /:id/track return the item and its points", async () => {
   await withServer(async (s) => {
-    const id = s.db.prepare("SELECT id FROM activities WHERE source='garmin'").get() as { id: number };
+    const id = (await s.db.get<{ id: number }>("SELECT id FROM activities WHERE source='garmin'"))!;
     const item = (await s.api(`/api/v1/activities/${id.id}`)).json as { id: number; source: string };
     assert.equal(item.id, id.id);
     assert.equal(item.source, "garmin");
@@ -100,8 +100,8 @@ test("GET /api/v1/activities/:id and /:id/track return the item and its points",
 
 test("full soft-delete lifecycle: hide → trash → restore → purge keeps dedup key", async () => {
   await withServer(async (s) => {
-    const id = (s.db.prepare("SELECT id FROM activities WHERE source='garmin'").get() as { id: number }).id;
-    const filename = (s.db.prepare("SELECT filename FROM activities WHERE id=?").get(id) as { filename: string }).filename;
+    const id = (await s.db.get<{ id: number }>("SELECT id FROM activities WHERE source='garmin'"))!.id;
+    const filename = (await s.db.get<{ filename: string }>("SELECT filename FROM activities WHERE id=$1", [id]))!.filename;
 
     // 1. Soft delete → gone from reads, present in trash.
     const del = await s.api(`/api/v1/activities/${id}`, { method: "DELETE" });
@@ -126,12 +126,11 @@ test("full soft-delete lifecycle: hide → trash → restore → purge keeps ded
     trash = ((await s.api("/api/v1/activities/trash")).json as { data: { id: number }[] }).data;
     assert.equal(trash.length, 0, "purged rows are not listed in trash");
 
-    const row = s.db.prepare("SELECT filename, purged, distance_m FROM activities WHERE id=?").get(id) as
-      { filename: string; purged: number; distance_m: number | null };
-    assert.equal(row.purged, 1);
+    const row = (await s.db.get<{ filename: string; purged: boolean; distance_m: number | null }>("SELECT filename, purged, distance_m FROM activities WHERE id=$1", [id]))!;
+    assert.equal(row.purged, true);
     assert.equal(row.filename, filename, "filename MUST survive purge — it's the resync dedup key");
     assert.equal(row.distance_m, null, "heavy columns are wiped on purge");
-    const tp = (s.db.prepare("SELECT COUNT(*) AS c FROM track_points WHERE activity_id=?").get(id) as { c: number }).c;
+    const tp = (await s.db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM track_points WHERE activity_id=$1", [id]))!.c;
     assert.equal(tp, 0, "track points are deleted on purge");
   });
 });

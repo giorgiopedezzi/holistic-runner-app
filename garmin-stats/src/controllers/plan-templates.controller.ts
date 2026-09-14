@@ -23,7 +23,7 @@ import { eventTypeSchema } from "../domain/runplan/schema.ts";
 import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
 import { generatePlanTemplate, PlanTemplateAiError } from "../integrations/plan-template-ai.ts";
 import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
-import type { PlanInstanceDayReplacement } from "../services/plan-instances.service.ts";
+import { DayNotInInstanceError, type PlanInstanceDayReplacement } from "../services/plan-instances.service.ts";
 import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
 import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
@@ -159,16 +159,16 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const instancesService = ctx.services.planInstances;
   const settingsRepo = ctx.repos.settings;
 
-  const list: Handler = (_req, res, url) => {
+  const list: Handler = async (_req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = templates.count().count;
-    return send(res, paginated(templates.listPage(limit, offset), total, limit, offset));
+    const [count, rows] = await Promise.all([templates.count(), templates.listPage(limit, offset)]);
+    return send(res, paginated(rows, count?.count ?? 0, limit, offset));
   };
 
-  const getById: Handler = (_req, res, url) => {
+  const getById: Handler = async (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan template id.");
-    const row = templates.byId(id);
+    const row = await templates.byId(id);
     if (!row) throw notFound(`No plan template with id ${id}.`);
     return send(res, row);
   };
@@ -318,9 +318,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const create: Handler = async (req, res) => {
     const body = await readJsonBody<TemplateBody>(req);
     const { name, dslSource, plan } = validate(body);
-    const row: PlanTemplateRow = templates.create({
+    const row = await templates.create({
       name, dsl_source: dslSource, parsed_plan: JSON.stringify(plan), event: plan.metadata.event ?? null,
     });
+    if (!row) throw new Error("Plan template insert did not return a row.");
     res.setHeader("Location", `/api/v1/plan-templates/${row.id}`);
     return send(res, row, 201);
   };
@@ -332,10 +333,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const update: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan template id.");
-    if (!templates.byId(id)) throw notFound(`No plan template with id ${id}.`);
+    if (!await templates.byId(id)) throw notFound(`No plan template with id ${id}.`);
     const body = await readJsonBody<TemplateBody>(req);
     const { name, dslSource, plan } = validate(body);
-    return send(res, templates.update(id, {
+    return send(res, await templates.update(id, {
       name, dsl_source: dslSource, parsed_plan: JSON.stringify(plan), event: plan.metadata.event ?? null,
     }));
   };
@@ -344,19 +345,19 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // reachable after a zero-warning save. Not gated on anything itself (a
   // saved row is by construction already at zero warnings); re-approving an
   // already-approved template just refreshes the timestamp.
-  const approveTemplate: Handler = (_req, res, url) => {
+  const approveTemplate: Handler = async (_req, res, url) => {
     const id = parseIdForAction(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan template id.");
-    if (!templates.byId(id)) throw notFound(`No plan template with id ${id}.`);
-    return send(res, templates.approve(id));
+    if (!await templates.byId(id)) throw notFound(`No plan template with id ${id}.`);
+    return send(res, await templates.approve(id));
   };
 
   // DELETE cascades to the template's plan_instances (ON DELETE CASCADE, db.ts).
-  const remove: Handler = (_req, res, url) => {
+  const remove: Handler = async (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan template id.");
-    if (!templates.byId(id)) throw notFound(`No plan template with id ${id}.`);
-    templates.remove(id);
+    if (!await templates.byId(id)) throw notFound(`No plan template with id ${id}.`);
+    await templates.remove(id);
     return sendNoContent(res);
   };
 
@@ -383,7 +384,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const instantiate: Handler = async (req, res, url) => {
     const templateId = parseIdForAction(url.pathname);
     if (!Number.isInteger(templateId)) throw badRequest("Invalid plan template id.");
-    const template = templates.byId(templateId);
+    const template = await templates.byId(templateId);
     if (!template) throw notFound(`No plan template with id ${templateId}.`);
 
     const body = await readJsonBody<InstantiateBody>(req);
@@ -444,7 +445,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (body.target_activity_id != null) {
       targetActivityId = Number(body.target_activity_id);
       if (!Number.isInteger(targetActivityId)) throw unprocessable("target_activity_id must be an integer.");
-      const targetActivity = activitiesRepo.byId(targetActivityId) as unknown as { activity_type_id: number; date_only: string } | undefined;
+      const targetActivity = await activitiesRepo.byId(targetActivityId) as { activity_type_id: number; date_only: string } | undefined;
       if (!targetActivity) throw unprocessable(`Unknown target_activity_id ${targetActivityId}.`);
       if (targetActivity.activity_type_id === 1) throw unprocessable("Only race-type activities (not Training) can be linked.");
 
@@ -465,13 +466,13 @@ export function createPlanTemplatesController(ctx: AppContext) {
     // existing callers that don't yet send any timezone field, rather than
     // hard-rejecting creation outright.
     const explicitTimezone = body.schedule_timezone?.trim();
-    const ownerTimezone = (settingsRepo.get() as { timezone: string | null }).timezone;
+    const ownerTimezone = (await settingsRepo.get())?.timezone;
     const scheduleTimezone = explicitTimezone || ownerTimezone || body.browser_timezone_fallback?.trim() || SCHEDULE_TIMEZONE_BACKFILL_FALLBACK;
     if (!isValidIanaTimeZone(scheduleTimezone)) {
       throw unprocessable(`schedule_timezone "${scheduleTimezone}" is not a valid IANA timezone identifier.`);
     }
 
-    const { instance, days } = instancesService.instantiate(
+    const { instance, days } = await instancesService.instantiate(
       templateId, plan, { startDate: body.start_date, paceOverrides, restDayLabel }, targetActivityId, name, raceName, raceDate, raceUrl,
       scheduleTimezone,
     );
@@ -488,10 +489,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // call already enforces, not a second implementation of it. Result depends
   // only on the template's DSL structure, never on the caller's input, so it
   // can be shown at template selection (before the runner enters any data).
-  const mobileEligibility: Handler = (_req, res, url) => {
+  const mobileEligibility: Handler = async (_req, res, url) => {
     const templateId = parseIdForAction(url.pathname);
     if (!Number.isInteger(templateId)) throw badRequest("Invalid plan template id.");
-    const template = templates.byId(templateId);
+    const template = await templates.byId(templateId);
     if (!template) throw notFound(`No plan template with id ${templateId}.`);
 
     const plan = JSON.parse(template.parsed_plan) as RunPlan;
@@ -520,7 +521,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const instantiatePreview: Handler = async (req, res, url) => {
     const templateId = parseIdForNestedAction(url.pathname);
     if (!Number.isInteger(templateId)) throw badRequest("Invalid plan template id.");
-    const template = templates.byId(templateId);
+    const template = await templates.byId(templateId);
     if (!template) throw notFound(`No plan template with id ${templateId}.`);
 
     const body = await readJsonBody<InstantiateBody>(req);
@@ -554,17 +555,17 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // instance card list view. template_id is optional (the Story's own "or a
   // combined view" wording); when given, must reference a real template
   // (400, not silently returning an empty page for a typo'd id).
-  const listInstances: Handler = (_req, res, url) => {
+  const listInstances: Handler = async (_req, res, url) => {
     const templateIdParam = url.searchParams.get("template_id");
     let templateId: number | undefined;
     if (templateIdParam != null) {
       templateId = Number(templateIdParam);
       if (!Number.isInteger(templateId)) throw badRequest("Invalid template_id.");
-      if (!templates.byId(templateId)) throw notFound(`No plan template with id ${templateId}.`);
+      if (!await templates.byId(templateId)) throw notFound(`No plan template with id ${templateId}.`);
     }
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = instancesRepo.count(templateId).count;
-    return send(res, paginated(instancesRepo.listPage(limit, offset, templateId), total, limit, offset));
+    const [count, rows] = await Promise.all([instancesRepo.count(templateId), instancesRepo.listPage(limit, offset, templateId)]);
+    return send(res, paginated(rows, count?.count ?? 0, limit, offset));
   };
 
   // GET /api/v1/plan-instance-days?date=YYYY-MM-DD (HRA-206) — every run-type
@@ -576,10 +577,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // excluded per docs/runplan-dsl.md's existing "excluded from
   // planned-vs-actual" note) — hardcoded here, not a query param, since this
   // endpoint has exactly one caller and one use case.
-  const daysByDate: Handler = (_req, res, url) => {
+  const daysByDate: Handler = async (_req, res, url) => {
     const date = url.searchParams.get("date");
     if (!date || !ISO_DATE.test(date)) throw badRequest("date is required in YYYY-MM-DD format.");
-    return send(res, instancesRepo.daysByDateAndWorkoutType(date, "run"));
+    return send(res, await instancesRepo.daysByDateAndWorkoutType(date, "run"));
   };
 
   // GET /api/v1/plan-instances/active?date=YYYY-MM-DD (HRA-248) — "Your
@@ -591,20 +592,21 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // mirrors instanceById's own not-found treatment below, and is what lets
   // the frontend tell "no active plan today" apart from a genuine fetch
   // failure (never the same rendered state as a loading/error branch).
-  const activeForDate: Handler = (_req, res, url) => {
+  const activeForDate: Handler = async (_req, res, url) => {
     const date = url.searchParams.get("date");
     if (!date || !ISO_DATE.test(date)) throw badRequest("date is required in YYYY-MM-DD format.");
-    const instanceId = instancesRepo.activeInstanceIdForDate(date);
+    const instanceId = await instancesRepo.activeInstanceIdForDate(date);
     if (instanceId == null) throw notFound(`No active plan instance for ${date}.`);
-    return send(res, { ...instancesRepo.instanceById(instanceId), days: instancesRepo.daysByInstance(instanceId) });
+    const [instance, days] = await Promise.all([instancesRepo.instanceById(instanceId), instancesRepo.daysByInstance(instanceId)]);
+    return send(res, { ...instance, days });
   };
 
-  const instanceById: Handler = (_req, res, url) => {
+  const instanceById: Handler = async (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    const instance = instancesRepo.instanceById(id);
+    const instance = await instancesRepo.instanceById(id);
     if (!instance) throw notFound(`No plan instance with id ${id}.`);
-    return send(res, { ...instance, days: instancesRepo.daysByInstance(id) });
+    return send(res, { ...instance, days: await instancesRepo.daysByInstance(id) });
   };
 
   // PATCH /api/v1/plan-instances/:id — partial update (HRA-135, replacing
@@ -629,7 +631,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const patchInstance: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    const instance = instancesRepo.instanceById(id);
+    const instance = await instancesRepo.instanceById(id);
     if (!instance) throw notFound(`No plan instance with id ${id}.`);
 
     const body = await readJsonBody<InstanceUpdateBody>(req);
@@ -677,7 +679,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
     let dayInputs: PlanInstanceDayReplacement[] | undefined;
     if (hasDays) {
-      const template = templates.byId(instance.template_id);
+      const template = await templates.byId(instance.template_id);
       if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
       const plan = JSON.parse(template.parsed_plan) as RunPlan;
       const instanceOverrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
@@ -741,7 +743,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       }
     }
 
-    const { instance: updated, days } = instancesService.patchInstance(id, fields, dayInputs, scheduleTimezone);
+    const { instance: updated, days } = await instancesService.patchInstance(id, fields, dayInputs, scheduleTimezone);
     return send(res, { ...updated, days });
   };
 
@@ -750,10 +752,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // section/week scope + PacePolicy to parseDayEntry the same way
   // patchInstance's bulk days-replace resolves each day. Kept private to this
   // controller: no other caller needs a day's parse without an instance+day.
-  function parseDayInScope(
+  async function parseDayInScope(
     instance: PlanInstanceRow, day: PlanInstanceDayRow, dsl: string,
-  ): { parsedDay: DayEntry; policy: PacePolicy } {
-    const template = templates.byId(instance.template_id);
+  ): Promise<{ parsedDay: DayEntry; policy: PacePolicy }> {
+    const template = await templates.byId(instance.template_id);
     if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
     const plan = JSON.parse(template.parsed_plan) as RunPlan;
     const instanceOverrides: PacePolicy = instance.pace_overrides ? JSON.parse(instance.pace_overrides) : {};
@@ -791,9 +793,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const patchInstanceDay: Handler = async (req, res, url) => {
     const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
     if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
-    const instance = instancesRepo.instanceById(instanceId);
+    const instance = await instancesRepo.instanceById(instanceId);
     if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
-    const day = instancesRepo.dayById(dayId);
+    const day = await instancesRepo.dayById(dayId);
     if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
 
     const body = await readJsonBody<DayPatchBody>(req);
@@ -815,7 +817,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     let dslFields: { day: number; suffix: string | null; category: string | null; workout_type: string; segments: string; activity_target: string | null; activity_description: string | null; notes: string | null; needs_review: number } | undefined;
     if (hasDsl) {
       if (!body.dsl?.trim()) throw unprocessable("dsl must not be blank.");
-      const { parsedDay, policy } = parseDayInScope(instance, day, body.dsl);
+      const { parsedDay, policy } = await parseDayInScope(instance, day, body.dsl);
       if (parsedDay.needs_review) {
         throw unprocessable("Day still needs review — resolve every flag before saving.", {
           errors: parsedDay.warnings.map(w => ({ field: `week ${day.week_number} day ${parsedDay.day}`, message: w.message })),
@@ -834,8 +836,43 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const workoutId = "workout_id" in body ? body.workout_id : undefined;
     if (workoutId !== undefined && !workoutId.trim()) throw unprocessable("workout_id must not be blank.");
 
-    const updated = instancesService.patchDay(dayId, dslFields, notes, scheduledTime, workoutId);
+    const updated = await instancesService.patchDay(dayId, dslFields, notes, scheduledTime, workoutId);
     return send(res, updated);
+  };
+
+  // POST /api/v1/plan-instances/:id/workouts/swap (HRA-333 follow-up) — one
+  // atomic operation exchanging which logical workout occupies each of two
+  // calendar slots. Replaces the old workaround of two separate PATCH
+  // .../days/:dayId calls (each supplying the OTHER day's workout_id
+  // alongside its swapped-in dsl): each call was its own transaction, so
+  // Postgres' deferred (instance_id, workout_id) uniqueness on
+  // plan_instance_days could never actually resolve — the first call's row
+  // still collided with the second (as yet untouched) row at THAT call's own
+  // commit. Body identifies the two slots by their own plan_instance_days id
+  // (day_a_id/day_b_id); neither slot's id/date/scheduled_time moves, and
+  // plan_instance_workouts (content, customization) and workout_associations
+  // (both keyed by (instance_id, workout_id)) are never written, so both
+  // stay attached to the logical workout, not the slot. Same-instance
+  // membership for both slots is verified inside swapWorkouts' own
+  // transaction, not just by this pre-check.
+  const swapWorkouts: Handler = async (req, res, url) => {
+    const instanceId = parseIdForNestedAction(url.pathname);
+    if (!Number.isInteger(instanceId)) throw badRequest("Invalid plan instance id.");
+    if (!await instancesRepo.instanceById(instanceId)) throw notFound(`No plan instance with id ${instanceId}.`);
+
+    const body = await readJsonBody<{ day_a_id?: unknown; day_b_id?: unknown }>(req);
+    const dayAId = Number(body.day_a_id);
+    const dayBId = Number(body.day_b_id);
+    if (!Number.isInteger(dayAId) || !Number.isInteger(dayBId)) throw badRequest("day_a_id and day_b_id are required integers.");
+    if (dayAId === dayBId) throw unprocessable("day_a_id and day_b_id must be two different days.");
+
+    try {
+      const { dayA, dayB } = await instancesService.swapWorkouts(instanceId, dayAId, dayBId);
+      return send(res, { day_a: dayA, day_b: dayB });
+    } catch (error) {
+      if (error instanceof DayNotInInstanceError) throw notFound(`No day with id ${error.dayId} on plan instance ${instanceId}.`);
+      throw error;
+    }
   };
 
   // POST /api/v1/plan-instances/:id/days/:dayId/validate (HRA-162, resolved
@@ -870,15 +907,15 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const validateInstanceDay: Handler = async (req, res, url) => {
     const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
     if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
-    const instance = instancesRepo.instanceById(instanceId);
+    const instance = await instancesRepo.instanceById(instanceId);
     if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
-    const day = instancesRepo.dayById(dayId);
+    const day = await instancesRepo.dayById(dayId);
     if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
 
     const body = await readJsonBody<{ dsl?: string }>(req);
     if (!body.dsl?.trim()) throw unprocessable("dsl is required.");
 
-    const { parsedDay, policy } = parseDayInScope(instance, day, body.dsl);
+    const { parsedDay, policy } = await parseDayInScope(instance, day, body.dsl);
     if (parsedDay.needs_review) {
       return send(res, { needs_review: true, warnings: parsedDay.warnings });
     }
@@ -915,16 +952,16 @@ export function createPlanTemplatesController(ctx: AppContext) {
       activity_target: day.activity_target ? JSON.parse(day.activity_target) : undefined,
       activity_description: day.activity_description ?? undefined,
       notes: day.notes ?? undefined,
-      needs_review: day.needs_review === 1,
+      needs_review: Boolean(day.needs_review),
     };
   }
 
-  const dayFit: Handler = (_req, res, url) => {
+  const dayFit: Handler = async (_req, res, url) => {
     const { instanceId, dayId } = parseInstanceAndDayId(url.pathname);
     if (!Number.isInteger(instanceId) || !Number.isInteger(dayId)) throw badRequest("Invalid plan instance or day id.");
-    const instance = instancesRepo.instanceById(instanceId);
+    const instance = await instancesRepo.instanceById(instanceId);
     if (!instance) throw notFound(`No plan instance with id ${instanceId}.`);
-    const day = instancesRepo.dayById(dayId);
+    const day = await instancesRepo.dayById(dayId);
     if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
 
     const outcome = toGarminWorkoutFit(toResolvedDay(day));
@@ -959,10 +996,10 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // ride in it) for the frontend's own toast text. Zero exportable days in
   // scope (no matching rows at all, or every match rejected) is a 422 with
   // no zip written, mirroring dayFit's own rejection shape.
-  const scopeFit: Handler = (_req, res, url) => {
+  const scopeFit: Handler = async (_req, res, url) => {
     const id = parseIdForAction(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    const instance = instancesRepo.instanceById(id);
+    const instance = await instancesRepo.instanceById(id);
     if (!instance) throw notFound(`No plan instance with id ${id}.`);
 
     const sectionName = url.searchParams.get("section_name");
@@ -975,8 +1012,8 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
 
     const days = weekNumber != null
-      ? instancesRepo.daysBySectionAndWeek(id, sectionName, weekNumber)
-      : instancesRepo.daysBySection(id, sectionName);
+      ? await instancesRepo.daysBySectionAndWeek(id, sectionName, weekNumber)
+      : await instancesRepo.daysBySection(id, sectionName);
 
     const included: { day: PlanInstanceDayRow; bytes: Buffer }[] = [];
     let skipped = 0;
@@ -1028,9 +1065,9 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const regenerateInstance: Handler = async (req, res, url) => {
     const id = parseIdForAction(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    const instance = instancesRepo.instanceById(id);
+    const instance = await instancesRepo.instanceById(id);
     if (!instance) throw notFound(`No plan instance with id ${id}.`);
-    const template = templates.byId(instance.template_id);
+    const template = await templates.byId(instance.template_id);
     if (!template) throw notFound(`No plan template with id ${instance.template_id}.`);
 
     const body = await readJsonBody<RegenerateBody>(req);
@@ -1068,7 +1105,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     // caller explicitly confirms overwrite (`confirm_overwrite: true`),
     // naming every affected day so the confirmation is genuinely informed —
     // never a silent overwrite (this Story's own "Product decision").
-    const customizedDays = instancesRepo.customizedDaysFrom(id, body.effective_from);
+    const customizedDays = await instancesRepo.customizedDaysFrom(id, body.effective_from);
     if (customizedDays.length > 0 && body.confirm_overwrite !== true) {
       throw conflict(
         `Regenerating from ${body.effective_from} would overwrite ${customizedDays.length} customized day${customizedDays.length > 1 ? "s" : ""}.`,
@@ -1081,7 +1118,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       );
     }
 
-    const { instance: updated, days } = instancesService.regenerateFrom(id, plan, { startDate, paceOverrides }, body.effective_from);
+    const { instance: updated, days } = await instancesService.regenerateFrom(id, plan, { startDate, paceOverrides }, body.effective_from);
     return send(res, { ...updated, days });
   };
 
@@ -1093,15 +1130,15 @@ export function createPlanTemplatesController(ctx: AppContext) {
   // show. No override: a conflict always 409s, never sets approved_at. An
   // instance with no resolved days (empty range) has nothing to overlap, so
   // it always proceeds — same as the pre-existing behavior for such a row.
-  const approveInstance: Handler = (_req, res, url) => {
+  const approveInstance: Handler = async (_req, res, url) => {
     const id = parseIdForAction(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    const instance = instancesRepo.instanceById(id);
+    const instance = await instancesRepo.instanceById(id);
     if (!instance) throw notFound(`No plan instance with id ${id}.`);
 
-    const range = instancesRepo.dateRangeForInstance(id);
+    const range = await instancesRepo.dateRangeForInstance(id);
     if (range) {
-      const conflicts = instancesRepo.overlappingApproved(id, range.start_date, range.end_date);
+      const conflicts = await instancesRepo.overlappingApproved(id, range.start_date, range.end_date);
       if (conflicts.length > 0) {
         throw conflict(
           `Activating "${instance.name ?? `Plan Instance ${id}`}" would overlap ${conflicts.length} already-active plan${conflicts.length > 1 ? "s" : ""}.`,
@@ -1118,23 +1155,23 @@ export function createPlanTemplatesController(ctx: AppContext) {
         );
       }
     }
-    return send(res, instancesRepo.approve(id));
+    return send(res, await instancesRepo.approve(id));
   };
 
   // DELETE /api/v1/plan-instances/:id — hard delete, no trash, same reasoning
   // as plan-templates' delete above (HRA-115). ON DELETE CASCADE
   // (plan_instance_days.instance_id) removes the instance's days too.
-  const removeInstance: Handler = (_req, res, url) => {
+  const removeInstance: Handler = async (_req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
-    if (!instancesRepo.instanceById(id)) throw notFound(`No plan instance with id ${id}.`);
-    instancesRepo.remove(id);
+    if (!await instancesRepo.instanceById(id)) throw notFound(`No plan instance with id ${id}.`);
+    await instancesRepo.remove(id);
     return sendNoContent(res);
   };
 
   return {
     list, getById, generate, composePromptPreview, generateDsl, create, update, approveTemplate, remove,
-    instantiate, instanceById, patchInstance, patchInstanceDay, validateInstanceDay, dayFit, scopeFit,
+    instantiate, instanceById, patchInstance, patchInstanceDay, swapWorkouts, validateInstanceDay, dayFit, scopeFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
     mobileEligibility, instantiatePreview,
   };

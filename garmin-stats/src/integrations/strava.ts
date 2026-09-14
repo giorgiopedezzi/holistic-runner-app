@@ -7,7 +7,7 @@
  * every refresh and must be re-persisted each time).
  */
 
-import type { DatabaseSync } from "node:sqlite";
+import type { Queryable } from "../db/query.ts";
 import { requireStravaConfig, type Config } from "../config.ts";
 import type { StravaTokenRow } from "../db.ts";
 
@@ -35,43 +35,43 @@ async function requestToken(params: URLSearchParams): Promise<TokenBody> {
   return await res.json() as TokenBody;
 }
 
-function saveToken(db: DatabaseSync, body: TokenBody): void {
-  db.prepare(`
-    INSERT INTO strava_tokens (id, access_token, refresh_token, expires_at, scope)
-    VALUES (1, $at, $rt, $ea, $sc)
-    ON CONFLICT(id) DO UPDATE SET
-      access_token=$at, refresh_token=$rt, expires_at=$ea, scope=$sc, updated_at=datetime('now')
-  `).run({ $at: body.access_token, $rt: body.refresh_token, $ea: body.expires_at, $sc: STRAVA_SCOPE });
+async function saveToken(db: Queryable, body: TokenBody): Promise<void> {
+  await db.run(`
+    INSERT INTO strava_tokens (user_id, access_token, refresh_token, expires_at, scope)
+    VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1), $1, $2, $3, $4)
+    ON CONFLICT (user_id) DO UPDATE SET
+      access_token=EXCLUDED.access_token, refresh_token=EXCLUDED.refresh_token, expires_at=EXCLUDED.expires_at, scope=EXCLUDED.scope, updated_at=now()
+  `, [body.access_token, body.refresh_token, body.expires_at, STRAVA_SCOPE]);
 }
 
-export async function exchangeCode(config: Config, db: DatabaseSync, code: string): Promise<void> {
+export async function exchangeCode(config: Config, db: Queryable, code: string): Promise<void> {
   const { client_id, client_secret } = requireStravaConfig(config);
   const body = await requestToken(new URLSearchParams({
     client_id, client_secret,
     code, grant_type: "authorization_code",
   }));
-  saveToken(db, body);
+  await saveToken(db, body);
 }
 
 // Strava rotates the refresh token on every use (unlike Withings, which
 // reuses the same one for a while) — the new one from the response must
 // always be persisted, or the next refresh will fail with an invalid token.
-async function refreshToken(config: Config, db: DatabaseSync, token: StravaTokenRow): Promise<string> {
+async function refreshToken(config: Config, db: Queryable, token: StravaTokenRow): Promise<string> {
   const { client_id, client_secret } = requireStravaConfig(config);
   const body = await requestToken(new URLSearchParams({
     client_id, client_secret,
     refresh_token: token.refresh_token, grant_type: "refresh_token",
   }));
-  saveToken(db, body);
+  await saveToken(db, body);
   return body.access_token;
 }
 
-export function loadToken(db: DatabaseSync): StravaTokenRow | undefined {
-  return db.prepare("SELECT * FROM strava_tokens WHERE id = 1").get() as StravaTokenRow | undefined;
+export function loadToken(db: Queryable): Promise<StravaTokenRow | undefined> {
+  return db.get<StravaTokenRow>("SELECT 1 AS id, access_token, refresh_token, expires_at, scope FROM strava_tokens ORDER BY updated_at DESC LIMIT 1");
 }
 
-export async function getValidToken(config: Config, db: DatabaseSync): Promise<string> {
-  const token = loadToken(db);
+export async function getValidToken(config: Config, db: Queryable): Promise<string> {
+  const token = await loadToken(db);
   if (!token) throw new Error("No Strava token. Log in via the dashboard first.");
   return (token.expires_at - Math.floor(Date.now() / 1000) < 300)
     ? refreshToken(config, db, token) : token.access_token;
@@ -88,8 +88,8 @@ export interface StravaStatus {
 // Same reasoning as Withings' getTokenStatus: a token that isn't near expiry
 // is assumed valid without a network call; near/past expiry is only
 // knowable by actually trying to refresh it.
-export async function getTokenStatus(config: Config, db: DatabaseSync): Promise<StravaStatus> {
-  const token = loadToken(db);
+export async function getTokenStatus(config: Config, db: Queryable): Promise<StravaStatus> {
+  const token = await loadToken(db);
   if (!token) return { present: false, valid: false };
 
   const secondsLeft = token.expires_at - Math.floor(Date.now() / 1000);
@@ -99,7 +99,7 @@ export async function getTokenStatus(config: Config, db: DatabaseSync): Promise<
 
   try {
     await refreshToken(config, db, token);
-    const fresh = loadToken(db)!;
+    const fresh = (await loadToken(db))!;
     return { present: true, valid: true, expiresAt: fresh.expires_at, scope: fresh.scope ?? undefined };
   } catch (e) {
     return { present: true, valid: false, error: e instanceof Error ? e.message : String(e) };

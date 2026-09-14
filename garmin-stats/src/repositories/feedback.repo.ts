@@ -1,44 +1,5 @@
-/**
- * repositories/feedback.repo.ts
- * Data access for anonymous visitor feedback (HRA-226) — a write-only insert,
- * no list/read route exists (out of scope for this Story).
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
+import type { Queryable } from "../db/query.ts";
 import type { FeedbackRow } from "../db.ts";
-
-export interface NewFeedback {
-  freeText: string | null;
-  pricingChoice: string | null;
-  pricingWhyNotFreeText: string | null;
-  featureInterest: string[] | null;
-  featureInterestOtherFreeText: string | null;
-  appTypeChoice: string | null;
-}
-
-export function createFeedbackRepo(db: DatabaseSync) {
-  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
-  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const insert = prepareLive(`
-    INSERT INTO feedback (free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, app_type_choice)
-    VALUES ($free_text, $pricing_choice, $pricing_why_not_free_text, $feature_interest, $feature_interest_other_free_text, $app_type_choice)
-  `);
-  const findById = prepareLive("SELECT * FROM feedback WHERE id = ?");
-
-  return {
-    create: (f: NewFeedback): FeedbackRow => {
-      const info = insert.run({
-        $free_text: f.freeText,
-        $pricing_choice: f.pricingChoice,
-        $pricing_why_not_free_text: f.pricingWhyNotFreeText,
-        $feature_interest: f.featureInterest ? JSON.stringify(f.featureInterest) : null,
-        $feature_interest_other_free_text: f.featureInterestOtherFreeText,
-        $app_type_choice: f.appTypeChoice,
-      });
-      return findById.get(Number(info.lastInsertRowid)) as unknown as FeedbackRow;
-    },
-  };
-}
-
+export interface NewFeedback { freeText: string | null; pricingChoice: string | null; pricingWhyNotFreeText: string | null; featureInterest: string[] | null; featureInterestOtherFreeText: string | null; appTypeChoice: string | null; }
+export function createFeedbackRepo(db: Queryable) { return { create: (f: NewFeedback) => db.get<FeedbackRow>(`INSERT INTO feedback (free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, app_type_choice) VALUES ($1, $2, $3, $4::jsonb, $5, $6) RETURNING id, free_text, pricing_choice, pricing_why_not_free_text, feature_interest::text AS feature_interest, feature_interest_other_free_text, app_type_choice, created_at`, [f.freeText, f.pricingChoice, f.pricingWhyNotFreeText, f.featureInterest ? JSON.stringify(f.featureInterest) : null, f.featureInterestOtherFreeText, f.appTypeChoice]) }; }
 export type FeedbackRepo = ReturnType<typeof createFeedbackRepo>;

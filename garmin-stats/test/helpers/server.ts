@@ -14,7 +14,7 @@ import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { DatabaseSync } from "node:sqlite";
+import type { PostgresDatabase } from "../../src/db/postgres.ts";
 import { loadConfig } from "../../src/config.ts";
 import { createApiHandler } from "../../src/http/router.ts";
 import { createActivitiesRepo } from "../../src/repositories/activities.repo.ts";
@@ -41,29 +41,30 @@ const SRC_DIR = fileURLToPath(new URL("../../src", import.meta.url));
 
 export interface TestServer {
   baseUrl: string;
-  db: DatabaseSync;
+  db: PostgresDatabase;
   /** GET/POST/etc. helper returning { status, json }. Path starts with /api/... */
   api: (path: string, init?: RequestInit) => Promise<{ status: number; json: unknown; text: string }>;
-  seed: () => { activityIds: number[] };
+  seed: () => Promise<{ activityIds: number[] }>;
   close: () => Promise<void>;
 }
 
 export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean } = {}): Promise<TestServer> {
-  const { db, cleanup } = createTestDb();
-  if (opts.seed) seedSampleData(db);
+  const { db, cleanup } = await createTestDb();
+  const runtimeDb = db;
+  if (opts.seed) await seedSampleData(db);
 
   const backgroundsDir = fs.mkdtempSync(path.join(os.tmpdir(), "hra-bg-"));
 
-  const activitiesRepo = createActivitiesRepo(db);
-  const bodyRepo = createBodyRepo(db);
-  const settingsRepo = createSettingsRepo(db);
-  const dateRangesRepo = createDateRangesRepo(db);
-  const activityTypesRepo = createActivityTypesRepo(db);
-  const planTemplatesRepo = createPlanTemplatesRepo(db);
-  const planInstancesRepo = createPlanInstancesRepo(db);
-  const feedbackRepo = createFeedbackRepo(db);
-  const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
-  const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(db);
+  const activitiesRepo = createActivitiesRepo(runtimeDb);
+  const bodyRepo = createBodyRepo(runtimeDb);
+  const settingsRepo = createSettingsRepo(runtimeDb);
+  const dateRangesRepo = createDateRangesRepo(runtimeDb);
+  const activityTypesRepo = createActivityTypesRepo(runtimeDb);
+  const planTemplatesRepo = createPlanTemplatesRepo(runtimeDb);
+  const planInstancesRepo = createPlanInstancesRepo(runtimeDb);
+  const feedbackRepo = createFeedbackRepo(runtimeDb);
+  const workoutAssociationsRepo = createWorkoutAssociationsRepo(runtimeDb);
+  const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(runtimeDb);
 
   const handler = createApiHandler({
     port: 0,
@@ -72,7 +73,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     // demoMode override (HRA-220) — opts.demoMode lets a test flip DEMO_MODE
     // without an env var, since loadConfig() reads process.env at call time.
     config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode },
-    db,
+    db: runtimeDb,
     repos: {
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
       activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
@@ -80,13 +81,13 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
     },
     services: {
-      activities: createActivitiesService(db, activitiesRepo),
-      body: createBodyService(db, bodyRepo),
+      activities: createActivitiesService(runtimeDb, activitiesRepo),
+      body: createBodyService(runtimeDb, bodyRepo),
       classification: createClassificationService(activitiesRepo),
       sync: createSyncService(SRC_DIR),
       device: createDeviceService(SRC_DIR),
-      planInstances: createPlanInstancesService(db, planInstancesRepo),
-      workoutAssociations: createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
+      planInstances: createPlanInstancesService(runtimeDb, planInstancesRepo),
+      workoutAssociations: createWorkoutAssociationsService(runtimeDb, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
       reporting: createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
     },
   });
@@ -113,9 +114,10 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => {
-          cleanup();
-          try { fs.rmSync(backgroundsDir, { recursive: true, force: true }); } catch { /* best effort */ }
-          resolve();
+          void cleanup().then(() => {
+            try { fs.rmSync(backgroundsDir, { recursive: true, force: true }); } catch { /* best effort */ }
+            resolve();
+          });
         });
       }),
   };

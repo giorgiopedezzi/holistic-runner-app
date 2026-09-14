@@ -1,48 +1,14 @@
-/**
- * repositories/plan-templates.repo.ts
- * Data access for reusable training-plan templates (HRA-112) — the only layer
- * that runs SQL for this domain (rest-api-standards §11).
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
+import type { Queryable } from "../db/query.ts";
 import type { PlanTemplateRow } from "../db.ts";
-
-const SELECT_FIELDS = "id, name, dsl_source, parsed_plan, event, approved_at, created_at FROM plan_templates";
-
+const FIELDS = "id, name, dsl_source, parsed_plan::text AS parsed_plan, event, approved_at, created_at";
 export type PlanTemplateInput = Omit<PlanTemplateRow, "id" | "created_at" | "approved_at">;
-
-export function createPlanTemplatesRepo(db: DatabaseSync) {
-  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
-  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const listAll   = prepareLive(`SELECT ${SELECT_FIELDS} ORDER BY created_at DESC LIMIT ? OFFSET ?`);
-  const countAll  = prepareLive("SELECT COUNT(*) AS count FROM plan_templates");
-  const findById  = prepareLive(`SELECT ${SELECT_FIELDS} WHERE id = ?`);
-  const insert    = prepareLive("INSERT INTO plan_templates (name, dsl_source, parsed_plan, event) VALUES ($name, $dsl_source, $parsed_plan, $event)");
-  // approved_at is always cleared on update (HRA-113 gate 2: any edit revokes approval).
-  const update    = prepareLive("UPDATE plan_templates SET name = $name, dsl_source = $dsl_source, parsed_plan = $parsed_plan, event = $event, approved_at = NULL WHERE id = $id");
-  const deleteById = prepareLive("DELETE FROM plan_templates WHERE id = ?");
-  const approveStmt = prepareLive("UPDATE plan_templates SET approved_at = datetime('now') WHERE id = ?");
-
-  return {
-    listPage: (limit: number, offset: number): PlanTemplateRow[] => listAll.all(limit, offset) as unknown as PlanTemplateRow[],
-    count:    (): { count: number } => countAll.get() as unknown as { count: number },
-    byId:     (id: number): PlanTemplateRow | undefined => findById.get(id) as unknown as PlanTemplateRow | undefined,
-    create:   (p: PlanTemplateInput): PlanTemplateRow => {
-      const info = insert.run({ $name: p.name, $dsl_source: p.dsl_source, $parsed_plan: p.parsed_plan, $event: p.event });
-      return findById.get(Number(info.lastInsertRowid)) as unknown as PlanTemplateRow;
-    },
-    update:   (id: number, p: PlanTemplateInput): PlanTemplateRow => {
-      update.run({ $id: id, $name: p.name, $dsl_source: p.dsl_source, $parsed_plan: p.parsed_plan, $event: p.event });
-      return findById.get(id) as unknown as PlanTemplateRow;
-    },
-    approve:  (id: number): PlanTemplateRow => {
-      approveStmt.run(id);
-      return findById.get(id) as unknown as PlanTemplateRow;
-    },
-    // ON DELETE CASCADE (plan_instances.template_id) removes derived instances too.
-    remove:   (id: number) => deleteById.run(id),
-  };
-}
-
+export function createPlanTemplatesRepo(db: Queryable) { return {
+  listPage: (limit: number, offset: number) => db.all<PlanTemplateRow>(`SELECT ${FIELDS} FROM plan_templates ORDER BY created_at DESC LIMIT $1 OFFSET $2`, [limit, offset]),
+  count: () => db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM plan_templates"),
+  byId: (id: number) => db.get<PlanTemplateRow>(`SELECT ${FIELDS} FROM plan_templates WHERE id = $1`, [id]),
+  create: (p: PlanTemplateInput) => db.get<PlanTemplateRow>(`INSERT INTO plan_templates (user_id, name, dsl_source, parsed_plan, event) VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1), $1, $2, $3::jsonb, $4) RETURNING ${FIELDS}`, [p.name, p.dsl_source, p.parsed_plan, p.event]),
+  update: (id: number, p: PlanTemplateInput) => db.get<PlanTemplateRow>(`UPDATE plan_templates SET name=$2, dsl_source=$3, parsed_plan=$4::jsonb, event=$5, approved_at=NULL WHERE id=$1 RETURNING ${FIELDS}`, [id, p.name, p.dsl_source, p.parsed_plan, p.event]),
+  approve: (id: number) => db.get<PlanTemplateRow>(`UPDATE plan_templates SET approved_at=now() WHERE id=$1 RETURNING ${FIELDS}`, [id]),
+  remove: (id: number) => db.run("DELETE FROM plan_templates WHERE id = $1", [id]),
+}; }
 export type PlanTemplatesRepo = ReturnType<typeof createPlanTemplatesRepo>;

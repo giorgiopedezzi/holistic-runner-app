@@ -1,165 +1,86 @@
 /**
- * test/helpers/db.ts
- * Backend test fixtures (HRA-59). A throwaway in-memory SQLite DB with the real
- * schema (initSchema from src/db.ts) plus a small, deterministic seed dataset.
- *
- * Reused by T2/T3: every test gets its own isolated DB via createTestDb(), so no
- * test can see another's writes and none of them ever touch a real database file
- * or each other's data — smoke.test.ts's own "each createTestDb() is isolated"
- * check enforces this, and it must hold even when two DBs are alive at once (not
- * just sequentially), which is why this deliberately does NOT go through
- * src/db.ts's openDb() — that swaps a single module-global "live target" in
- * place (by design, for jobs/demo-db-restore.ts's live DB-file swap), so two
- * openDb() calls alive at the same time would silently share one connection,
- * not two independent ones.
- *
- * We build the DatabaseSync directly and only borrow initSchema + the typed
- * param builders. Every repository (activities.repo.ts, settings.repo.ts, ...)
- * still works against this real, non-swapping connection: prepareLive() (see
- * db.ts) detects a `db` argument that ISN'T the swap-aware live proxy and binds
- * its statements directly to it instead of the module-global live target — see
- * db.ts's own comment on the fix (this used to throw "Database connection is
- * not open" the instant any repository call ran against a test DB; HRA-334's
- * review comment has the original diagnosis).
+ * PostgreSQL test fixtures. Every test receives a generated, isolated schema
+ * with the versioned runtime migrations. There is no SQLite fallback.
  */
-import { DatabaseSync } from "node:sqlite";
-import {
-  initSchema,
-  activityParams,
-  trackPointParams,
-  bodyMeasurementParams,
-  type ActivityRow,
-  type TrackPointRow,
-  type BodyMeasurementRow,
-} from "../../src/db.ts";
+import { randomUUID } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { Client } from "pg";
+import { ensureFounder, FOUNDER_USER_ID } from "../../src/db/founder.ts";
+import { PostgresDatabase } from "../../src/db/postgres.ts";
 
 export interface TestDb {
-  db: DatabaseSync;
-  /** Close the DB and free the in-memory storage. Always call in a finally. */
-  cleanup: () => void;
+  db: PostgresDatabase;
+  cleanup: () => Promise<void>;
 }
 
-/** A fresh, isolated in-memory DB with the full schema applied. */
-export function createTestDb(): TestDb {
-  const db = new DatabaseSync(":memory:");
-  db.exec("PRAGMA foreign_keys = ON");
-  initSchema(db);
-  return { db, cleanup: () => db.close() };
+function testDatabaseUrl(): string {
+  const value = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!value) throw new Error("PostgreSQL tests require TEST_DATABASE_URL or DATABASE_URL");
+  return value;
 }
 
-// ── Deterministic sample rows ────────────────────────────────────────────────
-// Small but representative: one Garmin run and one Strava ride, so tests can
-// exercise multi-source reads, dedup keys, and the source-agnostic delete path.
-// Numbers loosely mirror the documented reference activity but are NOT parsed
-// from a real FIT file — that's T2's job.
+const migrationsDir = fileURLToPath(new URL("../../src/db/migrations", import.meta.url));
 
-type NewActivity = Omit<ActivityRow, "id" | "imported_at">;
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
 
-export const SAMPLE_ACTIVITIES: NewActivity[] = [
-  {
-    filename: "2026-08-04-10-28-43.fit",
-    activity_date: "2026-08-04T10:28:43",
-    date_only: "2026-08-04",
-    sport: "running",
-    duration_sec: 3035,      // 50:35
-    moving_time_sec: 2159,   // 35:59
-    distance_m: 6215.9,
-    avg_pace_minkm: 5.79,
-    calories: 512,
-    avg_hr: 148,
-    max_hr: 171,
-    avg_cadence: 168,
-    ascent_m: 31,
-    descent_m: 24,
-    avg_speed_ms: 2.88,
-    max_speed_ms: 4.1,
-    source: "garmin",
-  },
-  {
-    filename: "strava-12345.json",
-    activity_date: "2026-07-20T07:15:00",
-    date_only: "2026-07-20",
-    sport: "cycling",
-    duration_sec: 5400,
-    moving_time_sec: 5100,
-    distance_m: 42000,
-    avg_pace_minkm: null,
-    calories: 900,
-    avg_hr: 132,
-    max_hr: 160,
-    avg_cadence: 84,
-    ascent_m: 350,
-    descent_m: null,         // Strava never exposes total descent
-    avg_speed_ms: 7.78,
-    max_speed_ms: 14.2,
-    source: "strava",
-  },
+export async function createTestDb(): Promise<TestDb> {
+  const databaseUrl = testDatabaseUrl();
+  const schema = `hra_test_${randomUUID().replaceAll("-", "")}`;
+  const admin = new Client({ connectionString: databaseUrl });
+  await admin.connect();
+  try {
+    await admin.query(`CREATE SCHEMA ${quoteIdentifier(schema)}`);
+    await admin.query(`SET search_path TO ${quoteIdentifier(schema)}`);
+    for (const file of (await fs.readdir(migrationsDir)).filter(name => name.endsWith(".sql")).sort()) {
+      await admin.query(await fs.readFile(path.join(migrationsDir, file), "utf8"));
+    }
+    await ensureFounder(admin);
+  } catch (error) {
+    await admin.query(`DROP SCHEMA IF EXISTS ${quoteIdentifier(schema)} CASCADE`);
+    throw error;
+  } finally {
+    await admin.end();
+  }
+  const db = new PostgresDatabase(databaseUrl, schema);
+  return {
+    db,
+    cleanup: async () => {
+      await db.close();
+      const cleanupClient = new Client({ connectionString: databaseUrl });
+      await cleanupClient.connect();
+      try { await cleanupClient.query(`DROP SCHEMA ${quoteIdentifier(schema)} CASCADE`); }
+      finally { await cleanupClient.end(); }
+    },
+  };
+}
+
+export const SAMPLE_ACTIVITIES = [
+  { filename: "2026-08-04-10-28-43.fit", activity_date: "2026-08-04T10:28:43", date_only: "2026-08-04", sport: "running", duration_sec: 3035, moving_time_sec: 2159, distance_m: 6215.9, avg_pace_minkm: 5.79, calories: 512, avg_hr: 148, max_hr: 171, avg_cadence: 168, ascent_m: 31, descent_m: 24, avg_speed_ms: 2.88, max_speed_ms: 4.1, source: "garmin" },
+  { filename: "strava-12345.json", activity_date: "2026-07-20T07:15:00", date_only: "2026-07-20", sport: "cycling", duration_sec: 5400, moving_time_sec: 5100, distance_m: 42000, avg_pace_minkm: null, calories: 900, avg_hr: 132, max_hr: 160, avg_cadence: 84, ascent_m: 350, descent_m: null, avg_speed_ms: 7.78, max_speed_ms: 14.2, source: "strava" },
 ];
 
-// A handful of track points for the Garmin activity (id 1 after seeding), with
-// real wall-clock timestamp_unix so pause-from-timestamps logic has data.
-const T0 = 1_754_300_923; // unix seconds ~ 2026-08-04T10:28:43Z
-export const SAMPLE_TRACK_POINTS: Omit<TrackPointRow, "activity_id">[] = [
-  { elapsed_sec: 0,  timestamp_unix: T0,      distance_m: 0,     heart_rate: 110, speed_ms: 0.0, cadence: 0,   altitude_m: 100, temperature: 22, power: null, stamina: null, lat: 45.0, lon: 9.0 },
-  { elapsed_sec: 10, timestamp_unix: T0 + 10, distance_m: 28,    heart_rate: 132, speed_ms: 2.8, cadence: 164, altitude_m: 101, temperature: 22, power: null, stamina: null, lat: 45.001, lon: 9.001 },
-  { elapsed_sec: 20, timestamp_unix: T0 + 20, distance_m: 57,    heart_rate: 145, speed_ms: 2.9, cadence: 168, altitude_m: 102, temperature: 22, power: null, stamina: null, lat: 45.002, lon: 9.002 },
+export const SAMPLE_TRACK_POINTS = [
+  { elapsed_sec: 0, timestamp_unix: 1_754_300_923, distance_m: 0, heart_rate: 110, speed_ms: 0, cadence: 0, altitude_m: 100, temperature: 22, power: null, stamina: null, lat: 45, lon: 9 },
+  { elapsed_sec: 10, timestamp_unix: 1_754_300_933, distance_m: 28, heart_rate: 132, speed_ms: 2.8, cadence: 164, altitude_m: 101, temperature: 22, power: null, stamina: null, lat: 45.001, lon: 9.001 },
+  { elapsed_sec: 20, timestamp_unix: 1_754_300_943, distance_m: 57, heart_rate: 145, speed_ms: 2.9, cadence: 168, altitude_m: 102, temperature: 22, power: null, stamina: null, lat: 45.002, lon: 9.002 },
 ];
 
-export const SAMPLE_BODY: BodyMeasurementRow = {
-  measured_at: "2026-08-01T06:30:00",
-  date_only: "2026-08-01",
-  weight_kg: 78.8,
-  fat_ratio: 12.4,
-  fat_mass_kg: 9.77,
-  muscle_mass_kg: 65.6,
-  hydration_kg: 48.2,
-  bone_mass_kg: 3.4,
-  bmi: 22.1,
-  heart_rate: 52,
-};
+export const SAMPLE_BODY = { measured_at: "2026-08-01T06:30:00", date_only: "2026-08-01", weight_kg: 78.8, fat_ratio: 12.4, fat_mass_kg: 9.77, muscle_mass_kg: 65.6, hydration_kg: 48.2, bone_mass_kg: 3.4, bmi: 22.1, heart_rate: 52 };
 
-/**
- * Seed the deterministic sample dataset. Returns the inserted activity ids so
- * callers can address track points / deletes without re-querying.
- */
-export function seedSampleData(db: DatabaseSync): { activityIds: number[] } {
-  const insertActivity = db.prepare(`
-    INSERT INTO activities
-      (filename, activity_date, date_only, sport, duration_sec, distance_m, avg_pace_minkm,
-       calories, avg_hr, max_hr, avg_cadence, ascent_m, descent_m, avg_speed_ms, max_speed_ms,
-       source, moving_time_sec)
-    VALUES
-      ($filename, $activity_date, $date_only, $sport, $duration_sec, $distance_m, $avg_pace_minkm,
-       $calories, $avg_hr, $max_hr, $avg_cadence, $ascent_m, $descent_m, $avg_speed_ms, $max_speed_ms,
-       $source, $moving_time_sec)
-  `);
+export async function seedSampleData(db: PostgresDatabase): Promise<{ activityIds: number[] }> {
   const activityIds: number[] = [];
-  for (const a of SAMPLE_ACTIVITIES) {
-    const info = insertActivity.run(activityParams(a));
-    activityIds.push(Number(info.lastInsertRowid));
+  for (const activity of SAMPLE_ACTIVITIES) {
+    const row = await db.get<{ id: number }>(`INSERT INTO activities (user_id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`, [FOUNDER_USER_ID, activity.filename, activity.activity_date, activity.date_only, activity.sport, activity.duration_sec, activity.moving_time_sec, activity.distance_m, activity.avg_pace_minkm, activity.calories, activity.avg_hr, activity.max_hr, activity.avg_cadence, activity.ascent_m, activity.descent_m, activity.avg_speed_ms, activity.max_speed_ms, activity.source]);
+    if (!row) throw new Error("seed activity insert did not return an id");
+    activityIds.push(row.id);
   }
-
-  const insertTrack = db.prepare(`
-    INSERT INTO track_points
-      (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms, cadence,
-       altitude_m, temperature, power, stamina, lat, lon)
-    VALUES
-      ($activity_id, $elapsed_sec, $timestamp_unix, $distance_m, $heart_rate, $speed_ms, $cadence,
-       $altitude_m, $temperature, $power, $stamina, $lat, $lon)
-  `);
-  for (const tp of SAMPLE_TRACK_POINTS) {
-    insertTrack.run(trackPointParams({ ...tp, activity_id: activityIds[0] }));
+  for (const point of SAMPLE_TRACK_POINTS) {
+    await db.run("INSERT INTO track_points (activity_id,elapsed_sec,timestamp_unix,distance_m,heart_rate,speed_ms,cadence,altitude_m,temperature,power,stamina,lat,lon) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)", [activityIds[0], point.elapsed_sec, point.timestamp_unix, point.distance_m, point.heart_rate, point.speed_ms, point.cadence, point.altitude_m, point.temperature, point.power, point.stamina, point.lat, point.lon]);
   }
-
-  const insertBody = db.prepare(`
-    INSERT INTO body_measurements
-      (measured_at, date_only, weight_kg, fat_ratio, fat_mass_kg, muscle_mass_kg,
-       hydration_kg, bone_mass_kg, bmi, heart_rate)
-    VALUES
-      ($measured_at, $date_only, $weight_kg, $fat_ratio, $fat_mass_kg, $muscle_mass_kg,
-       $hydration_kg, $bone_mass_kg, $bmi, $heart_rate)
-  `);
-  insertBody.run(bodyMeasurementParams(SAMPLE_BODY));
-
+  await db.run("INSERT INTO body_measurements (user_id,measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)", [FOUNDER_USER_ID, SAMPLE_BODY.measured_at, SAMPLE_BODY.date_only, SAMPLE_BODY.weight_kg, SAMPLE_BODY.fat_ratio, SAMPLE_BODY.fat_mass_kg, SAMPLE_BODY.muscle_mass_kg, SAMPLE_BODY.hydration_kg, SAMPLE_BODY.bone_mass_kg, SAMPLE_BODY.bmi, SAMPLE_BODY.heart_rate]);
   return { activityIds };
 }

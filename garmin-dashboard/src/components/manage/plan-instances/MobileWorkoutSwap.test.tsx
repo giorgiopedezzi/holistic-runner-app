@@ -80,19 +80,15 @@ describe("MobileWorkoutSwap", () => {
     expect(screen.getByRole("button", { name: /16 Sep 2026 — REST/ })).toBeInTheDocument();
   });
 
-  it("confirming persists both days through one PATCH each, reports both persisted results, and shows an accessible success message with Undo", async () => {
+  it("confirming persists both slots through one atomic swap call, reports both persisted results, and shows an accessible success message with Undo", async () => {
     const updatedSource = planInstanceDay({ id: 100, workout_id: "wid-101", date: "2026-09-15", day: 1, workout_type: "rest", segments: "[]", customized_at: "2026-09-10T00:00:00Z" });
     const updatedTarget = planInstanceDay({ id: 101, workout_id: "wid-100", date: "2026-09-16", day: 2, workout_type: "run", segments: "[]", customized_at: "2026-09-10T00:00:00Z" });
     installFetch({
-      // HRA-333: each row now holds the OTHER day's workout, so it carries
-      // that day's workout_id along with the swapped-in dsl.
-      [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/100`]: (req: { body: unknown }) => {
-        expect(req.body).toEqual({ dsl: "D1: REST", scheduled_time: null, workout_id: "wid-101" });
-        return json(updatedSource);
-      },
-      [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/101`]: (req: { body: unknown }) => {
-        expect(req.body).toEqual({ dsl: "D2: 5km @ 5:30/km", scheduled_time: null, workout_id: "wid-100" });
-        return json(updatedTarget);
+      // HRA-333 follow-up: one call, identified by the two slots' own ids —
+      // no dsl to send, content follows workout_id server-side.
+      [`POST /api/v1/plan-instances/${INSTANCE_ID}/workouts/swap`]: (req: { body: unknown }) => {
+        expect(req.body).toEqual({ day_a_id: 100, day_b_id: 101 });
+        return json({ day_a: updatedSource, day_b: updatedTarget });
       },
     });
     const { onSwapped } = renderSwap();
@@ -106,31 +102,28 @@ describe("MobileWorkoutSwap", () => {
 
   it("on a persistence failure, shows the error and never reports a false-swapped state", async () => {
     installFetch({
-      [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/100`]: () => problem(422, "dsl must not be blank."),
-      [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/101`]: () => json(planInstanceDay({ id: 101 })),
+      [`POST /api/v1/plan-instances/${INSTANCE_ID}/workouts/swap`]: () => problem(404, "No day with id 101 on plan instance 10."),
     });
     const { onSwapped } = renderSwap();
     fireEvent.click(screen.getByRole("button", { name: /16 Sep 2026 — REST/ }));
     fireEvent.click(screen.getByRole("button", { name: /^Swap/ }));
 
-    expect(await screen.findByText("dsl must not be blank.")).toBeInTheDocument();
+    expect(await screen.findByText("No day with id 101 on plan instance 10.")).toBeInTheDocument();
     expect(onSwapped).not.toHaveBeenCalled();
     expect(screen.getByText("Confirm swap")).toBeInTheDocument();
   });
 
-  it("Undo re-issues the inverse swap and closes", async () => {
+  it("Undo re-issues the same swap (its own inverse) and closes", async () => {
     const updatedSource = planInstanceDay({ id: 100, date: "2026-09-15", day: 1, workout_type: "rest", segments: "[]" });
     const updatedTarget = planInstanceDay({ id: 101, date: "2026-09-16", day: 2, workout_type: "run", segments: "[]" });
     const undoneSource = planInstanceDay({ id: 100, date: "2026-09-15", day: 1, workout_type: "run" });
     const undoneTarget = planInstanceDay({ id: 101, date: "2026-09-16", day: 2, workout_type: "rest", segments: "[]" });
+    let callCount = 0;
     installFetch({
-      [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/100`]: (req: { body: unknown }) => {
-        const body = req.body as { dsl: string };
-        return json(body.dsl === "D1: REST" ? updatedSource : undoneSource);
-      },
-      [`PATCH /api/v1/plan-instances/${INSTANCE_ID}/days/101`]: (req: { body: unknown }) => {
-        const body = req.body as { dsl: string };
-        return json(body.dsl === "D2: REST" ? undoneTarget : updatedTarget);
+      [`POST /api/v1/plan-instances/${INSTANCE_ID}/workouts/swap`]: (req: { body: unknown }) => {
+        expect(req.body).toEqual({ day_a_id: 100, day_b_id: 101 });
+        callCount += 1;
+        return json(callCount === 1 ? { day_a: updatedSource, day_b: updatedTarget } : { day_a: undoneSource, day_b: undoneTarget });
       },
     });
     const { onClose, onSwapped } = renderSwap();
@@ -144,10 +137,10 @@ describe("MobileWorkoutSwap", () => {
   });
 
   it("Cancel closes without persisting anything", () => {
-    const patch = installFetch({});
+    const swap = installFetch({});
     const { onClose } = renderSwap();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalled();
-    expect(patch).not.toHaveBeenCalled();
+    expect(swap).not.toHaveBeenCalled();
   });
 });

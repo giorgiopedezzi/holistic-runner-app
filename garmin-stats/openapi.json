@@ -1167,6 +1167,15 @@
         "responses": { "200": { "description": "The updated instance, with its regenerated days.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "409": { "$ref": "#/components/responses/Conflict" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
+    "/api/v1/plan-instances/{id}/workouts/swap": {
+      "post": {
+        "tags": ["plan-templates"], "summary": "Atomically exchange the logical workouts occupying two calendar slots (HRA-333 follow-up)",
+        "description": "Replaces the old two-call PATCH .../days/{dayId} swap flow — each of those calls was its own transaction, so plan_instance_days' deferred (instance_id, workout_id) unique constraint could never actually resolve at commit. This endpoint locks both day rows, verifies both exist and belong to the requested instance, and exchanges their workout_id in one statement within one transaction; the deferred constraint is only needed to let each row's new value pass Postgres' per-row uniqueness check mid-statement. Neither slot's own id/date/scheduled_time moves, and plan_instance_workouts (content, customization) and workout_associations (both keyed by (instance_id, workout_id)) are never written — both stay attached to the logical workout, not the slot. 404 if either day_a_id/day_b_id doesn't exist or belongs to a different instance; the whole transaction rolls back in that case, so a partially-invalid request never partially applies.",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["day_a_id", "day_b_id"], "properties": { "day_a_id": { "type": "integer", "description": "plan_instance_days.id of the first slot." }, "day_b_id": { "type": "integer", "description": "plan_instance_days.id of the second slot. Must differ from day_a_id." } } } } } },
+        "responses": { "200": { "description": "Both slots, post-swap.", "content": { "application/json": { "schema": { "type": "object", "properties": { "day_a": { "$ref": "#/components/schemas/PlanInstanceDay" }, "day_b": { "$ref": "#/components/schemas/PlanInstanceDay" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
     "/api/v1/locales/{lang}": {
       "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },

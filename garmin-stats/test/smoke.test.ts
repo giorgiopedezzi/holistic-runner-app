@@ -1,83 +1,63 @@
-/**
- * test/smoke.test.ts
- * Proves the backend test harness runs (HRA-59): node:test executes .ts natively,
- * the fixture builds a fresh schema'd DB, and the seed data lands as expected.
- * The real assertions of behavior live in T2 (domain) and T3 (API/integration).
- */
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createTestDb, seedSampleData, SAMPLE_ACTIVITIES } from "./helpers/db.ts";
 
-test("fresh DB has the schema and the seeded settings singleton", () => {
-  const { db, cleanup } = createTestDb();
+test("fresh PostgreSQL schema has the runtime tables and founder settings", async () => {
+  const { db, cleanup } = await createTestDb();
   try {
-    const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
-      .all()
-      .map((r) => (r as { name: string }).name);
-    for (const t of ["activities", "track_points", "body_measurements", "settings"]) {
-      assert.ok(tables.includes(t), `expected table ${t} to exist`);
+    const tables = (await db.all<{ name: string }>("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() ORDER BY table_name")).map(row => row.name);
+    for (const table of ["activities", "track_points", "body_measurements", "user_settings"]) {
+      assert.ok(tables.includes(table), `expected table ${table} to exist`);
     }
-
-    // initSchema INSERT OR IGNOREs the id=1 settings row with column defaults.
-    const settings = db.prepare("SELECT * FROM settings WHERE id = 1").get() as
-      | { theme: string; unit_system: string; min_trend_group_size: number }
-      | undefined;
-    assert.ok(settings, "settings singleton row should exist");
+    const settings = await db.get<{ theme: string; unit_system: string; min_trend_group_size: number }>("SELECT theme, unit_system, min_trend_group_size FROM user_settings");
+    assert.ok(settings, "founder settings should exist");
     assert.equal(settings.theme, "auto");
     assert.equal(settings.unit_system, "auto");
     assert.equal(settings.min_trend_group_size, 5);
   } finally {
-    cleanup();
+    await cleanup();
   }
 });
 
-test("each createTestDb() is isolated (no shared state)", () => {
-  const a = createTestDb();
-  const b = createTestDb();
+test("each PostgreSQL test schema is isolated", async () => {
+  const a = await createTestDb();
+  const b = await createTestDb();
   try {
-    seedSampleData(a.db);
-    const aCount = (a.db.prepare("SELECT COUNT(*) AS c FROM activities").get() as { c: number }).c;
-    const bCount = (b.db.prepare("SELECT COUNT(*) AS c FROM activities").get() as { c: number }).c;
+    await seedSampleData(a.db);
+    const aCount = (await a.db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM activities"))!.c;
+    const bCount = (await b.db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM activities"))!.c;
     assert.equal(aCount, SAMPLE_ACTIVITIES.length);
-    assert.equal(bCount, 0, "a second DB must not see the first's writes");
+    assert.equal(bCount, 0);
   } finally {
-    a.cleanup();
-    b.cleanup();
+    await a.cleanup();
+    await b.cleanup();
   }
 });
 
-test("seedSampleData inserts activities, track points and a body measurement", () => {
-  const { db, cleanup } = createTestDb();
+test("seedSampleData inserts activities, track points and a body measurement", async () => {
+  const { db, cleanup } = await createTestDb();
   try {
-    const { activityIds } = seedSampleData(db);
+    const { activityIds } = await seedSampleData(db);
     assert.equal(activityIds.length, 2);
-
-    const acts = db.prepare("SELECT source FROM activities ORDER BY id").all() as { source: string }[];
-    assert.deepEqual(acts.map((a) => a.source), ["garmin", "strava"]);
-
-    const tpCount = (db
-      .prepare("SELECT COUNT(*) AS c FROM track_points WHERE activity_id = ?")
-      .get(activityIds[0]) as { c: number }).c;
-    assert.equal(tpCount, 3);
-
-    const bodyCount = (db.prepare("SELECT COUNT(*) AS c FROM body_measurements").get() as { c: number }).c;
-    assert.equal(bodyCount, 1);
+    const activities = await db.all<{ source: string }>("SELECT source FROM activities ORDER BY id");
+    assert.deepEqual(activities.map(activity => activity.source), ["garmin", "strava"]);
+    const trackPoints = (await db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM track_points WHERE activity_id = $1", [activityIds[0]]))!.c;
+    assert.equal(trackPoints, 3);
+    const body = (await db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM body_measurements"))!.c;
+    assert.equal(body, 1);
   } finally {
-    cleanup();
+    await cleanup();
   }
 });
 
-test("track_points CASCADE-delete when the parent activity is hard-deleted (FK on)", () => {
-  const { db, cleanup } = createTestDb();
+test("track points cascade-delete with their parent activity", async () => {
+  const { db, cleanup } = await createTestDb();
   try {
-    const { activityIds } = seedSampleData(db);
-    db.prepare("DELETE FROM activities WHERE id = ?").run(activityIds[0]);
-    const tpCount = (db
-      .prepare("SELECT COUNT(*) AS c FROM track_points WHERE activity_id = ?")
-      .get(activityIds[0]) as { c: number }).c;
-    assert.equal(tpCount, 0, "foreign_keys=ON should cascade-delete the track points");
+    const { activityIds } = await seedSampleData(db);
+    await db.run("DELETE FROM activities WHERE id = $1", [activityIds[0]]);
+    const points = (await db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM track_points WHERE activity_id = $1", [activityIds[0]]))!.c;
+    assert.equal(points, 0);
   } finally {
-    cleanup();
+    await cleanup();
   }
 });

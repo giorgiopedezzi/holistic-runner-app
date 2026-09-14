@@ -1,55 +1,21 @@
-/**
- * repositories/settings.repo.ts
- * Data access for the single-row `settings` table (outlier thresholds, appearance,
- * units, trend/detail preferences). The ONLY layer that runs SQL for this domain
- * (rest-api-standards §11). SQL moved verbatim out of server.ts's `q` object
- * (HRA-29) — behavior is identical.
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
-
-type NamedParams = Record<string, string | number | null>;
-
-export function createSettingsRepo(db: DatabaseSync) {
-  // Bound to this repo's own `db` — see activities.repo.ts's own comment /
-  // db.ts's prepareLive() for the full reasoning (test-db isolation fix).
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const settingsGet    = prepareLive("SELECT outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, timezone, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette FROM settings WHERE id = 1");
-  // Two dedicated writes, one per Settings card (HRA-40): the Outlier-detection
-  // card (three values) and the Overview & Trends card (min_trend_group_size).
-  // Each replaces only its own sub-resource — no combined write.
-  const outliersUpdate   = prepareLive("UPDATE settings SET outlier_speed_delta_per_sec = $outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec = $outlier_cadence_delta_per_sec, outlier_min_speed_kmh = $outlier_min_speed_kmh, updated_at = datetime('now') WHERE id = 1");
-  const thresholdsUpdate = prepareLive("UPDATE settings SET min_trend_group_size = $min_trend_group_size, updated_at = datetime('now') WHERE id = 1");
-  const themeUpdate      = prepareLive("UPDATE settings SET theme = $theme, updated_at = datetime('now') WHERE id = 1");
-  const backgroundUpdate = prepareLive("UPDATE settings SET background_kind = $background_kind, background_value = $background_value, updated_at = datetime('now') WHERE id = 1");
-  const unitsUpdate      = prepareLive("UPDATE settings SET unit_system = $unit_system, updated_at = datetime('now') WHERE id = 1");
-  // HRA-332: the owner-configured schedule timezone — its own sub-resource,
-  // same one-card-per-endpoint pattern as theme/units/etc above.
-  const timezoneUpdate   = prepareLive("UPDATE settings SET timezone = $timezone, updated_at = datetime('now') WHERE id = 1");
-  const detailViewUpdate = prepareLive("UPDATE settings SET activity_detail_view = $activity_detail_view, updated_at = datetime('now') WHERE id = 1");
-  const accentUpdate     = prepareLive("UPDATE settings SET accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
-  const dateFormatUpdate = prepareLive("UPDATE settings SET date_format = $date_format, updated_at = datetime('now') WHERE id = 1");
-  const languageUpdate   = prepareLive("UPDATE settings SET language = $language, updated_at = datetime('now') WHERE id = 1");
-  // Writes palette AND accent_color together — palette is the only input a
-  // user can set (accent has no independent picker any more), and the
-  // controller derives the paired accent_color value, so both columns always
-  // move in lockstep (see db.ts's accent_color/palette column comments).
-  const paletteUpdate    = prepareLive("UPDATE settings SET palette = $palette, accent_color = $accent_color, updated_at = datetime('now') WHERE id = 1");
-
+import type { Queryable } from "../db/query.ts";
+type Values = readonly unknown[];
+const FIELDS = "outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, timezone, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette";
+export function createSettingsRepo(db: Queryable) {
+  const update = (columnSql: string, values: Values) => db.run(`UPDATE user_settings SET ${columnSql}, updated_at = now() WHERE user_id = (SELECT id FROM users ORDER BY created_at LIMIT 1)`, values);
   return {
-    get:              () => settingsGet.get(),
-    updateOutliers:   (p: NamedParams) => outliersUpdate.run(p),
-    updateThresholds: (p: NamedParams) => thresholdsUpdate.run(p),
-    updateTheme:      (p: NamedParams) => themeUpdate.run(p),
-    updateBackground: (p: NamedParams) => backgroundUpdate.run(p),
-    updateUnits:      (p: NamedParams) => unitsUpdate.run(p),
-    updateTimezone:   (p: NamedParams) => timezoneUpdate.run(p),
-    updateDetailView: (p: NamedParams) => detailViewUpdate.run(p),
-    updateAccent:     (p: NamedParams) => accentUpdate.run(p),
-    updateDateFormat: (p: NamedParams) => dateFormatUpdate.run(p),
-    updateLanguage:   (p: NamedParams) => languageUpdate.run(p),
-    updatePalette:    (p: NamedParams) => paletteUpdate.run(p),
+    get: () => db.get(`SELECT ${FIELDS} FROM user_settings WHERE user_id = (SELECT id FROM users ORDER BY created_at LIMIT 1)`),
+    updateOutliers: (p: Record<string, unknown>) => update("outlier_speed_delta_per_sec=$1, outlier_cadence_delta_per_sec=$2, outlier_min_speed_kmh=$3", [p.$outlier_speed_delta_per_sec, p.$outlier_cadence_delta_per_sec, p.$outlier_min_speed_kmh]),
+    updateThresholds: (p: Record<string, unknown>) => update("min_trend_group_size=$1", [p.$min_trend_group_size]),
+    updateTheme: (p: Record<string, unknown>) => update("theme=$1", [p.$theme]),
+    updateBackground: (p: Record<string, unknown>) => update("background_kind=$1, background_value=$2", [p.$background_kind, p.$background_value]),
+    updateUnits: (p: Record<string, unknown>) => update("unit_system=$1", [p.$unit_system]),
+    updateTimezone: (p: Record<string, unknown>) => update("timezone=$1", [p.$timezone]),
+    updateDetailView: (p: Record<string, unknown>) => update("activity_detail_view=$1", [p.$activity_detail_view]),
+    updateAccent: (p: Record<string, unknown>) => update("accent_color=$1", [p.$accent_color]),
+    updateDateFormat: (p: Record<string, unknown>) => update("date_format=$1", [p.$date_format]),
+    updateLanguage: (p: Record<string, unknown>) => update("language=$1", [p.$language]),
+    updatePalette: (p: Record<string, unknown>) => update("palette=$1, accent_color=$2", [p.$palette, p.$accent_color]),
   };
 }
-
 export type SettingsRepo = ReturnType<typeof createSettingsRepo>;

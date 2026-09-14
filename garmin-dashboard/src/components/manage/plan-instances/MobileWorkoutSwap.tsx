@@ -2,27 +2,21 @@
  * MobileWorkoutSwap.tsx (HRA-301)
  * Explicit mobile day-swap flow — "Scambia con…", reachable from
  * MobileWorkoutEditor's own action row (HRA-300's "shared workout action
- * model"), no drag gesture. A swap exchanges two calendar days' scheduled
- * content (dsl/notes + scheduled_time); the two calendar POSITIONS and their
- * own D-line identity never move (domain/runplan-patch.ts's swapDayContent,
- * the exact function the desktop drag-swap uses — see usePlanDayEditor.ts's
- * swapDaysByRef).
+ * model"), no drag gesture. A swap exchanges which logical workout occupies
+ * each of the two calendar slots; the two calendar POSITIONS (id, date,
+ * scheduled_time) never move — only the workout identity (and the content
+ * that comes along with it) does.
  *
- * Persists immediately through the SAME per-day PATCH pipeline
- * MobileWorkoutEditor already established for mobile (PATCH
- * /plan-instances/:id/days/:dayId, HRA-149) — one call per affected day, both
- * dsl and scheduled_time in the same request. This is a deliberate departure
- * from the desktop drag-swap's own behavior (usePlanDayEditor.swapDaysByRef,
- * local-only for dsl/notes until the instance's bulk Save persists it): the
- * desktop path's bulk Save (PATCH /plan-instances/:id with a full days
- * replace) unconditionally resets EVERY day's customized_at to null
- * (plan-templates.controller.ts's patchInstance handler), so routing this
- * Story's swap through it would silently defeat HRA-299's own customization
- * marker on every save, not just fail to set it on the swapped days. Only
- * the single-day PATCH sets customized_at (plan-instances.service.ts's
- * patchDay), which is why mobile's explicit swap — like HRA-300's DSL edits
- * before it — persists per-day, immediately, rather than staging a local
- * edit for the bulk-save flow.
+ * Persists immediately through the atomic swap endpoint (HRA-333 follow-up,
+ * POST /plan-instances/:id/workouts/swap) — one call, one backend
+ * transaction. Earlier versions persisted via two separate single-day PATCH
+ * calls (HRA-149), each echoing the other's workout_id alongside a
+ * client-reconstructed dsl; that was never actually atomic (each call its
+ * own transaction) and could violate the backend's deferred
+ * (instance_id, workout_id) uniqueness constraint at commit — see
+ * docs/architecture/POSTGRESQL-MIGRATION.md. Because content now follows
+ * workout_id automatically (server-side, via the plan_instance_workouts
+ * join), this flow no longer needs swapDayContent/dsl reconstruction at all.
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -31,7 +25,6 @@ import { api, ApiError } from "@/api/client";
 import { ConfirmModal } from "@/components/ui";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { weekDateRange, type DayView, type SectionView } from "@/domain/runplan-aggregate";
-import { swapDayContent } from "@/domain/runplan-patch";
 import { flattenSwapTargets, type SwapBlockedReason } from "@/domain/day-swap-eligibility";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import { isoToday } from "@/utils/date";
@@ -66,8 +59,6 @@ function blockedReasonLabel(reason: SwapBlockedReason, t: ReturnType<typeof useT
 type SwapRecord = {
   updatedSource: PlanInstanceDay;
   updatedTarget: PlanInstanceDay;
-  originalSource: { dsl: string; scheduledTime: string | null | undefined; workoutId: string | undefined };
-  originalTarget: { dsl: string; scheduledTime: string | null | undefined; workoutId: string | undefined };
 };
 
 export function MobileWorkoutSwap({ source, sections, instanceId, raceDate, hasActivity, onClose, onSwapped }: Props) {
@@ -85,20 +76,10 @@ export function MobileWorkoutSwap({ source, sections, instanceId, raceDate, hasA
     if (source.id == null || target.id == null) return;
     setSwapping(true);
     setSwapError(null);
-    const [newSourceDsl, newTargetDsl] = swapDayContent(source.dsl, target.dsl);
     try {
-      // HRA-333: each row now holds the OTHER day's workout — its
-      // workout_id travels along with the swapped-in dsl.
-      const [updatedSource, updatedTarget] = await Promise.all([
-        api.planInstances.patchDay(instanceId, source.id, { dsl: newSourceDsl, scheduled_time: target.scheduled_time ?? null, workout_id: target.workout_id }),
-        api.planInstances.patchDay(instanceId, target.id, { dsl: newTargetDsl, scheduled_time: source.scheduled_time ?? null, workout_id: source.workout_id }),
-      ]);
+      const { day_a: updatedSource, day_b: updatedTarget } = await api.planInstances.swapWorkouts(instanceId, source.id, target.id);
       onSwapped(updatedSource, updatedTarget);
-      setResult({
-        updatedSource, updatedTarget,
-        originalSource: { dsl: source.dsl, scheduledTime: source.scheduled_time, workoutId: source.workout_id },
-        originalTarget: { dsl: target.dsl, scheduledTime: target.scheduled_time, workoutId: target.workout_id },
-      });
+      setResult({ updatedSource, updatedTarget });
       notify(t("manage.planInstances.mobileSwap.succeeded", "Workouts swapped."));
       setPendingTarget(null);
     } catch (e) {
@@ -108,20 +89,18 @@ export function MobileWorkoutSwap({ source, sections, instanceId, raceDate, hasA
     }
   }
 
-  // A swap is its own inverse — re-applying it to the just-persisted state
-  // restores exactly the original dsl/scheduled_time on both days, so
-  // "Annulla" is always a safe, well-defined action right after a successful
-  // swap (AC9) — nothing else can have touched these two rows in the
-  // interim, since this whole flow is a single-user, single-screen action.
+  // A swap is its own inverse — re-issuing it against the SAME two slot ids
+  // exchanges their workout_id right back, so "Annulla" is always a safe,
+  // well-defined action right after a successful swap (AC9): neither row's
+  // own id changed, so source.id/target.id (closed over from props) still
+  // address the same two slots.
   async function doUndo() {
-    if (!result) return;
+    if (!result || source.id == null) return;
     setUndoing(true);
     setSwapError(null);
     try {
-      await Promise.all([
-        api.planInstances.patchDay(instanceId, result.updatedSource.id, { dsl: result.originalSource.dsl, scheduled_time: result.originalSource.scheduledTime ?? null, workout_id: result.originalSource.workoutId }),
-        api.planInstances.patchDay(instanceId, result.updatedTarget.id, { dsl: result.originalTarget.dsl, scheduled_time: result.originalTarget.scheduledTime ?? null, workout_id: result.originalTarget.workoutId }),
-      ]).then(([undoneSource, undoneTarget]) => onSwapped(undoneSource, undoneTarget));
+      const { day_a: undoneSource, day_b: undoneTarget } = await api.planInstances.swapWorkouts(instanceId, source.id, result.updatedTarget.id);
+      onSwapped(undoneSource, undoneTarget);
       notify(t("manage.planInstances.mobileSwap.undone", "Swap undone."));
       onClose();
     } catch (e) {

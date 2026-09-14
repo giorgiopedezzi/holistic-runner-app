@@ -56,7 +56,7 @@ export function createFeedbackController(ctx: AppContext) {
       throw unprocessable(`app_type_choice must be one of: ${APP_TYPE_CHOICES.join(", ")}.`);
     }
 
-    const row = repo.create({
+    const row = await repo.create({
       freeText: hasFreeText ? body.free_text!.trim() : null,
       pricingChoice: hasPricing ? body.pricing_choice! : null,
       pricingWhyNotFreeText: hasPricingWhyNot ? body.pricing_why_not_free_text!.trim() : null,

@@ -36,7 +36,6 @@ import { useQuery } from "@/hooks/useQuery";
 import { useReportStringSelection } from "@/hooks/useReportNav";
 import { isoToday } from "@/utils/date";
 import { notify } from "@/utils/toast";
-import { swapDayContent } from "@/domain/runplan-patch";
 import type { DayView, SectionView } from "@/domain/runplan-aggregate";
 import { apiDaysToSections, racePaceReferenceFromPlan } from "@/components/manage/plan-instances/planInstanceEditor.mappers";
 import type { RunPlan } from "@/types/runplan";
@@ -151,13 +150,10 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
     if (a.id == null || b.id == null) return;
     setSwapping(true);
     try {
-      const [newDslA, newDslB] = swapDayContent(a.dsl, b.dsl);
-      // HRA-333: each row now holds the OTHER day's workout — its
-      // workout_id travels along with the swapped-in dsl.
-      await Promise.all([
-        api.planInstances.patchDay(instance.id, a.id, { dsl: newDslA, scheduled_time: b.scheduled_time ?? null, workout_id: b.workout_id }),
-        api.planInstances.patchDay(instance.id, b.id, { dsl: newDslB, scheduled_time: a.scheduled_time ?? null, workout_id: a.workout_id }),
-      ]);
+      // HRA-333 follow-up: one atomic backend call — content follows
+      // workout_id automatically (server-side join), so there's no dsl to
+      // reconstruct client-side any more.
+      await api.planInstances.swapWorkouts(instance.id, a.id, b.id);
       notify(t("manage.planInstances.mobileSwap.succeeded", "Workouts swapped."));
       setSwapPending(null);
       refetch();

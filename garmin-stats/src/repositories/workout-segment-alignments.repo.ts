@@ -1,40 +1,9 @@
-/**
- * repositories/workout-segment-alignments.repo.ts
- * Data access for workout_segment_alignments (HRA-342) — the only layer that
- * runs SQL for this domain (rest-api-standards §11). Mirrors
- * workout-associations.repo.ts's own shape/upsert convention.
- */
-import type { DatabaseSync } from "node:sqlite";
-import { prepareLive as prepareLiveGlobal } from "../db.ts";
+import type { Queryable } from "../db/query.ts";
 import type { WorkoutSegmentAlignmentRow } from "../db.ts";
-
-const FIELDS = "id, workout_id, segment_index, activity_id, distance_m, duration_sec, created_at, updated_at FROM workout_segment_alignments";
-
-export function createWorkoutSegmentAlignmentsRepo(db: DatabaseSync) {
-  const prepareLive = (sql: string) => prepareLiveGlobal(sql, db);
-  const byWorkoutIdStmt = prepareLive(`SELECT ${FIELDS} WHERE workout_id = ? ORDER BY segment_index ASC`);
-  // One row per (workout_id, segment_index) — upsert on conflict so a
-  // "correct"/"replace" is the same call as the initial "confirm".
-  const upsertStmt = prepareLive(`
-    INSERT INTO workout_segment_alignments (workout_id, segment_index, activity_id, distance_m, duration_sec, updated_at)
-    VALUES ($workout_id, $segment_index, $activity_id, $distance_m, $duration_sec, datetime('now'))
-    ON CONFLICT(workout_id, segment_index) DO UPDATE SET
-      activity_id = excluded.activity_id, distance_m = excluded.distance_m,
-      duration_sec = excluded.duration_sec, updated_at = excluded.updated_at
-  `);
-  const deleteStmt = prepareLive("DELETE FROM workout_segment_alignments WHERE workout_id = ? AND segment_index = ?");
-
-  return {
-    byWorkoutId: (workoutId: string): WorkoutSegmentAlignmentRow[] =>
-      byWorkoutIdStmt.all(workoutId) as unknown as WorkoutSegmentAlignmentRow[],
-    upsert: (workoutId: string, segmentIndex: number, activityId: number, distanceM: number | null, durationSec: number | null) => {
-      upsertStmt.run({
-        $workout_id: workoutId, $segment_index: segmentIndex, $activity_id: activityId,
-        $distance_m: distanceM, $duration_sec: durationSec,
-      });
-    },
-    remove: (workoutId: string, segmentIndex: number) => { deleteStmt.run(workoutId, segmentIndex); },
-  };
-}
-
+const FIELDS = "wsa.id, wa.workout_id, wsa.segment_index, wa.activity_id, wsa.distance_m, wsa.duration_sec, wsa.created_at, wsa.updated_at";
+export function createWorkoutSegmentAlignmentsRepo(db: Queryable) { const repo = {
+  byWorkoutId: (workoutId: string) => db.all<WorkoutSegmentAlignmentRow>(`SELECT ${FIELDS} FROM workout_segment_alignments wsa JOIN workout_associations wa ON wa.id=wsa.association_id WHERE wa.workout_id=$1 ORDER BY wsa.segment_index`, [workoutId]),
+  upsert: (workoutId: string, segmentIndex: number, activityId: number, distanceM: number | null, durationSec: number | null) => db.run(`INSERT INTO workout_segment_alignments (association_id, segment_index, distance_m, duration_sec, updated_at) SELECT id, $2, $3, $4, now() FROM workout_associations WHERE workout_id=$1 AND activity_id=$5 ON CONFLICT (association_id, segment_index) DO UPDATE SET distance_m=excluded.distance_m, duration_sec=excluded.duration_sec, updated_at=now()`, [workoutId, segmentIndex, distanceM, durationSec, activityId]),
+  remove: (workoutId: string, segmentIndex: number) => db.run(`DELETE FROM workout_segment_alignments wsa USING workout_associations wa WHERE wsa.association_id=wa.id AND wa.workout_id=$1 AND wsa.segment_index=$2`, [workoutId, segmentIndex]),
+}; return { ...repo, withDb: (query: Queryable) => createWorkoutSegmentAlignmentsRepo(query) }; }
 export type WorkoutSegmentAlignmentsRepo = ReturnType<typeof createWorkoutSegmentAlignmentsRepo>;

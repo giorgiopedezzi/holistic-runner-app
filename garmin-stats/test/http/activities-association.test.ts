@@ -32,11 +32,13 @@ async function setUp(server: Awaited<ReturnType<typeof startTestServer>>) {
   assert.equal(inst.status, 201, JSON.stringify(inst.json));
   const days = (inst.json as any).days as { workout_id: string; day: number }[];
 
-  const info = server.db.prepare(`
-    INSERT INTO activities (filename, activity_date, date_only, sport, source)
-    VALUES ('assoc-fixture.fit', '2026-09-14T07:00:00', '2026-09-14', 'running', 'garmin')
-  `).run();
-  const activityId = Number(info.lastInsertRowid);
+  const row = await server.db.get<{ id: number }>(`
+    INSERT INTO activities (user_id, filename, activity_date, date_only, sport, source)
+    VALUES ('00000000-0000-4000-8000-000000000001', 'assoc-fixture.fit', '2026-09-14T07:00:00', '2026-09-14', 'running', 'garmin')
+    RETURNING id
+  `);
+  if (!row) throw new Error("fixture activity insert did not return an id");
+  const activityId = row.id;
 
   return {
     activityId,

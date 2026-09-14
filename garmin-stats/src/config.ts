@@ -29,7 +29,6 @@ export interface Config {
   // so a public demo self-heals from whatever visitors have done to it —
   // independent of demoMode (unset/false doesn't disable this). Unset
   // disables the feature entirely.
-  demoDbBackupPath?: string;
   // Local Ollama instance for the workout classifier (ollama-service.ts).
   // No API key — Ollama's HTTP API is unauthenticated by default on
   // localhost. model is a real Ollama model tag (`ollama pull <model>`
@@ -58,15 +57,10 @@ function parseBoolEnv(value: string | undefined, defaultValue: boolean): boolean
   return value.toLowerCase() === "true";
 }
 
-// database.path is the only section required at boot — every other section
-// is validated lazily, only when the integration that needs it is actually
-// used (see require*Config below), so the server can boot with just DB_PATH
-// set.
+// PostgreSQL is validated by openPostgresDatabase at the runtime boundary.
+// DB_PATH remains optional only for archived SQLite migration tooling.
 export function loadConfig(): Config {
-  const dbPath = process.env.DB_PATH;
-  if (!dbPath) {
-    throw new Error("Missing required environment variable: DB_PATH");
-  }
+  const dbPath = process.env.DB_PATH ?? "";
   return {
     garmin: {
       device_name: process.env.GARMIN_DEVICE_NAME,
@@ -89,7 +83,6 @@ export function loadConfig(): Config {
       skip_duplicates: parseBoolEnv(process.env.SYNC_SKIP_DUPLICATES, true),
     },
     demoMode: parseBoolEnv(process.env.DEMO_MODE, false),
-    demoDbBackupPath: process.env.DEMO_DB_BACKUP_PATH,
     ollama: {
       host: process.env.OLLAMA_HOST,
       model: process.env.OLLAMA_MODEL,
