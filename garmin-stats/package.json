@@ -14,6 +14,12 @@
     "server:watch": "node --env-file-if-exists=.env --watch src/server.ts",
     "reprocess:fit": "node --env-file=.env src/jobs/reprocess-fit-archive.ts",
     "cleanup:plan-instance-dates": "node --env-file=.env src/jobs/cleanup-plan-instance-day-dates.ts",
+    "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
+    "db:migrate:status": "node --env-file-if-exists=.env src/db/migrate.ts --status",
+    "db:bootstrap-founder": "node --env-file-if-exists=.env src/db/bootstrap-founder.ts",
+    "db:import-sqlite": "node --env-file-if-exists=.env src/db/import-sqlite.ts",
+    "db:verify-import": "node --env-file-if-exists=.env src/db/verify-import.ts",
+    "db:verify-schema": "node --env-file-if-exists=.env src/db/verify-schema.ts",
     "test": "node --env-file=.env.test --test \"test/**/*.test.ts\"",
     "test:watch": "node --env-file=.env.test --test --watch \"test/**/*.test.ts\"",
     "typecheck": "tsc --noEmit"
@@ -24,7 +30,9 @@
   },
   "dependencies": {
     "@garmin/fitsdk": "21.214.0",
+    "@types/pg": "^8.23.1",
     "fit-file-parser": "^4.1.0",
+    "pg": "^8.23.0",
     "unpdf": "^1.8.1",
     "zod": "^4.4.3"
   }
