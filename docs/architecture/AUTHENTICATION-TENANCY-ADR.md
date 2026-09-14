@@ -223,6 +223,12 @@ there is no same-site cookie shortcut: production CORS, cookie attributes,
 credentialed fetch, CSRF checks, Auth0 callbacks, and Vercel's `VITE_API_BASE`
 must be deployed together and tested with the canonical custom domain.
 
+## Authorization Authority
+
+Auth0 is the OAuth/OIDC identity provider and authorization server. 
+Runs Free is the authoritative application authorization service. 
+Auth0 authenticates principals and issues credentials; Railway maps (issuer, subject) to the internal user UUID and enforces roles, entitlements, ownership, publication and resource-level access from the Runs Free database.
+
 ## Verification before implementation begins
 
 1. Configure a development Auth0 tenant with the development URL pair and
