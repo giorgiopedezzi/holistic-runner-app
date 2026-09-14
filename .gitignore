@@ -41,7 +41,7 @@ garmin-dashboard/dist/
 .vite/
 
 # ── env files ─────────────────────────────────────────────────────────────
-.env
+garmin-stats/.env
 .env.local
 .env.*.local
 .env.*
