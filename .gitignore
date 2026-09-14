@@ -45,7 +45,7 @@ garmin-dashboard/dist/
 .env.local
 .env.*.local
 .env.*
-
+.env.test
 # ── OS ────────────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
