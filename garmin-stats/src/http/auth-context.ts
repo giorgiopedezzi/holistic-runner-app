@@ -23,6 +23,11 @@ import type { UserRole } from "../db.ts";
 
 export interface RequestIdentity { userId: string; role: UserRole }
 
+// Request identity is derived once at the HTTP boundary and kept off the
+// client-controlled request object. Controllers must obtain it through this
+// accessor before reaching an owner-scoped repository.
+const requestIdentities = new WeakMap<http.IncomingMessage, RequestIdentity>();
+
 // Matches the ADR's cookie name exactly, so a session issued once this
 // Story's session-lifecycle helpers are wired to a real login flow reads
 // back under the same name.
@@ -99,6 +104,18 @@ export async function deriveRequestIdentity(req: http.IncomingMessage, ctx: AppC
   throw unauthorized();
 }
 
+export async function authenticateRequest(req: http.IncomingMessage, ctx: AppContext): Promise<RequestIdentity> {
+  const identity = await deriveRequestIdentity(req, ctx);
+  requestIdentities.set(req, identity);
+  return identity;
+}
+
+export function requestIdentity(req: http.IncomingMessage): RequestIdentity {
+  const identity = requestIdentities.get(req);
+  if (!identity) throw new Error("Authenticated request identity was not established.");
+  return identity;
+}
+
 type AuthenticatedHandler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, identity: RequestIdentity) => void | Promise<void>;
 
 // For a future controller to opt into (AC11's "required typed request
@@ -106,7 +123,7 @@ type AuthenticatedHandler = (req: http.IncomingMessage, res: http.ServerResponse
 // `identity` here is never optional/undefined.
 export function requireAuth(ctx: AppContext, handler: AuthenticatedHandler): Handler {
   return async (req, res, url) => {
-    const identity = await deriveRequestIdentity(req, ctx);
+    const identity = await authenticateRequest(req, ctx);
     return handler(req, res, url, identity);
   };
 }

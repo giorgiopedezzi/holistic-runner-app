@@ -11,6 +11,9 @@ import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
 import { badRequest, conflict, notFound, unprocessable } from "../http/problem.ts";
+import { requestIdentity } from "../http/auth-context.ts";
+import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
+import { createOwnedDateRangesRepo } from "../repositories/owned-date-ranges.repo.ts";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -21,34 +24,34 @@ function parseId(pathname: string): number {
 type Body = Partial<{ name: string; from: string; to: string; activity_id: number | null }>;
 
 export function createDateRangesController(ctx: AppContext) {
-  const repo = ctx.repos.dateRanges;
-  const activitiesRepo = ctx.repos.activities;
+  const ownedRanges = (req: import("http").IncomingMessage) => createOwnedDateRangesRepo(ctx.db, requestIdentity(req).userId);
+  const ownedActivities = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, requestIdentity(req).userId);
 
-  const list: Handler = async (_req, res, url) => {
+  const list: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = (await repo.count())?.count ?? 0;
-    return send(res, paginated(await repo.listPage(limit, offset), total, limit, offset));
+    const total = (await ownedRanges(req).count())?.count ?? 0;
+    return send(res, paginated(await ownedRanges(req).listPage(limit, offset), total, limit, offset));
   };
 
   // Shared by create/update: name/from/to shape + the "link a race" rule
   // (race-typed, dated strictly after `to` — rest-api §1: the constraint
   // lives in the same write that sets activity_id, not a separate route).
   // excludeId lets update's duplicate-name check ignore the row being edited.
-  async function validate(body: Body, excludeId: number | null): Promise<{ name: string; activityId: number | null }> {
+  async function validate(req: import("http").IncomingMessage, body: Body, excludeId: number | null): Promise<{ name: string; activityId: number | null }> {
     const name = body.name?.trim();
     if (!name) throw unprocessable("name is required.");
     if (!body.from || !ISO_DATE.test(body.from) || !body.to || !ISO_DATE.test(body.to)) {
       throw unprocessable("from and to are required dates in YYYY-MM-DD format.");
     }
     if (body.from > body.to) throw unprocessable("from must not be after to.");
-    const existing = await repo.byName(name);
+    const existing = await ownedRanges(req).byName(name);
     if (existing && existing.id !== excludeId) throw conflict(`A date range named "${name}" already exists.`);
 
     let activityId: number | null = null;
     if (body.activity_id != null) {
       activityId = Number(body.activity_id);
       if (!Number.isInteger(activityId)) throw unprocessable("activity_id must be an integer.");
-      const activity = await activitiesRepo.byId(activityId) as unknown as
+      const activity = await ownedActivities(req).byId(activityId) as unknown as
         { activity_type_id: number; date_only: string } | undefined;
       if (!activity) throw unprocessable(`Unknown activity_id ${activityId}.`);
       if (activity.activity_type_id === 1) throw unprocessable("Only race-type activities (not Training) can be linked.");
@@ -59,8 +62,8 @@ export function createDateRangesController(ctx: AppContext) {
 
   const create: Handler = async (req, res) => {
     const body = await readJsonBody<Body>(req);
-    const { name, activityId } = await validate(body, null);
-    const row = await repo.create(name, body.from!, body.to!, activityId);
+    const { name, activityId } = await validate(req, body, null);
+    const row = await ownedRanges(req).create(name, body.from!, body.to!, activityId);
     if (!row) throw new Error("Date range insert did not return a row.");
     res.setHeader("Location", `/api/v1/date-ranges/${row.id}`);
     return send(res, row, 201);
@@ -71,17 +74,17 @@ export function createDateRangesController(ctx: AppContext) {
   const update: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid date range id.");
-    if (!await repo.byId(id)) throw notFound(`No date range with id ${id}.`);
+    if (!await ownedRanges(req).byId(id)) throw notFound(`No date range with id ${id}.`);
     const body = await readJsonBody<Body>(req);
-    const { name, activityId } = await validate(body, id);
-    return send(res, await repo.update(id, name, body.from!, body.to!, activityId));
+    const { name, activityId } = await validate(req, body, id);
+    return send(res, await ownedRanges(req).update(id, name, body.from!, body.to!, activityId));
   };
 
-  const remove: Handler = async (_req, res, url) => {
+  const remove: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (!Number.isInteger(id)) throw badRequest("Invalid date range id.");
-    if (!await repo.byId(id)) throw notFound(`No date range with id ${id}.`);
-    await repo.remove(id);
+    if (!await ownedRanges(req).byId(id)) throw notFound(`No date range with id ${id}.`);
+    await ownedRanges(req).remove(id);
     return sendNoContent(res);
   };
 

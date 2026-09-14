@@ -1,0 +1,18 @@
+import type { Queryable } from "../db/query.ts";
+
+export function createOwnedBodyRepo(db: Queryable, userId: string) {
+  return {
+    dateRange: () => db.get("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM body_measurements WHERE user_id=$1 AND deleted_at IS NULL", [userId]),
+    listPage: (from:string,to:string,limit:number,offset:number) => db.all("SELECT measured_at,date_only,weight_kg,fat_ratio,fat_mass_kg,muscle_mass_kg,hydration_kg,bone_mass_kg,bmi,heart_rate FROM body_measurements WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND deleted_at IS NULL ORDER BY measured_at LIMIT $4 OFFSET $5",[userId,from,to,limit,offset]),
+    monthly:(from:string,to:string)=>db.all("SELECT substring(date_only,1,7) AS month,ROUND(AVG(weight_kg)::numeric,2) AS avg_weight,ROUND(MIN(weight_kg)::numeric,2) AS min_weight,ROUND(MAX(weight_kg)::numeric,2) AS max_weight,ROUND(AVG(fat_ratio)::numeric,1) AS avg_fat_ratio,ROUND(AVG(muscle_mass_kg)::numeric,2) AS avg_muscle_mass FROM body_measurements WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND weight_kg IS NOT NULL AND deleted_at IS NULL GROUP BY month ORDER BY month",[userId,from,to]),
+    countInRange:(from:string,to:string)=>db.get<{count:number}>("SELECT COUNT(*)::int AS count FROM body_measurements WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND deleted_at IS NULL",[userId,from,to]),
+    trashPage:(limit:number,offset:number)=>db.all("SELECT id,measured_at,date_only,weight_kg,deleted_at FROM body_measurements WHERE user_id=$1 AND deleted_at IS NOT NULL AND purged=false ORDER BY deleted_at DESC LIMIT $2 OFFSET $3",[userId,limit,offset]),
+    trashCount:()=>db.get<{count:number}>("SELECT COUNT(*)::int AS count FROM body_measurements WHERE user_id=$1 AND deleted_at IS NOT NULL AND purged=false",[userId]),
+    correlation:(from:string,to:string)=>db.all("WITH weekly AS (SELECT to_char(to_date(date_only,'YYYY-MM-DD'),'IYYY-\"W\"IW') week,ROUND((SUM(distance_m)/1000)::numeric,2) km,ROUND(AVG(avg_hr))::int avg_hr,COUNT(*)::int runs FROM activities WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND sport='running' AND deleted_at IS NULL GROUP BY week) SELECT a.week,a.km,a.avg_hr,a.runs,ROUND(AVG(b.weight_kg)::numeric,2) avg_weight,ROUND(AVG(b.fat_ratio)::numeric,1) avg_fat_ratio FROM weekly a LEFT JOIN body_measurements b ON b.user_id=$1 AND to_char(to_date(b.date_only,'YYYY-MM-DD'),'IYYY-\"W\"IW')=a.week AND b.deleted_at IS NULL GROUP BY a.week,a.km,a.avg_hr,a.runs ORDER BY a.week",[userId,from,to]),
+    softDeleteRange:(from:string,to:string)=>db.run("UPDATE body_measurements SET deleted_at=to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD\"T\"HH24:MI:SS.MS\"Z\"') WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND deleted_at IS NULL",[userId,from,to]),
+    restoreById:(id:number)=>db.run("UPDATE body_measurements SET deleted_at=NULL WHERE user_id=$1 AND id=$2 AND purged=false",[userId,id]),
+    purgeById:(id:number)=>db.run("UPDATE body_measurements SET purged=true,weight_kg=NULL,fat_ratio=NULL,fat_mass_kg=NULL,muscle_mass_kg=NULL,hydration_kg=NULL,bone_mass_kg=NULL,bmi=NULL,heart_rate=NULL WHERE user_id=$1 AND id=$2",[userId,id]),
+  };
+}
+
+export type OwnedBodyRepo = ReturnType<typeof createOwnedBodyRepo>;

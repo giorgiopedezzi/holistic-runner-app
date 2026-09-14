@@ -74,12 +74,12 @@ const identityRepo = createIdentityRepo(db);
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
 const bodyService           = createBodyService(db, bodyRepo);
-const classificationService = createClassificationService(activitiesRepo);
+const classificationService = createClassificationService(db, activitiesRepo);
 const syncService           = createSyncService(__dirname);
 const deviceService   = createDeviceService(__dirname);
 const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
 const workoutAssociationsService = createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo);
-const reportingService = createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
+const reportingService = createReportingService(db, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
 const identityService = createIdentityService(db, identityRepo);
 
 // ── always-on Withings OAuth callback server (port 3002) ─────────────────────

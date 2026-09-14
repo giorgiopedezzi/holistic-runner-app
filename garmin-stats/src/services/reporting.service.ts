@@ -14,6 +14,7 @@
  * multi-day boundary relies on the same property.
  */
 import type { PlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
+import type { PostgresDatabase } from "../db/postgres.ts";
 import type { WorkoutAssociationsRepo } from "../repositories/workout-associations.repo.ts";
 import type { ActivitiesRepo } from "../repositories/activities.repo.ts";
 import type { WorkoutSegmentAlignmentsRepo } from "../repositories/workout-segment-alignments.repo.ts";
@@ -39,11 +40,22 @@ import {
   actualDatasetFromAccepted, aggregateDatasetMetrics, aggregateDenominator, buildRangeQualityEvidence,
   mergeDrillDown, resolveRangeGrouping, type RangeInstanceReport, type RangeQualityWorkoutEntry, type RangeReportResult,
 } from "../domain/reporting/range-report.ts";
+import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
+import { createOwnedPlanInstancesRepo } from "../repositories/owned-plan-instances.repo.ts";
+import { createOwnedWorkoutAssociationsRepo } from "../repositories/owned-workout-associations.repo.ts";
+import { createOwnedWorkoutSegmentAlignmentsRepo } from "../repositories/owned-workout-segment-alignments.repo.ts";
 
 export function createReportingService(
-  planInstances: PlanInstancesRepo, workoutAssociations: WorkoutAssociationsRepo, activities: ActivitiesRepo,
+  db: PostgresDatabase, planInstances: PlanInstancesRepo, workoutAssociations: WorkoutAssociationsRepo, activities: ActivitiesRepo,
   workoutSegmentAlignments: WorkoutSegmentAlignmentsRepo,
 ) {
+  const forUser = (userId: string) => createReportingService(
+    db,
+    createOwnedPlanInstancesRepo(db, userId) as unknown as PlanInstancesRepo,
+    createOwnedWorkoutAssociationsRepo(db, userId) as unknown as WorkoutAssociationsRepo,
+    createOwnedActivitiesRepo(db, userId) as unknown as ActivitiesRepo,
+    createOwnedWorkoutSegmentAlignmentsRepo(db, userId) as unknown as WorkoutSegmentAlignmentsRepo,
+  );
   async function getWorkoutReport(instanceId: number, workoutId: string, asOf?: Date): Promise<WorkoutReportResult | undefined> {
     const instance = await planInstances.instanceById(instanceId);
     if (!instance) return undefined;
@@ -463,7 +475,7 @@ export function createReportingService(
     };
   }
 
-  return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment, getRangeReport };
+  return { forUser, getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment, getRangeReport };
 }
 
 export type ReportingService = ReturnType<typeof createReportingService>;

@@ -11,6 +11,7 @@ import type { AppContext, Handler } from "./context.ts";
 import { send, sendProblem } from "./respond.ts";
 import { ApiProblem, notFound, internal } from "./problem.ts";
 import { demoGuarded } from "./demo-guard.ts";
+import { authenticateRequest } from "./auth-context.ts";
 import { createActivitiesController } from "../controllers/activities.controller.ts";
 import { createTrendsController } from "../controllers/trends.controller.ts";
 import { createBodyController } from "../controllers/body.controller.ts";
@@ -45,6 +46,10 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
   const demo = <T extends Handler>(h: T) => demoGuarded(ctx, h);
+  const ownerScopedRoute = (route: string) =>
+    route === "/api/v1/range" || route === "/api/v1/summary" || route === "/api/v1/weekly" || route === "/api/v1/monthly" ||
+    route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
+    route.startsWith("/api/v1/date-ranges") || /^\/api\/v1\/plan-instances\/\d+\/reports\//.test(route);
 
   return async (req, res) => {
     // Hosted demo — keep it out of search/AI indexing until it's ready to be
@@ -65,6 +70,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     const route = url.pathname;
 
     try {
+      if (ownerScopedRoute(route)) await authenticateRequest(req, ctx);
       if (req.method === "GET") {
         if (route === "/api/v1/docs")                     return await docs.ui(req, res, url);
         if (route === "/api/v1/openapi.json")             return await docs.spec(req, res, url);

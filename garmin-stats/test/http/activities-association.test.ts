@@ -141,14 +141,14 @@ test("PUT .../association with a DIFFERENT workout_id than what's on record beco
   }
 });
 
-test("PUT .../association 422s for a workout_id that doesn't name any current plan day", async () => {
+test("PUT .../association returns the uniform 404 for a workout_id that doesn't name this owner's current plan day", async () => {
   const server = await startTestServer();
   try {
     const { activityId } = await setUp(server);
     const res = await server.api(`/api/v1/activities/${activityId}/association`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ workout_id: "not-a-real-id" }),
     });
-    assert.equal(res.status, 422);
+    assert.equal(res.status, 404);
   } finally {
     await server.close();
   }

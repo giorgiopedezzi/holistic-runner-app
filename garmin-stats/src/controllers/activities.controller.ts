@@ -10,6 +10,8 @@ import { dateRange, parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
 import { badRequest, notFound, unprocessable } from "../http/problem.ts";
 import { WORKOUT_CLASSIFICATIONS } from "../integrations/ollama.ts";
+import { requestIdentity } from "../http/auth-context.ts";
+import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
 
 // Correction reasons for the thumbs-down flow (also duplicated in the dashboard's
 // types/api.ts — no shared package between the two npm projects).
@@ -25,70 +27,72 @@ function parseId(pathname: string): number {
 }
 
 export function createActivitiesController(ctx: AppContext) {
-  const repo = ctx.repos.activities;
   const activityTypes = ctx.repos.activityTypes;
-  const planInstances = ctx.repos.planInstances;
   const service = ctx.services.activities;
   const classification = ctx.services.classification;
   const associations = ctx.services.workoutAssociations;
+  const owned = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, requestIdentity(req).userId);
 
-  const range: Handler = async (_req, res) => send(res, await repo.dateRange());
+  const range: Handler = async (req, res) => send(res, await owned(req).dateRange());
 
-  const list: Handler = async (_req, res, url) => {
+  const list: Handler = async (req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = (await repo.countInRange(from, to))?.count ?? 0;
-    return send(res, paginated(await repo.listPage(from, to, limit, offset), total, limit, offset));
+    const total = (await owned(req).countInRange(from, to))?.count ?? 0;
+    return send(res, paginated(await owned(req).listPage(from, to, limit, offset), total, limit, offset));
   };
 
-  const count: Handler = async (_req, res, url) => {
+  const count: Handler = async (req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, await repo.countInRange(from, to));
+    return send(res, await owned(req).countInRange(from, to));
   };
 
   // GET /api/v1/activities/races — race-type activities (not Training), full
   // history, for the "link a race" dropdown on the date-ranges save form.
-  const races: Handler = async (_req, res, url) => {
+  const races: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = (await repo.racesCount())?.count ?? 0;
-    return send(res, paginated(await repo.races(limit, offset), total, limit, offset));
+    const total = (await owned(req).racesCount())?.count ?? 0;
+    return send(res, paginated(await owned(req).races(limit, offset), total, limit, offset));
   };
 
-  const trash: Handler = async (_req, res, url) => {
+  const trash: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
-    const total = (await repo.trashCount())?.count ?? 0;
-    return send(res, paginated(await repo.trashPage(limit, offset), total, limit, offset));
+    const total = (await owned(req).trashCount())?.count ?? 0;
+    return send(res, paginated(await owned(req).trashPage(limit, offset), total, limit, offset));
   };
 
-  const getById: Handler = async (_req, res, url) => {
+  const getById: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (isNaN(id)) throw badRequest("Invalid activity id.");
-    const row = await repo.byId(id);
+    const row = await owned(req).byId(id);
     if (!row) throw notFound(`Activity ${id} not found.`);
     return send(res, row);
   };
 
-  const track: Handler = async (_req, res, url) => {
+  const track: Handler = async (req, res, url) => {
     // Path is /api/activities/:id/track — the id is the middle segment, not the last.
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/track$/)?.[1] ?? "");
     if (isNaN(id)) throw badRequest("Invalid activity id.");
-    return send(res, await repo.track(id));
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, await owned(req).track(id));
   };
 
-  const deleteRange: Handler = async (_req, res, url) => {
+  const deleteRange: Handler = async (req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, await service.softDeleteRange(from, to));
+    return send(res, await service.softDeleteRange(requestIdentity(req).userId, from, to));
   };
 
-  const deleteById: Handler = async (_req, res, url) => {
+  const deleteById: Handler = async (req, res, url) => {
     const id = parseId(url.pathname);
     if (isNaN(id)) throw badRequest("Invalid activity id.");
-    return send(res, await service.softDeleteById(id));
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, await service.softDeleteById(requestIdentity(req).userId, id));
   };
 
   // POST /api/activities/:id/classify — body { splitMeters?: number, method?: 'ai'|'statistical' }.
   const classify: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/classify$/)![1]);
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
     const body = await readJsonBody<{ splitMeters?: unknown; method?: unknown }>(req);
     const splitMeters = body.splitMeters != null ? Number(body.splitMeters) : 1000;
     if (!Number.isFinite(splitMeters) || splitMeters <= 0) {
@@ -98,8 +102,8 @@ export function createActivitiesController(ctx: AppContext) {
     if (method !== "ai" && method !== "statistical") {
       throw unprocessable("method must be 'ai' or 'statistical'.");
     }
-    await classification.classify(id, splitMeters, method);
-    return send(res, await repo.byId(id));
+    await classification.classify(requestIdentity(req).userId, id, splitMeters, method);
+    return send(res, await owned(req).byId(id));
   };
 
   // POST /api/activities/:id/feedback — body
@@ -115,7 +119,7 @@ export function createActivitiesController(ctx: AppContext) {
     if (body.source !== "ai" && body.source !== "statistical") {
       throw unprocessable("source must be 'ai' or 'statistical'.");
     }
-    const current = await repo.byId(id) as unknown as
+    const current = await owned(req).byId(id) as unknown as
       { ai_classification: string | null; statistical_classification: string | null } | undefined;
     if (!current) throw notFound(`Activity ${id} not found.`);
     const sourceClassification = body.source === "ai" ? current.ai_classification : current.statistical_classification;
@@ -136,11 +140,11 @@ export function createActivitiesController(ctx: AppContext) {
       correctionReason = body.correctionReason;
       finalClassification = body.finalClassification;
     }
-    await repo.updateFeedback({
+    await owned(req).updateFeedback({
       $id: id, $user_feedback: body.feedback, $user_correction_reason: correctionReason,
       $final_classification: finalClassification, $classification_method: body.source,
     });
-    return send(res, await repo.byId(id));
+    return send(res, await owned(req).byId(id));
   };
 
   // PUT /api/v1/activities/:id/type — body { activity_type_id, name? }. Full
@@ -149,7 +153,7 @@ export function createActivitiesController(ctx: AppContext) {
   // together, not merged field-by-field.
   const setType: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/type$/)![1]);
-    const current = await repo.byId(id) as unknown as { distance_m: number | null } | undefined;
+    const current = await owned(req).byId(id) as unknown as { distance_m: number | null } | undefined;
     if (!current) throw notFound(`Activity ${id} not found.`);
 
     const body = await readJsonBody<{ activity_type_id?: unknown; name?: unknown }>(req);
@@ -165,26 +169,26 @@ export function createActivitiesController(ctx: AppContext) {
     }
     const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null;
 
-    await repo.updateType({ $id: id, $activity_type_id: activityTypeId, $activity_name: name });
-    return send(res, await repo.byId(id));
+    await owned(req).updateType({ $id: id, $activity_type_id: activityTypeId, $activity_name: name });
+    return send(res, await owned(req).byId(id));
   };
 
   // GET /api/v1/activities/:id/association — this activity's current
   // planned-workout link, or a nulled-out AssociationView when none exists
   // yet (a legitimate steady state — "extra/unplanned" — not an error).
-  const getAssociation: Handler = async (_req, res, url) => {
+  const getAssociation: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association$/)![1]);
-    if (!await repo.byId(id)) throw notFound(`Activity ${id} not found.`);
-    return send(res, await associations.getForActivity(id));
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, await associations.getForActivity(requestIdentity(req).userId, id));
   };
 
   // GET /api/v1/activities/:id/association-candidates — every "run" plan day
   // (across any instance) sharing this activity's own local calendar date,
   // for the manual replace/confirm picker (HRA-334, AC3).
-  const associationCandidates: Handler = async (_req, res, url) => {
+  const associationCandidates: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association-candidates$/)![1]);
-    if (!await repo.byId(id)) throw notFound(`Activity ${id} not found.`);
-    return send(res, await associations.candidatesForActivity(id));
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, await associations.candidatesForActivity(requestIdentity(req).userId, id));
   };
 
   // PUT /api/v1/activities/:id/association — body { workout_id }. Full
@@ -194,20 +198,21 @@ export function createActivitiesController(ctx: AppContext) {
   // legitimately point at a day that moved, HRA-334 Scope).
   const setAssociation: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association$/)![1]);
-    if (!await repo.byId(id)) throw notFound(`Activity ${id} not found.`);
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
     const body = await readJsonBody<{ workout_id?: unknown }>(req);
     if (typeof body.workout_id !== "string" || !body.workout_id) throw unprocessable("workout_id must be a non-empty string.");
-    if (!await planInstances.dayByWorkoutId(body.workout_id)) throw unprocessable(`Unknown workout_id ${body.workout_id}.`);
-    return send(res, await associations.setAssociation(id, body.workout_id));
+    const association = await associations.setAssociation(requestIdentity(req).userId, id, body.workout_id);
+    if (!association) throw notFound(`Activity ${id} not found.`);
+    return send(res, association);
   };
 
   // DELETE /api/v1/activities/:id/association — explicitly marks this
   // activity as not part of any plan (HRA-334 Scope: "represent extra/
   // unplanned activities truthfully"), immune to later automatic matching.
-  const clearAssociation: Handler = async (_req, res, url) => {
+  const clearAssociation: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/association$/)![1]);
-    if (!await repo.byId(id)) throw notFound(`Activity ${id} not found.`);
-    return send(res, await associations.clearAssociation(id));
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    return send(res, await associations.clearAssociation(requestIdentity(req).userId, id));
   };
 
   // POST /api/activities/confirm — bulk-equivalent of thumbs-up. Body { ids, method? }.
@@ -219,7 +224,7 @@ export function createActivitiesController(ctx: AppContext) {
     if (method !== "ai" && method !== "statistical") {
       throw unprocessable("method must be 'ai' or 'statistical'.");
     }
-    return send(res, await service.confirm(ids, method));
+    return send(res, await service.confirm(requestIdentity(req).userId, ids, method));
   };
 
   // POST /api/activities/restore | /api/activities/purge — body { ids: number[] }.
@@ -228,7 +233,7 @@ export function createActivitiesController(ctx: AppContext) {
     const ids = Array.isArray(body.ids) ? body.ids.filter((n): n is number => Number.isInteger(n)) : [];
     if (ids.length === 0) throw unprocessable("ids must be a non-empty array of integers.");
     const purge = url.pathname.endsWith("/purge");
-    return send(res, purge ? await service.purge(ids) : await service.restore(ids));
+    return send(res, purge ? await service.purge(requestIdentity(req).userId, ids) : await service.restore(requestIdentity(req).userId, ids));
   };
 
   return {

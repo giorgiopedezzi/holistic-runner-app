@@ -37,6 +37,7 @@ import { createPlanInstancesService } from "../../src/services/plan-instances.se
 import { createWorkoutAssociationsService } from "../../src/services/workout-associations.service.ts";
 import { createReportingService } from "../../src/services/reporting.service.ts";
 import { createIdentityService } from "../../src/services/identity.service.ts";
+import { FOUNDER_USER_ID } from "../../src/db/founder.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
 const SRC_DIR = fileURLToPath(new URL("../../src", import.meta.url));
@@ -68,6 +69,8 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const workoutAssociationsRepo = createWorkoutAssociationsRepo(runtimeDb);
   const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(runtimeDb);
   const identityRepo = createIdentityRepo(runtimeDb);
+  const identityService = createIdentityService(runtimeDb, identityRepo);
+  const founderSession = await identityService.rotateSession(FOUNDER_USER_ID, { idleSeconds: 1800, absoluteSeconds: 43200 }, null);
 
   const handler = createApiHandler({
     port: 0,
@@ -75,7 +78,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     backgroundsDir,
     // demoMode override (HRA-220) — opts.demoMode lets a test flip DEMO_MODE
     // without an env var, since loadConfig() reads process.env at call time.
-    config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode },
+    config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode, auth: { ...loadConfig().auth, enabled: true } },
     db: runtimeDb,
     repos: {
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
@@ -87,13 +90,13 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     services: {
       activities: createActivitiesService(runtimeDb, activitiesRepo),
       body: createBodyService(runtimeDb, bodyRepo),
-      classification: createClassificationService(activitiesRepo),
+      classification: createClassificationService(runtimeDb, activitiesRepo),
       sync: createSyncService(SRC_DIR),
       device: createDeviceService(SRC_DIR),
       planInstances: createPlanInstancesService(runtimeDb, planInstancesRepo),
       workoutAssociations: createWorkoutAssociationsService(runtimeDb, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
-      reporting: createReportingService(planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
-      identity: createIdentityService(runtimeDb, identityRepo),
+      reporting: createReportingService(runtimeDb, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
+      identity: identityService,
     },
   });
 
@@ -104,7 +107,9 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const baseUrl = `http://127.0.0.1:${addr.port}`;
 
   const api: TestServer["api"] = async (p, init) => {
-    const res = await fetch(baseUrl + p, init);
+    const headers = new Headers(init?.headers);
+    if (!headers.has("cookie")) headers.set("cookie", `__Host-runsfree_session=${founderSession}`);
+    const res = await fetch(baseUrl + p, { ...init, headers });
     const text = await res.text();
     let json: unknown = undefined;
     try { json = text ? JSON.parse(text) : undefined; } catch { /* non-JSON body */ }
