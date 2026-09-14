@@ -30,6 +30,7 @@ Keep `garmin.db` as an archive and source it read-only:
 ```bash
 npm run db:import-sqlite -- --source ./garmin.db
 npm run db:verify-import
+npm run db:verify-ownership
 npm run db:verify-schema
 ```
 
@@ -46,6 +47,20 @@ migrated database without importing SQLite data, run:
 ```bash
 npm run db:bootstrap-founder
 ```
+
+Bind the founder's provider identity only after obtaining the provider's stable
+issuer and subject values. The operation is idempotent and refuses to steal an
+identity already bound to another internal user; email is neither accepted nor
+consulted:
+
+```bash
+npm run db:bind-founder-identity -- --issuer https://issuer.example/ --subject provider-subject
+```
+
+`db:verify-ownership` fails non-zero for orphaned or cross-owner child/root
+relationships and a missing founder settings row. It is required after import
+or founder bootstrap, but it does not open registration. Registration remains
+closed until the later authentication and tenant-isolation Stories complete.
 
 ## Architecture
 

@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createTestDb, seedSampleData, SAMPLE_ACTIVITIES } from "./helpers/db.ts";
+import { bindFounderIdentity, FOUNDER_USER_ID } from "../src/db/founder.ts";
+import { assertOwnershipIntegrity, ownershipIntegrityChecks } from "../src/db/ownership.ts";
 
 test("fresh PostgreSQL schema has the runtime tables and founder settings", async () => {
   const { db, cleanup } = await createTestDb();
@@ -57,6 +59,37 @@ test("track points cascade-delete with their parent activity", async () => {
     await db.run("DELETE FROM activities WHERE id = $1", [activityIds[0]]);
     const points = (await db.get<{ c: number }>("SELECT COUNT(*)::int AS c FROM track_points WHERE activity_id = $1", [activityIds[0]]))!.c;
     assert.equal(points, 0);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("founder identity binding is idempotent, pair-based, and never email-derived", async () => {
+  const { db, cleanup } = await createTestDb();
+  try {
+    const issuer = "https://idp.example.com/";
+    const subject = "founder-subject";
+    const first = await db.transaction(client => bindFounderIdentity(client, issuer, subject));
+    const second = await db.transaction(client => bindFounderIdentity(client, issuer, subject));
+    assert.equal(first, "bound");
+    assert.equal(second, "already_bound");
+    const binding = await db.get<{ user_id: string; email_at_link_time: string | null }>("SELECT user_id::text, email_at_link_time FROM external_identities WHERE issuer = $1 AND subject = $2", [issuer, subject]);
+    assert.deepEqual(binding, { user_id: FOUNDER_USER_ID, email_at_link_time: null });
+    await db.run("INSERT INTO users (id) VALUES ($1)", ["00000000-0000-4000-8000-000000000099"]);
+    await db.run("INSERT INTO external_identities (user_id, issuer, subject, email_at_link_time) VALUES ($1, $2, $3, $4)", ["00000000-0000-4000-8000-000000000099", "https://other-idp.example.com/", "other-subject", "founder@example.com"]);
+    await assert.rejects(() => db.transaction(client => bindFounderIdentity(client, "https://other-idp.example.com/", "other-subject")), /different internal user/);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("ownership integrity verification passes the migrated schema and fails clearly for a reported violation", async () => {
+  const { db, cleanup } = await createTestDb();
+  try {
+    await seedSampleData(db);
+    const checks = await db.transaction(client => ownershipIntegrityChecks(client));
+    assertOwnershipIntegrity(checks);
+    assert.throws(() => assertOwnershipIntegrity([{ name: "cross_owner_associations", violations: 1 }]), /cross_owner_associations=1/);
   } finally {
     await cleanup();
   }
