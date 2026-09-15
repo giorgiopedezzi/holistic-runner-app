@@ -3,7 +3,7 @@ import type { AppContext, Handler } from "../http/context.ts";
 import { consumeAuthTransaction, createAuthTransaction } from "../http/auth-transaction.ts";
 import { requestIdentity } from "../http/auth-context.ts";
 import { send, sendNoContent } from "../http/respond.ts";
-import { serviceUnavailable, unauthorized } from "../http/problem.ts";
+import { badRequest, serviceUnavailable, unauthorized } from "../http/problem.ts";
 import { requireWebAuthConfig } from "../config.ts";
 import { remoteJwks, TokenValidationError, verifyIdToken } from "../domain/identity/token-validation.ts";
 import { logSecurityEvent } from "../http/security-log.ts";
@@ -12,6 +12,10 @@ const SESSION_COOKIE = "__Host-runsfree_session";
 const LOCAL_SESSION_COOKIE = "runsfree_session";
 const PREAUTH_COOKIE = "runsfree_preauth";
 const rateWindows = new Map<string, { count: number; resetAt: number }>();
+const AUTH_CONNECTIONS = {
+  google: "google-oauth2",
+  email: "email",
+} as const;
 
 function cookie(req: Parameters<Handler>[0], name: string): string | null {
   for (const part of (req.headers.cookie ?? "").split(";")) {
@@ -41,6 +45,11 @@ function csrfToken(sessionCookie: string): string {
 }
 export function expectedCsrfToken(sessionCookie: string): string { return csrfToken(sessionCookie); }
 
+export function authConnection(method: string | null): string {
+  if (method === "google" || method === "email") return AUTH_CONNECTIONS[method];
+  throw badRequest("Unsupported sign-in method.");
+}
+
 async function discovery(url: string): Promise<{ authorization_endpoint: string; token_endpoint: string; jwks_uri: string }> {
   const response = await fetch(url);
   if (!response.ok) throw new Error("discovery failed");
@@ -52,11 +61,12 @@ async function discovery(url: string): Promise<{ authorization_endpoint: string;
 export function createAuthController(ctx: AppContext): { login: Handler; callback: Handler; session: Handler; logout: Handler } {
   const callbackFailure = () => `${requireWebAuthConfig(ctx.config).webLogoutUrl}?auth=unavailable`;
   return {
-    login: async (req, res) => {
+    login: async (req, res, url) => {
       if (!ctx.config.auth.enabled || !checkRate(req, "login")) {
         logSecurityEvent("auth.login.unavailable", { reason: ctx.config.auth.enabled ? "rate_limited" : "auth_disabled" });
         throw serviceUnavailable("Sign-in is temporarily unavailable.");
       }
+      const connection = authConnection(url.searchParams.get("method"));
       let config; let endpoints;
       try { config = requireWebAuthConfig(ctx.config); endpoints = await discovery(config.discoveryUrl); }
       catch { throw serviceUnavailable("Sign-in is temporarily unavailable."); }
@@ -68,6 +78,7 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
       authorization.searchParams.set("scope", "openid profile email");
       authorization.searchParams.set("state", transaction.state);
       authorization.searchParams.set("nonce", transaction.nonce);
+      authorization.searchParams.set("connection", connection);
       redirect(res, authorization.toString(), [`${PREAUTH_COOKIE}=${transaction.preauth}; ${cookieAttributes(config.webCallbackUrl, 600)}`]);
     },
     callback: async (req, res, url) => {

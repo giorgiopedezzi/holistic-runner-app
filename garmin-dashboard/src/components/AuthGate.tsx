@@ -27,15 +27,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
     ? t("auth.loading", "Checking your secure session…")
     : state === "unavailable"
       ? t("auth.unavailable", "Sign-in is temporarily unavailable. Please try again.")
-      : t("auth.signedOut", "You’re signed out. Sign in to continue.");
+      : t("auth.signInPrompt", "Sign in to Runs Free.");
   return (
     <main className="min-h-screen flex items-center justify-center p-6" aria-live="polite">
       <section className="hra-bg-card hra-border-strong rounded-xl p-6 max-w-md text-center">
         <p className="text-body">{message}</p>
-        {state !== "loading" && (
-          <button type="button" className="hra-nav-hover hra-border-strong rounded-lg px-4 py-2 mt-4 text-label" onClick={api.auth.login}>
-            {t("auth.signIn", "Sign in")}
-          </button>
+        {state === "signed-out" && (
+          <div className="mt-4 flex flex-col gap-2">
+            <button type="button" className="hra-nav-hover hra-border-strong rounded-lg px-4 py-2 text-label" onClick={() => api.auth.login("google")}>
+              {t("auth.continueWithGoogle", "Continue with Google")}
+            </button>
+            <button type="button" className="hra-nav-hover hra-border-strong rounded-lg px-4 py-2 text-label" onClick={() => api.auth.login("email")}>
+              {t("auth.continueWithEmailCode", "Continue with email code")}
+            </button>
+          </div>
         )}
       </section>
     </main>

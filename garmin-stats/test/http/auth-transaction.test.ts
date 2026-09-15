@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { consumeAuthTransaction, createAuthTransaction } from "../../src/http/auth-transaction.ts";
+import { authConnection } from "../../src/controllers/auth.controller.ts";
 import { createTestDb } from "../helpers/db.ts";
 
 test("an authorization transaction requires the browser-bound pre-auth cookie and consumes once", async () => {
@@ -20,4 +21,11 @@ test("expired authorization state fails without disclosing whether it existed", 
     await db.run("UPDATE auth_transactions SET expires_at = now() - interval '1 minute'");
     assert.equal(await consumeAuthTransaction(db, transaction.state, transaction.preauth), null);
   } finally { await cleanup(); }
+});
+
+test("only Google and Passwordless Email OTP have server-controlled Auth0 connections", () => {
+  assert.equal(authConnection("google"), "google-oauth2");
+  assert.equal(authConnection("email"), "email");
+  assert.throws(() => authConnection("Username-Password-Authentication"), { message: "Unsupported sign-in method." });
+  assert.throws(() => authConnection(null), { message: "Unsupported sign-in method." });
 });
