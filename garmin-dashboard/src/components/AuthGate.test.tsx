@@ -16,11 +16,25 @@ describe("AuthGate", () => {
     expect(screen.queryByText("Private dashboard")).not.toBeInTheDocument();
     expect(screen.queryByText(/you.?re signed out/i)).not.toBeInTheDocument();
     expect(api.auth.session).toHaveBeenCalledTimes(1);
+    expect(login).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Continue with Google" }));
-    fireEvent.click(screen.getByRole("button", { name: "Continue with email code" }));
-    expect(login).toHaveBeenNthCalledWith(1, "google");
-    expect(login).toHaveBeenNthCalledWith(2, "email");
+    expect(screen.queryByRole("button", { name: "Continue with Google" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Continue with email code" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(login).toHaveBeenCalledOnce();
+    expect(login).toHaveBeenCalledWith();
+  });
+
+  it("mounts the private app for an authenticated session", async () => {
+    vi.spyOn(api.auth, "session").mockResolvedValue({
+      user: { id: "founder", display_name: "Founder", locale: "en", unit_system: "metric", timezone: "Europe/Rome", role: "admin" },
+      entitlements: [], csrfToken: "test-csrf",
+    });
+
+    render(<AuthGate><div>Private dashboard</div></AuthGate>);
+
+    expect(await screen.findByText("Private dashboard")).toBeInTheDocument();
+    expect(screen.queryByText("Founder journey")).not.toBeInTheDocument();
   });
 
   it("uses the existing phone drawer pattern for Guest navigation", async () => {

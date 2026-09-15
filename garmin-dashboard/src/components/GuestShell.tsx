@@ -50,7 +50,7 @@ export function GuestShell() {
   }
 
   const collapsed = sidebarMode === "icon" ? "true" : sidebarMode === "hidden" ? "hidden" : "false";
-  const signIn = (method: "google" | "email") => () => api.auth.login(method);
+  const signIn = () => api.auth.login();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -63,7 +63,7 @@ export function GuestShell() {
             <span className="hra-sidebar-item" aria-current="page"><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.founderJourney", "Founder journey")}</span></span>
           </div></div>
           <div className="hra-sidebar-group hra-sidebar-utility-group">
-            <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={signIn("google")}><span className="hra-sidebar-item-icon" aria-hidden="true"><LogIn size={16} /></span><span className="hra-sidebar-item-label">{t("guest.signIn", "Sign in")}</span></button>
+            <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={signIn}><span className="hra-sidebar-item-icon" aria-hidden="true"><LogIn size={16} /></span><span className="hra-sidebar-item-label">{t("guest.signIn", "Sign in")}</span></button>
           </div>
         </nav>
         {tier !== "phone" && <button type="button" className="hra-sidebar-collapse-toggle hra-nav-hover" onClick={toggleSidebar} aria-label={sidebarMode === "icon" ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")} title={sidebarMode === "icon" ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")}>{sidebarMode === "icon" ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}</button>}
@@ -72,10 +72,6 @@ export function GuestShell() {
         {tier === "phone" && sidebarMode === "hidden" && <header className="hra-mobile-header"><button type="button" className="hra-mobile-header-trigger hra-nav-hover" onClick={toggleSidebar} aria-label={t("nav.openSidebar", "Open navigation")}><Menu size={18} aria-hidden="true" /></button></header>}
         <main className="hra-app-main">
           <GuestOverview />
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button type="button" className="hra-btn" onClick={signIn("google")}>{t("auth.continueWithGoogle", "Continue with Google")}</button>
-            <button type="button" className="hra-nav-hover hra-border-strong rounded-lg px-4 py-2 text-label" onClick={signIn("email")}>{t("auth.continueWithEmailCode", "Continue with email code")}</button>
-          </div>
         </main>
       </div>
     </div>

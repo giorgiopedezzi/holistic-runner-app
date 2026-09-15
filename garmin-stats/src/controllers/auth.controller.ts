@@ -45,7 +45,11 @@ function csrfToken(sessionCookie: string): string {
 }
 export function expectedCsrfToken(sessionCookie: string): string { return csrfToken(sessionCookie); }
 
-export function authConnection(method: string | null): string {
+export function authConnection(method: string | null): string | undefined {
+  // An omitted method deliberately lets Auth0 Universal Login present its own
+  // configured choices. Explicit methods remain supported for existing callers
+  // and remain allowlisted server-side.
+  if (method === null) return undefined;
   if (method === "google" || method === "email") return AUTH_CONNECTIONS[method];
   throw badRequest("Unsupported sign-in method.");
 }
@@ -78,7 +82,7 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
       authorization.searchParams.set("scope", "openid profile email");
       authorization.searchParams.set("state", transaction.state);
       authorization.searchParams.set("nonce", transaction.nonce);
-      authorization.searchParams.set("connection", connection);
+      if (connection) authorization.searchParams.set("connection", connection);
       redirect(res, authorization.toString(), [`${PREAUTH_COOKIE}=${transaction.preauth}; ${cookieAttributes(config.webCallbackUrl, 600)}`]);
     },
     callback: async (req, res, url) => {

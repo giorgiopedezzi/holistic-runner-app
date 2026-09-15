@@ -173,9 +173,9 @@ export const api = {
       csrfToken = session.csrfToken;
       return session;
     },
-    login: (method: "google" | "email") => {
+    login: (method?: "google" | "email") => {
       const url = new URL(`${BASE}/api/v1/auth/login`, window.location.origin);
-      url.searchParams.set("method", method);
+      if (method) url.searchParams.set("method", method);
       window.location.assign(url.toString());
     },
     logout: async () => { await request<null>("/api/v1/auth/logout", "POST"); csrfToken = null; },

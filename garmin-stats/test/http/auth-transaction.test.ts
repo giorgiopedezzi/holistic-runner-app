@@ -23,9 +23,12 @@ test("expired authorization state fails without disclosing whether it existed", 
   } finally { await cleanup(); }
 });
 
-test("only Google and Passwordless Email OTP have server-controlled Auth0 connections", () => {
+test("an omitted method defers provider selection to Auth0 Universal Login", () => {
+  assert.equal(authConnection(null), undefined);
+});
+
+test("explicit Auth0 connections remain server-controlled and allowlisted", () => {
   assert.equal(authConnection("google"), "google-oauth2");
   assert.equal(authConnection("email"), "email");
   assert.throws(() => authConnection("Username-Password-Authentication"), { message: "Unsupported sign-in method." });
-  assert.throws(() => authConnection(null), { message: "Unsupported sign-in method." });
 });
