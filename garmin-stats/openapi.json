@@ -23,6 +23,7 @@
     { "name": "source-files", "description": "Server-side source-file text extraction (.txt/.csv/.pdf) for hand-off into training-plan template generation (HRA-327)" },
     { "name": "auth", "description": "Auth0 confidential-web BFF login, opaque application session, CSRF bootstrap, and logout" },
     { "name": "account", "description": "Owner-scoped profile, session, export, and deletion lifecycle controls" },
+    { "name": "guest-publication", "description": "Anonymous read-only access to the explicit published projection; never backed by private owner repositories" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
@@ -680,10 +681,60 @@
           "pageCount": { "type": "integer", "description": "Present only when sourceType is pdf." }
         },
         "required": ["sourceText", "sourceType", "fileName"]
+      },
+      "PublicProjectedResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "publicId": { "type": "string", "format": "uuid", "description": "Stable opaque public identifier; never a private resource id." },
+          "fields": { "type": "object", "additionalProperties": true, "description": "Allowlisted projection fields for this resource kind." }
+        },
+        "required": ["publicId", "fields"]
+      },
+      "GuestPublicationResource": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string" },
+          "projectedAt": { "type": "string", "format": "date-time" },
+          "data": { "$ref": "#/components/schemas/PublicProjectedResource" }
+        },
+        "required": ["slug", "projectedAt", "data"]
+      },
+      "GuestPublicationCollection": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string" },
+          "projectedAt": { "type": "string", "format": "date-time" },
+          "data": { "type": "array", "items": { "$ref": "#/components/schemas/PublicProjectedResource" } }
+        },
+        "required": ["slug", "projectedAt", "data"]
       }
     }
   },
   "paths": {
+    "/api/v1/public/profiles/{slug}": {
+      "get": { "tags": ["guest-publication"], "summary": "Read one published public profile", "description": "Anonymous and read-only. Unknown, unpublished, suspended, stale, and missing projections all return the same generic 404. Responses are never cacheable.", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Projected profile only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationResource" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/public/profiles/{slug}/activities": {
+      "get": { "tags": ["guest-publication"], "summary": "List published activities", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Projected activities only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationCollection" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/public/profiles/{slug}/activities/{publicId}": {
+      "get": { "tags": ["guest-publication"], "summary": "Read one published activity", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "publicId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Projected activity only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationResource" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/public/profiles/{slug}/plans": {
+      "get": { "tags": ["guest-publication"], "summary": "List published plans", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Projected plans only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationCollection" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/public/profiles/{slug}/plans/{publicId}": {
+      "get": { "tags": ["guest-publication"], "summary": "Read one published plan", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "publicId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Projected plan only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationResource" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/public/profiles/{slug}/reports": {
+      "get": { "tags": ["guest-publication"], "summary": "List published reports", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Projected reports only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationCollection" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/public/profiles/{slug}/reports/{publicId}": {
+      "get": { "tags": ["guest-publication"], "summary": "Read one published report", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "publicId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Projected report only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationResource" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
     "/api/v1/auth/login": {
       "get": { "tags": ["auth"], "summary": "Start the Auth0 Authorization Code BFF flow with an approved interactive method", "parameters": [{ "name": "method", "in": "query", "required": true, "schema": { "type": "string", "enum": ["google", "email"] }, "description": "Server-mapped Auth0 connection selector. Arbitrary connection names are not accepted." }], "responses": { "302": { "description": "Redirects to the configured authorization endpoint using the server-selected Google or Passwordless Email OTP connection." }, "400": { "$ref": "#/components/responses/BadRequest" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
     },

@@ -27,6 +27,7 @@ import { createWorkoutAssociationsRepo } from "./repositories/workout-associatio
 import { createWorkoutSegmentAlignmentsRepo } from "./repositories/workout-segment-alignments.repo.ts";
 import { createIdentityRepo } from "./repositories/identity.repo.ts";
 import { createAccountPrivacyRepo } from "./repositories/account-privacy.repo.ts";
+import { createPublishedProjectionRepo } from "./repositories/published-projection.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -37,6 +38,7 @@ import { createWorkoutAssociationsService } from "./services/workout-association
 import { createReportingService } from "./services/reporting.service.ts";
 import { createIdentityService } from "./services/identity.service.ts";
 import { createAccountPrivacyService } from "./services/account-privacy.service.ts";
+import { createGuestPublicationService } from "./services/guest-publication.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -78,6 +80,7 @@ const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
 const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(db);
 const identityRepo = createIdentityRepo(db);
 const accountPrivacyRepo = createAccountPrivacyRepo(db);
+const publishedProjectionRepo = createPublishedProjectionRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -90,6 +93,7 @@ const workoutAssociationsService = createWorkoutAssociationsService(db);
 const reportingService = createReportingService(db, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
 const identityService = createIdentityService(db, identityRepo);
 const accountPrivacyService = createAccountPrivacyService(db, accountPrivacyRepo, identityRepo);
+const guestPublicationService = createGuestPublicationService(publishedProjectionRepo);
 
 // HRA-354: queued account deletion is deliberately asynchronous so access is
 // revoked before physical purge. Failures stay durable and retry on the next
@@ -117,7 +121,7 @@ const server = http.createServer(createApiHandler({
     activities: activitiesService, body: bodyService, classification: classificationService,
     sync: syncService, device: deviceService, planInstances: planInstancesService,
     workoutAssociations: workoutAssociationsService, reporting: reportingService,
-    identity: identityService, accountPrivacy: accountPrivacyService,
+    identity: identityService, accountPrivacy: accountPrivacyService, guestPublication: guestPublicationService,
   },
 }));
 

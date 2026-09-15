@@ -29,6 +29,7 @@ import { createPlanTemplatesController } from "../controllers/plan-templates.con
 import { createFeedbackController } from "../controllers/feedback.controller.ts";
 import { createSourceFilesController } from "../controllers/source-files.controller.ts";
 import { createReportingController } from "../controllers/reporting.controller.ts";
+import { createGuestPublicationController } from "../controllers/guest-publication.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -47,6 +48,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const reporting    = createReportingController(ctx);
   const auth         = createAuthController(ctx);
   const accountPrivacy = createAccountPrivacyController(ctx);
+  const guestPublication = createGuestPublicationController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -107,6 +109,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
 
     const url   = new URL(req.url ?? "/", `http://0.0.0.0:${port}`);
     const route = url.pathname;
+    const publicProfileMatch = /^\/api\/v1\/public\/profiles\/([^/]+)$/.exec(route);
+    const publicCollectionMatch = /^\/api\/v1\/public\/profiles\/([^/]+)\/(activities|plans|reports)$/.exec(route);
+    const publicResourceMatch = /^\/api\/v1\/public\/profiles\/([^/]+)\/(activities|plans|reports)\/([^/]+)$/.exec(route);
 
     try {
       const privateRoute = ownerScopedRoute(route) || route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
@@ -121,6 +126,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         }
       }
       if (req.method === "GET") {
+        if (publicProfileMatch) return await guestPublication.profile(req, res, url, publicProfileMatch[1]!);
+        if (publicCollectionMatch) return await guestPublication.collection(req, res, url, publicCollectionMatch[1]!, publicCollectionMatch[2] as "activities" | "plans" | "reports");
+        if (publicResourceMatch) return await guestPublication.resource(req, res, url, publicResourceMatch[1]!, publicResourceMatch[2] as "activities" | "plans" | "reports", publicResourceMatch[3]!);
         if (route === "/api/v1/auth/login")               return await auth.login(req, res, url);
         if (route === "/api/v1/auth/callback")            return await auth.callback(req, res, url);
         if (route === "/api/v1/auth/session")             return await auth.session(req, res, url);
@@ -250,6 +258,11 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/source-files/extract")      return await sourceFiles.extract(req, res, url);
       }
 
+      if (route.startsWith("/api/v1/public/")) {
+        res.setHeader("Cache-Control", "no-store");
+        sendProblem(res, notFound("Public resource is unavailable.", { instance: "/api/v1/public" }).problem);
+        return;
+      }
       sendProblem(res, notFound(`No route matches ${req.method} ${route}.`).problem);
     } catch (e) {
       if (e instanceof ApiProblem) {
@@ -262,7 +275,11 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       // generic 500 that never leaks the exception message/stack to the
       // client. logSecurityEvent redacts token/session/code-shaped
       // substrings before the line is written (AC6).
-      logSecurityEvent("api.error.unhandled", {
+      const publicFailure = route.startsWith("/api/v1/public/");
+      logSecurityEvent("api.error.unhandled", publicFailure ? {
+        route: "/api/v1/public/[redacted]",
+        reason: "public_read_failed",
+      } : {
         route,
         reason: e instanceof Error ? e.message : String(e),
         stack: e instanceof Error && e.stack ? e.stack : undefined,
