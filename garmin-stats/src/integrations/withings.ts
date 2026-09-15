@@ -15,8 +15,9 @@
 
 import type { Queryable } from "../db/query.ts";
 import { requireWithingsConfig, requireIntegrationEncryptionConfig, type Config } from "../config.ts";
-import { encryptToken, decryptToken } from "../domain/token-crypto.ts";
+import { encryptToken, safeDecryptToken } from "../domain/token-crypto.ts";
 import { isProviderAccountConflict, ProviderAccountConflictError } from "./provider-account-conflict.ts";
+import { invalidatePendingOauthStates } from "../http/oauth.ts";
 import type { WithingsTokenRow } from "../db.ts";
 
 const AUTH_URL  = "https://account.withings.com/oauth2_user/authorize2";
@@ -81,7 +82,7 @@ async function refreshToken(config: Config, db: Queryable, userId: string, token
   const body = await requestToken(new URLSearchParams({
     action: "requesttoken", grant_type: "refresh_token",
     client_id, client_secret,
-    refresh_token: decryptToken(token.refresh_token, key),
+    refresh_token: safeDecryptToken(token.refresh_token, key),
   }));
   await saveToken(db, userId, config, body);
   return body.access_token;
@@ -99,7 +100,16 @@ export async function getValidToken(config: Config, db: Queryable, userId: strin
   const token = await loadToken(db, userId);
   if (!token) throw new Error("No Withings connection for this account. Connect it from the dashboard first.");
   return (token.expires_at - Math.floor(Date.now() / 1000) < 300)
-    ? refreshToken(config, db, userId, token) : decryptToken(token.access_token, key);
+    ? refreshToken(config, db, userId, token) : safeDecryptToken(token.access_token, key);
+}
+
+// A running sync job's connection-active checkpoint (HRA-352 follow-up):
+// called before each new provider-derived write so a disconnect that lands
+// mid-run stops further writes from that point on, instead of only blocking
+// a *future* sync from starting. Cheap (indexed PK lookup) — safe to call
+// once per record without materially affecting sync throughput.
+export function isConnectionActive(db: Queryable, userId: string): Promise<boolean> {
+  return db.get("SELECT 1 FROM withings_tokens WHERE user_id = $1", [userId]).then(row => row !== undefined);
 }
 
 export interface WithingsStatus {
@@ -136,7 +146,11 @@ export async function getTokenStatus(config: Config, db: Queryable, userId: stri
 // Disconnect (HRA-352): Withings has no public per-app token-revocation
 // endpoint, so this is local-only — remove the stored credential so no
 // future sync/job can use it. Never touches imported activities/body data.
+// Also invalidates any login flow this owner started but never completed
+// for this provider, so a late callback can't resurrect the connection this
+// call just removed (see http/oauth.ts's invalidatePendingOauthStates).
 export async function disconnect(db: Queryable, userId: string): Promise<boolean> {
   const deleted = await db.run("DELETE FROM withings_tokens WHERE user_id = $1", [userId]);
+  await invalidatePendingOauthStates(db, userId, "withings");
   return deleted > 0;
 }

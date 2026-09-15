@@ -31,10 +31,10 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function mockTokenExchange(userid: string, accessToken = "access-1", refreshToken = "refresh-1") {
+function mockTokenExchange(userid: string, accessToken = "access-1", refreshToken = "refresh-1", scope = "user.metrics") {
   globalThis.fetch = (async () => new Response(JSON.stringify({
     status: 0,
-    body: { access_token: accessToken, refresh_token: refreshToken, expires_in: 3600, scope: "user.metrics", userid },
+    body: { access_token: accessToken, refresh_token: refreshToken, expires_in: 3600, scope, userid },
   }), { status: 200 })) as typeof fetch;
 }
 
@@ -138,6 +138,25 @@ test("disconnect removes only the calling owner's credential", async () => {
     assert.equal(removed, true);
     assert.equal(await loadToken(db, userA), undefined);
     assert.ok(await loadToken(db, userB));
+  } finally { await cleanup(); }
+});
+
+test("a two-user adversarial check: owner B's granted scope is never visible on owner A's status, and vice versa", async () => {
+  const { db, cleanup } = await createTestDb();
+  try {
+    const config = loadConfig();
+    const userA = await makeUser(db);
+    const userB = await makeUser(db);
+    mockTokenExchange("account-a", "access-a", "refresh-a", "user.metrics");
+    await exchangeCode(config, db, userA, "code-a");
+    mockTokenExchange("account-b", "access-b", "refresh-b", "user.metrics,user.activity,user.sleepevents");
+    await exchangeCode(config, db, userB, "code-b");
+
+    const statusA = await getTokenStatus(config, db, userA);
+    const statusB = await getTokenStatus(config, db, userB);
+    assert.equal(statusA.scope, "user.metrics");
+    assert.equal(statusB.scope, "user.metrics,user.activity,user.sleepevents");
+    assert.notEqual(statusA.scope, statusB.scope);
   } finally { await cleanup(); }
 });
 

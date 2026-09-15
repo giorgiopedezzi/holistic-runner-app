@@ -14,7 +14,7 @@ import { fileURLToPath } from "url";
 import { loadConfig, getArg, hasFlag } from "../config.ts";
 import { openPostgresDatabase } from "../db/postgres.ts";
 import { FOUNDER_USER_ID } from "../db/founder.ts";
-import { getValidToken } from "../integrations/strava.ts";
+import { getValidToken, isConnectionActive } from "../integrations/strava.ts";
 import type { ActivityRow, TrackPointRow } from "../db.ts";
 import { createWorkoutAssociationsService } from "../services/workout-associations.service.ts";
 
@@ -190,9 +190,14 @@ async function main(): Promise<void> {
   const list = await fetchActivityList(accessToken, startTs, endTs);
   console.log(`  Found ${list.length} activities on Strava in range`);
 
-  let imported = 0, skipped = 0, duplicates = 0, errors = 0;
+  let imported = 0, skipped = 0, duplicates = 0, errors = 0, abortedByDisconnect = false;
 
   for (const summary of list) {
+    // HRA-352: re-checked before every activity, not just once up front — a
+    // disconnect landing mid-run must stop new provider-derived state from
+    // this point on, not just block a *future* sync from starting.
+    if (!(await isConnectionActive(db, USER_ID))) { abortedByDisconnect = true; break; }
+
     const filename = `strava-${summary.id}.json`;
     if (await db.get("SELECT id FROM activities WHERE user_id=$1 AND filename=$2", [USER_ID, filename])) { skipped++; continue; }
 
@@ -248,9 +253,13 @@ async function main(): Promise<void> {
   // HRA-334: re-run the conservative planned-workout/activity matcher now
   // that new activities may exist — see sync-garmin.ts's own call for why
   // this lives here rather than in the server process. HRA-352: scoped to
-  // this run's own owner only.
+  // this run's own owner only. Runs even on an aborted (disconnected) run —
+  // it only re-associates what was already persisted, which stays intact.
   await createWorkoutAssociationsService(db).reconcile(USER_ID);
   await db.close();
+  if (abortedByDisconnect) {
+    throw new Error("Strava connection was disconnected during this sync — activities already imported are kept, remaining activities were not processed.");
+  }
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

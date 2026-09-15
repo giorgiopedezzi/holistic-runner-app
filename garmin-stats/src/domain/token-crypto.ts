@@ -7,6 +7,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_BYTES = 12; // GCM's recommended nonce size
+const TAG_BYTES = 16; // GCM's default auth tag length
 const KEY_BYTES = 32; // AES-256
 
 export class TokenCryptoConfigError extends Error {}
@@ -41,4 +42,32 @@ export function decryptToken(encoded: string, keyB64: string): string {
   decipher.setAuthTag(Buffer.from(tagB64, "base64"));
   const plaintext = Buffer.concat([decipher.update(Buffer.from(dataB64, "base64")), decipher.final()]);
   return plaintext.toString("utf8");
+}
+
+function isBase64(value: string): boolean {
+  return value.length % 4 === 0 && /^[A-Za-z0-9+/]*=*$/.test(value);
+}
+
+// Distinguishes this module's own iv.tag.ciphertext encoding from a raw
+// plaintext token by checking the first two segments decode to exactly the
+// IV/tag byte lengths this module always produces — not just "3 dot-joined
+// base64-looking parts", since an opaque provider token is vanishingly
+// unlikely to coincidentally match on byte length too.
+export function looksEncrypted(value: string): boolean {
+  const parts = value.split(".");
+  if (parts.length !== 3 || !parts.every(isBase64)) return false;
+  const [ivB64, tagB64] = parts;
+  return Buffer.from(ivB64, "base64").length === IV_BYTES && Buffer.from(tagB64, "base64").length === TAG_BYTES;
+}
+
+// Migration tolerance (HRA-352 follow-up): a token row written before this
+// module existed stores a raw plaintext value, not this encoding. Rather
+// than a separate one-off migration script (which would need the key at
+// migration time, outside the app's normal request path), every read
+// tolerates that shape and passes it through unchanged — encryptToken()'s
+// own output can never collide with a real plaintext OAuth token, and the
+// row is naturally upgraded to encrypted the next time saveToken() writes it
+// (e.g. on the token's next refresh, which always encrypts on write).
+export function safeDecryptToken(value: string, keyB64: string): string {
+  return looksEncrypted(value) ? decryptToken(value, keyB64) : value;
 }

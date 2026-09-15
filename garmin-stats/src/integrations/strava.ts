@@ -15,8 +15,9 @@
 
 import type { Queryable } from "../db/query.ts";
 import { requireStravaConfig, requireIntegrationEncryptionConfig, type Config } from "../config.ts";
-import { encryptToken, decryptToken } from "../domain/token-crypto.ts";
+import { encryptToken, safeDecryptToken } from "../domain/token-crypto.ts";
 import { isProviderAccountConflict, ProviderAccountConflictError } from "./provider-account-conflict.ts";
+import { invalidatePendingOauthStates } from "../http/oauth.ts";
 import type { StravaTokenRow } from "../db.ts";
 
 const AUTH_URL  = "https://www.strava.com/oauth/authorize";
@@ -82,7 +83,7 @@ async function refreshToken(config: Config, db: Queryable, userId: string, token
   const { client_id, client_secret } = requireStravaConfig(config);
   const body = await requestToken(new URLSearchParams({
     client_id, client_secret,
-    refresh_token: decryptToken(token.refresh_token, key), grant_type: "refresh_token",
+    refresh_token: safeDecryptToken(token.refresh_token, key), grant_type: "refresh_token",
   }));
   await saveToken(db, userId, config, body);
   return body.access_token;
@@ -100,7 +101,13 @@ export async function getValidToken(config: Config, db: Queryable, userId: strin
   const token = await loadToken(db, userId);
   if (!token) throw new Error("No Strava connection for this account. Connect it from the dashboard first.");
   return (token.expires_at - Math.floor(Date.now() / 1000) < 300)
-    ? refreshToken(config, db, userId, token) : decryptToken(token.access_token, key);
+    ? refreshToken(config, db, userId, token) : safeDecryptToken(token.access_token, key);
+}
+
+// A running sync job's connection-active checkpoint (HRA-352 follow-up) —
+// see withings.ts's isConnectionActive for the full rationale.
+export function isConnectionActive(db: Queryable, userId: string): Promise<boolean> {
+  return db.get("SELECT 1 FROM strava_tokens WHERE user_id = $1", [userId]).then(row => row !== undefined);
 }
 
 export interface StravaStatus {
@@ -136,7 +143,8 @@ export async function getTokenStatus(config: Config, db: Queryable, userId: stri
 // deauthorize endpoint, then always remove the local credential regardless
 // of whether the remote call succeeded — a failed remote revoke must never
 // leave the local connection looking active. Never touches imported
-// activities.
+// activities. Also invalidates any login flow this owner started but never
+// completed for this provider — see withings.ts's disconnect() for why.
 export async function disconnect(config: Config, db: Queryable, userId: string): Promise<boolean> {
   const { key } = requireIntegrationEncryptionConfig(config);
   const token = await loadToken(db, userId);
@@ -145,10 +153,11 @@ export async function disconnect(config: Config, db: Queryable, userId: string):
       await fetch(DEAUTHORIZE_URL, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ access_token: decryptToken(token.access_token, key) }).toString(),
+        body: new URLSearchParams({ access_token: safeDecryptToken(token.access_token, key) }).toString(),
       });
     } catch { /* best-effort — local revocation below is what actually matters */ }
   }
   const deleted = await db.run("DELETE FROM strava_tokens WHERE user_id = $1", [userId]);
+  await invalidatePendingOauthStates(db, userId, "strava");
   return deleted > 0;
 }

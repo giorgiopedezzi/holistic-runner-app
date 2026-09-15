@@ -6,8 +6,9 @@
 
 import { loadConfig, getArg, hasFlag } from "../config.ts";
 import { openPostgresDatabase } from "../db/postgres.ts";
+import { clientQueryable } from "../db/query.ts";
 import { FOUNDER_USER_ID } from "../db/founder.ts";
-import { getValidToken } from "../integrations/withings.ts";
+import { getValidToken, isConnectionActive } from "../integrations/withings.ts";
 import type { BodyMeasurementRow } from "../db.ts";
 
 const config  = loadConfig();
@@ -136,9 +137,13 @@ async function main(): Promise<void> {
   const groups = await fetchMeasurements(accessToken, startTs, endTs);
   console.log(`  Total groups: ${groups.length}`);
 
-  let imported = 0, skipped = 0;
+  let imported = 0, skipped = 0, abortedByDisconnect = false;
   await db.transaction(async client => {
     for (const grp of groups) {
+      // HRA-352: re-checked before every write, not just once up front — a
+      // disconnect landing mid-run must stop new provider-derived state from
+      // this point on, not just block a *future* sync from starting.
+      if (!(await isConnectionActive(clientQueryable(client), USER_ID))) { abortedByDisconnect = true; break; }
       const row = decodeGroup(grp, heightAt(heightHistory, grp.date));
       if (!row) { skipped++; continue; }
       const info = await client.query(`INSERT INTO body_measurements (user_id, measured_at, date_only, weight_kg, fat_ratio, fat_mass_kg, muscle_mass_kg, hydration_kg, bone_mass_kg, bmi, heart_rate) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (user_id, measured_at) DO NOTHING`, [USER_ID, row.measured_at, row.date_only, row.weight_kg, row.fat_ratio, row.fat_mass_kg, row.muscle_mass_kg, row.hydration_kg, row.bone_mass_kg, row.bmi, row.heart_rate]);
@@ -150,6 +155,10 @@ async function main(): Promise<void> {
   });
 
   console.log(`\nResults:\n  Imported : ${imported}\n  Skipped  : ${skipped}`);
+  if (abortedByDisconnect) {
+    await db.close();
+    throw new Error("Withings connection was disconnected during this sync — records already imported are kept, remaining records were not processed.");
+  }
   await db.close();
 }
 

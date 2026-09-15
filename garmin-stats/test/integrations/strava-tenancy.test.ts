@@ -10,7 +10,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { loadConfig } from "../../src/config.ts";
-import { exchangeCode, loadToken, disconnect } from "../../src/integrations/strava.ts";
+import { exchangeCode, loadToken, disconnect, getTokenStatus } from "../../src/integrations/strava.ts";
 import { ProviderAccountConflictError } from "../../src/integrations/provider-account-conflict.ts";
 import { createTestDb } from "../helpers/db.ts";
 
@@ -94,6 +94,25 @@ test("access/refresh tokens are stored encrypted, not as plaintext", async () =>
     const raw = await db.get<{ access_token: string }>("SELECT access_token FROM strava_tokens WHERE user_id = $1", [userId]);
     assert.ok(raw);
     assert.notEqual(raw.access_token, "the-real-strava-access-token");
+  } finally { await cleanup(); }
+});
+
+test("a two-user adversarial check: owner B's status/scope is never derived from owner A's connection", async () => {
+  const { db, cleanup } = await createTestDb();
+  try {
+    const config = loadConfig();
+    const userA = await makeUser(db);
+    const userB = await makeUser(db);
+    mockAuthorizationExchange(111, "access-a");
+    await exchangeCode(config, db, userA, "code-a");
+    // userB never connects.
+
+    const statusA = await getTokenStatus(config, db, userA);
+    const statusB = await getTokenStatus(config, db, userB);
+    assert.equal(statusA.present, true);
+    assert.equal(statusA.scope, "activity:read_all");
+    assert.deepEqual(statusB, { present: false, valid: false });
+    assert.equal("scope" in statusB, false);
   } finally { await cleanup(); }
 });
 

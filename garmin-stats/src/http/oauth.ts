@@ -40,6 +40,20 @@ export async function consumeOauthState(db: Queryable, token: string, provider: 
   return row ? { userId: row.user_id } : null;
 }
 
+// Disconnect-vs-in-flight-login closer (HRA-352 follow-up): a login flow
+// started before disconnect but completed after it must not resurrect the
+// connection it was meant to (re)create. Called from
+// integrations/{withings,strava}.ts's disconnect() — marks every still-open
+// state for that (user, provider) consumed, so a late callback fails the
+// same single-use check consumeOauthState() already enforces for a genuine
+// replay, rather than needing a second mechanism.
+export async function invalidatePendingOauthStates(db: Queryable, userId: string, provider: OauthProvider): Promise<void> {
+  await db.run(
+    "UPDATE oauth_states SET consumed_at = now() WHERE user_id = $1 AND provider = $2 AND consumed_at IS NULL",
+    [userId, provider],
+  );
+}
+
 export function oauthCallbackPage(title: string, message: string, autoClose: boolean): string {
   return `<html><body style="font-family:sans-serif;padding:2rem"><h2>${title}</h2><p>${message}</p></body>${autoClose ? "<script>window.close()</script>" : ""}</html>`;
 }

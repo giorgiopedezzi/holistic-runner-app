@@ -13,6 +13,7 @@ import {
   requireWithingsConfig,
   requireStravaConfig,
   requireOllamaConfig,
+  requireIntegrationEncryptionConfig,
 } from "../src/config.ts";
 
 const ENV_KEYS = [
@@ -21,6 +22,7 @@ const ENV_KEYS = [
   "STRAVA_CLIENT_ID", "STRAVA_CLIENT_SECRET", "STRAVA_REDIRECT_URI",
   "SYNC_AUTO_ON_START", "SYNC_SKIP_DUPLICATES",
   "OLLAMA_HOST", "OLLAMA_MODEL",
+  "INTEGRATION_TOKEN_ENCRYPTION_KEY", "AUTH_REGISTRATION_MODE",
 ] as const;
 
 // Snapshot/restore so each test's env mutations never leak into another test
@@ -116,5 +118,40 @@ test("requireGarminConfig throws naming the missing env var", () => {
   withEnv({ DB_PATH: "./garmin.db" }, () => {
     const config = loadConfig();
     assert.throws(() => requireGarminConfig(config), /GARMIN_DEVICE_NAME/);
+  });
+});
+
+test("requireIntegrationEncryptionConfig throws naming the missing env var", () => {
+  withEnv({ DB_PATH: "./garmin.db" }, () => {
+    const config = loadConfig();
+    assert.throws(() => requireIntegrationEncryptionConfig(config), /INTEGRATION_TOKEN_ENCRYPTION_KEY/);
+  });
+});
+
+test("requireIntegrationEncryptionConfig succeeds when the key is set", () => {
+  withEnv({ DB_PATH: "./garmin.db", INTEGRATION_TOKEN_ENCRYPTION_KEY: "a-key-value" }, () => {
+    const config = loadConfig();
+    assert.deepEqual(requireIntegrationEncryptionConfig(config), { key: "a-key-value" });
+  });
+});
+
+// HRA-352 AC (registration gate): registration must stay disabled by
+// default — AUTH_REGISTRATION_MODE unset (the real deployment default,
+// .env.example never sets it) must resolve to "founders_only", never "open".
+test("registration mode defaults to founders_only when AUTH_REGISTRATION_MODE is unset", () => {
+  withEnv({ DB_PATH: "./garmin.db" }, () => {
+    assert.equal(loadConfig().auth.registrationMode, "founders_only");
+  });
+});
+
+test("registration mode stays founders_only for any value other than the exact literal \"open\"", () => {
+  withEnv({ DB_PATH: "./garmin.db", AUTH_REGISTRATION_MODE: "Open" }, () => {
+    assert.equal(loadConfig().auth.registrationMode, "founders_only");
+  });
+});
+
+test("registration mode is only ever \"open\" via an explicit, exact AUTH_REGISTRATION_MODE=open", () => {
+  withEnv({ DB_PATH: "./garmin.db", AUTH_REGISTRATION_MODE: "open" }, () => {
+    assert.equal(loadConfig().auth.registrationMode, "open");
   });
 });
