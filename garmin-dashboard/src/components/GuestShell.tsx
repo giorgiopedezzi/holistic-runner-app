@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Compass, LogIn, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api } from "@/api/client";
+import { GuestOverview } from "@/components/GuestOverview";
 
 type ViewportTier = "desktop" | "tablet" | "phone";
 type SidebarMode = "open" | "icon" | "hidden";
@@ -70,9 +71,7 @@ export function GuestShell() {
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
         {tier === "phone" && sidebarMode === "hidden" && <header className="hra-mobile-header"><button type="button" className="hra-mobile-header-trigger hra-nav-hover" onClick={toggleSidebar} aria-label={t("nav.openSidebar", "Open navigation")}><Menu size={18} aria-hidden="true" /></button></header>}
         <main className="hra-app-main">
-          <p className="hra-label">{t("guest.eyebrow", "Runs Free guest")}</p>
-          <h1 className="hra-section-title">{t("guest.title", "Follow the founder journey")}</h1>
-          <p className="hra-text-secondary text-body max-w-2xl">{t("guest.description", "Explore Runs Free as a guest. The published founder journey is being prepared for this space.")}</p>
+          <GuestOverview />
           <div className="mt-6 flex flex-wrap gap-3">
             <button type="button" className="hra-btn" onClick={signIn("google")}>{t("auth.continueWithGoogle", "Continue with Google")}</button>
             <button type="button" className="hra-nav-hover hra-border-strong rounded-lg px-4 py-2 text-label" onClick={signIn("email")}>{t("auth.continueWithEmailCode", "Continue with email code")}</button>

@@ -12,7 +12,7 @@ describe("AuthGate", () => {
 
     render(<AuthGate><div>Private dashboard</div></AuthGate>);
 
-    expect(await screen.findByRole("heading", { name: "Follow the founder journey" })).toBeInTheDocument();
+    expect(await screen.findByText("Founder journey")).toBeInTheDocument();
     expect(screen.queryByText("Private dashboard")).not.toBeInTheDocument();
     expect(screen.queryByText(/you.?re signed out/i)).not.toBeInTheDocument();
     expect(api.auth.session).toHaveBeenCalledTimes(1);
@@ -28,7 +28,7 @@ describe("AuthGate", () => {
     vi.spyOn(api.auth, "session").mockRejectedValue(new ApiError(401, "Authentication is required."));
     const { container } = render(<AuthGate><div>Private dashboard</div></AuthGate>);
 
-    await screen.findByRole("heading", { name: "Follow the founder journey" });
+    await screen.findByText("Founder journey");
     const sidebar = () => container.querySelector(".hra-sidebar");
     expect(sidebar()).toHaveAttribute("data-tier", "phone");
     expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
