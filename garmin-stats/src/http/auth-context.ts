@@ -21,7 +21,7 @@ import { requireAuthConfig } from "../config.ts";
 import { remoteJwks, verifyAccessToken, TokenValidationError, type ValidatedTokenIdentity } from "../domain/identity/token-validation.ts";
 import type { UserRole } from "../db.ts";
 
-export interface RequestIdentity { userId: string; role: UserRole }
+export interface RequestIdentity { userId: string; role: UserRole; sessionId: string | null }
 
 // Request identity is derived once at the HTTP boundary and kept off the
 // client-controlled request object. Controllers must obtain it through this
@@ -84,7 +84,7 @@ async function identityFromBearerToken(ctx: AppContext, token: string): Promise<
     { mode: ctx.config.auth.registrationMode, founderAllowlist: ctx.config.auth.founderAllowlist },
   );
   if (resolution.outcome !== "authenticated") throw unauthorized();
-  return { userId: resolution.user.id, role: resolution.user.role };
+  return { userId: resolution.user.id, role: resolution.user.role, sessionId: null };
 }
 
 export async function deriveRequestIdentity(req: http.IncomingMessage, ctx: AppContext): Promise<RequestIdentity> {
@@ -99,7 +99,7 @@ export async function deriveRequestIdentity(req: http.IncomingMessage, ctx: AppC
   if (sessionCookie) {
     const identity = await ctx.services.identity.validateSessionCookie(sessionCookie, ctx.config.auth.sessionIdleSeconds);
     if (!identity) throw unauthorized();
-    return { userId: identity.userId, role: identity.role };
+    return { userId: identity.userId, role: identity.role, sessionId: identity.sessionId };
   }
 
   const bearerToken = readBearerToken(req);

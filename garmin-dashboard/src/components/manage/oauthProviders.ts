@@ -12,6 +12,7 @@ export const WITHINGS_PROVIDER: OAuthProvider = {
     tokenStatus: api.body.tokenStatus,
     loginUrl:    api.body.loginUrl,
     sync:        api.body.sync,
+    disconnect:  api.body.disconnect,
   },
 };
 
@@ -24,5 +25,6 @@ export const STRAVA_PROVIDER: OAuthProvider = {
     tokenStatus: api.strava.tokenStatus,
     loginUrl:    api.strava.loginUrl,
     sync:        api.strava.sync,
+    disconnect:  api.strava.disconnect,
   },
 };

@@ -26,6 +26,7 @@ import { createFeedbackRepo } from "./repositories/feedback.repo.ts";
 import { createWorkoutAssociationsRepo } from "./repositories/workout-associations.repo.ts";
 import { createWorkoutSegmentAlignmentsRepo } from "./repositories/workout-segment-alignments.repo.ts";
 import { createIdentityRepo } from "./repositories/identity.repo.ts";
+import { createAccountPrivacyRepo } from "./repositories/account-privacy.repo.ts";
 import { createActivitiesService } from "./services/activities.service.ts";
 import { createBodyService } from "./services/body.service.ts";
 import { createClassificationService } from "./services/classification.service.ts";
@@ -35,6 +36,7 @@ import { createPlanInstancesService } from "./services/plan-instances.service.ts
 import { createWorkoutAssociationsService } from "./services/workout-associations.service.ts";
 import { createReportingService } from "./services/reporting.service.ts";
 import { createIdentityService } from "./services/identity.service.ts";
+import { createAccountPrivacyService } from "./services/account-privacy.service.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
@@ -70,6 +72,7 @@ const feedbackRepo      = createFeedbackRepo(db);
 const workoutAssociationsRepo = createWorkoutAssociationsRepo(db);
 const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(db);
 const identityRepo = createIdentityRepo(db);
+const accountPrivacyRepo = createAccountPrivacyRepo(db);
 
 // ── services (business logic — no http, no SQL of their own) ─────────────────
 const activitiesService     = createActivitiesService(db, activitiesRepo);
@@ -81,6 +84,12 @@ const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
 const workoutAssociationsService = createWorkoutAssociationsService(db);
 const reportingService = createReportingService(db, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
 const identityService = createIdentityService(db, identityRepo);
+const accountPrivacyService = createAccountPrivacyService(db, accountPrivacyRepo, identityRepo);
+
+// HRA-354: queued account deletion is deliberately asynchronous so access is
+// revoked before physical purge. Failures stay durable and retry on the next
+// pass; never turn a failed deletion back into a usable account.
+setInterval(() => { void accountPrivacyService.processQueuedDeletions(); void accountPrivacyService.cleanupExpiredExports(); }, 60_000).unref();
 
 // ── always-on Withings OAuth callback server (port 3002) ─────────────────────
 startWithingsCallbackServer(config, db);
@@ -97,13 +106,13 @@ const server = http.createServer(createApiHandler({
     activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
     feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
     workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
-    identity: identityRepo,
+    identity: identityRepo, accountPrivacy: accountPrivacyRepo,
   },
   services: {
     activities: activitiesService, body: bodyService, classification: classificationService,
     sync: syncService, device: deviceService, planInstances: planInstancesService,
     workoutAssociations: workoutAssociationsService, reporting: reportingService,
-    identity: identityService,
+    identity: identityService, accountPrivacy: accountPrivacyService,
   },
 }));
 

@@ -22,6 +22,7 @@ import { useUrlState } from "@/hooks/useUrlState";
 // parameter always stored/labeled in km/h regardless of the app's unit system,
 // so its live pace preview must stay metric-only.
 import { fmtMinSecRaw } from "@/utils/fmt";
+import { AccountPrivacySection } from "@/components/AccountPrivacySection";
 
 // Theme swatch labels only — the actual colors are CSS (index.css's
 // [data-theme-preview="…"] blocks), not duplicated here as hex literals
@@ -574,6 +575,7 @@ export function SettingsTab({ appearance }: Props) {
           </>
         )}
       </AccordionCard>
+      <AccountPrivacySection />
     </div>
   );
 }

@@ -19,6 +19,7 @@ import { requireWithingsConfig, requireStravaConfig } from "../config.ts";
 import { getAuthUrl, getTokenStatus, disconnect as disconnectWithings } from "../integrations/withings.ts";
 import { getAuthUrl as getStravaAuthUrl, exchangeCode as exchangeStravaCode, getTokenStatus as getStravaTokenStatus, disconnect as disconnectStrava } from "../integrations/strava.ts";
 import { ProviderAccountConflictError } from "../integrations/provider-account-conflict.ts";
+import { unauthorized } from "../http/problem.ts";
 
 export function createIntegrationsController(ctx: AppContext) {
   const { config, db } = ctx;
@@ -34,7 +35,13 @@ export function createIntegrationsController(ctx: AppContext) {
     return send(res, { url: getAuthUrl(config, state) });
   };
 
-  const withingsDisconnect: Handler = async (req, res) => send(res, { disconnected: await disconnectWithings(db, requestIdentity(req).userId) });
+  const withingsDisconnect: Handler = async (req, res) => {
+    const identity = requestIdentity(req);
+    if (!(await ctx.services.identity.requireRecentAuthentication(identity.userId, identity.sessionId))) throw unauthorized();
+    const disconnected = await disconnectWithings(db, identity.userId);
+    await ctx.repos.identity.recordSecurityEvent({ eventType: "integration_disconnected", userId: identity.userId, externalIssuer: null, externalSubject: null, detail: "withings" });
+    send(res, { disconnected });
+  };
 
   const stravaStatus: Handler = async (req, res) => send(res, await getStravaTokenStatus(config, db, requestIdentity(req).userId));
 
@@ -44,7 +51,13 @@ export function createIntegrationsController(ctx: AppContext) {
     return send(res, { url: getStravaAuthUrl(config, state) });
   };
 
-  const stravaDisconnect: Handler = async (req, res) => send(res, { disconnected: await disconnectStrava(config, db, requestIdentity(req).userId) });
+  const stravaDisconnect: Handler = async (req, res) => {
+    const identity = requestIdentity(req);
+    if (!(await ctx.services.identity.requireRecentAuthentication(identity.userId, identity.sessionId))) throw unauthorized();
+    const disconnected = await disconnectStrava(config, db, identity.userId);
+    await ctx.repos.identity.recordSecurityEvent({ eventType: "integration_disconnected", userId: identity.userId, externalIssuer: null, externalSubject: null, detail: "strava" });
+    send(res, { disconnected });
+  };
 
   // Deliberately not behind requireAuth — see the module doc comment. The
   // state token itself names the owner (AC4); requiring a live session here

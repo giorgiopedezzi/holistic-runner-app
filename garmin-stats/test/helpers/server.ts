@@ -29,6 +29,7 @@ import { createFeedbackRepo } from "../../src/repositories/feedback.repo.ts";
 import { createWorkoutAssociationsRepo } from "../../src/repositories/workout-associations.repo.ts";
 import { createWorkoutSegmentAlignmentsRepo } from "../../src/repositories/workout-segment-alignments.repo.ts";
 import { createIdentityRepo } from "../../src/repositories/identity.repo.ts";
+import { createAccountPrivacyRepo } from "../../src/repositories/account-privacy.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
@@ -38,6 +39,7 @@ import { createPlanInstancesService } from "../../src/services/plan-instances.se
 import { createWorkoutAssociationsService } from "../../src/services/workout-associations.service.ts";
 import { createReportingService } from "../../src/services/reporting.service.ts";
 import { createIdentityService } from "../../src/services/identity.service.ts";
+import { createAccountPrivacyService } from "../../src/services/account-privacy.service.ts";
 import { FOUNDER_USER_ID } from "../../src/db/founder.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
@@ -70,7 +72,9 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const workoutAssociationsRepo = createWorkoutAssociationsRepo(runtimeDb);
   const workoutSegmentAlignmentsRepo = createWorkoutSegmentAlignmentsRepo(runtimeDb);
   const identityRepo = createIdentityRepo(runtimeDb);
+  const accountPrivacyRepo = createAccountPrivacyRepo(runtimeDb);
   const identityService = createIdentityService(runtimeDb, identityRepo);
+  const accountPrivacyService = createAccountPrivacyService(runtimeDb, accountPrivacyRepo, identityRepo);
   const founderSession = await identityService.rotateSession(FOUNDER_USER_ID, { idleSeconds: 1800, absoluteSeconds: 43200 }, null);
 
   const handler = createApiHandler({
@@ -86,7 +90,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       activityTypes: activityTypesRepo, planTemplates: planTemplatesRepo, planInstances: planInstancesRepo,
       feedback: feedbackRepo, workoutAssociations: workoutAssociationsRepo,
       workoutSegmentAlignments: workoutSegmentAlignmentsRepo,
-      identity: identityRepo,
+      identity: identityRepo, accountPrivacy: accountPrivacyRepo,
     },
     services: {
       activities: createActivitiesService(runtimeDb, activitiesRepo),
@@ -97,7 +101,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       planInstances: createPlanInstancesService(runtimeDb, planInstancesRepo),
       workoutAssociations: createWorkoutAssociationsService(runtimeDb),
       reporting: createReportingService(runtimeDb, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
-      identity: identityService,
+      identity: identityService, accountPrivacy: accountPrivacyService,
     },
   });
 
@@ -112,7 +116,8 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     if (!headers.has("cookie")) headers.set("cookie", `__Host-runsfree_session=${founderSession}`);
     headers.set("origin", "http://test.invalid");
     if (!["GET", "HEAD"].includes((init?.method ?? "GET").toUpperCase())) {
-      headers.set("x-runsfree-csrf", createHmac("sha256", "runsfree-session-csrf-v1").update(founderSession).digest("base64url"));
+      const session = /(?:__Host-runsfree_session|runsfree_session)=([^;]+)/.exec(headers.get("cookie") ?? "")?.[1] ?? founderSession;
+      headers.set("x-runsfree-csrf", createHmac("sha256", "runsfree-session-csrf-v1").update(decodeURIComponent(session)).digest("base64url"));
     }
     const res = await fetch(baseUrl + p, { ...init, headers });
     const text = await res.text();

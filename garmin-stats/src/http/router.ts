@@ -13,6 +13,7 @@ import { ApiProblem, notFound, internal, unauthorized } from "./problem.ts";
 import { demoGuarded } from "./demo-guard.ts";
 import { authenticateRequest } from "./auth-context.ts";
 import { createAuthController, expectedCsrfToken } from "../controllers/auth.controller.ts";
+import { createAccountPrivacyController } from "../controllers/account-privacy.controller.ts";
 import { createActivitiesController } from "../controllers/activities.controller.ts";
 import { createTrendsController } from "../controllers/trends.controller.ts";
 import { createBodyController } from "../controllers/body.controller.ts";
@@ -44,6 +45,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const sourceFiles  = createSourceFilesController(ctx);
   const reporting    = createReportingController(ctx);
   const auth         = createAuthController(ctx);
+  const accountPrivacy = createAccountPrivacyController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -52,7 +54,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     route === "/api/v1/range" || route === "/api/v1/summary" || route === "/api/v1/weekly" || route === "/api/v1/monthly" ||
     route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
     route.startsWith("/api/v1/date-ranges") || route.startsWith("/api/v1/settings") || route.startsWith("/api/v1/plan-templates") ||
-    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days" ||
+    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days" || route.startsWith("/api/v1/account") ||
     // HRA-352: provider connections/credentials and sync/import jobs are
     // owner-scoped — deliberately NOT /api/v1/strava/callback (its owner
     // comes from server-side OAuth state, not the request's own identity —
@@ -110,6 +112,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/auth/login")               return await auth.login(req, res, url);
         if (route === "/api/v1/auth/callback")            return await auth.callback(req, res, url);
         if (route === "/api/v1/auth/session")             return await auth.session(req, res, url);
+        if (/^\/api\/v1\/account\/exports\/[0-9a-f-]+$/.test(route)) return await accountPrivacy.downloadExport(req, res, url);
         if (route === "/api/v1/docs")                     return await docs.ui(req, res, url);
         if (route === "/api/v1/openapi.json")             return await docs.spec(req, res, url);
         if (route === "/api/v1/range")                    return await activities.range(req, res, url);
@@ -177,6 +180,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       // parent /settings — a path claiming "all settings" that only touches a subset
       // is dishonest about scope (rest-api §1/§2, HRA-40).
       if (req.method === "PUT") {
+        if (route === "/api/v1/account/profile")          return await accountPrivacy.profile(req, res, url);
         if (route === "/api/v1/settings/outliers")        return await settings.updateOutliers(req, res, url);
         if (route === "/api/v1/settings/thresholds")      return await settings.updateThresholds(req, res, url);
         if (route === "/api/v1/settings/theme")           return await settings.updateTheme(req, res, url);
@@ -202,6 +206,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
 
       if (req.method === "POST") {
         if (route === "/api/v1/auth/logout")               return await auth.logout(req, res, url);
+        if (route === "/api/v1/account/sessions/revoke-others") return await accountPrivacy.revokeOthers(req, res, url);
+        if (route === "/api/v1/account/exports")          return await accountPrivacy.createExport(req, res, url);
+        if (route === "/api/v1/account/deletion-request") return await accountPrivacy.requestDeletion(req, res, url);
         if (route === "/api/v1/sync/garmin")              return await demo(sync.garmin)(req, res, url);
         if (route === "/api/v1/sync/withings")            return await demo(sync.withings)(req, res, url);
         if (route === "/api/v1/sync/strava")              return await demo(sync.strava)(req, res, url);

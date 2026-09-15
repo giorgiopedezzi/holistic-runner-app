@@ -22,6 +22,7 @@
     { "name": "locales", "description": "i18n translation bundles" },
     { "name": "source-files", "description": "Server-side source-file text extraction (.txt/.csv/.pdf) for hand-off into training-plan template generation (HRA-327)" },
     { "name": "auth", "description": "Auth0 confidential-web BFF login, opaque application session, CSRF bootstrap, and logout" },
+    { "name": "account", "description": "Owner-scoped profile, session, export, and deletion lifecycle controls" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
@@ -693,6 +694,21 @@
     },
     "/api/v1/auth/logout": {
       "post": { "tags": ["auth"], "summary": "Revoke the current opaque server session and clear its cookie", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "X-RunsFree-CSRF", "in": "header", "required": true, "schema": { "type": "string" } }], "responses": { "204": { "description": "Session cleared; the client returns to its signed-out bootstrap state." }, "401": { "description": "Missing or invalid session/CSRF proof." } } }
+    },
+    "/api/v1/account/profile": {
+      "put": { "tags": ["account"], "summary": "Replace the caller's supported account profile fields", "security": [{ "runsFreeSession": [] }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "display_name": { "type": ["string", "null"] }, "locale": { "type": ["string", "null"] }, "unit_system": { "type": ["string", "null"], "enum": ["metric", "imperial", null] }, "timezone": { "type": ["string", "null"] } } } } } }, "responses": { "200": { "description": "Sanitized profile; never exposes provider or session identifiers." }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+    },
+    "/api/v1/account/sessions/revoke-others": {
+      "post": { "tags": ["account"], "summary": "Revoke every session except the current one", "description": "Requires a session issued within the previous five minutes; no session identifiers are returned.", "security": [{ "runsFreeSession": [] }], "responses": { "200": { "description": "Other sessions revoked." }, "401": { "description": "Missing or non-recent authentication." } } }
+    },
+    "/api/v1/account/exports": {
+      "post": { "tags": ["account"], "summary": "Capture an owner-scoped personal-data export", "description": "The snapshot has a versioned manifest, excludes authentication/integration secrets and other users' data, and produces a secret-bound link expiring after 24 hours.", "security": [{ "runsFreeSession": [] }], "responses": { "201": { "description": "Expiring download link." } } }
+    },
+    "/api/v1/account/exports/{id}": {
+      "get": { "tags": ["account"], "summary": "Download one current user's unexpired export", "description": "Requires both the caller's authenticated owner context and the unguessable link token. Cross-user, expired, and invalid links all return the same 404.", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }, { "name": "token", "in": "query", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Personal-data JSON export.", "content": { "application/json": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/account/deletion-request": {
+      "post": { "tags": ["account"], "summary": "Queue idempotent account deletion", "description": "Requires exact confirmation and a session issued within the previous five minutes. It immediately sets deletion_pending, revokes all sessions and integration credentials, and queues durable removal; retained backups are not immediately physically erased.", "security": [{ "runsFreeSession": [] }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["confirmation"], "properties": { "confirmation": { "type": "string", "enum": ["DELETE MY ACCOUNT"] } } } } } }, "responses": { "202": { "description": "Deletion request queued." }, "401": { "description": "Missing or non-recent authentication." }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/range": {
       "get": { "tags": ["activities"], "summary": "Min/max activity date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }

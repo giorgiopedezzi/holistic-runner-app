@@ -102,6 +102,20 @@ export function createIdentityService(db: PostgresDatabase, identity: IdentityRe
     await identity.recordSecurityEvent({ eventType: "session_revoked", userId: session.user_id, externalIssuer: null, externalSubject: null, detail: "logout" });
   }
 
+  async function revokeOtherSessions(userId: string, currentSessionId: string): Promise<void> {
+    await identity.revokeOtherSessions(userId, currentSessionId, new Date());
+    await identity.recordSecurityEvent({ eventType: "other_sessions_revoked", userId, externalIssuer: null, externalSubject: null, detail: "current_session_retained" });
+  }
+
+  // Recent sign-in is the approved protection for destructive self-service
+  // actions. It is intentionally checked server-side against opaque session
+  // state, never supplied by a browser field or a client clock.
+  async function requireRecentAuthentication(userId: string, sessionId: string | null): Promise<boolean> {
+    if (!sessionId) return false;
+    const session = await identity.getSession(sessionId);
+    return session?.user_id === userId && !session.revoked_at && Date.now() - new Date(session.created_at).getTime() <= 5 * 60_000;
+  }
+
   // The session half of the request-identity boundary (AC6/AC8/AC11/AC12).
   // Returns null for EVERY failure mode (unknown id, secret mismatch,
   // expired, revoked, disabled account) — callers must not distinguish
@@ -122,6 +136,6 @@ export function createIdentityService(db: PostgresDatabase, identity: IdentityRe
     return { userId: user.id, role: user.role, sessionId: session.id };
   }
 
-  return { resolveExternalLogin, updateProfile, rotateSession, revokeSessionByCookie, validateSessionCookie };
+  return { resolveExternalLogin, updateProfile, rotateSession, revokeSessionByCookie, revokeOtherSessions, requireRecentAuthentication, validateSessionCookie };
 }
 export type IdentityService = ReturnType<typeof createIdentityService>;

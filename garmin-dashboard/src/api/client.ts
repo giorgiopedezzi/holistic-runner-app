@@ -169,12 +169,19 @@ function idsBody(ids: number[]) { return { ids }; }
 export const api = {
   auth: {
     session: async () => {
-      const session = await request<{ user: { id: string; display_name: string | null; locale: string | null; role: "user" | "admin" }; entitlements: string[]; csrfToken: string }>("/api/v1/auth/session");
+      const session = await request<{ user: { id: string; display_name: string | null; locale: string | null; unit_system: "metric" | "imperial" | null; timezone: string | null; role: "user" | "admin" }; entitlements: string[]; csrfToken: string }>("/api/v1/auth/session");
       csrfToken = session.csrfToken;
       return session;
     },
     login: () => { window.location.assign(`${BASE}/api/v1/auth/login`); },
     logout: async () => { await request<null>("/api/v1/auth/logout", "POST"); csrfToken = null; },
+  },
+  account: {
+    updateProfile: (body: { display_name: string | null; locale: string | null; unit_system: "metric" | "imperial" | null; timezone: string | null }) =>
+      request<{ display_name: string | null; locale: string | null; unit_system: "metric" | "imperial" | null; timezone: string | null }>("/api/v1/account/profile", "PUT", undefined, body),
+    revokeOtherSessions: () => request<{ revoked: boolean }>("/api/v1/account/sessions/revoke-others", "POST"),
+    createExport: () => request<{ expires_at: string; download_url: string }>("/api/v1/account/exports", "POST"),
+    requestDeletion: () => request<{ status: string }>("/api/v1/account/deletion-request", "POST", undefined, { confirmation: "DELETE MY ACCOUNT" }),
   },
   garmin: {
     range:       ()                          => request<DateRange>("/api/v1/range"),
@@ -253,6 +260,7 @@ export const api = {
     sync:        (from?: string, to?: string) => request<SyncResult>("/api/v1/sync/withings", "POST", from && to ? rp(from, to) : undefined),
     tokenStatus: ()                          => request<WithingsStatus>("/api/v1/withings/status"),
     loginUrl:    ()                          => request<{ url: string }>("/api/v1/withings/login-url"),
+    disconnect:  ()                          => request<{ disconnected: boolean }>("/api/v1/withings/connection", "DELETE"),
     trash:       async ()                    => (await request<Paginated<TrashedBodyMeasurement>>("/api/v1/body-measurements/trash", "GET", { limit: ALL })).data,
     restore:     (ids: number[])             => request<RestoreResult>("/api/v1/body-measurements/restore", "POST", undefined, idsBody(ids)),
     purge:       (ids: number[])             => request<PurgeResult>("/api/v1/body-measurements/purge", "POST", undefined, idsBody(ids)),
@@ -261,6 +269,7 @@ export const api = {
     sync:        (from?: string, to?: string) => request<SyncResult>("/api/v1/sync/strava", "POST", from && to ? rp(from, to) : undefined),
     tokenStatus: ()                          => request<StravaStatus>("/api/v1/strava/status"),
     loginUrl:    ()                          => request<{ url: string }>("/api/v1/strava/login-url"),
+    disconnect:  ()                          => request<{ disconnected: boolean }>("/api/v1/strava/connection", "DELETE"),
   },
   settings: {
     get:    ()               => request<Settings>("/api/v1/settings"),

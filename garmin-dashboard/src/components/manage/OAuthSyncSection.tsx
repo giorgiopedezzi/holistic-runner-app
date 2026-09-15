@@ -25,6 +25,7 @@ export interface OAuthProvider {
     tokenStatus: () => Promise<OAuthTokenStatus>;
     loginUrl:    () => Promise<{ url: string }>;
     sync:        (from?: string, to?: string) => Promise<SyncResult>;
+    disconnect:  () => Promise<{ disconnected: boolean }>;
   };
 }
 
@@ -112,6 +113,18 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
     }
   }
 
+  async function disconnect() {
+    if (!window.confirm(t("manage.oauth.disconnectConfirm", `Disconnect ${label}? Future sync stops, but imported ${noun} stay in your account.`, { label, noun }))) return;
+    setMsg("");
+    try {
+      await api.disconnect();
+      await checkToken();
+      setMsg(t("manage.oauth.disconnected", `${label} disconnected. Existing ${noun} were kept.`, { label, noun }));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : t("manage.oauth.disconnectFailed", "Could not disconnect this integration."));
+    }
+  }
+
   const connected = token?.present === true && token?.valid === true;
   const canSync   = status !== "running" && connected && !demoMode;
 
@@ -150,6 +163,11 @@ export function OAuthSyncSection({ provider, range, savedRanges }: OAuthSyncSect
             : connected ? t("manage.oauth.reLogin", "Re-login")
             : t("manage.oauth.loginTo", `Login to ${label}`, { label })}
         </button>
+        {connected && (
+          <button className="hra-btn" data-variant="danger" onClick={disconnect}>
+            {t("manage.oauth.disconnect", `Disconnect ${label}`, { label })}
+          </button>
+        )}
 
         <button
           className="hra-btn"

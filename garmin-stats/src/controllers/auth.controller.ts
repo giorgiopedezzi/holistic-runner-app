@@ -108,7 +108,7 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
       const rawSession = cookie(req, SESSION_COOKIE) ?? cookie(req, LOCAL_SESSION_COOKIE);
       if (!user || !rawSession) throw unauthorized();
       const entitlements = await ctx.repos.identity.listEntitlements(user.id);
-      send(res, { user: { id: user.id, display_name: user.display_name, locale: user.locale, role: user.role }, entitlements: entitlements.map(row => row.entitlement), csrfToken: csrfToken(rawSession) });
+      send(res, { user: { id: user.id, display_name: user.display_name, locale: user.locale, unit_system: user.unit_system, timezone: user.timezone, role: user.role }, entitlements: entitlements.map(row => row.entitlement), csrfToken: csrfToken(rawSession) });
     },
     logout: async (req, res) => {
       const config = requireWebAuthConfig(ctx.config);

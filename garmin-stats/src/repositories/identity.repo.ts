@@ -69,6 +69,10 @@ export function createIdentityRepo(db: Queryable) {
     touchSessionLastSeen: (id: string, lastSeenAt: Date, idleExpiresAt: Date) =>
       db.run("UPDATE sessions SET last_seen_at = $1, idle_expires_at = $2 WHERE id = $3", [lastSeenAt.toISOString(), idleExpiresAt.toISOString(), id]),
     revokeSession: (id: string, revokedAt: Date) => db.run("UPDATE sessions SET revoked_at = $1 WHERE id = $2 AND revoked_at IS NULL", [revokedAt.toISOString(), id]),
+    revokeOtherSessions: (userId: string, currentSessionId: string, revokedAt: Date) => db.run(
+      "UPDATE sessions SET revoked_at = $1 WHERE user_id = $2 AND id <> $3 AND revoked_at IS NULL",
+      [revokedAt.toISOString(), userId, currentSessionId],
+    ),
 
     // ── entitlements (AC9: distinct from role) ───────────────────────────
     listEntitlements: (userId: string) => db.all<UserEntitlementRow>("SELECT user_id, entitlement, granted_at FROM user_entitlements WHERE user_id = $1", [userId]),
