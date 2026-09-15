@@ -4,7 +4,7 @@ import "@/i18n";
 import {
   CalendarDays, ListTodo, TrendingUp, Activity as ActivityIcon,
   HeartPulse, RefreshCw, Settings as SettingsIcon, MessageSquare,
-  PanelLeftClose, PanelLeftOpen, Menu, X,
+  PanelLeftClose, PanelLeftOpen, Menu, X, LogOut,
 } from "lucide-react";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
@@ -28,6 +28,8 @@ import { FeedbackTab }  from "@/components/FeedbackTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
+import { AuthGate } from "@/components/AuthGate";
+import { notify } from "@/utils/toast";
 
 // labelKey/fallback: the sidebar nav's own strings are the one concrete
 // pipeline example proving i18n end to end (HRA-104) — fallback is the
@@ -161,7 +163,7 @@ export default function App() {
   return (
     <SettingsProvider>
       <UnsavedGuardProvider>
-        <AppShell />
+        <AuthGate><AppShell /></AuthGate>
       </UnsavedGuardProvider>
     </SettingsProvider>
   );
@@ -289,6 +291,17 @@ function AppShell() {
   // picking a nav item (AC3) both route through this.
   function closeSidebarOverlay() {
     if (viewportTier === "phone") setSidebarMode("hidden");
+  }
+
+  async function logout() {
+    try {
+      await api.auth.logout();
+      window.location.assign("/");
+    } catch {
+      // The current opaque session remains server-authoritative; keep the UI
+      // truthful rather than claiming logout when the revoke call failed.
+      notify(t("auth.logoutFailed", "We couldn’t sign you out. Please try again."), "error");
+    }
   }
 
   // HRA-303 AC4: focus must return to the hamburger trigger once the phone
@@ -456,6 +469,10 @@ function AppShell() {
 
           <div className="hra-sidebar-group hra-sidebar-utility-group">
             {utilityTabs.map(renderNavItem)}
+            <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={logout}>
+              <span className="hra-sidebar-item-icon" aria-hidden="true"><LogOut size={16} /></span>
+              <span className="hra-sidebar-item-label">{t("auth.signOut", "Sign out")}</span>
+            </button>
           </div>
         </nav>
 

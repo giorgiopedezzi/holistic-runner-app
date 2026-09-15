@@ -24,6 +24,7 @@ import { fmtDate } from "@/utils/fmt";
 // a PUT to /settings/units flips it (used by the propagation test).
 function appRoutes(settingsBody = settings()): Routes {
   return {
+    "GET /api/v1/auth/session": { user: { id: "founder", display_name: "Founder", locale: "en", role: "admin" }, entitlements: [], csrfToken: "test-csrf" },
     "GET /api/v1/settings": settingsBody,
     "GET /api/v1/range": dateRange(),
     "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
@@ -82,7 +83,7 @@ describe("App tab switching", () => {
 
     // HRA-248 AC1 (still true post-HRA-253): no tab URL param -> "Your
     // agenda" selected, first in the sidebar's Primary group.
-    const nav = screen.getByRole("navigation");
+    const nav = await screen.findByRole("navigation");
     const navButtons = within(nav).getAllByRole("button");
     expect(navButtons[0]).toHaveTextContent("Your agenda");
     expect(navButtons[1]).toHaveTextContent("Training plans");
@@ -121,7 +122,7 @@ describe("App tab switching", () => {
       "Your agenda", "Training plans",
       "Overview & Trends", "Activities", "Body",
       "Data & Sync",
-      "Settings", "Feedback",
+      "Settings", "Feedback", "Sign out",
     ]);
 
     // Review/Manage group headings are present and precede their items in

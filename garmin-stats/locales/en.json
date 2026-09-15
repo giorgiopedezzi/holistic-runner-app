@@ -1078,5 +1078,11 @@
   "qualityWorkout.table.actualDistance": "Actual dist.",
   "qualityWorkout.table.actualPace": "Actual pace",
   "qualityWorkout.table.source": "Source",
-  "qualityWorkout.table.actions": "Actions"
+  "qualityWorkout.table.actions": "Actions",
+  "auth.loading": "Checking your secure session…",
+  "auth.unavailable": "Sign-in is temporarily unavailable. Please try again.",
+  "auth.signedOut": "You’re signed out. Sign in to continue.",
+  "auth.signIn": "Sign in",
+  "auth.signOut": "Sign out",
+  "auth.logoutFailed": "We couldn’t sign you out. Please try again."
 }

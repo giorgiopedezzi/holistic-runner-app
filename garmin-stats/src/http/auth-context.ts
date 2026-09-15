@@ -32,6 +32,7 @@ const requestIdentities = new WeakMap<http.IncomingMessage, RequestIdentity>();
 // Story's session-lifecycle helpers are wired to a real login flow reads
 // back under the same name.
 const SESSION_COOKIE_NAME = "__Host-runsfree_session";
+const LOCAL_SESSION_COOKIE_NAME = "runsfree_session";
 
 function readCookie(req: http.IncomingMessage, name: string): string | null {
   const header = req.headers.cookie;
@@ -91,7 +92,10 @@ export async function deriveRequestIdentity(req: http.IncomingMessage, ctx: AppC
   // than accept a session/token an incomplete deployment can't fully verify.
   if (!ctx.config.auth.enabled) throw unauthorized();
 
-  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
+  // Browsers reject a __Host- cookie without Secure. Local HTTP development
+  // therefore uses the same opaque credential under a non-host-prefixed name;
+  // production accepts only the host-only, Secure name from the ADR.
+  const sessionCookie = readCookie(req, SESSION_COOKIE_NAME) ?? readCookie(req, LOCAL_SESSION_COOKIE_NAME);
   if (sessionCookie) {
     const identity = await ctx.services.identity.validateSessionCookie(sessionCookie, ctx.config.auth.sessionIdleSeconds);
     if (!identity) throw unauthorized();

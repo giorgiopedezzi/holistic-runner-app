@@ -7,13 +7,23 @@
 import http from "http";
 import type { Problem } from "./problem.ts";
 
+interface CorsResponse extends http.ServerResponse { runsFreeCors?: Record<string, string> }
+export function configureCors(res: http.ServerResponse, headers: Record<string, string>): void {
+  (res as CorsResponse).runsFreeCors = headers;
+}
+function cors(res: http.ServerResponse): Record<string, string> {
+  return (res as CorsResponse).runsFreeCors ?? {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+  };
+}
+
 export function send(res: http.ServerResponse, data: unknown, status = 200): void {
   const body = JSON.stringify(data);
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    ...cors(res),
   });
   res.end(body);
 }
@@ -24,18 +34,14 @@ export function sendProblem(res: http.ServerResponse, problem: Problem): void {
   const body = JSON.stringify(problem);
   res.writeHead(problem.status, {
     "Content-Type": "application/problem+json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    ...cors(res),
   });
   res.end(body);
 }
 
 export function sendNoContent(res: http.ServerResponse): void {
   res.writeHead(204, {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+    ...cors(res),
   });
   res.end();
 }

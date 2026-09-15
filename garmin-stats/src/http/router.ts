@@ -8,10 +8,11 @@
 import http from "http";
 import { URL } from "url";
 import type { AppContext, Handler } from "./context.ts";
-import { send, sendProblem } from "./respond.ts";
-import { ApiProblem, notFound, internal } from "./problem.ts";
+import { configureCors, send, sendProblem } from "./respond.ts";
+import { ApiProblem, notFound, internal, unauthorized } from "./problem.ts";
 import { demoGuarded } from "./demo-guard.ts";
 import { authenticateRequest } from "./auth-context.ts";
+import { createAuthController, expectedCsrfToken } from "../controllers/auth.controller.ts";
 import { createActivitiesController } from "../controllers/activities.controller.ts";
 import { createTrendsController } from "../controllers/trends.controller.ts";
 import { createBodyController } from "../controllers/body.controller.ts";
@@ -42,6 +43,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const feedback     = createFeedbackController(ctx);
   const sourceFiles  = createSourceFilesController(ctx);
   const reporting    = createReportingController(ctx);
+  const auth         = createAuthController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -65,11 +67,26 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     // reachable on its own port too.
     res.setHeader("X-Robots-Tag", "noindex, nofollow, noai, noimageai");
 
-    if (req.method === "OPTIONS") {
-      res.writeHead(204, {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Headers": "Content-Type",
+    const origin = req.headers.origin;
+    const allowedOrigin = origin && ctx.config.auth.allowedOrigins.includes(origin) ? origin : undefined;
+    if (ctx.config.auth.enabled && ctx.config.auth.allowedOrigins.length > 0) {
+      if (origin && !allowedOrigin) { res.writeHead(403); res.end(); return; }
+      configureCors(res, allowedOrigin ? {
+        "Access-Control-Allow-Origin": allowedOrigin,
+        "Access-Control-Allow-Credentials": "true",
+        "Access-Control-Allow-Headers": "Content-Type, X-RunsFree-CSRF",
         "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        Vary: "Origin",
+      } : { Vary: "Origin" });
+    }
+    if (req.method === "OPTIONS") {
+      if (ctx.config.auth.enabled && ctx.config.auth.allowedOrigins.length > 0 && origin && !allowedOrigin) { res.writeHead(403); res.end(); return; }
+      res.writeHead(204, {
+        ...(ctx.config.auth.enabled && ctx.config.auth.allowedOrigins.length > 0 && allowedOrigin ? {
+          "Access-Control-Allow-Origin": allowedOrigin!, "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Headers": "Content-Type, X-RunsFree-CSRF",
+          "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS", Vary: "Origin",
+        } : { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS" }),
       });
       res.end(); return;
     }
@@ -78,8 +95,21 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     const route = url.pathname;
 
     try {
-      if (ownerScopedRoute(route)) await authenticateRequest(req, ctx);
+      const privateRoute = ownerScopedRoute(route) || route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
+      if (privateRoute) {
+        await authenticateRequest(req, ctx);
+        if (!["GET", "HEAD"].includes(req.method ?? "")) {
+          const sessionPart = (req.headers.cookie ?? "").split(";").map(part => part.trim()).find(part => part.startsWith("__Host-runsfree_session=") || part.startsWith("runsfree_session="));
+          const session = sessionPart?.slice(sessionPart.indexOf("=") + 1);
+          const csrf = req.headers["x-runsfree-csrf"];
+          if (!session || typeof csrf !== "string" || csrf !== expectedCsrfToken(decodeURIComponent(session))) throw unauthorized();
+          if (ctx.config.auth.allowedOrigins.length > 0 && origin !== allowedOrigin) throw unauthorized();
+        }
+      }
       if (req.method === "GET") {
+        if (route === "/api/v1/auth/login")               return await auth.login(req, res, url);
+        if (route === "/api/v1/auth/callback")            return await auth.callback(req, res, url);
+        if (route === "/api/v1/auth/session")             return await auth.session(req, res, url);
         if (route === "/api/v1/docs")                     return await docs.ui(req, res, url);
         if (route === "/api/v1/openapi.json")             return await docs.spec(req, res, url);
         if (route === "/api/v1/range")                    return await activities.range(req, res, url);
@@ -171,6 +201,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
       }
 
       if (req.method === "POST") {
+        if (route === "/api/v1/auth/logout")               return await auth.logout(req, res, url);
         if (route === "/api/v1/sync/garmin")              return await demo(sync.garmin)(req, res, url);
         if (route === "/api/v1/sync/withings")            return await demo(sync.withings)(req, res, url);
         if (route === "/api/v1/sync/strava")              return await demo(sync.strava)(req, res, url);

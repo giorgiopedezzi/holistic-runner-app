@@ -21,6 +21,7 @@
     { "name": "reporting", "description": "Original vs Current vs Actual trust reports (HRA-335/HRA-336)" },
     { "name": "locales", "description": "i18n translation bundles" },
     { "name": "source-files", "description": "Server-side source-file text extraction (.txt/.csv/.pdf) for hand-off into training-plan template generation (HRA-327)" },
+    { "name": "auth", "description": "Auth0 confidential-web BFF login, opaque application session, CSRF bootstrap, and logout" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
@@ -681,6 +682,18 @@
     }
   },
   "paths": {
+    "/api/v1/auth/login": {
+      "get": { "tags": ["auth"], "summary": "Start the Auth0 Authorization Code BFF flow", "responses": { "302": { "description": "Redirects to the configured authorization endpoint." }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+    },
+    "/api/v1/auth/callback": {
+      "get": { "tags": ["auth"], "summary": "Consume one authorization callback and issue an opaque application session", "responses": { "302": { "description": "Redirects to the fixed browser origin after success or a generic safe failure state." } } }
+    },
+    "/api/v1/auth/session": {
+      "get": { "tags": ["auth"], "summary": "Return server-authoritative session profile and the in-memory CSRF token", "security": [{ "runsFreeSession": [] }], "responses": { "200": { "description": "Current user and CSRF bootstrap.", "content": { "application/json": { "schema": { "type": "object", "required": ["user", "entitlements", "csrfToken"], "properties": { "user": { "type": "object" }, "entitlements": { "type": "array", "items": { "type": "string" } }, "csrfToken": { "type": "string" } } } } } }, "401": { "description": "Missing, expired, revoked, or unusable session." } } }
+    },
+    "/api/v1/auth/logout": {
+      "post": { "tags": ["auth"], "summary": "Revoke the current opaque server session and clear its cookie", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "X-RunsFree-CSRF", "in": "header", "required": true, "schema": { "type": "string" } }], "responses": { "204": { "description": "Session cleared; the client returns to its signed-out bootstrap state." }, "401": { "description": "Missing or invalid session/CSRF proof." } } }
+    },
     "/api/v1/range": {
       "get": { "tags": ["activities"], "summary": "Min/max activity date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
     },

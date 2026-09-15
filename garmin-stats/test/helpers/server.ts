@@ -10,6 +10,7 @@
  * sync/classify routes (they spawn / hit Ollama), so no external I/O occurs.
  */
 import http from "node:http";
+import { createHmac } from "node:crypto";
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
@@ -78,7 +79,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     backgroundsDir,
     // demoMode override (HRA-220) — opts.demoMode lets a test flip DEMO_MODE
     // without an env var, since loadConfig() reads process.env at call time.
-    config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode, auth: { ...loadConfig().auth, enabled: true } },
+    config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode, auth: { ...loadConfig().auth, enabled: true, allowedOrigins: ["http://test.invalid"] } },
     db: runtimeDb,
     repos: {
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
@@ -109,6 +110,10 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const api: TestServer["api"] = async (p, init) => {
     const headers = new Headers(init?.headers);
     if (!headers.has("cookie")) headers.set("cookie", `__Host-runsfree_session=${founderSession}`);
+    headers.set("origin", "http://test.invalid");
+    if (!["GET", "HEAD"].includes((init?.method ?? "GET").toUpperCase())) {
+      headers.set("x-runsfree-csrf", createHmac("sha256", "runsfree-session-csrf-v1").update(founderSession).digest("base64url"));
+    }
     const res = await fetch(baseUrl + p, { ...init, headers });
     const text = await res.text();
     let json: unknown = undefined;

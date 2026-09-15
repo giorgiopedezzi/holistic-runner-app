@@ -73,6 +73,11 @@ export interface Config {
     founderAllowlist: string[];
     sessionIdleSeconds: number;
     sessionAbsoluteSeconds: number;
+    webClientId?: string;
+    webClientSecret?: string;
+    webCallbackUrl?: string;
+    webLogoutUrl?: string;
+    allowedOrigins: string[];
   };
 }
 
@@ -144,6 +149,11 @@ export function loadConfig(): Config {
       // ADR defaults: 30 min idle / 12h absolute.
       sessionIdleSeconds: parseIntEnv(process.env.AUTH_SESSION_IDLE_SECONDS, 1800),
       sessionAbsoluteSeconds: parseIntEnv(process.env.AUTH_SESSION_ABSOLUTE_SECONDS, 43200),
+      webClientId: process.env.AUTH_WEB_CLIENT_ID,
+      webClientSecret: process.env.AUTH_WEB_CLIENT_SECRET,
+      webCallbackUrl: process.env.AUTH_WEB_CALLBACK_URL,
+      webLogoutUrl: process.env.AUTH_WEB_LOGOUT_URL,
+      allowedOrigins: parseListEnv(process.env.AUTH_ALLOWED_ORIGINS),
     },
   };
 }
@@ -200,6 +210,26 @@ export function requireAuthConfig(config: Config): { issuerUrl: string; discover
     { issuerUrl: config.auth.issuerUrl, discoveryUrl: config.auth.discoveryUrl, audience: config.auth.audience },
     { issuerUrl: "AUTH_ISSUER_URL", discoveryUrl: "AUTH_DISCOVERY_URL", audience: "AUTH_AUDIENCE" },
   );
+}
+
+export function requireWebAuthConfig(config: Config): {
+  issuerUrl: string; discoveryUrl: string; audience: string; webClientId: string;
+  webClientSecret: string; webCallbackUrl: string; webLogoutUrl: string; allowedOrigins: string[];
+} {
+  const auth = requireEnv(
+    {
+      issuerUrl: config.auth.issuerUrl, discoveryUrl: config.auth.discoveryUrl, audience: config.auth.audience,
+      webClientId: config.auth.webClientId, webClientSecret: config.auth.webClientSecret,
+      webCallbackUrl: config.auth.webCallbackUrl, webLogoutUrl: config.auth.webLogoutUrl,
+    },
+    {
+      issuerUrl: "AUTH_ISSUER_URL", discoveryUrl: "AUTH_DISCOVERY_URL", audience: "AUTH_AUDIENCE",
+      webClientId: "AUTH_WEB_CLIENT_ID", webClientSecret: "AUTH_WEB_CLIENT_SECRET",
+      webCallbackUrl: "AUTH_WEB_CALLBACK_URL", webLogoutUrl: "AUTH_WEB_LOGOUT_URL",
+    },
+  );
+  if (config.auth.allowedOrigins.length === 0) throw new Error("Missing required environment variable: AUTH_ALLOWED_ORIGINS");
+  return { ...auth, allowedOrigins: config.auth.allowedOrigins };
 }
 
 export function getArg(flag: string): string | null {

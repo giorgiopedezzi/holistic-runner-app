@@ -7,7 +7,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { SignJWT, exportJWK, generateKeyPair, type JSONWebKeySet } from "jose";
-import { TokenValidationError, localJwks, verifyAccessToken } from "../../../src/domain/identity/token-validation.ts";
+import { TokenValidationError, localJwks, verifyAccessToken, verifyIdToken } from "../../../src/domain/identity/token-validation.ts";
 
 const ISSUER = "https://runsfree.eu.auth0.com/";
 const AUDIENCE = "https://api.runsfree.example.com";
@@ -83,4 +83,11 @@ test("verifyAccessToken rejects an HS256-signed token even with a correct-lookin
     .sign(secret);
   const { jwks } = await trustedKeyPair();
   await assert.rejects(() => verifyAccessToken(token, localJwks(jwks), { issuer: ISSUER, audience: AUDIENCE }), TokenValidationError);
+});
+
+test("verifyIdToken requires the callback transaction nonce and confidential-client audience", async () => {
+  const { privateKey, jwks } = await trustedKeyPair();
+  const token = await sign(privateKey, { iss: ISSUER, aud: "web-client", sub: "auth0|founder", nonce: "issued-nonce", exp: Math.floor(Date.now() / 1000) + 300 });
+  assert.deepEqual(await verifyIdToken(token, localJwks(jwks), { issuer: ISSUER, audience: "web-client", nonce: "issued-nonce" }), { issuer: ISSUER, subject: "auth0|founder", email: null });
+  await assert.rejects(() => verifyIdToken(token, localJwks(jwks), { issuer: ISSUER, audience: "web-client", nonce: "replayed-nonce" }), TokenValidationError);
 });

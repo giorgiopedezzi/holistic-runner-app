@@ -74,3 +74,25 @@ export async function verifyAccessToken(token: string, key: JWTVerifyGetKey, con
   const email = typeof payload.email === "string" ? payload.email : null;
   return { issuer: config.issuer, subject: payload.sub, email };
 }
+
+// Authorization Code callbacks validate an ID token against the confidential
+// web-client id (not the API audience used by bearer access tokens) and bind
+// it to the nonce minted with the state transaction.
+export async function verifyIdToken(token: string, key: JWTVerifyGetKey, config: TokenValidationConfig & { nonce: string }): Promise<ValidatedTokenIdentity> {
+  let payload;
+  try {
+    ({ payload } = await jwtVerify(token, key, {
+      issuer: config.issuer,
+      audience: config.audience,
+      algorithms: ALLOWED_ALGORITHMS,
+      clockTolerance: CLOCK_TOLERANCE_SECONDS,
+    }));
+  } catch {
+    throw new TokenValidationError("token validation failed");
+  }
+  if (payload.nonce !== config.nonce || typeof payload.sub !== "string" || !payload.sub) {
+    throw new TokenValidationError("token validation failed");
+  }
+  const email = typeof payload.email === "string" ? payload.email : null;
+  return { issuer: config.issuer, subject: payload.sub, email };
+}

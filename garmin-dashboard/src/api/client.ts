@@ -21,6 +21,7 @@ import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, Workout
 const ALL = "100000";
 
 const BASE = import.meta.env.VITE_API_BASE ?? "";
+let csrfToken: string | null = null;
 
 // HRA-249: the structured conflict body on POST .../plan-instances/:id/approve's
 // 409 — every already-approved instance whose resolved date range overlaps the
@@ -123,9 +124,14 @@ async function request<T>(path: string, method = "GET", params?: Record<string, 
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   let res: Response;
   try {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (!["GET", "HEAD"].includes(method) && csrfToken) headers["X-RunsFree-CSRF"] = csrfToken;
     res = await fetch(url.toString(), {
       method,
-      ...(body !== undefined ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) } : {}),
+      credentials: "include",
+      ...(Object.keys(headers).length ? { headers } : {}),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
   } catch {
     // fetch() rejects only on a network-level failure (server down, connection
@@ -161,6 +167,15 @@ export interface FeedbackBody {
 function idsBody(ids: number[]) { return { ids }; }
 
 export const api = {
+  auth: {
+    session: async () => {
+      const session = await request<{ user: { id: string; display_name: string | null; locale: string | null; role: "user" | "admin" }; entitlements: string[]; csrfToken: string }>("/api/v1/auth/session");
+      csrfToken = session.csrfToken;
+      return session;
+    },
+    login: () => { window.location.assign(`${BASE}/api/v1/auth/login`); },
+    logout: async () => { await request<null>("/api/v1/auth/logout", "POST"); csrfToken = null; },
+  },
   garmin: {
     range:       ()                          => request<DateRange>("/api/v1/range"),
     // Full list (unwrapped) for consumers that need every row in range — trends,
