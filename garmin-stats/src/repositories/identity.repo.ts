@@ -76,6 +76,10 @@ export function createIdentityRepo(db: Queryable) {
 
     // ── entitlements (AC9: distinct from role) ───────────────────────────
     listEntitlements: (userId: string) => db.all<UserEntitlementRow>("SELECT user_id, entitlement, granted_at FROM user_entitlements WHERE user_id = $1", [userId]),
+    hasEntitlement: async (userId: string, entitlement: string) => (await db.get<{ present: boolean }>(
+      "SELECT EXISTS (SELECT 1 FROM user_entitlements WHERE user_id = $1 AND entitlement = $2) AS present",
+      [userId, entitlement],
+    ))?.present ?? false,
     grantEntitlement: (userId: string, entitlement: string) =>
       db.run("INSERT INTO user_entitlements (user_id, entitlement) VALUES ($1, $2) ON CONFLICT (user_id, entitlement) DO NOTHING", [userId, entitlement]),
 

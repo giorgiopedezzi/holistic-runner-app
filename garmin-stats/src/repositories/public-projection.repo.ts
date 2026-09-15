@@ -17,6 +17,8 @@ interface SnapshotRow {
   last_error: string | null;
 }
 
+export interface PublicProjectionStatusRow extends PublicProjectionSourceRow, SnapshotRow {}
+
 export function createPublicProjectionRepo(db: Queryable) {
   return {
     ensureSource: (id: string, sourceUserId: string, slug: string) => db.get<PublicProjectionSourceRow>(
@@ -31,6 +33,14 @@ export function createPublicProjectionRepo(db: Queryable) {
       `SELECT source_version_hash, payload, projected_at, last_error
        FROM public_projection_snapshots WHERE source_id = $1`,
       [sourceId],
+    ),
+    getStatusForUser: (sourceUserId: string) => db.get<PublicProjectionStatusRow>(
+      `SELECT source.id, source.source_user_id, source.public_slug, source.publication_state,
+              snapshot.source_version_hash, snapshot.payload, snapshot.projected_at, snapshot.last_error
+       FROM public_projection_sources source
+       LEFT JOIN public_projection_snapshots snapshot ON snapshot.source_id = source.id
+       WHERE source.source_user_id = $1`,
+      [sourceUserId],
     ),
     getOrCreatePublicId: async (sourceId: string, kind: PublicResourceKind, sourceResourceId: string, publicId: string) => {
       const row = await db.get<{ public_id: string }>(

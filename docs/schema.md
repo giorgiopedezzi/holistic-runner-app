@@ -47,6 +47,8 @@ is revoked and a new `(id, secret)` pair is issued, preventing fixation (AC7).
 ### `user_entitlements`
 Feature/subscription capabilities, keyed `(user_id, entitlement)` — deliberately separate from
 `users.role` (AC9) so entitlements can be granted/revoked without touching the role boundary.
+HRA-360 seeds only the deterministic founder with `can_publish_profile`; MVP publication also
+requires that deterministic founder identity, so ordinary accounts remain non-public by default.
 
 ### `security_events`
 The minimum useful authentication/session lifecycle facts (AC13): `event_type`, the acting
