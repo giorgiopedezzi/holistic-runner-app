@@ -219,4 +219,22 @@ Keep this file small enough to deserve unconditional loading.
 8. **Verify before keeping:** any claim naming a file, hook, flag, script, or npm command must be checked against the live repo before preserving it.
 9. **Repository layout maintenance:** after adding/removing/moving source files, update the map in the same turn if its structural summary changed.
 
+### Local command composition
+
+For routine Story-scoped local operations, execute commands separately rather than chaining them with
+`;`, `&&`, `||`, pipes, or equivalent shell composition when separate execution is sufficient.
+
+In particular, never combine Story staging and staged-diff verification into one shell command.
+
+Run these as separate commands:
+
+1. `git ... add -- <explicit Story files>`
+2. `git ... diff --cached --check`
+3. `git ... diff --cached --stat`
+4. `git ... diff --cached`
+
+This is required so established local permission rules can authorize each safe operation independently
+without triggering unnecessary compound-command approval.
+
+Do not work around this by broad-whitelisting shell execution.
 Target: keep `AGENTS.md` **under ~200 lines**.
