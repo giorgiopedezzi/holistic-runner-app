@@ -237,4 +237,18 @@ This is required so established local permission rules can authorize each safe o
 without triggering unnecessary compound-command approval.
 
 Do not work around this by broad-whitelisting shell execution.
+
+### Windows Codex Git staging and commit
+
+On Windows, Codex must not invoke `git add` or `git commit` directly.
+
+The Codex sandbox deliberately protects `.git`, so direct staging/commit operations can cause
+unnecessary sandbox escalation prompts.
+
+For the holistic-runner-app repository, use the trusted local wrapper:
+
+```text
+node C:/Users/PC/.codex/bin/hra-git.mjs add <explicit Story files...>
+node C:/Users/PC/.codex/bin/hra-git.mjs commit "HRA-123: Story commit message"
+
 Target: keep `AGENTS.md` **under ~200 lines**.
