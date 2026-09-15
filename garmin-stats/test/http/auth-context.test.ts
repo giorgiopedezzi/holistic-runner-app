@@ -1,11 +1,20 @@
 /**
- * test/http/auth-context.test.ts (HRA-348 AC11/AC12)
+ * test/http/auth-context.test.ts (HRA-348 AC11/AC12; HRA-355 AC5/AC8/AC11)
  * deriveRequestIdentity — the request-identity boundary. Every failure mode
  * collapses to the same 401; a client-supplied user id is never read.
+ *
+ * The bearer-token tests below are HRA-355's contract test for the native
+ * Capacitor client: `identityFromBearerToken` is the same path a native
+ * client authenticates through, and it is deliberately client-agnostic (no
+ * client-id check), so proving it here — against a local mock OIDC
+ * discovery/JWKS server, no network or real Capacitor build required — is
+ * the "to the degree current repository tooling permits" contract test the
+ * ADR's native-contract section points back to.
  */
-import type http from "http";
+import http, { type IncomingMessage } from "http";
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { SignJWT, exportJWK, generateKeyPair, type JSONWebKeySet } from "jose";
 import { loadConfig } from "../../src/config.ts";
 import { ApiProblem } from "../../src/http/problem.ts";
 import { deriveRequestIdentity } from "../../src/http/auth-context.ts";
@@ -15,6 +24,51 @@ import { createIdentityRepo } from "../../src/repositories/identity.repo.ts";
 import { createIdentityService } from "../../src/services/identity.service.ts";
 
 const LIFETIME = { idleSeconds: 1800, absoluteSeconds: 43200 };
+const NATIVE_ISSUER = "https://runsfree.eu.auth0.com/";
+const NATIVE_AUDIENCE = "https://api.runsfree.example.com";
+const NATIVE_KID = "native-test-key-1";
+
+// A minimal local stand-in for Auth0's discovery + JWKS endpoints, so the
+// bearer path's real discovery-fetch + remote-JWKS-fetch code runs against a
+// trusted key with no network dependency and no Capacitor build required.
+async function startMockDiscoveryServer(jwks: JSONWebKeySet): Promise<{ discoveryUrl: string; close: () => Promise<void> }> {
+  let baseUrl = "";
+  const server = http.createServer((req: IncomingMessage, res) => {
+    if (req.url === "/.well-known/openid-configuration") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jwks_uri: `${baseUrl}/.well-known/jwks.json` }));
+      return;
+    }
+    if (req.url === "/.well-known/jwks.json") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(jwks));
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const addr = server.address();
+  if (addr == null || typeof addr === "string") throw new Error("failed to bind mock discovery server");
+  baseUrl = `http://127.0.0.1:${addr.port}`;
+  return {
+    discoveryUrl: `${baseUrl}/.well-known/openid-configuration`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+async function nativeKeyPair() {
+  const { privateKey, publicKey } = await generateKeyPair("RS256");
+  const publicJwk = { ...(await exportJWK(publicKey)), kid: NATIVE_KID, alg: "RS256", use: "sig" };
+  const jwks: JSONWebKeySet = { keys: [publicJwk as JSONWebKeySet["keys"][number]] };
+  return { privateKey, jwks };
+}
+
+async function signNativeAccessToken(privateKey: Parameters<SignJWT["sign"]>[0], subject: string) {
+  return new SignJWT({ iss: NATIVE_ISSUER, aud: NATIVE_AUDIENCE, sub: subject, exp: Math.floor(Date.now() / 1000) + 300 })
+    .setProtectedHeader({ alg: "RS256", kid: NATIVE_KID })
+    .sign(privateKey);
+}
 
 function fakeRequest(headers: Record<string, string | undefined>): http.IncomingMessage {
   return { headers } as unknown as http.IncomingMessage;
@@ -108,4 +162,57 @@ test("deriveRequestIdentity rejects with 401 once the session's account becomes 
     const ctx = fakeContext(service);
     await assertUnauthorized(deriveRequestIdentity(fakeRequest({ cookie: `__Host-runsfree_session=${cookie}` }), ctx));
   } finally { await cleanup(); }
+});
+
+test("deriveRequestIdentity authenticates a native-shaped bearer token with no cookie present, resolving the same internal user a web login for the same identity would (HRA-355 AC5)", async () => {
+  const { db, cleanup } = await createTestDb();
+  const { privateKey, jwks } = await nativeKeyPair();
+  const mock = await startMockDiscoveryServer(jwks);
+  try {
+    const repo = createIdentityRepo(db);
+    const service = createIdentityService(db, repo);
+
+    // Simulate the web login this identity already has, exactly like the
+    // cookie-path test above — same (issuer, subject), unrelated client.
+    const webLogin = await service.resolveExternalLogin(
+      { issuer: NATIVE_ISSUER, subject: "auth0|shared-identity", provider: "google", email: "runner@example.com" },
+      { mode: "open", founderAllowlist: [] },
+    );
+    assert.equal(webLogin.outcome, "authenticated");
+    if (webLogin.outcome !== "authenticated") return;
+
+    const ctx = fakeContext(service, { issuerUrl: NATIVE_ISSUER, discoveryUrl: mock.discoveryUrl, audience: NATIVE_AUDIENCE });
+    const token = await signNativeAccessToken(privateKey, "auth0|shared-identity");
+    const identity = await deriveRequestIdentity(fakeRequest({ authorization: `Bearer ${token}` }), ctx);
+
+    assert.equal(identity.userId, webLogin.user.id);
+    assert.equal(identity.sessionId, null); // bearer auth is stateless on Railway — see the ADR's mobile-logout note
+  } finally {
+    await mock.close();
+    await cleanup();
+  }
+});
+
+test("deriveRequestIdentity rejects a native-shaped bearer token for a disabled account with 401, the same as the cookie path (HRA-355 AC8)", async () => {
+  const { db, cleanup } = await createTestDb();
+  const { privateKey, jwks } = await nativeKeyPair();
+  const mock = await startMockDiscoveryServer(jwks);
+  try {
+    const repo = createIdentityRepo(db);
+    const service = createIdentityService(db, repo);
+    const login = await service.resolveExternalLogin(
+      { issuer: NATIVE_ISSUER, subject: "auth0|disabled-native-user", provider: null, email: null },
+      { mode: "open", founderAllowlist: [] },
+    );
+    assert.equal(login.outcome, "authenticated");
+    if (login.outcome !== "authenticated") return;
+    await db.run("UPDATE users SET status = 'disabled' WHERE id = $1", [login.user.id]);
+
+    const ctx = fakeContext(service, { issuerUrl: NATIVE_ISSUER, discoveryUrl: mock.discoveryUrl, audience: NATIVE_AUDIENCE });
+    const token = await signNativeAccessToken(privateKey, "auth0|disabled-native-user");
+    await assertUnauthorized(deriveRequestIdentity(fakeRequest({ authorization: `Bearer ${token}` }), ctx));
+  } finally {
+    await mock.close();
+    await cleanup();
+  }
 });
