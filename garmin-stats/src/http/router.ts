@@ -49,7 +49,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const ownerScopedRoute = (route: string) =>
     route === "/api/v1/range" || route === "/api/v1/summary" || route === "/api/v1/weekly" || route === "/api/v1/monthly" ||
     route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
-    route.startsWith("/api/v1/date-ranges") || /^\/api\/v1\/plan-instances\/\d+\/reports\//.test(route);
+    route.startsWith("/api/v1/date-ranges") || route.startsWith("/api/v1/settings") || route.startsWith("/api/v1/plan-templates") ||
+    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days";
 
   return async (req, res) => {
     // Hosted demo — keep it out of search/AI indexing until it's ready to be

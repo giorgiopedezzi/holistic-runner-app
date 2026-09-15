@@ -46,6 +46,7 @@ export function createIdentityRepo(db: Queryable) {
       const userId = randomUUID();
       const user = await db.get<UserRow>(`INSERT INTO users (id) VALUES ($1) RETURNING ${USER_COLUMNS}`, [userId]);
       if (!user) throw new Error("identity.repo: user insert did not return a row");
+      await db.run("INSERT INTO user_settings (user_id) VALUES ($1)", [userId]);
       await db.run(
         "INSERT INTO external_identities (user_id, issuer, subject, provider, email_at_link_time) VALUES ($1, $2, $3, $4, $5)",
         [userId, login.issuer, login.subject, login.provider, login.email],

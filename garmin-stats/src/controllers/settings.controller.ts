@@ -12,6 +12,8 @@ import { send } from "../http/respond.ts";
 import { readJsonBody, readBodyBuffer } from "../http/request.ts";
 import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 import { isValidIanaTimeZone } from "../domain/plan-timezone.ts";
+import { requestIdentity } from "../http/auth-context.ts";
+import { createOwnedSettingsRepo } from "../repositories/owned-settings.repo.ts";
 
 // theme: no writable 'auto' anymore (removed from ThemePicker) — only an
 // explicit choice can be PUT. A settings row can still legally hold a
@@ -47,7 +49,7 @@ const IMAGE_EXT_MIME: Record<string, string> = {
 };
 
 export function createSettingsController(ctx: AppContext) {
-  const repo = ctx.repos.settings;
+  const repo = (req: import("http").IncomingMessage) => createOwnedSettingsRepo(ctx.db, requestIdentity(req).userId);
   const { backgroundsDir } = ctx;
 
   // demo_mode is computed from config, not a stored column (HRA-220) — the
@@ -56,9 +58,9 @@ export function createSettingsController(ctx: AppContext) {
   // ctx.config.demoMode source, never a separately hardcoded frontend flag.
   // Every settings response (not just GET) goes through this so a PUT's
   // response never drops the field the GET response carries.
-  const sendSettings = async (res: Parameters<typeof send>[0]) => send(res, { ...(await repo.get()), demo_mode: ctx.config.demoMode });
+  const sendSettings = async (req: import("http").IncomingMessage, res: Parameters<typeof send>[0]) => send(res, { ...(await repo(req).get()), demo_mode: ctx.config.demoMode });
 
-  const get: Handler = async (_req, res) => sendSettings(res);
+  const get: Handler = async (req, res) => sendSettings(req, res);
 
   // PUT /api/v1/settings/outliers — the Outlier-detection card's three values,
   // submitted together by its Save button → full replacement of that sub-resource
@@ -72,8 +74,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!Number.isFinite(speedDelta) || speedDelta <= 0 || !Number.isFinite(cadenceDelta) || cadenceDelta <= 0 || !Number.isFinite(minSpeedKmh) || minSpeedKmh < 0) {
       throw unprocessable("outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec and outlier_min_speed_kmh must be positive numbers (outlier_min_speed_kmh may be 0).");
     }
-    await repo.updateOutliers({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh });
-    return await sendSettings(res);
+    await repo(req).updateOutliers({ $outlier_speed_delta_per_sec: speedDelta, $outlier_cadence_delta_per_sec: cadenceDelta, $outlier_min_speed_kmh: minSpeedKmh });
+    return await sendSettings(req, res);
   };
 
   // PUT /api/v1/settings/thresholds — the Overview & Trends card's single value
@@ -84,8 +86,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!Number.isInteger(minTrendGroupSize) || minTrendGroupSize < 2) {
       throw unprocessable("min_trend_group_size must be an integer of at least 2.");
     }
-    await repo.updateThresholds({ $min_trend_group_size: minTrendGroupSize });
-    return await sendSettings(res);
+    await repo(req).updateThresholds({ $min_trend_group_size: minTrendGroupSize });
+    return await sendSettings(req, res);
   };
 
   const updateTheme: Handler = async (req, res) => {
@@ -93,8 +95,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.theme || !THEME_NAMES.includes(body.theme)) {
       throw unprocessable(`theme must be one of: ${THEME_NAMES.join(", ")}`);
     }
-    await repo.updateTheme({ $theme: body.theme });
-    return await sendSettings(res);
+    await repo(req).updateTheme({ $theme: body.theme });
+    return await sendSettings(req, res);
   };
 
   // PUT /api/v1/settings/background — the complete representation of the background
@@ -109,11 +111,11 @@ export function createSettingsController(ctx: AppContext) {
     if (body.background_kind === "bundled" && !body.background_value) {
       throw unprocessable("background_value (preset id) is required when background_kind is 'bundled'.");
     }
-    await repo.updateBackground({
+    await repo(req).updateBackground({
       $background_kind: body.background_kind,
       $background_value: body.background_kind === "bundled" ? (body.background_value ?? null) : null,
     });
-    return await sendSettings(res);
+    return await sendSettings(req, res);
   };
 
   const updateUnits: Handler = async (req, res) => {
@@ -121,8 +123,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.unit_system || !UNIT_SYSTEMS.includes(body.unit_system)) {
       throw unprocessable(`unit_system must be one of: ${UNIT_SYSTEMS.join(", ")}`);
     }
-    await repo.updateUnits({ $unit_system: body.unit_system });
-    return await sendSettings(res);
+    await repo(req).updateUnits({ $unit_system: body.unit_system });
+    return await sendSettings(req, res);
   };
 
   // PUT /api/v1/settings/timezone — HRA-332: the owner-configured schedule
@@ -135,8 +137,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.timezone || !isValidIanaTimeZone(body.timezone)) {
       throw unprocessable("timezone must be a valid IANA timezone identifier (e.g. \"Europe/Rome\").");
     }
-    await repo.updateTimezone({ $timezone: body.timezone });
-    return await sendSettings(res);
+    await repo(req).updateTimezone({ $timezone: body.timezone });
+    return await sendSettings(req, res);
   };
 
   const updateDetailView: Handler = async (req, res) => {
@@ -144,8 +146,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.activity_detail_view || !DETAIL_VIEWS.includes(body.activity_detail_view)) {
       throw unprocessable(`activity_detail_view must be one of: ${DETAIL_VIEWS.join(", ")}`);
     }
-    await repo.updateDetailView({ $activity_detail_view: body.activity_detail_view });
-    return await sendSettings(res);
+    await repo(req).updateDetailView({ $activity_detail_view: body.activity_detail_view });
+    return await sendSettings(req, res);
   };
 
   const updateAccent: Handler = async (req, res) => {
@@ -153,8 +155,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.accent_color || !ACCENT_COLORS.includes(body.accent_color)) {
       throw unprocessable(`accent_color must be one of: ${ACCENT_COLORS.join(", ")}`);
     }
-    await repo.updateAccent({ $accent_color: body.accent_color });
-    return await sendSettings(res);
+    await repo(req).updateAccent({ $accent_color: body.accent_color });
+    return await sendSettings(req, res);
   };
 
   const updateDateFormat: Handler = async (req, res) => {
@@ -162,8 +164,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.date_format || !DATE_FORMATS.includes(body.date_format)) {
       throw unprocessable(`date_format must be one of: ${DATE_FORMATS.join(", ")}`);
     }
-    await repo.updateDateFormat({ $date_format: body.date_format });
-    return await sendSettings(res);
+    await repo(req).updateDateFormat({ $date_format: body.date_format });
+    return await sendSettings(req, res);
   };
 
   const updateLanguage: Handler = async (req, res) => {
@@ -171,8 +173,8 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.language || !LANGUAGES.includes(body.language)) {
       throw unprocessable(`language must be one of: ${LANGUAGES.join(", ")}`);
     }
-    await repo.updateLanguage({ $language: body.language });
-    return await sendSettings(res);
+    await repo(req).updateLanguage({ $language: body.language });
+    return await sendSettings(req, res);
   };
 
   const updatePalette: Handler = async (req, res) => {
@@ -180,12 +182,12 @@ export function createSettingsController(ctx: AppContext) {
     if (!body.palette || !PALETTES.includes(body.palette)) {
       throw unprocessable(`palette must be one of: ${PALETTES.join(", ")}`);
     }
-    await repo.updatePalette({ $palette: body.palette, $accent_color: PALETTE_ACCENT[body.palette] });
-    return await sendSettings(res);
+    await repo(req).updatePalette({ $palette: body.palette, $accent_color: PALETTE_ACCENT[body.palette] });
+    return await sendSettings(req, res);
   };
 
-  const backgroundImage: Handler = async (_req, res) => {
-    const row = await repo.get() as unknown as SettingsRow;
+  const backgroundImage: Handler = async (req, res) => {
+    const row = await repo(req).get() as unknown as SettingsRow;
     if (row.background_kind !== "custom" || !row.background_value) throw notFound("No custom background set.");
     const filePath = path.join(backgroundsDir, row.background_value);
     if (!fs.existsSync(filePath)) throw notFound("Background file missing.");
@@ -208,14 +210,14 @@ export function createSettingsController(ctx: AppContext) {
     if (buf.length === 0) throw unprocessable("Empty upload.");
     if (buf.length > 10 * 1024 * 1024) throw payloadTooLarge("Image too large (max 10MB).");
 
-    const prev = await repo.get() as unknown as SettingsRow;
+    const prev = await repo(req).get() as unknown as SettingsRow;
     const filename = `bg-${Date.now()}.${ext}`;
     fs.writeFileSync(path.join(backgroundsDir, filename), buf);
     if (prev.background_kind === "custom" && prev.background_value) {
       try { fs.unlinkSync(path.join(backgroundsDir, prev.background_value)); } catch { /* already gone, fine */ }
     }
-    await repo.updateBackground({ $background_kind: "custom", $background_value: filename });
-    return await sendSettings(res);
+    await repo(req).updateBackground({ $background_kind: "custom", $background_value: filename });
+    return await sendSettings(req, res);
   };
 
   return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateTimezone, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };

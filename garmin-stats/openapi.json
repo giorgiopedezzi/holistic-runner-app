@@ -24,6 +24,9 @@
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
+    "securitySchemes": {
+      "runsFreeSession": { "type": "apiKey", "in": "cookie", "name": "__Host-runsfree_session", "description": "Validated Runs Free session; private resources derive their owner from this credential, never from client input." }
+    },
     "parameters": {
       "from": { "name": "from", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive start date (YYYY-MM-DD). Defaults to 30 days ago." },
       "to": { "name": "to", "in": "query", "required": false, "schema": { "type": "string", "format": "date" }, "description": "Inclusive end date (YYYY-MM-DD). Defaults to today." },
@@ -819,9 +822,11 @@
       "post": { "tags": ["body"], "summary": "Permanently purge body measurements from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/settings": {
+      "security": [{ "runsFreeSession": [] }],
       "get": { "tags": ["settings"], "summary": "Get settings (read-all). Writes go to the sub-resources below — there is no write through the parent.", "responses": { "200": { "description": "Settings row.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } } } }
     },
     "/api/v1/settings/outliers": {
+      "security": [{ "runsFreeSession": [] }],
       "put": {
         "tags": ["settings"], "summary": "Replace the outlier-detection settings (Outlier-detection card)",
         "description": "The card's three values are submitted together by its Save → full replacement of this sub-resource → PUT (idempotent). All three fields required. (A field-level PATCH may be added later if a partial-write consumer appears — non-breaking; deliberately omitted now, YAGNI.)",
@@ -830,6 +835,7 @@
       }
     },
     "/api/v1/settings/thresholds": {
+      "security": [{ "runsFreeSession": [] }],
       "put": {
         "tags": ["settings"], "summary": "Replace the trend-grouping threshold (Overview & Trends card)",
         "description": "One value, sent whole → full replacement → PUT (idempotent).",
@@ -838,30 +844,39 @@
       }
     },
     "/api/v1/settings/theme": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set theme (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["theme"], "properties": { "theme": { "type": "string", "enum": ["dark", "light"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/background": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set the background (replace the sub-resource): a bundled preset or clear it", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["background_kind"], "properties": { "background_kind": { "type": "string", "enum": ["none", "bundled"] }, "background_value": { "type": "string", "description": "Preset id, required when background_kind=bundled." } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/units": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set unit system (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["unit_system"], "properties": { "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/timezone": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set the owner-configured schedule timezone (replace singleton)", "description": "HRA-332: the default new plan instances pick up at creation. A valid IANA identifier is required.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["timezone"], "properties": { "timezone": { "type": "string", "example": "Europe/Rome" } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/detail-view": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set activity detail view (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["activity_detail_view"], "properties": { "activity_detail_view": { "type": "string", "enum": ["accordion", "modal"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/accent": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set the accent color (replace singleton)", "description": "No UI calls this any more (accent is now derived from palette) — endpoint kept functional for API completeness.", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["accent_color"], "properties": { "accent_color": { "type": "string", "enum": ["sky", "amber"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/date-format": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set the date display format (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["date_format"], "properties": { "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/language": {
+      "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set the UI language (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["language"], "properties": { "language": { "type": "string", "enum": ["auto", "en", "it"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/settings/palette": {
+      "security": [{ "runsFreeSession": [] }],
       "put": {
         "tags": ["settings"], "summary": "Set the dashboard palette (replace singleton)",
         "description": "'metal' or 'warm', crossed with theme (dark/light) for 4 total looks. Replaces the earlier style_pack (HRA-119). Also updates accent_color to the paired value server-side.",
@@ -870,9 +885,11 @@
       }
     },
     "/api/v1/settings/background-image": {
+      "security": [{ "runsFreeSession": [] }],
       "get": { "tags": ["settings"], "summary": "Stream the current custom background image", "responses": { "200": { "description": "The image bytes.", "content": { "image/jpeg": {}, "image/png": {}, "image/webp": {}, "image/gif": {} } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/api/v1/settings/background/upload": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["settings"], "summary": "Upload a custom background image (raw bytes)",
         "parameters": [ { "name": "ext", "in": "query", "required": true, "schema": { "type": "string", "enum": ["jpg", "jpeg", "png", "webp", "gif"] } } ],
@@ -936,6 +953,7 @@
       "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
     },
     "/api/v1/plan-templates/generate": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Parse-only preview of DSL source — never persists (HRA-113)",
         "description": "Runs the same parse as POST /api/v1/plan-templates without writing a row. 422 only if the DSL fails to parse outright (ParseResult.ok:false); a plan with day-level warnings still returns 200 — what a review UI calls on every edit before the user is ready to save.",
@@ -944,6 +962,7 @@
       }
     },
     "/api/v1/plan-templates/prompt-preview": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Parse-only-style preview of the AI conversion prompt (HRA-326) — never persists",
         "description": "Composes the same 'Plan text -> RunPlan DSL' conversion prompt via composeConversionPrompt() (domain/runplan/prompt-composer.ts) that a future real AI provider call will use — one function, not two implementations, so preview and the real send can never drift. text is required; language/event/event_name/distance_m/unit are all optional context fields. Plan text containing tag-like substrings (e.g. </training_plan>, <system>) is escaped so it can't terminate the envelope early or be read as new instructions.",
@@ -952,6 +971,7 @@
       }
     },
     "/api/v1/plan-templates/ai-generate": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Generate RunPlan DSL from plan text via the configured AI provider (HRA-329) — real, billable call",
         "description": "Composes the identical conversion prompt as prompt-preview (composeConversionPrompt(), never a second copy) and sends it to the configured provider (garmin-stats/src/integrations/plan-template-ai.ts, HRA-325). Never persists — the caller drops the returned dsl into the existing Workout DSL editor, which re-parses/validates it exactly like a manual paste; the result is never auto-saved or auto-activated. Demo-guarded (403 when DEMO_MODE is on) since every call has a real external cost. Provider failures surface as an honest status instead of a generic 500: 503 (not configured), 502 (auth/network/http-error/empty or malformed response), 429 (rate-limited), 504 (timeout).",
@@ -968,6 +988,7 @@
       }
     },
     "/api/v1/plan-templates": {
+      "security": [{ "runsFreeSession": [] }],
       "get": { "tags": ["plan-templates"], "summary": "List plan templates, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Plan templates.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanTemplate" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "post": {
         "tags": ["plan-templates"], "summary": "Save a template, parsing and validating its DSL source",
@@ -977,6 +998,7 @@
       }
     },
     "/api/v1/plan-templates/{id}": {
+      "security": [{ "runsFreeSession": [] }],
       "get": { "tags": ["plan-templates"], "summary": "Get one plan template", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "put": {
         "tags": ["plan-templates"], "summary": "Replace a plan template (re-parses dsl_source from scratch)",
@@ -988,6 +1010,7 @@
       "delete": { "tags": ["plan-templates"], "summary": "Delete a plan template (ON DELETE CASCADE removes every derived instance, no trash)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/plan-templates/{id}/approve": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Approve a template (gate 2, HRA-113)",
         "description": "Sets approved_at. Only meaningful on an already-saved (zero-warning) template — approval is a deliberate human sign-off on the exact currently-saved state, revoked by any subsequent PUT.",
@@ -996,6 +1019,7 @@
       }
     },
     "/api/v1/plan-templates/{id}/mobile-eligibility": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["plan-templates"], "summary": "Structural check: can this template use mobile simplified race-plan creation? (HRA-302)",
         "description": "Read-only, never persists. Reuses instantiatePlan/pace.ts's own resolver (domain/runplan/mobile-eligibility.ts) rather than re-deriving anchor/offset logic: eligible when the template's own pace policy leaves at most one anchor symbolic and supplying any value for it makes every day resolve with needs_review false. race_pace_anchor is that single anchor name, or null when either no anchor is needed (already fully resolvable) or the template is not eligible. reason is one of already-resolved, ambiguous-anchors, unresolvable, or null when eligible with an anchor.",
@@ -1004,6 +1028,7 @@
       }
     },
     "/api/v1/plan-templates/{id}/instantiate/preview": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Parse-only preview of an instantiation, never persists (HRA-302)",
         "description": "Mirrors POST .../instantiate's goal_time -> pace_overrides conversion and instantiatePlan resolution, but never writes a plan_instances row. Feeds the mobile simplified-creation review step: shows the derived start_date and every resolved plan-level anchor pace before the runner commits to the real Create action. needs_review is true if any resolved day still needs review (e.g. an unsupported anchor, or the template turns out not to be fully resolvable) — the caller must not proceed to the real instantiate call when true.",
@@ -1013,6 +1038,7 @@
       }
     },
     "/api/v1/plan-templates/{id}/instantiate": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Resolve a template for one race: override pace anchors + a start date, persist the result",
         "description": "name (HRA-114) is required — the instance's own name; the created instance's event is never a request parameter, always auto-populated from the template. target_activity_id (if given) is validated like date_ranges.activity_id, but against the resolved plan's last day — checked fully before any write, so a rejected request leaves no orphaned rows. goal_time (HRA-113) is an alternate way to supply a pace anchor's value — race_pace_anchor names which one, and is required whenever goal_time is supplied (HRA-121, no default; earlier versions hardcoded RG) — converted via distance (distance_m if given, else the template's own distance_m, else the event's standard distance; a custom event's distance_m is mandatory at template save time, HRA-120, so this call's own distance_m only overrides it, never supplies a missing one). Supplying both goal_time and an explicit pace_overrides value for the same race_pace_anchor is rejected as ambiguous. race_name/race_date (HRA-121, both optional) describe the race this instance targets, independent of target_activity_id.",
@@ -1022,6 +1048,7 @@
       }
     },
     "/api/v1/plan-instances": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["plan-templates"], "summary": "List plan instances, newest first (HRA-118)",
         "description": "template_id is optional — omit for all instances, or scope to one template's own instances. 404 if template_id doesn't reference a real template.",
@@ -1030,6 +1057,7 @@
       }
     },
     "/api/v1/plan-instances/active": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["plan-templates"], "summary": "Get the one approved plan instance whose resolved days cover a date (HRA-248)",
         "description": "Feeds \"Your agenda\"'s today-centered home view. Extends the daysByDateAndWorkoutType pattern, scoped to approved_at IS NOT NULL and with no workout_type filter (a REST day is a real dated row too, HRA-124, and must resolve just as well as a workout day). 404 (not an empty 200) when no approved instance's resolved days include the date — lets the frontend tell \"no active plan today\" apart from a genuine fetch failure. Newest-instance-first if more than one approved instance's days cover the same date (overlap detection/activation blocking is a sibling Story, out of scope here).",
@@ -1038,6 +1066,7 @@
       }
     },
     "/api/v1/plan-instance-days": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["plan-templates"], "summary": "Every run-type plan_instance_day matching a calendar date, across every instance (HRA-206)",
         "description": "Feeds ActivityDetailBody's same-day planned-vs-actual picker: 0 matches -> no UI change, 1 -> the chart renders automatically, >=2 -> a picker labeled by instance name. Only workout_type === 'run' ever matches (REST/CROSS/STRENGTH/OTHER are excluded, docs/runplan-dsl.md). Matches across every instance regardless of approved_at state. No pagination envelope — a plain (possibly empty) array.",
@@ -1046,6 +1075,7 @@
       }
     },
     "/api/v1/plan-instances/{id}": {
+      "security": [{ "runsFreeSession": [] }],
       "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "patch": {
         "tags": ["plan-templates"], "summary": "Partially update an instance's name/race info/resolved days (HRA-135, replacing the earlier PUT)",
@@ -1057,6 +1087,7 @@
       "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/plan-instances/{id}/reports/workouts/{workoutId}": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["reporting"], "summary": "The single-workout/race report for one planned workout (HRA-336)",
         "description": "Reads Original, Current, their revisions, accepted HRA-334 association evidence, and asOf from one consistent application-level read boundary (services/reporting.service.ts) — the result never mixes plan content from one revision with a different reported revision. Reuses HRA-333's lineage classifier and HRA-335's shared metrics primitives rather than a second calculation engine. A workout counts as the plan's race day when its own placement date equals the instance's race_date (HRA-121); race actual comparison always uses elapsed time, never moving/active time. No official-result data source exists yet — race.actualSource is always 'activity' or 'none'.",
@@ -1069,6 +1100,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/reports/weeks": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["reporting"], "summary": "The week report for one planned week — group-by-workout adaptation/execution/outcome (HRA-338)",
         "description": "Reuses HRA-335's shared buildReport engine (domain/reporting/report.ts), scoped to ONE week: a planned workout's own structural slot (section_name + week_number, lineage.ts's own 'moved' definition), never a calendar-date span. A workout that moved into or out of this exact slot still surfaces as moved_in/moved_out rather than silently vanishing from one side. evidence.hr/pauses blend across every accepted activity in this week's own date span; evidence.comparableStamina never blends — at most one session (the week's race, else its strict-max-distance completed run) carries its own stamina series.",
@@ -1083,6 +1115,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/reports/plan": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["reporting"], "summary": "The entire-plan report — grouped by week for progression, drilling down to workouts (HRA-338)",
         "description": "Reuses HRA-335's shared buildReport engine once for the whole plan's own isolated totals (overall) and once per week (weeks[], in chronological order) — never a second calculation engine. An empty plan (no days on either side yet) returns an empty report rather than 404ing (the instance itself still exists).",
@@ -1095,6 +1128,7 @@
       }
     },
     "/api/v1/reports/range": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["reporting"], "summary": "The date-range/race-range report — cross-plan, grouped automatically by window length (HRA-341)",
         "description": "Unlike every other report above (scoped to one plan instance), this scans EVERY plan instance whose Original or Current span overlaps [from,to] and gives each its own isolated buildReport call (associations pre-filtered to that instance's own workout ids, so one instance's evidence never leaks into another's totals within the same window). aggregate sums across every included instance; its Actual dataset and the range-wide unplanned/ambiguous lists are computed once against every activity in the window, never per instance. A race-range is just a saved date_ranges row's own {from,to} resolved by the caller before this call — there is no separate race-range endpoint. An empty window (no instances, no activities) returns an explicit empty report rather than 404ing.",
@@ -1108,6 +1142,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}": {
+      "security": [{ "runsFreeSession": [] }],
       "patch": {
         "tags": ["plan-templates"], "summary": "Partially update a single resolved day (HRA-149)",
         "description": "A smaller, more honest write than PATCH .../plan-instances/{id}'s bulk days replace: one field's worth of edit on one already-existing day. Body is {dsl?, notes?, scheduled_time?}, all optional but at least one required (422 otherwise), each validated independently. dsl, when supplied, is re-parsed against this day's own existing section/week/date scope and the template's effective PacePolicy (merged with the instance's pace_overrides) and resolved the same way the bulk days-replace path does; rejected (422) if the fresh parse still needs review. notes overrides whatever the dsl parse itself produced for that field, when both are supplied together. scheduled_time must be HH:MM 24-hour, or null to clear back to the 08:00 display default. HRA-249: no longer rejected once the instance is approved — HRA-126's lock is a frontend-only warning now; only activating a conflicting instance is hard-blocked (see .../approve). Never touches or re-instantiates the source template.",
@@ -1117,6 +1152,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}/validate": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Parse-only preview of a day's DSL edit, never persists (HRA-162)",
         "description": "What the List view's per-day editor calls (debounced) as the user types, so warning feedback updates live instead of only after the whole-day bulk Save round-trip. Reuses the exact same parseDayEntry call and ParseWarning taxonomy the persisting PATCH .../days/{dayId} validates against, against this day's own existing section/week scope and the template's effective PacePolicy (merged with the instance's pace_overrides) — never a separate client-side grammar reimplementation. Always 200: parseDayEntry itself never hard-rejects (docs/runplan-dsl.md's warnings-only model), it only ever produces warnings. No approved-instance guard, unlike the PATCH above: this never mutates anything.",
@@ -1126,6 +1162,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}/fit": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["plan-templates"], "summary": "Export one resolved day as a Garmin Workout .fit file (HRA-202)",
         "description": "Wraps toGarminWorkoutFit (integrations/garmin-workout.ts) for one plan_instance_days row. Read-only: nothing is parsed or persisted, so an approved instance is not guarded against. Rejected (422) exactly when toGarminWorkoutFit itself rejects the day — needs_review, or a workout_type other than run/rest.",
@@ -1134,6 +1171,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/fit": {
+      "security": [{ "runsFreeSession": [] }],
       "get": {
         "tags": ["plan-templates"], "summary": "Export every exportable day in a section (or one week within it) as a Garmin Workout .fit zip (HRA-203)",
         "description": "Bundles one .fit per exportable plan_instance_days row in scope (filtered by section_name, and optionally week_number) into a single uncompressed (STORE) zip, reusing the same toGarminWorkoutFit path as the day-level export above. A day toGarminWorkoutFit itself rejects (needs_review, or a workout_type other than run/rest) is skipped rather than failing the request — X-Export-Total/X-Export-Included/X-Export-Skipped response headers report the counts, since the body itself is opaque binary. 422 with no zip written when zero days in scope are exportable.",
@@ -1151,6 +1189,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/approve": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Approve a plan instance (gate 2, HRA-113; overlap-blocked HRA-249)",
         "description": "Same gate-2 semantics as the template approve endpoint. HRA-249: before approving, the candidate's resolved date range (MIN/MAX over its plan_instance_days) is compared inclusively and date-only against every OTHER already-approved instance's own range. Any overlap (start/end boundary, full containment either direction, or a shared boundary date) 409s and never sets approved_at — the Problem body's `overlaps` field names the candidate and every conflicting instance, each with its own range and the overlap period. No override exists.",
@@ -1159,6 +1198,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/regenerate": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Regenerate an instance's days from a cutover date onward (HRA-132)",
         "description": "effective_from is required and server-floored to today — never trusted from the client. Days with date < effective_from are never modified or deleted. Days with date >= effective_from are fully regenerated from the template's own DSL (via instantiatePlan, not from the instance's already-resolved days — those already discarded each day's original symbolic pace anchor) using start_date/pace_overrides, falling back to the instance's own current value for whichever is omitted. pace_overrides, when supplied, is the instance's new COMPLETE override map (same semantics as /instantiate's own field), not a partial merge on top of what was stored before. Existing manual edits on days >= effective_from are discarded (documented behavior, not a bug). Clears approved_at, same gate-2 rule as the instance PUT. HRA-299: before mutating, a preflight checks every currently-persisted day in [effective_from, end] for a customization marker (set by PATCH .../days/{dayId}'s dsl branch, or a swap) — if any are found and confirm_overwrite isn't true, 409s naming every affected day instead of silently discarding them; retry with confirm_overwrite: true to proceed.",
@@ -1168,6 +1208,7 @@
       }
     },
     "/api/v1/plan-instances/{id}/workouts/swap": {
+      "security": [{ "runsFreeSession": [] }],
       "post": {
         "tags": ["plan-templates"], "summary": "Atomically exchange the logical workouts occupying two calendar slots (HRA-333 follow-up)",
         "description": "Replaces the old two-call PATCH .../days/{dayId} swap flow — each of those calls was its own transaction, so plan_instance_days' deferred (instance_id, workout_id) unique constraint could never actually resolve at commit. This endpoint locks both day rows, verifies both exist and belong to the requested instance, and exchanges their workout_id in one statement within one transaction; the deferred constraint is only needed to let each row's new value pass Postgres' per-row uniqueness check mid-statement. Neither slot's own id/date/scheduled_time moves, and plan_instance_workouts (content, customization) and workout_associations (both keyed by (instance_id, workout_id)) are never written — both stay attached to the logical workout, not the slot. 404 if either day_a_id/day_b_id doesn't exist or belongs to a different instance; the whole transaction rolls back in that case, so a partially-invalid request never partially applies.",
