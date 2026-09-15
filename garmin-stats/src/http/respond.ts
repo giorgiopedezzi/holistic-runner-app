@@ -19,6 +19,22 @@ function cors(res: http.ServerResponse): Record<string, string> {
   };
 }
 
+// HRA-356: the router calls configureCors() on every request when
+// AUTH_ENABLED + AUTH_ALLOWED_ORIGINS are set, before any route dispatches —
+// so by the time a handler runs, res already carries the correct
+// origin-echoed-with-credentials (or Vary-only) headers, or nothing when
+// auth is off (dev fallback: cors() below returns the permissive default).
+// Handlers that bypass send()/sendProblem()/sendNoContent() because they
+// stream a binary/NDJSON body (FIT/zip export, background image, sync
+// progress) must still use this — not a hardcoded "*" — so they carry the
+// SAME fixed CORS policy as every JSON route instead of a silently
+// permissive hole that also breaks credentialed cross-origin fetch (Vercel
+// frontend + Railway backend) once auth is enabled, since browsers refuse
+// to expose a credentialed response whose Allow-Origin is "*".
+export function corsHeaders(res: http.ServerResponse): Record<string, string> {
+  return cors(res);
+}
+
 export function send(res: http.ServerResponse, data: unknown, status = 200): void {
   const body = JSON.stringify(data);
   res.writeHead(status, {

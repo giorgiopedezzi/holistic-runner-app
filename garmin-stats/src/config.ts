@@ -232,6 +232,73 @@ export function requireWebAuthConfig(config: Config): {
   return { ...auth, allowedOrigins: config.auth.allowedOrigins };
 }
 
+// HRA-356 AC2: startup-time validation. Called once from server.ts right
+// after loadConfig() when AUTH_ENABLED is true, so a misconfigured
+// deployment fails immediately at boot (visible in the deploy log) instead
+// of only surfacing the first time a real user tries to log in. Throwing
+// here is deliberate: server.ts is a top-level module, so an uncaught throw
+// stops the process before it ever binds a port — the "fail safely" the AC
+// asks for, not a caught-and-logged warning a deploy could miss.
+const PLACEHOLDER_MARKERS = ["changeme", "change-me", "placeholder", "your-", "xxx", "todo", "example.com", "localhost.example"];
+
+function rejectPlaceholder(label: string, value: string | undefined): void {
+  if (value && PLACEHOLDER_MARKERS.some(marker => value.toLowerCase().includes(marker))) {
+    throw new Error(`${label} looks like an unfilled placeholder value: "${value}"`);
+  }
+}
+
+function originOf(label: string, url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try { return new URL(url).origin; } catch { throw new Error(`${label} is not a valid URL: "${url}"`); }
+}
+
+export function validateAuthConfig(config: Config): void {
+  if (!config.auth.enabled) return;
+  const web = requireWebAuthConfig(config);
+
+  for (const [label, value] of Object.entries({
+    AUTH_ISSUER_URL: web.issuerUrl, AUTH_DISCOVERY_URL: web.discoveryUrl, AUTH_AUDIENCE: web.audience,
+    AUTH_WEB_CLIENT_ID: web.webClientId, AUTH_WEB_CLIENT_SECRET: web.webClientSecret,
+    AUTH_WEB_CALLBACK_URL: web.webCallbackUrl, AUTH_WEB_LOGOUT_URL: web.webLogoutUrl,
+  })) rejectPlaceholder(label, value);
+
+  const isProduction = process.env.NODE_ENV === "production";
+  if (isProduction) {
+    for (const [label, url] of Object.entries({
+      AUTH_ISSUER_URL: web.issuerUrl, AUTH_DISCOVERY_URL: web.discoveryUrl,
+      AUTH_WEB_CALLBACK_URL: web.webCallbackUrl, AUTH_WEB_LOGOUT_URL: web.webLogoutUrl,
+    })) {
+      if (new URL(url).protocol !== "https:") throw new Error(`${label} must use https:// in production: "${url}"`);
+    }
+    for (const origin of web.allowedOrigins) {
+      if (new URL(origin).protocol !== "https:") throw new Error(`AUTH_ALLOWED_ORIGINS must use https:// origins in production: "${origin}"`);
+    }
+  }
+
+  // Cross-environment mismatch: Auth0's discovery document lives under the
+  // issuer's own host — a discoveryUrl pointing at a different host almost
+  // always means the dev tenant and the custom domain got mixed between envs.
+  const issuerHost = new URL(web.issuerUrl).host;
+  const discoveryHost = new URL(web.discoveryUrl).host;
+  if (issuerHost !== discoveryHost) {
+    throw new Error(`AUTH_ISSUER_URL host (${issuerHost}) and AUTH_DISCOVERY_URL host (${discoveryHost}) disagree — likely a cross-environment (dev tenant vs custom domain) mismatch.`);
+  }
+
+  // Contradictory: the post-login/logout landing page should be an origin the
+  // API itself trusts for credentialed cross-origin calls — otherwise a
+  // successful login redirects the browser to a domain that can't call back.
+  const logoutOrigin = originOf("AUTH_WEB_LOGOUT_URL", web.webLogoutUrl);
+  if (web.allowedOrigins.length > 0 && logoutOrigin && !web.allowedOrigins.includes(logoutOrigin)) {
+    throw new Error(`AUTH_WEB_LOGOUT_URL origin (${logoutOrigin}) is not in AUTH_ALLOWED_ORIGINS (${web.allowedOrigins.join(", ")}) — the post-login redirect target must be a trusted frontend origin.`);
+  }
+
+  // Contradictory: an idle timeout longer than the absolute session lifetime
+  // can never fire — the absolute cap would always win first.
+  if (config.auth.sessionIdleSeconds > config.auth.sessionAbsoluteSeconds) {
+    throw new Error(`AUTH_SESSION_IDLE_SECONDS (${config.auth.sessionIdleSeconds}) exceeds AUTH_SESSION_ABSOLUTE_SECONDS (${config.auth.sessionAbsoluteSeconds}) — the idle timeout could never fire.`);
+  }
+}
+
 export function getArg(flag: string): string | null {
   const args = process.argv.slice(2);
   const i = args.indexOf(flag);

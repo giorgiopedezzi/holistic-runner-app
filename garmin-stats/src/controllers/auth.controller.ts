@@ -6,6 +6,7 @@ import { send, sendNoContent } from "../http/respond.ts";
 import { serviceUnavailable, unauthorized } from "../http/problem.ts";
 import { requireWebAuthConfig } from "../config.ts";
 import { remoteJwks, TokenValidationError, verifyIdToken } from "../domain/identity/token-validation.ts";
+import { logSecurityEvent } from "../http/security-log.ts";
 
 const SESSION_COOKIE = "__Host-runsfree_session";
 const LOCAL_SESSION_COOKIE = "runsfree_session";
@@ -52,7 +53,10 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
   const callbackFailure = () => `${requireWebAuthConfig(ctx.config).webLogoutUrl}?auth=unavailable`;
   return {
     login: async (req, res) => {
-      if (!ctx.config.auth.enabled || !checkRate(req, "login")) throw serviceUnavailable("Sign-in is temporarily unavailable.");
+      if (!ctx.config.auth.enabled || !checkRate(req, "login")) {
+        logSecurityEvent("auth.login.unavailable", { reason: ctx.config.auth.enabled ? "rate_limited" : "auth_disabled" });
+        throw serviceUnavailable("Sign-in is temporarily unavailable.");
+      }
       let config; let endpoints;
       try { config = requireWebAuthConfig(ctx.config); endpoints = await discovery(config.discoveryUrl); }
       catch { throw serviceUnavailable("Sign-in is temporarily unavailable."); }
@@ -72,7 +76,13 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
       try { config = requireWebAuthConfig(ctx.config); } catch { return redirect(res, callbackFailure()); }
       const state = url.searchParams.get("state"); const code = url.searchParams.get("code");
       const transaction = state ? await consumeAuthTransaction(ctx.db, state, cookie(req, PREAUTH_COOKIE) ?? "") : null;
-      if (!code || !transaction) return redirect(res, callbackFailure(), [`${PREAUTH_COOKIE}=; ${cookieAttributes(config.webCallbackUrl, 0)}`]);
+      if (!code || !transaction) {
+        // A state param that fails to consume (already used, expired, or a
+        // forged/mismatched preauth cookie) is a replay/tamper attempt, not
+        // ordinary missing-params noise — log it as its own signal.
+        if (state) logSecurityEvent("auth.callback.replay", { state });
+        return redirect(res, callbackFailure(), [`${PREAUTH_COOKIE}=; ${cookieAttributes(config.webCallbackUrl, 0)}`]);
+      }
       try {
         const endpoints = await discovery(config.discoveryUrl);
         const tokenResponse = await fetch(endpoints.token_endpoint, {
@@ -87,18 +97,24 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
           { issuer: identity.issuer, subject: identity.subject, provider: "auth0", email: identity.email },
           { mode: ctx.config.auth.registrationMode, founderAllowlist: ctx.config.auth.founderAllowlist },
         );
-        if (resolution.outcome !== "authenticated") return redirect(res, `${config.webLogoutUrl}?auth=pending`);
+        if (resolution.outcome !== "authenticated") {
+          logSecurityEvent("auth.registration.denied", { outcome: resolution.outcome, mode: ctx.config.auth.registrationMode });
+          return redirect(res, `${config.webLogoutUrl}?auth=pending`);
+        }
         const sessionName = sessionCookieName(config.webCallbackUrl);
         const previous = cookie(req, SESSION_COOKIE) ?? cookie(req, LOCAL_SESSION_COOKIE);
         const session = await ctx.services.identity.rotateSession(resolution.user.id,
           { idleSeconds: ctx.config.auth.sessionIdleSeconds, absoluteSeconds: ctx.config.auth.sessionAbsoluteSeconds }, null);
-        if (previous) await ctx.services.identity.revokeSessionByCookie(previous);
+        if (previous) {
+          await ctx.services.identity.revokeSessionByCookie(previous);
+          logSecurityEvent("auth.session.revoked", { reason: "rotated_on_login", userId: resolution.user.id });
+        }
         redirect(res, config.webLogoutUrl, [
           `${sessionName}=${encodeURIComponent(session)}; ${cookieAttributes(config.webCallbackUrl, ctx.config.auth.sessionAbsoluteSeconds)}`,
           `${PREAUTH_COOKIE}=; ${cookieAttributes(config.webCallbackUrl, 0)}`,
         ]);
       } catch (error) {
-        if (!(error instanceof TokenValidationError)) console.error("Authentication callback failed");
+        if (!(error instanceof TokenValidationError)) logSecurityEvent("auth.callback.failed", { reason: error instanceof Error ? error.message : String(error) });
         return redirect(res, callbackFailure(), [`${PREAUTH_COOKIE}=; ${cookieAttributes(config.webCallbackUrl, 0)}`]);
       }
     },
@@ -113,7 +129,10 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
     logout: async (req, res) => {
       const config = requireWebAuthConfig(ctx.config);
       const rawSession = cookie(req, SESSION_COOKIE) ?? cookie(req, LOCAL_SESSION_COOKIE);
-      if (rawSession) await ctx.services.identity.revokeSessionByCookie(rawSession);
+      if (rawSession) {
+        await ctx.services.identity.revokeSessionByCookie(rawSession);
+        logSecurityEvent("auth.session.revoked", { reason: "logout" });
+      }
       res.setHeader("Set-Cookie", `${sessionCookieName(config.webCallbackUrl)}=; ${cookieAttributes(config.webCallbackUrl, 0)}`);
       sendNoContent(res);
     },

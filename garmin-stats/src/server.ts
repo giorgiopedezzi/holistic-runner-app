@@ -11,7 +11,7 @@ import http from "http";
 import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
-import { loadConfig, getArg } from "./config.ts";
+import { loadConfig, getArg, validateAuthConfig } from "./config.ts";
 import { openPostgresDatabase } from "./db/postgres.ts";
 import { createApiHandler } from "./http/router.ts";
 import { startWithingsCallbackServer } from "./http/withings-callback.ts";
@@ -43,6 +43,11 @@ const __dirname  = path.dirname(__filename);
 
 const config = loadConfig();
 const PORT   = parseInt(getArg("--port") ?? "3001");
+
+// HRA-356 AC2: fail closed at boot when AUTH_ENABLED carries a missing,
+// placeholder, cross-environment, insecure, or contradictory configuration —
+// never only on the first real user's login attempt.
+validateAuthConfig(config);
 
 const db = openPostgresDatabase();
 // `pg` pools connect lazily. Probe before binding HTTP ports so a startup log

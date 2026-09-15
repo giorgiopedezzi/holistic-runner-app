@@ -95,6 +95,9 @@ export function createDocsController(ctx: AppContext) {
   };
 
   const ui: Handler = (_req, res) => {
+    // Overrides router.ts's default-src 'none' CSP: this page's inline
+    // <style>/<script> and its same-origin fetch() of the spec need it.
+    res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'");
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-cache" });
     res.end(DOCS_HTML);
   };

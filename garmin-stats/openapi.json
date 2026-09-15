@@ -44,6 +44,7 @@
       "Conflict": { "description": "A conflicting resource already exists (e.g. duplicate name).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "Unprocessable": { "description": "Request parsed but failed a validation rule.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "TooManyRequests": { "description": "The upstream AI provider rate-limited this request.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "SyncRateLimited": { "description": "This owner triggered too many sync requests for this provider in the current window (HRA-356 AC8).", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "BadGateway": { "description": "The upstream AI provider rejected the request, was unreachable, or returned an invalid response.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "ServiceUnavailable": { "description": "The AI provider integration is not configured.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
       "GatewayTimeout": { "description": "The upstream AI provider request timed out.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
@@ -928,13 +929,13 @@
       }
     },
     "/api/v1/sync/garmin": {
-      "post": { "tags": ["sync"], "summary": "Sync from the plugged-in Garmin device (streaming)", "description": "Streams NDJSON progress events: {type:'progress',phase,current,total,label}, ending with {type:'done',imported,skipped,errors} or {type:'error',message}.", "responses": { "200": { "description": "NDJSON progress stream.", "content": { "application/x-ndjson": {} } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+      "post": { "tags": ["sync"], "summary": "Sync from the plugged-in Garmin device (streaming)", "description": "Streams NDJSON progress events: {type:'progress',phase,current,total,label}, ending with {type:'done',imported,skipped,errors} or {type:'error',message}.", "responses": { "200": { "description": "NDJSON progress stream.", "content": { "application/x-ndjson": {} } }, "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/SyncRateLimited" } } }
     },
     "/api/v1/sync/withings": {
-      "post": { "tags": ["sync"], "summary": "Sync from Withings (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+      "post": { "tags": ["sync"], "summary": "Sync from Withings (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/SyncRateLimited" } } }
     },
     "/api/v1/sync/strava": {
-      "post": { "tags": ["sync"], "summary": "Sync from Strava (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary (skipped folds in cross-source duplicates).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+      "post": { "tags": ["sync"], "summary": "Sync from Strava (blocking)", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Sync summary (skipped folds in cross-source duplicates).", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SyncResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" }, "429": { "$ref": "#/components/responses/SyncRateLimited" } } }
     },
     "/api/v1/garmin/status": {
       "get": { "tags": ["integrations"], "summary": "Is the Garmin device plugged in?", "description": "Runs a ~15s PowerShell device probe.", "responses": { "200": { "description": "Device status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DeviceStatus" } } } } } }

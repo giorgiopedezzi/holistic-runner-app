@@ -25,7 +25,7 @@ import { generatePlanTemplate, PlanTemplateAiError } from "../integrations/plan-
 import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
 import { DayNotInInstanceError, type PlanInstanceDayReplacement } from "../services/plan-instances.service.ts";
 import type { DayEntry, DayParseContext, EventType, PacePolicy, RunPlan } from "../domain/runplan/types.ts";
-import { send, sendNoContent } from "../http/respond.ts";
+import { send, sendNoContent, corsHeaders } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
 import {
@@ -982,7 +982,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     res.writeHead(200, {
       "Content-Type": "application/octet-stream",
       "Content-Disposition": `attachment; filename="${filename}"`,
-      "Access-Control-Allow-Origin": "*",
+      ...corsHeaders(res),
     });
     res.end(outcome.bytes);
   };
@@ -1051,7 +1051,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       "X-Export-Total": String(days.length),
       "X-Export-Included": String(included.length),
       "X-Export-Skipped": String(skipped),
-      "Access-Control-Allow-Origin": "*",
+      ...corsHeaders(res),
     });
     res.end(zipBytes);
   };

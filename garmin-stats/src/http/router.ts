@@ -12,6 +12,7 @@ import { configureCors, send, sendProblem } from "./respond.ts";
 import { ApiProblem, notFound, internal, unauthorized } from "./problem.ts";
 import { demoGuarded } from "./demo-guard.ts";
 import { authenticateRequest } from "./auth-context.ts";
+import { logSecurityEvent } from "./security-log.ts";
 import { createAuthController, expectedCsrfToken } from "../controllers/auth.controller.ts";
 import { createAccountPrivacyController } from "../controllers/account-privacy.controller.ts";
 import { createActivitiesController } from "../controllers/activities.controller.ts";
@@ -68,6 +69,17 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     // found. The dashboard has its own robots.txt/meta tag, but this API is
     // reachable on its own port too.
     res.setHeader("X-Robots-Tag", "noindex, nofollow, noai, noimageai");
+    // HRA-356 AC8: fixed production security headers on every response. This
+    // is a pure JSON/binary API — default-src 'none' is safe everywhere
+    // except the self-contained docs HTML page, which overrides CSP itself
+    // (docs.controller.ts) to allow its own inline script/style.
+    // Strict-Transport-Security is harmless to send over local http; browsers
+    // only honor it once a request was actually made over https.
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
+    res.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
 
     const origin = req.headers.origin;
     const allowedOrigin = origin && ctx.config.auth.allowedOrigins.includes(origin) ? origin : undefined;
@@ -246,9 +258,15 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         sendProblem(res, p.instance ? p : { ...p, instance: route });
         return;
       }
-      // An unexpected error — log the real thing server-side, return a generic
-      // 500 that never leaks the exception message/stack to the client.
-      console.error("Unhandled API error:", e);
+      // An unexpected error — log a redacted summary server-side, return a
+      // generic 500 that never leaks the exception message/stack to the
+      // client. logSecurityEvent redacts token/session/code-shaped
+      // substrings before the line is written (AC6).
+      logSecurityEvent("api.error.unhandled", {
+        route,
+        reason: e instanceof Error ? e.message : String(e),
+        stack: e instanceof Error && e.stack ? e.stack : undefined,
+      });
       sendProblem(res, internal().problem);
     }
   };

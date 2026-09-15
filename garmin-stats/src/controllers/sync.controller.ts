@@ -16,11 +16,18 @@
 import type { AppContext, Handler } from "../http/context.ts";
 import { send } from "../http/respond.ts";
 import { requestIdentity } from "../http/auth-context.ts";
-import { unprocessable, conflict } from "../http/problem.ts";
+import { unprocessable, conflict, tooManyRequests } from "../http/problem.ts";
 import { streamSyncScript } from "../http/stream-sync.ts";
 import { acquireSyncLock, releaseSyncLock, SyncAlreadyRunningError, type SyncProvider } from "../services/sync-lock.ts";
 import { getTokenStatus as getWithingsStatus } from "../integrations/withings.ts";
 import { getTokenStatus as getStravaStatus } from "../integrations/strava.ts";
+import { logSecurityEvent } from "../http/security-log.ts";
+import { checkRateLimit } from "../http/rate-limit.ts";
+
+// AC8's "appropriate import rate limits": per-user+provider, not global —
+// acquireSyncLock already blocks a concurrent overlapping run, this instead
+// caps repeated sequential triggers within a short window.
+const SYNC_RATE_LIMIT = { windowMs: 5 * 60_000, max: 10 };
 
 export function createSyncController(ctx: AppContext) {
   const service = ctx.services.sync;
@@ -28,6 +35,7 @@ export function createSyncController(ctx: AppContext) {
 
   const garmin: Handler = async (req, res) => {
     const userId = requestIdentity(req).userId;
+    if (!checkRateLimit(`sync:garmin:${userId}`, SYNC_RATE_LIMIT)) throw tooManyRequests("Too many Garmin sync requests. Try again shortly.");
     let runId: number;
     try {
       runId = await acquireSyncLock(db, userId, "garmin");
@@ -39,11 +47,13 @@ export function createSyncController(ctx: AppContext) {
       await releaseSyncLock(db, runId, outcome.type === "done"
         ? { status: "succeeded", imported: outcome.imported, skipped: outcome.skipped, errors: outcome.errors }
         : { status: "failed", errorMessage: outcome.message });
+      if (outcome.type === "error") logSecurityEvent("import.job.failed", { provider: "garmin", userId, reason: outcome.message });
     });
   };
 
   async function runBlockingSync(provider: Extract<SyncProvider, "withings" | "strava">, scriptName: string, url: URL, req: Parameters<Handler>[0]) {
     const userId = requestIdentity(req).userId;
+    if (!checkRateLimit(`sync:${provider}:${userId}`, SYNC_RATE_LIMIT)) throw tooManyRequests(`Too many ${provider} sync requests. Try again shortly.`);
     const status = provider === "withings" ? await getWithingsStatus(config, db, userId) : await getStravaStatus(config, db, userId);
     if (!status.present) throw unprocessable(`No ${provider} connection for this account. Connect it from the dashboard first.`);
 
@@ -58,7 +68,9 @@ export function createSyncController(ctx: AppContext) {
       await releaseSyncLock(db, runId, { status: "succeeded", imported: result.imported, skipped: result.skipped, errors: result.errors });
       return result;
     } catch (e) {
-      await releaseSyncLock(db, runId, { status: "failed", errorMessage: e instanceof Error ? e.message : String(e) });
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      await releaseSyncLock(db, runId, { status: "failed", errorMessage });
+      logSecurityEvent("import.job.failed", { provider, userId, reason: errorMessage });
       throw e;
     }
   }

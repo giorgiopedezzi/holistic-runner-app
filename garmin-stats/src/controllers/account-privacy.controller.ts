@@ -1,9 +1,10 @@
 import type { AppContext, Handler } from "../http/context.ts";
 import { requestIdentity } from "../http/auth-context.ts";
 import { readJsonBody } from "../http/request.ts";
-import { send } from "../http/respond.ts";
+import { send, corsHeaders } from "../http/respond.ts";
 import { notFound, unprocessable, unauthorized } from "../http/problem.ts";
 import type { ProfileUpdate } from "../repositories/identity.repo.ts";
+import { logSecurityEvent } from "../http/security-log.ts";
 
 const confirmation = "DELETE MY ACCOUNT";
 
@@ -26,11 +27,13 @@ export function createAccountPrivacyController(ctx: AppContext) {
     const identity = requestIdentity(req);
     if (!(await ctx.services.identity.requireRecentAuthentication(identity.userId, identity.sessionId))) throw unauthorized();
     await ctx.services.identity.revokeOtherSessions(identity.userId, identity.sessionId!);
+    logSecurityEvent("auth.session.revoked_others", { userId: identity.userId });
     send(res, { revoked: true });
   };
   const createExport: Handler = async (req, res) => {
     const identity = requestIdentity(req);
     const result = await ctx.services.accountPrivacy.requestExport(identity.userId);
+    logSecurityEvent("account.export.created", { userId: identity.userId, exportId: result.id });
     send(res, { expires_at: result.expiresAt, download_url: `/api/v1/account/exports/${result.id}?token=${encodeURIComponent(result.secret)}` }, 201);
   };
   const downloadExport: Handler = async (req, res, url) => {
@@ -40,8 +43,9 @@ export function createAccountPrivacyController(ctx: AppContext) {
     const row = await ctx.services.accountPrivacy.getExport(id, requestIdentity(req).userId, token);
     if (!row) throw notFound();
     await ctx.services.accountPrivacy.recordExportDownloaded(requestIdentity(req).userId, id);
+    logSecurityEvent("account.export.downloaded", { userId: requestIdentity(req).userId, exportId: id });
     const filename = `runs-free-personal-data-${new Date(row.created_at).toISOString().slice(0, 10)}.json`;
-    res.writeHead(200, { "Content-Type": "application/json", "Content-Disposition": `attachment; filename=\"${filename}\"`, "Cache-Control": "no-store" });
+    res.writeHead(200, { "Content-Type": "application/json", "Content-Disposition": `attachment; filename=\"${filename}\"`, "Cache-Control": "no-store", ...corsHeaders(res) });
     res.end(JSON.stringify(row.payload));
   };
   const requestDeletion: Handler = async (req, res) => {
@@ -49,7 +53,9 @@ export function createAccountPrivacyController(ctx: AppContext) {
     const body = await readJsonBody<{ confirmation?: unknown }>(req);
     if (body.confirmation !== confirmation) throw unprocessable("Enter the exact account-deletion confirmation.");
     if (!(await ctx.services.identity.requireRecentAuthentication(identity.userId, identity.sessionId))) throw unauthorized();
-    send(res, await ctx.services.accountPrivacy.requestDeletion(identity.userId), 202);
+    const result = await ctx.services.accountPrivacy.requestDeletion(identity.userId);
+    logSecurityEvent("account.deletion.requested", { userId: identity.userId });
+    send(res, result, 202);
   };
   return { profile, revokeOthers, createExport, downloadExport, requestDeletion };
 }

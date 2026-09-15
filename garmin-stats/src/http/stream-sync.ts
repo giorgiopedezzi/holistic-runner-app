@@ -11,6 +11,8 @@ import http from "http";
 import path from "path";
 import { spawn } from "child_process";
 import readline from "readline";
+import { corsHeaders } from "./respond.ts";
+import { redact } from "./security-log.ts";
 
 const PROGRESS_LINE = /^PROGRESS (\w+) (\d+) (\d+)(?: (.*))?$/;
 
@@ -28,10 +30,8 @@ export function streamSyncScript(
   const scriptPath = path.join(scriptsDir, scriptName);
   res.writeHead(200, {
     "Content-Type": "application/x-ndjson",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Cache-Control": "no-cache",
+    ...corsHeaders(res),
   });
 
   const send = (obj: unknown) => res.write(`${JSON.stringify(obj)}\n`);
@@ -51,14 +51,19 @@ export function streamSyncScript(
   child.stderr.on("data", chunk => stderrBuf += chunk);
 
   child.on("error", async err => {
-    send({ type: "error", message: err.message });
-    await onOutcome?.({ type: "error", message: err.message });
+    const message = redact(err.message);
+    send({ type: "error", message });
+    await onOutcome?.({ type: "error", message });
     res.end();
   });
 
   child.on("close", async code => {
     if (code !== 0) {
-      const message = `${scriptName} exited with code ${code}: ${(stderrBuf || logTail).slice(-1000)}`;
+      // AC6: redact before this reaches the client NDJSON response, the
+      // sync_runs.errorMessage column, and the security-event log — a
+      // PowerShell/child-process failure can surface a local filesystem
+      // path or filename in its stderr tail.
+      const message = redact(`${scriptName} exited with code ${code}: ${(stderrBuf || logTail).slice(-1000)}`);
       send({ type: "error", message });
       await onOutcome?.({ type: "error", message });
       res.end();

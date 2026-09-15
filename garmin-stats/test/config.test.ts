@@ -14,6 +14,7 @@ import {
   requireStravaConfig,
   requireOllamaConfig,
   requireIntegrationEncryptionConfig,
+  validateAuthConfig,
 } from "../src/config.ts";
 
 const ENV_KEYS = [
@@ -23,7 +24,25 @@ const ENV_KEYS = [
   "SYNC_AUTO_ON_START", "SYNC_SKIP_DUPLICATES",
   "OLLAMA_HOST", "OLLAMA_MODEL",
   "INTEGRATION_TOKEN_ENCRYPTION_KEY", "AUTH_REGISTRATION_MODE",
+  "AUTH_ENABLED", "AUTH_ISSUER_URL", "AUTH_DISCOVERY_URL", "AUTH_AUDIENCE",
+  "AUTH_WEB_CLIENT_ID", "AUTH_WEB_CLIENT_SECRET", "AUTH_WEB_CALLBACK_URL", "AUTH_WEB_LOGOUT_URL",
+  "AUTH_ALLOWED_ORIGINS", "AUTH_SESSION_IDLE_SECONDS", "AUTH_SESSION_ABSOLUTE_SECONDS", "NODE_ENV",
 ] as const;
+
+// A complete, self-consistent AUTH_* set — every validateAuthConfig test
+// starts here and overrides only the field(s) under test, so a failure
+// isolates to that one field instead of tripping an unrelated check.
+const VALID_AUTH_ENV = {
+  AUTH_ENABLED: "true",
+  AUTH_ISSUER_URL: "https://tenant.eu.auth0.com",
+  AUTH_DISCOVERY_URL: "https://tenant.eu.auth0.com/.well-known/openid-configuration",
+  AUTH_AUDIENCE: "https://api.runsfree.app",
+  AUTH_WEB_CLIENT_ID: "abc123clientid",
+  AUTH_WEB_CLIENT_SECRET: "s3cr3t-client-secret-value",
+  AUTH_WEB_CALLBACK_URL: "https://api.runsfree.app/api/v1/auth/callback",
+  AUTH_WEB_LOGOUT_URL: "https://app.runsfree.app/",
+  AUTH_ALLOWED_ORIGINS: "https://app.runsfree.app",
+} as const;
 
 // Snapshot/restore so each test's env mutations never leak into another test
 // or into the surrounding test run's own .env.test-sourced DB_PATH.
@@ -153,5 +172,61 @@ test("registration mode stays founders_only for any value other than the exact l
 test("registration mode is only ever \"open\" via an explicit, exact AUTH_REGISTRATION_MODE=open", () => {
   withEnv({ DB_PATH: "./garmin.db", AUTH_REGISTRATION_MODE: "open" }, () => {
     assert.equal(loadConfig().auth.registrationMode, "open");
+  });
+});
+
+// HRA-356 AC2: startup validation fails safely for missing, placeholder,
+// cross-environment, insecure, or contradictory database/auth/session config.
+test("validateAuthConfig is a no-op when AUTH_ENABLED is unset/false", () => {
+  withEnv({ DB_PATH: "./garmin.db" }, () => {
+    assert.doesNotThrow(() => validateAuthConfig(loadConfig()));
+  });
+});
+
+test("validateAuthConfig passes a complete, consistent, secure config", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV }, () => {
+    assert.doesNotThrow(() => validateAuthConfig(loadConfig()));
+  });
+});
+
+test("validateAuthConfig throws naming the missing var(s) when AUTH_ENABLED but incomplete", () => {
+  withEnv({ DB_PATH: "./garmin.db", AUTH_ENABLED: "true" }, () => {
+    assert.throws(() => validateAuthConfig(loadConfig()), /AUTH_ISSUER_URL/);
+  });
+});
+
+test("validateAuthConfig rejects an unfilled placeholder value", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, AUTH_WEB_CLIENT_SECRET: "changeme" }, () => {
+    assert.throws(() => validateAuthConfig(loadConfig()), /placeholder/);
+  });
+});
+
+test("validateAuthConfig rejects http:// URLs in production", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, NODE_ENV: "production", AUTH_WEB_CALLBACK_URL: "http://api.runsfree.app/api/v1/auth/callback" }, () => {
+    assert.throws(() => validateAuthConfig(loadConfig()), /https/);
+  });
+});
+
+test("validateAuthConfig allows http:// URLs outside production", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, AUTH_WEB_CALLBACK_URL: "http://localhost:3001/api/v1/auth/callback", AUTH_WEB_LOGOUT_URL: "http://localhost:5173/", AUTH_ALLOWED_ORIGINS: "http://localhost:5173" }, () => {
+    assert.doesNotThrow(() => validateAuthConfig(loadConfig()));
+  });
+});
+
+test("validateAuthConfig rejects an issuer/discovery host mismatch (cross-environment)", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, AUTH_DISCOVERY_URL: "https://other-tenant.eu.auth0.com/.well-known/openid-configuration" }, () => {
+    assert.throws(() => validateAuthConfig(loadConfig()), /cross-environment/);
+  });
+});
+
+test("validateAuthConfig rejects a logout URL whose origin isn't in AUTH_ALLOWED_ORIGINS", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, AUTH_WEB_LOGOUT_URL: "https://staging.runsfree.app/" }, () => {
+    assert.throws(() => validateAuthConfig(loadConfig()), /AUTH_ALLOWED_ORIGINS/);
+  });
+});
+
+test("validateAuthConfig rejects an idle timeout longer than the absolute session lifetime", () => {
+  withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, AUTH_SESSION_IDLE_SECONDS: "99999", AUTH_SESSION_ABSOLUTE_SECONDS: "43200" }, () => {
+    assert.throws(() => validateAuthConfig(loadConfig()), /idle timeout could never fire/);
   });
 });

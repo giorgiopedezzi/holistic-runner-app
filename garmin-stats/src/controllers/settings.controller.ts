@@ -8,7 +8,7 @@ import fs from "fs";
 import path from "path";
 import type { AppContext, Handler } from "../http/context.ts";
 import type { SettingsRow } from "../db.ts";
-import { send } from "../http/respond.ts";
+import { send, corsHeaders } from "../http/respond.ts";
 import { readJsonBody, readBodyBuffer } from "../http/request.ts";
 import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 import { isValidIanaTimeZone } from "../domain/plan-timezone.ts";
@@ -194,8 +194,8 @@ export function createSettingsController(ctx: AppContext) {
     const ext = path.extname(filePath).slice(1).toLowerCase();
     res.writeHead(200, {
       "Content-Type": IMAGE_EXT_MIME[ext] ?? "application/octet-stream",
-      "Access-Control-Allow-Origin": "*",
       "Cache-Control": "no-cache",
+      ...corsHeaders(res),
     });
     fs.createReadStream(filePath).pipe(res);
   };
