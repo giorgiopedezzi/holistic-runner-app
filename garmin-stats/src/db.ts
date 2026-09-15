@@ -1219,19 +1219,21 @@ export interface PlanInstanceDayRow {
 }
 
 export interface WithingsTokenRow {
-  id: 1;
+  user_id: string;
   access_token: string;
   refresh_token: string;
   expires_at: number;
   scope: string | null;
+  provider_account_id: string | null;
 }
 
 export interface StravaTokenRow {
-  id: 1;
+  user_id: string;
   access_token: string;
   refresh_token: string;
   expires_at: number;
   scope: string | null;
+  provider_account_id: string | null;
 }
 
 export interface SettingsRow {

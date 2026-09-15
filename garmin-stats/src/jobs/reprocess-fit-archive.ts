@@ -3,9 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openPostgresDatabase } from "../db/postgres.ts";
+import { getArg } from "../config.ts";
+import { FOUNDER_USER_ID } from "../db/founder.ts";
 import { parseFit } from "../domain/fit-parser.ts";
 
 const archivePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../fit-archive");
+// HRA-352: an operator-run maintenance script over the single shared
+// fit-archive/ folder — same explicit-owner convention as the sync jobs, so
+// a repair run never touches another owner's activity row by filename alone
+// (filename is only unique per-owner, not globally — see 001_postgresql_foundation.sql).
+const USER_ID = getArg("--user-id") ?? FOUNDER_USER_ID;
 
 async function main(): Promise<void> {
   if (!fs.existsSync(archivePath)) throw new Error(`Archive folder not found: ${archivePath}`);
@@ -15,7 +22,7 @@ async function main(): Promise<void> {
     let updated = 0;
     let skipped = 0;
     for (const filename of files) {
-      const activityRow = await db.get<{ id: number }>("SELECT id FROM activities WHERE filename=$1", [filename]);
+      const activityRow = await db.get<{ id: number }>("SELECT id FROM activities WHERE user_id=$1 AND filename=$2", [USER_ID, filename]);
       if (!activityRow) { skipped++; continue; }
       const { activity, trackPoints } = parseFit(fs.readFileSync(path.join(archivePath, filename)), filename);
       await db.transaction(async client => {

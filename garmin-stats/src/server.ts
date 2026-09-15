@@ -78,7 +78,7 @@ const classificationService = createClassificationService(db, activitiesRepo);
 const syncService           = createSyncService(__dirname);
 const deviceService   = createDeviceService(__dirname);
 const planInstancesService  = createPlanInstancesService(db, planInstancesRepo);
-const workoutAssociationsService = createWorkoutAssociationsService(db, activitiesRepo, planInstancesRepo, workoutAssociationsRepo);
+const workoutAssociationsService = createWorkoutAssociationsService(db);
 const reportingService = createReportingService(db, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo);
 const identityService = createIdentityService(db, identityRepo);
 

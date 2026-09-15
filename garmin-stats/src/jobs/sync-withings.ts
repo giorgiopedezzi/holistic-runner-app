@@ -6,6 +6,7 @@
 
 import { loadConfig, getArg, hasFlag } from "../config.ts";
 import { openPostgresDatabase } from "../db/postgres.ts";
+import { FOUNDER_USER_ID } from "../db/founder.ts";
 import { getValidToken } from "../integrations/withings.ts";
 import type { BodyMeasurementRow } from "../db.ts";
 
@@ -13,6 +14,8 @@ const config  = loadConfig();
 const VERBOSE = hasFlag("--verbose") || hasFlag("-v");
 const FROM    = getArg("--from");
 const TO      = getArg("--to");
+// HRA-352: see sync-garmin.ts's matching USER_ID comment.
+const USER_ID = getArg("--user-id") ?? FOUNDER_USER_ID;
 
 const MEAS_URL  = "https://wbsapi.withings.net/measure";
 
@@ -113,7 +116,7 @@ function decodeGroup(grp: MeasGroup, heightM: number | null): BodyMeasurementRow
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Sync Withings ===\n");
   const db = openPostgresDatabase();
-  const accessToken = await getValidToken(config, db);
+  const accessToken = await getValidToken(config, db, USER_ID);
 
   const heightHistory = await fetchHeightHistory(accessToken);
   if (heightHistory.length === 0) {
@@ -122,7 +125,7 @@ async function main(): Promise<void> {
     console.log(`Using height ${heightHistory[heightHistory.length - 1].heightM.toFixed(2)} m for BMI`);
   }
 
-  const last = await db.get<{ last: string | null }>("SELECT MAX(measured_at) AS last FROM body_measurements");
+  const last = await db.get<{ last: string | null }>("SELECT MAX(measured_at) AS last FROM body_measurements WHERE user_id = $1", [USER_ID]);
   const startTs = FROM ? Math.floor(new Date(FROM).getTime() / 1000)
     : last?.last ? Math.floor(new Date(last.last).getTime() / 1000) - 86400
     : Math.floor(Date.now() / 1000) - 2 * 365 * 86400;
@@ -138,7 +141,7 @@ async function main(): Promise<void> {
     for (const grp of groups) {
       const row = decodeGroup(grp, heightAt(heightHistory, grp.date));
       if (!row) { skipped++; continue; }
-      const info = await client.query(`INSERT INTO body_measurements (user_id, measured_at, date_only, weight_kg, fat_ratio, fat_mass_kg, muscle_mass_kg, hydration_kg, bone_mass_kg, bmi, heart_rate) VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1),$1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (measured_at) DO NOTHING`, [row.measured_at, row.date_only, row.weight_kg, row.fat_ratio, row.fat_mass_kg, row.muscle_mass_kg, row.hydration_kg, row.bone_mass_kg, row.bmi, row.heart_rate]);
+      const info = await client.query(`INSERT INTO body_measurements (user_id, measured_at, date_only, weight_kg, fat_ratio, fat_mass_kg, muscle_mass_kg, hydration_kg, bone_mass_kg, bmi, heart_rate) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (user_id, measured_at) DO NOTHING`, [USER_ID, row.measured_at, row.date_only, row.weight_kg, row.fat_ratio, row.fat_mass_kg, row.muscle_mass_kg, row.hydration_kg, row.bone_mass_kg, row.bmi, row.heart_rate]);
       if ((info.rowCount ?? 0) > 0) {
         imported++;
         if (VERBOSE) console.log(`  ✓  ${row.date_only}  ${row.weight_kg?.toFixed(1)} kg`);

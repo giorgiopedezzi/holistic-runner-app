@@ -11,14 +11,23 @@
 
 import http from "http";
 import { exec } from "child_process";
+import { randomUUID } from "crypto";
 import { URL } from "url";
-import { loadConfig } from "../config.ts";
+import { loadConfig, getArg } from "../config.ts";
 import { openPostgresDatabase } from "../db/postgres.ts";
+import { FOUNDER_USER_ID } from "../db/founder.ts";
 import { getAuthUrl, exchangeCode, loadToken } from "../integrations/withings.ts";
 
 const config = loadConfig();
 const CALLBACK_PORT = 3002;
-const state          = Math.random().toString(36).slice(2);
+// HRA-352: a standalone terminal flow, not a web request — there's no HTTP
+// session to derive an owner from, so the operator names it explicitly (or
+// this stays the founder-only default, same reasoning as the sync jobs'
+// USER_ID). The state nonce is a one-shot in-process value scoped to this
+// single command's lifetime, not the replayable-over-HTTP oauth_states table
+// http/oauth.ts now backs the in-app login flow with.
+const USER_ID = getArg("--user-id") ?? FOUNDER_USER_ID;
+const state          = randomUUID();
 const authUrl         = getAuthUrl(config, state);
 
 function openBrowser(url: string): void {
@@ -40,8 +49,8 @@ const server = http.createServer(async (req, res) => {
   if (!code || retState !== state) { console.error("Auth failed: missing code or state mismatch."); server.close(); return; }
   try {
     const db = openPostgresDatabase();
-    await exchangeCode(config, db, code);
-    const token = (await loadToken(db))!;
+    await exchangeCode(config, db, USER_ID, code);
+    const token = (await loadToken(db, USER_ID))!;
     console.log("\n✓ Authentication successful! Tokens saved to DB.");
     console.log(`  Scope   : ${token.scope}`);
     console.log(`  Expires : ${new Date(token.expires_at * 1000).toLocaleString()}`);

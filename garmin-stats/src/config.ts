@@ -12,6 +12,13 @@ export interface Config {
     client_secret?: string;
     redirect_uri?: string;
   };
+  // AES-256-GCM key (base64, 32 raw bytes) integration credentials are
+  // encrypted under at rest — domain/token-crypto.ts. Required only when a
+  // provider token is actually written/read (HRA-352 AC2), same lazy-validate
+  // convention as withings/strava client secrets.
+  integrationEncryption: {
+    key?: string;
+  };
   database: {
     path: string;
   };
@@ -107,6 +114,9 @@ export function loadConfig(): Config {
       client_secret: process.env.STRAVA_CLIENT_SECRET,
       redirect_uri: process.env.STRAVA_REDIRECT_URI,
     },
+    integrationEncryption: {
+      key: process.env.INTEGRATION_TOKEN_ENCRYPTION_KEY,
+    },
     database: {
       path: dbPath,
     },
@@ -167,6 +177,10 @@ export function requireStravaConfig(config: Config): { client_id: string; client
     client_secret: "STRAVA_CLIENT_SECRET",
     redirect_uri: "STRAVA_REDIRECT_URI",
   });
+}
+
+export function requireIntegrationEncryptionConfig(config: Config): { key: string } {
+  return requireEnv(config.integrationEncryption, { key: "INTEGRATION_TOKEN_ENCRYPTION_KEY" });
 }
 
 export function requireOllamaConfig(config: Config): { host: string; model: string } {

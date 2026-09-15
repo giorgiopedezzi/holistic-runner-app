@@ -14,7 +14,17 @@ import readline from "readline";
 
 const PROGRESS_LINE = /^PROGRESS (\w+) (\d+) (\d+)(?: (.*))?$/;
 
-export function streamSyncScript(res: http.ServerResponse, scriptName: string, scriptsDir: string): void {
+export type StreamSyncOutcome =
+  | { type: "done"; imported: number; skipped: number; errors: number }
+  | { type: "error"; message: string };
+
+export function streamSyncScript(
+  res: http.ServerResponse,
+  scriptName: string,
+  scriptsDir: string,
+  extraArgs: string[] = [],
+  onOutcome?: (outcome: StreamSyncOutcome) => void | Promise<void>,
+): void {
   const scriptPath = path.join(scriptsDir, scriptName);
   res.writeHead(200, {
     "Content-Type": "application/x-ndjson",
@@ -26,7 +36,7 @@ export function streamSyncScript(res: http.ServerResponse, scriptName: string, s
 
   const send = (obj: unknown) => res.write(`${JSON.stringify(obj)}\n`);
 
-  const child = spawn(process.execPath, [...process.execArgv, scriptPath], {
+  const child = spawn(process.execPath, [...process.execArgv, scriptPath, ...extraArgs], {
     cwd: process.cwd(),
   });
 
@@ -40,14 +50,17 @@ export function streamSyncScript(res: http.ServerResponse, scriptName: string, s
   });
   child.stderr.on("data", chunk => stderrBuf += chunk);
 
-  child.on("error", err => {
+  child.on("error", async err => {
     send({ type: "error", message: err.message });
+    await onOutcome?.({ type: "error", message: err.message });
     res.end();
   });
 
-  child.on("close", code => {
+  child.on("close", async code => {
     if (code !== 0) {
-      send({ type: "error", message: `${scriptName} exited with code ${code}: ${(stderrBuf || logTail).slice(-1000)}` });
+      const message = `${scriptName} exited with code ${code}: ${(stderrBuf || logTail).slice(-1000)}`;
+      send({ type: "error", message });
+      await onOutcome?.({ type: "error", message });
       res.end();
       return;
     }
@@ -55,6 +68,7 @@ export function streamSyncScript(res: http.ServerResponse, scriptName: string, s
     const skipped  = parseInt(logTail.match(/Skipped\s*:\s*(\d+)/)?.[1]  ?? "0");
     const errors   = parseInt(logTail.match(/Errors\s*:\s*(\d+)/)?.[1]   ?? "0");
     send({ type: "done", imported, skipped, errors });
+    await onOutcome?.({ type: "done", imported, skipped, errors });
     res.end();
   });
 }

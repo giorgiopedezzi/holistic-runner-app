@@ -50,7 +50,14 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     route === "/api/v1/range" || route === "/api/v1/summary" || route === "/api/v1/weekly" || route === "/api/v1/monthly" ||
     route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
     route.startsWith("/api/v1/date-ranges") || route.startsWith("/api/v1/settings") || route.startsWith("/api/v1/plan-templates") ||
-    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days";
+    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days" ||
+    // HRA-352: provider connections/credentials and sync/import jobs are
+    // owner-scoped — deliberately NOT /api/v1/strava/callback (its owner
+    // comes from server-side OAuth state, not the request's own identity —
+    // see controllers/integrations.controller.ts's doc comment).
+    route === "/api/v1/withings/status" || route === "/api/v1/withings/login-url" || route === "/api/v1/withings/connection" ||
+    route === "/api/v1/strava/status" || route === "/api/v1/strava/login-url" || route === "/api/v1/strava/connection" ||
+    route.startsWith("/api/v1/sync/");
 
   return async (req, res) => {
     // Hosted demo — keep it out of search/AI indexing until it's ready to be
@@ -128,6 +135,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-instances\/\d+$/.test(route))   return await demo(planTemplates.removeInstance)(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await demo(activities.clearAssociation)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+\/quality-alignment\/\d+$/.test(route)) return await demo(reporting.removeQualityAlignment)(req, res, url);
+        if (route === "/api/v1/withings/connection")      return await demo(integrations.withingsDisconnect)(req, res, url);
+        if (route === "/api/v1/strava/connection")        return await demo(integrations.stravaDisconnect)(req, res, url);
       }
 
       // Settings writes: one sub-resource per Settings card, each replaced in FULL

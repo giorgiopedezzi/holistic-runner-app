@@ -11,11 +11,9 @@ import { spawn } from "child_process";
 import readline from "readline";
 import { loadConfig, requireGarminConfig, getArg, hasFlag } from "../config.ts";
 import { openPostgresDatabase } from "../db/postgres.ts";
+import { FOUNDER_USER_ID } from "../db/founder.ts";
 import { parseFit } from "../domain/fit-parser.ts";
 import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
-import { createActivitiesRepo } from "../repositories/activities.repo.ts";
-import { createPlanInstancesRepo } from "../repositories/plan-instances.repo.ts";
-import { createWorkoutAssociationsRepo } from "../repositories/workout-associations.repo.ts";
 import { createWorkoutAssociationsService } from "../services/workout-associations.service.ts";
 
 // Handle ESM path resolution requirements natively
@@ -24,6 +22,12 @@ const __dirname = path.dirname(__filename);
 
 const config  = loadConfig();
 const VERBOSE = hasFlag("--verbose") || hasFlag("-v");
+// HRA-352: the HTTP-triggered path (controllers/sync.controller.ts) always
+// passes the authenticated owner explicitly — the FOUNDER_USER_ID fallback
+// only serves a bare `npm run sync:garmin` invoked directly from a terminal,
+// which stays a founder-only operator tool until multi-user registration
+// opens (Story scope note).
+const USER_ID = getArg("--user-id") ?? FOUNDER_USER_ID;
 
 const db = openPostgresDatabase();
 
@@ -153,9 +157,9 @@ async function processLocalSync(targetFolder: string): Promise<void> {
 
         const inserted = await client.query<{ id: number }>(`INSERT INTO activities
           (user_id, filename, activity_date, date_only, sport, duration_sec, distance_m, avg_pace_minkm, calories, avg_hr, max_hr, avg_cadence, ascent_m, descent_m, avg_speed_ms, max_speed_ms, source, moving_time_sec)
-          VALUES ((SELECT id FROM users ORDER BY created_at LIMIT 1), $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-          ON CONFLICT (filename) DO NOTHING RETURNING id`, [activity.filename, activity.activity_date, activity.date_only, activity.sport, activity.duration_sec, activity.distance_m, activity.avg_pace_minkm, activity.calories, activity.avg_hr, activity.max_hr, activity.avg_cadence, activity.ascent_m, activity.descent_m, activity.avg_speed_ms, activity.max_speed_ms, "garmin", activity.moving_time_sec]);
-        const row = inserted.rows[0] ?? (await client.query<{ id: number }>("SELECT id FROM activities WHERE filename=$1", [fname])).rows[0];
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+          ON CONFLICT (user_id, filename) DO NOTHING RETURNING id`, [USER_ID, activity.filename, activity.activity_date, activity.date_only, activity.sport, activity.duration_sec, activity.distance_m, activity.avg_pace_minkm, activity.calories, activity.avg_hr, activity.max_hr, activity.avg_cadence, activity.ascent_m, activity.descent_m, activity.avg_speed_ms, activity.max_speed_ms, "garmin", activity.moving_time_sec]);
+        const row = inserted.rows[0] ?? (await client.query<{ id: number }>("SELECT id FROM activities WHERE user_id=$1 AND filename=$2", [USER_ID, fname])).rows[0];
         if (!row) { errors++; done++; emitProgress("import", done, pending.length, fname); continue; }
 
         for (const pt of trackPoints) {
@@ -193,7 +197,7 @@ const fitArchivePath = path.resolve(__dirname, "../../fit-archive");
 async function main(): Promise<void> {
   console.log("=== Garmin Stats — Controlled Native PowerShell Sync ===\n");
 
-  for (const row of await db.all<{ filename: string }>("SELECT filename FROM activities")) existingFilenames.add(row.filename);
+  for (const row of await db.all<{ filename: string }>("SELECT filename FROM activities WHERE user_id=$1", [USER_ID])) existingFilenames.add(row.filename);
 
   // 1. Run safely via the OS-level infrastructure
   await runMtpExtractionPipeline(fitArchivePath);
@@ -204,10 +208,8 @@ async function main(): Promise<void> {
   // 3. HRA-334: re-run the conservative planned-workout/activity matcher now
   // that new activities may exist — this script runs as its own process with
   // its own DB connection, so the server's in-process wiring never sees these
-  // imports on its own.
-  await createWorkoutAssociationsService(
-    db, createActivitiesRepo(db), createPlanInstancesRepo(db), createWorkoutAssociationsRepo(db),
-  ).reconcile();
+  // imports on its own. HRA-352: scoped to this run's own owner only.
+  await createWorkoutAssociationsService(db).reconcile(USER_ID);
   await db.close();
 }
 

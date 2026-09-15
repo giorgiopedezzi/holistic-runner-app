@@ -94,7 +94,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       sync: createSyncService(SRC_DIR),
       device: createDeviceService(SRC_DIR),
       planInstances: createPlanInstancesService(runtimeDb, planInstancesRepo),
-      workoutAssociations: createWorkoutAssociationsService(runtimeDb, activitiesRepo, planInstancesRepo, workoutAssociationsRepo),
+      workoutAssociations: createWorkoutAssociationsService(runtimeDb),
       reporting: createReportingService(runtimeDb, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
       identity: identityService,
     },
