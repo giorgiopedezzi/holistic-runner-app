@@ -160,10 +160,14 @@ function FeedbackBanner({ onNavigate, onDismiss }: { onNavigate: () => void; onD
 // below it — including useAppearance(), called inside AppShell's own body —
 // is a descendant of the provider and shares its one settings fetch.
 export default function App() {
+  return <AuthGate><AuthenticatedApp /></AuthGate>;
+}
+
+function AuthenticatedApp() {
   return (
     <SettingsProvider>
       <UnsavedGuardProvider>
-        <AuthGate><AppShell /></AuthGate>
+        <AppShell />
       </UnsavedGuardProvider>
     </SettingsProvider>
   );

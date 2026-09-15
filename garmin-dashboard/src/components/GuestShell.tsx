@@ -1,0 +1,84 @@
+import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { Compass, LogIn, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { api } from "@/api/client";
+
+type ViewportTier = "desktop" | "tablet" | "phone";
+type SidebarMode = "open" | "icon" | "hidden";
+
+function viewportTier(width: number): ViewportTier {
+  if (width >= 1024) return "desktop";
+  if (width >= 768) return "tablet";
+  return "phone";
+}
+
+function defaultSidebarMode(tier: ViewportTier): SidebarMode {
+  return tier === "desktop" ? "open" : tier === "tablet" ? "icon" : "hidden";
+}
+
+// HRA-362 intentionally stops at the public shell. HRA-363 owns the founder
+// journey content and its public-projection reads, so this component makes no
+// owner-data request while an anonymous visitor is present.
+export function GuestShell() {
+  const { t } = useTranslation();
+  const [tier, setTier] = useState<ViewportTier>(() => viewportTier(window.innerWidth));
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => defaultSidebarMode(viewportTier(window.innerWidth)));
+
+  useEffect(() => {
+    function onResize() {
+      const nextTier = viewportTier(window.innerWidth);
+      setTier(previous => {
+        if (previous !== nextTier) setSidebarMode(defaultSidebarMode(nextTier));
+        return nextTier;
+      });
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  function toggleSidebar() {
+    if (tier === "phone") {
+      setSidebarMode(mode => mode === "hidden" ? "open" : "hidden");
+      return;
+    }
+    setSidebarMode(mode => mode === "icon" ? "open" : "icon");
+  }
+
+  function closeSidebar() {
+    if (tier === "phone") setSidebarMode("hidden");
+  }
+
+  const collapsed = sidebarMode === "icon" ? "true" : sidebarMode === "hidden" ? "hidden" : "false";
+  const signIn = (method: "google" | "email") => () => api.auth.login(method);
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      {tier === "phone" && sidebarMode === "open" && <div className="hra-sidebar-backdrop" onClick={closeSidebar} />}
+      <aside className="hra-sidebar" data-collapsed={collapsed} data-tier={tier}>
+        <div className="hra-sidebar-top"><span className="hra-brand">{sidebarMode === "icon" ? <>DR<span className="hra-brand-accent">F</span></> : <>Dreams run <span className="hra-brand-accent">free</span></>}</span></div>
+        <nav className="hra-sidebar-nav" aria-label={t("nav.mainNavigation", "Main navigation")}>
+          <div className="hra-sidebar-core"><div className="hra-sidebar-group">
+            <span className="hra-sidebar-group-heading">{t("guest.navigation", "Guest")}</span>
+            <span className="hra-sidebar-item" aria-current="page"><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.founderJourney", "Founder journey")}</span></span>
+          </div></div>
+          <div className="hra-sidebar-group hra-sidebar-utility-group">
+            <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={signIn("google")}><span className="hra-sidebar-item-icon" aria-hidden="true"><LogIn size={16} /></span><span className="hra-sidebar-item-label">{t("guest.signIn", "Sign in")}</span></button>
+          </div>
+        </nav>
+        {tier !== "phone" && <button type="button" className="hra-sidebar-collapse-toggle hra-nav-hover" onClick={toggleSidebar} aria-label={sidebarMode === "icon" ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")} title={sidebarMode === "icon" ? t("nav.expandSidebar", "Expand sidebar") : t("nav.collapseSidebar", "Collapse sidebar")}>{sidebarMode === "icon" ? <PanelLeftOpen size={16} aria-hidden="true" /> : <PanelLeftClose size={16} aria-hidden="true" />}</button>}
+      </aside>
+      <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
+        {tier === "phone" && sidebarMode === "hidden" && <header className="hra-mobile-header"><button type="button" className="hra-mobile-header-trigger hra-nav-hover" onClick={toggleSidebar} aria-label={t("nav.openSidebar", "Open navigation")}><Menu size={18} aria-hidden="true" /></button></header>}
+        <main className="hra-app-main">
+          <p className="hra-label">{t("guest.eyebrow", "Runs Free guest")}</p>
+          <h1 className="hra-section-title">{t("guest.title", "Follow the founder journey")}</h1>
+          <p className="hra-text-secondary text-body max-w-2xl">{t("guest.description", "Explore Runs Free as a guest. The published founder journey is being prepared for this space.")}</p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button type="button" className="hra-btn" onClick={signIn("google")}>{t("auth.continueWithGoogle", "Continue with Google")}</button>
+            <button type="button" className="hra-nav-hover hra-border-strong rounded-lg px-4 py-2 text-label" onClick={signIn("email")}>{t("auth.continueWithEmailCode", "Continue with email code")}</button>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
