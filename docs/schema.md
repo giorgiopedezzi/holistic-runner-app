@@ -54,6 +54,21 @@ The minimum useful authentication/session lifecycle facts (AC13): `event_type`, 
 `external_issuer`/`external_subject` (safe, non-secret identifiers), and a short `detail` label.
 This table must never receive credentials, provider tokens, raw FIT data, or training payloads.
 
+## Public projection (PostgreSQL — HRA-359)
+
+`public_projection_sources` is the private control row connecting one owner to
+an opaque public slug and explicit `draft | published | suspended` state.
+`public_projection_identifiers` preserves stable random UUIDs without placing
+private resource ids in public JSON. `public_projection_snapshots` atomically
+stores one last-known-safe JSONB snapshot plus a hashed source version,
+freshness, and private retry metadata.
+
+Anonymous readers use only the `published_public_projections` view. Its columns
+are `public_slug`, `source_version`, `payload`, and `projected_at`; it contains
+no owner/source ids and returns no row for draft, suspended, or never-successful
+projections. See `docs/architecture/PUBLIC-PROJECTION-ADR.md` for the allowlist,
+redaction, idempotency, and fail-closed contract.
+
 ### `activities`
 | Column | Type | Notes |
 |---|---|---|
