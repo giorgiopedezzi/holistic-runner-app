@@ -1,20 +1,24 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "@/api/client";
 import { GuestShell } from "@/components/GuestShell";
 
 type State = "loading" | "guest" | "unavailable" | "authenticated";
+type AuthenticationMethod = "google" | "email" | null;
+const AuthMethodContext = createContext<AuthenticationMethod>(null);
+export function useAuthenticationMethod() { return useContext(AuthMethodContext); }
 
 // Bootstrap is deliberately server-authoritative: no owner, role, entitlement,
 // provider token, or session claim is accepted from browser state.
 export function AuthGate({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   const [state, setState] = useState<State>("loading");
+  const [authMethod, setAuthMethod] = useState<AuthenticationMethod>(null);
 
   useEffect(() => {
     let live = true;
     api.auth.session().then(
-      () => { if (live) setState("authenticated"); },
+      (session) => { if (live) { setAuthMethod(session.user.auth_method ?? null); setState("authenticated"); } },
       (error: unknown) => {
         if (!live) return;
         setState(error instanceof ApiError && error.status === 401 ? "guest" : "unavailable");
@@ -23,7 +27,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => { live = false; };
   }, []);
 
-  if (state === "authenticated") return <>{children}</>;
+  if (state === "authenticated") return <AuthMethodContext.Provider value={authMethod}>{children}</AuthMethodContext.Provider>;
   if (state === "guest") return <GuestShell />;
   const message = state === "loading"
     ? t("auth.loading", "Checking your secure session…")

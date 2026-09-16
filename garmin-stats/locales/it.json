@@ -1226,5 +1226,7 @@
   "guest.conversion.training.title": "Vedi questo con i miei allenamenti",
   "guest.conversion.training.description": "Accedi per vedere i progressi basati sui tuoi allenamenti, non sui dati pubblicati dal fondatore.",
   "guest.conversion.journey.title": "Inizia il tuo percorso di corsa",
-  "guest.conversion.journey.description": "Accedi per creare un piano privato, importare attività e collegare i tuoi dati."
+  "guest.conversion.journey.description": "Accedi per creare un piano privato, importare attività e collegare i tuoi dati.",
+  "auth.method.google": "Google",
+  "auth.method.email": "Codice email"
 }

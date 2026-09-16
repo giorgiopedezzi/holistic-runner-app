@@ -7,6 +7,7 @@ import { badRequest, serviceUnavailable, unauthorized } from "../http/problem.ts
 import { requireWebAuthConfig } from "../config.ts";
 import { remoteJwks, TokenValidationError, verifyIdToken } from "../domain/identity/token-validation.ts";
 import { logSecurityEvent } from "../http/security-log.ts";
+import { normalizeAuthenticationMethod } from "../domain/identity/auth-method.ts";
 
 const SESSION_COOKIE = "__Host-runsfree_session";
 const LOCAL_SESSION_COOKIE = "runsfree_session";
@@ -109,7 +110,7 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
         if (typeof tokens.id_token !== "string") throw new Error("missing ID token");
         const identity = await verifyIdToken(tokens.id_token, remoteJwks(endpoints.jwks_uri), { issuer: config.issuerUrl, audience: config.webClientId, nonce: transaction.nonce });
         const resolution = await ctx.services.identity.resolveExternalLogin(
-          { issuer: identity.issuer, subject: identity.subject, provider: "auth0", email: identity.email },
+          { issuer: identity.issuer, subject: identity.subject, provider: identity.subject.split("|", 1)[0] ?? null, email: identity.email },
           { mode: ctx.config.auth.registrationMode, founderAllowlist: ctx.config.auth.founderAllowlist },
         );
         if (resolution.outcome !== "authenticated") {
@@ -139,7 +140,8 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
       const rawSession = cookie(req, SESSION_COOKIE) ?? cookie(req, LOCAL_SESSION_COOKIE);
       if (!user || !rawSession) throw unauthorized();
       const entitlements = await ctx.repos.identity.listEntitlements(user.id);
-      send(res, { user: { id: user.id, display_name: user.display_name, locale: user.locale, unit_system: user.unit_system, timezone: user.timezone, role: user.role }, entitlements: entitlements.map(row => row.entitlement), csrfToken: csrfToken(rawSession) });
+      const externalIdentity = await ctx.repos.identity.findExternalIdentityForUser(user.id);
+      send(res, { user: { id: user.id, display_name: user.display_name, locale: user.locale, unit_system: user.unit_system, timezone: user.timezone, role: user.role, auth_method: normalizeAuthenticationMethod(externalIdentity?.provider ?? null) }, entitlements: entitlements.map(row => row.entitlement), csrfToken: csrfToken(rawSession) });
     },
     logout: async (req, res) => {
       const config = requireWebAuthConfig(ctx.config);

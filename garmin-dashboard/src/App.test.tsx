@@ -24,7 +24,7 @@ import { fmtDate } from "@/utils/fmt";
 // a PUT to /settings/units flips it (used by the propagation test).
 function appRoutes(settingsBody = settings()): Routes {
   return {
-    "GET /api/v1/auth/session": { user: { id: "founder", display_name: "Founder", locale: "en", role: "admin" }, entitlements: [], csrfToken: "test-csrf" },
+    "GET /api/v1/auth/session": { user: { id: "founder", display_name: "Founder", locale: "en", role: "admin", auth_method: "google" }, entitlements: [], csrfToken: "test-csrf" },
     "GET /api/v1/settings": settingsBody,
     "GET /api/v1/range": dateRange(),
     "GET /api/v1/summary": paginated([sportSummary({ sport: "running" })]),
@@ -77,6 +77,14 @@ afterEach(() => {
 });
 
 describe("App tab switching", () => {
+  it("renders only the normalized authentication method in the authenticated menu", async () => {
+    installFetch(appRoutes());
+    render(<App />);
+
+    expect(await screen.findByText("Google")).toBeInTheDocument();
+    expect(screen.queryByText(/google-oauth2|auth0\|/i)).not.toBeInTheDocument();
+  });
+
   it("loads on the default 'Your agenda' tab, first in nav order, then mounts each other tab when clicked", async () => {
     installFetch(appRoutes());
     render(<App />);

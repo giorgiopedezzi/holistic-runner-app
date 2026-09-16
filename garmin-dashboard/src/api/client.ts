@@ -169,7 +169,7 @@ function idsBody(ids: number[]) { return { ids }; }
 export const api = {
   auth: {
     session: async () => {
-      const session = await request<{ user: { id: string; display_name: string | null; locale: string | null; unit_system: "metric" | "imperial" | null; timezone: string | null; role: "user" | "admin" }; entitlements: string[]; csrfToken: string }>("/api/v1/auth/session");
+      const session = await request<{ user: { id: string; display_name: string | null; locale: string | null; unit_system: "metric" | "imperial" | null; timezone: string | null; role: "user" | "admin"; auth_method?: "google" | "email" | null }; entitlements: string[]; csrfToken: string }>("/api/v1/auth/session");
       csrfToken = session.csrfToken;
       return session;
     },

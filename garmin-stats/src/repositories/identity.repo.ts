@@ -38,6 +38,8 @@ export function createIdentityRepo(db: Queryable) {
     // authoritative lookup key; never by email) ─────────────────────────
     findExternalIdentity: (issuer: string, subject: string) =>
       db.get<ExternalIdentityRow>(`SELECT ${IDENTITY_COLUMNS} FROM external_identities WHERE issuer = $1 AND subject = $2`, [issuer, subject]),
+    findExternalIdentityForUser: (userId: string) =>
+      db.get<ExternalIdentityRow>(`SELECT ${IDENTITY_COLUMNS} FROM external_identities WHERE user_id = $1 ORDER BY created_at ASC LIMIT 1`, [userId]),
 
     // Creates a brand-new internal user + its first external identity in one
     // statement pair. Callers MUST run this inside a transaction (via withDb)

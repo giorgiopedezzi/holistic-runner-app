@@ -28,7 +28,7 @@ import { FeedbackTab }  from "@/components/FeedbackTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
-import { AuthGate } from "@/components/AuthGate";
+import { AuthGate, useAuthenticationMethod } from "@/components/AuthGate";
 import { notify } from "@/utils/toast";
 
 // labelKey/fallback: the sidebar nav's own strings are the one concrete
@@ -174,6 +174,7 @@ function AuthenticatedApp() {
 }
 
 function AppShell() {
+  const authMethod = useAuthenticationMethod();
   // Backed by the URL's `from`/`to` params (HRA-196) so reloading a URL
   // carrying a specific range reproduces it instead of resetting to the
   // 30-day default.
@@ -473,6 +474,7 @@ function AppShell() {
 
           <div className="hra-sidebar-group hra-sidebar-utility-group">
             {utilityTabs.map(renderNavItem)}
+            {authMethod && <span className="hra-sidebar-item-label hra-text-muted text-meta">{authMethod === "google" ? t("auth.method.google", "Google") : t("auth.method.email", "Email code")}</span>}
             <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={logout}>
               <span className="hra-sidebar-item-icon" aria-hidden="true"><LogOut size={16} /></span>
               <span className="hra-sidebar-item-label">{t("auth.signOut", "Sign out")}</span>
