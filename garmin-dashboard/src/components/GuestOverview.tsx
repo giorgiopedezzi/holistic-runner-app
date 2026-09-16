@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
+import { useState } from "react";
 import { useQuery } from "@/hooks/useQuery";
-import { fmtDate, fmtDuration, fmtKm, fmtPace } from "@/utils/fmt";
+import { fmtDate, fmtDuration, fmtElevation, fmtKm, fmtPace } from "@/utils/fmt";
 import { Empty, LoadingSpinner } from "@/components/ui";
 
 type PublicValue = null | boolean | number | string | PublicValue[] | { [key: string]: PublicValue };
@@ -109,6 +110,73 @@ function stateLabel(workout: Fields, state: "original" | "current" | "actual"): 
   return stringField(workout, `${state}Label`);
 }
 
+interface GuestActivityListProps {
+  activities: PublicResource<PublicItem[]>;
+}
+
+function GuestActivityDetail({ activity }: { activity: PublicItem }) {
+  const { t } = useTranslation();
+  const metrics: Array<{ key: string; label: string; value: string | null }> = [
+    { key: "distance", label: t("guest.activity.distance", "Distance"), value: numberField(activity.fields, "distanceM") != null ? fmtKm(numberField(activity.fields, "distanceM")!) : null },
+    { key: "duration", label: t("guest.activity.duration", "Duration"), value: numberField(activity.fields, "durationSec") != null ? fmtDuration(numberField(activity.fields, "durationSec")!) : null },
+    { key: "moving-time", label: t("guest.activity.movingTime", "Moving time"), value: numberField(activity.fields, "movingTimeSec") != null ? fmtDuration(numberField(activity.fields, "movingTimeSec")!) : null },
+    { key: "pace", label: t("guest.activity.pace", "Average pace"), value: numberField(activity.fields, "avgPaceMinKm") != null ? `${fmtPace(numberField(activity.fields, "avgPaceMinKm")!)}/km` : null },
+    { key: "average-hr", label: t("guest.activity.averageHr", "Average heart rate"), value: numberField(activity.fields, "avgHr") != null ? `${numberField(activity.fields, "avgHr")} bpm` : null },
+    { key: "max-hr", label: t("guest.activity.maxHr", "Maximum heart rate"), value: numberField(activity.fields, "maxHr") != null ? `${numberField(activity.fields, "maxHr")} bpm` : null },
+    { key: "cadence", label: t("guest.activity.cadence", "Cadence"), value: numberField(activity.fields, "avgCadence") != null ? `${numberField(activity.fields, "avgCadence")} spm` : null },
+    { key: "ascent", label: t("guest.activity.ascent", "Ascent"), value: numberField(activity.fields, "ascentM") != null ? fmtElevation(numberField(activity.fields, "ascentM")!) : null },
+    { key: "descent", label: t("guest.activity.descent", "Descent"), value: numberField(activity.fields, "descentM") != null ? fmtElevation(numberField(activity.fields, "descentM")!) : null },
+    { key: "calories", label: t("guest.activity.calories", "Calories"), value: numberField(activity.fields, "calories") != null ? `${numberField(activity.fields, "calories")} kcal` : null },
+  ];
+  const publishedMetrics = metrics.filter(metric => metric.value != null);
+  const track = arrayField(activity.fields, "track");
+
+  return <section className="hra-guest-activity-detail" aria-label={t("guest.activity.detailLabel", "Published activity detail")}>
+    <div className="hra-guest-hero">
+      <p className="hra-label">{t("guest.activity.eyebrow", "Published activity")}</p>
+      <h2 className="text-heading">{stringField(activity.fields, "title") ?? t("guest.overview.publishedActivity", "Published activity")}</h2>
+      {stringField(activity.fields, "date") && <p className="hra-text-muted text-meta">{fmtDate(stringField(activity.fields, "date")!)}</p>}
+    </div>
+    {publishedMetrics.length > 0 ? <dl className="hra-guest-activity-metrics">
+      {publishedMetrics.map(metric => <div key={metric.key} className="hra-fact-row"><dt>{metric.label}</dt><dd>{metric.value}</dd></div>)}
+    </dl> : <p className="hra-text-secondary text-body">{t("guest.activity.metricsUnavailable", "Published metrics are unavailable for this activity.")}</p>}
+    {track.length > 0 && <p className="hra-text-muted text-meta">{t("guest.activity.trackAvailable", "Recorded activity-series data is available in this published snapshot.")}</p>}
+  </section>;
+}
+
+function GuestActivityDetailFetch({ slug, publicId }: { slug: string; publicId: string }) {
+  const { t } = useTranslation();
+  const detail = useQuery(
+    () => readPublic<PublicResource<PublicItem>>(`/api/v1/public/profiles/${encodeURIComponent(slug)}/activities/${encodeURIComponent(publicId)}`),
+    [slug, publicId],
+  );
+  if (detail.state.status === "loading" || detail.state.status === "idle") {
+    return <LoadingSpinner label={t("guest.activity.loading", "Loading published activity…")} />;
+  }
+  return detail.state.status === "success"
+    ? <GuestActivityDetail activity={detail.state.data.data} />
+    : <Empty message={t("guest.activity.unavailable", "This published activity is currently unavailable.")} />;
+}
+
+function GuestActivityList({ activities }: GuestActivityListProps) {
+  const { t } = useTranslation();
+  const [selected, setSelected] = useState<PublicItem | null>(null);
+
+  return <section className="hra-guest-overview" aria-label={t("guest.activities.label", "Published activities")}>
+    <div className="hra-guest-hero"><p className="hra-label">{t("guest.activities.eyebrow", "Published training")}</p><h1 className="hra-section-title">{t("guest.activities.title", "Recent training")}</h1></div>
+    {activities.data.length > 0 ? <div className="hra-guest-activity-layout">
+      <section className="hra-guest-activity-list" aria-label={t("guest.activities.listLabel", "Published activity history")}>
+        {activities.data.map(activity => <button key={activity.publicId} type="button" className="hra-guest-activity-row" onClick={() => setSelected(activity)} aria-pressed={selected?.publicId === activity.publicId}>
+          <span>{stringField(activity.fields, "title") ?? t("guest.overview.publishedActivity", "Published activity")}</span>
+          <span className="hra-text-muted text-meta">{stringField(activity.fields, "date") ? fmtDate(stringField(activity.fields, "date")!) : t("guest.activities.dateUnavailable", "Date unavailable")}</span>
+          {numberField(activity.fields, "distanceM") != null && <strong>{fmtKm(numberField(activity.fields, "distanceM")!)}</strong>}
+        </button>)}
+      </section>
+      {selected && <GuestActivityDetailFetch slug={activities.slug} publicId={selected.publicId} />}
+    </div> : <Empty message={t("guest.activities.unavailable", "No activities have been published.")} />}
+  </section>;
+}
+
 export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateToJourney }: Props) {
   const { t } = useTranslation();
   const query = useQuery(loadGuestData, []);
@@ -186,12 +254,7 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
   }
 
   if (view === "activities") {
-    return <section className="hra-guest-overview" aria-label={t("guest.activities.label", "Published activities")}>
-      <div className="hra-guest-hero"><p className="hra-label">{t("guest.activities.eyebrow", "Published training")}</p><h1 className="hra-section-title">{t("guest.activities.title", "Recent training")}</h1></div>
-      {activities.data.length > 0 ? <section className="hra-bg-card hra-border-strong rounded-xl p-5"><div className="hra-guest-facts">
-        {activities.data.map(activity => <div key={activity.publicId} className="hra-fact-row"><span>{stringField(activity.fields, "title") ?? t("guest.overview.publishedActivity", "Published activity")}</span><strong>{stringField(activity.fields, "date") ? fmtDate(stringField(activity.fields, "date")!) : t("guest.activities.dateUnavailable", "Date unavailable")}</strong></div>)}
-      </div></section> : <Empty message={t("guest.activities.unavailable", "No activities have been published.")} />}
-    </section>;
+    return <GuestActivityList activities={activities} />;
   }
 
   if (view === "reports") {

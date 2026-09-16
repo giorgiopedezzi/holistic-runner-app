@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { GuestOverview } from "./GuestOverview";
 import { installFetch } from "@/test/api-stub";
 
@@ -82,6 +82,33 @@ describe("GuestOverview", () => {
     expect(screen.queryByRole("button", { name: /edit|swap|export|sync/i })).not.toBeInTheDocument();
     expect(fetch.mock.calls.map(([url]) => new URL(String(url), "http://localhost").pathname)).toEqual([
       base, `${base}/activities`, `${base}/plans`, `${base}/reports`,
+    ]);
+  });
+
+  it("opens an activity using its opaque public ID and renders only published metrics", async () => {
+    const activityId = "activity-1";
+    const fetch = installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: {} }),
+      [`GET ${base}/activities`]: published([{ publicId: activityId, fields: { title: "Long run", date: "2026-09-15", distanceM: 21000 } }]),
+      [`GET ${base}/activities/${activityId}`]: published({ publicId: activityId, fields: {
+        title: "Long run", date: "2026-09-15", distanceM: 21000, durationSec: 7500, movingTimeSec: 7200,
+        avgPaceMinKm: 5.7, avgHr: 144, maxHr: 162, avgCadence: 176, ascentM: 235, descentM: 221,
+        latitude: 45.1, note: "private", track: [{ elapsedSec: 0, distanceM: 0, heartRate: 120 }],
+      } }),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview view="activities" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /long run/i }));
+
+    expect(await screen.findByText("Average heart rate")).toBeInTheDocument();
+    expect(screen.getByText("144 bpm")).toBeInTheDocument();
+    expect(screen.getByText("235 m")).toBeInTheDocument();
+    expect(screen.queryByText("private")).not.toBeInTheDocument();
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url), "http://localhost").pathname)).toEqual([
+      base, `${base}/activities`, `${base}/plans`, `${base}/reports`, `${base}/activities/${activityId}`,
     ]);
   });
 });

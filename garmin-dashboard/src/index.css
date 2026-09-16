@@ -2886,8 +2886,18 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-guest-week-day { display: grid; grid-template-columns: minmax(112px, 0.4fr) minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--text-primary); }
 .hra-guest-week-date { color: var(--text-secondary); }
 .hra-guest-week-states { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--text-muted); font-size: var(--text-meta-size); }
+.hra-guest-activity-layout { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 12px; align-items: start; }
+.hra-guest-activity-list, .hra-guest-activity-detail { border: 1px solid var(--border-strong); border-radius: var(--radius-xl); background: var(--bg-card); }
+.hra-guest-activity-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; width: 100%; padding: 14px 16px; text-align: left; color: var(--text-primary); background: transparent; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.hra-guest-activity-row:last-child { border-bottom: 0; }
+.hra-guest-activity-row[aria-pressed="true"] { background: var(--bg-hover); }
+.hra-guest-activity-row strong { grid-column: 1; }
+.hra-guest-activity-detail { display: flex; flex-direction: column; gap: 16px; padding: 20px; }
+.hra-guest-activity-metrics { display: flex; flex-direction: column; }
+.hra-guest-activity-metrics .hra-fact-row { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--border); color: var(--text-secondary); }
+.hra-guest-activity-metrics dd { margin: 0; color: var(--text-primary); font-weight: var(--font-weight-semibold); text-align: right; }
 @media (max-width: 767px) { .hra-guest-week-day { grid-template-columns: 1fr; gap: 4px; } .hra-guest-week-states { grid-column: 1; } }
-@media (max-width: 767px) { .hra-guest-overview-grid { grid-template-columns: 1fr; } }
+@media (max-width: 767px) { .hra-guest-overview-grid, .hra-guest-activity-layout { grid-template-columns: 1fr; } }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }
 .hra-section-gap-top { margin-top: var(--section-gap); }
