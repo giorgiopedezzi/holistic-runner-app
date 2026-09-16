@@ -28,7 +28,11 @@ test("a second authenticated owner cannot list, read, track, or aggregate the fo
     assert.equal(instanceResponse.status, 201, JSON.stringify(instanceResponse.json));
     const instanceId = (instanceResponse.json as { id: number }).id;
     const anonymous = await server.api("/api/v1/activities?from=2026-07-01&to=2026-09-01", { headers: { cookie: "" } });
-    assert.equal(anonymous.status, 401);
+    assert.equal(anonymous.status, 404);
+    assert.deepEqual(anonymous.json, {
+      type: "about:blank", title: "Not Found", status: 404,
+      detail: "Public resource is unavailable.", instance: "/api/v1/public",
+    });
 
     const identity = createIdentityService(server.db, createIdentityRepo(server.db));
     const login = await identity.resolveExternalLogin(

@@ -50,6 +50,7 @@ export type RequestAccessContext = AuthenticatedAccessContext | FounderPublicAcc
 // client-controlled request object. Controllers must obtain it through this
 // accessor before reaching an owner-scoped repository.
 const requestIdentities = new WeakMap<http.IncomingMessage, RequestIdentity>();
+const requestAccessContexts = new WeakMap<http.IncomingMessage, RequestAccessContext>();
 
 // Matches the ADR's cookie name exactly, so a session issued once this
 // Story's session-lifecycle helpers are wired to a real login flow reads
@@ -151,6 +152,7 @@ export async function deriveRequestIdentity(req: http.IncomingMessage, ctx: AppC
 export async function authenticateRequest(req: http.IncomingMessage, ctx: AppContext): Promise<RequestIdentity> {
   const identity = await deriveRequestIdentity(req, ctx);
   requestIdentities.set(req, identity);
+  requestAccessContexts.set(req, { kind: "authenticated", identity });
   return identity;
 }
 
@@ -169,19 +171,40 @@ export async function deriveRequestAccessContext(
   ctx: AppContext,
   capability: RouteCapability,
 ): Promise<RequestAccessContext> {
+  let access: RequestAccessContext;
   if (hasSuppliedCredential(req) || capability === "AUTHENTICATED_READ" || capability === "AUTHENTICATED_WRITE") {
-    return { kind: "authenticated", identity: await authenticateRequest(req, ctx) };
+    access = { kind: "authenticated", identity: await authenticateRequest(req, ctx) };
+  } else if (capability === "PUBLIC_READ" || capability === "PUBLIC_COMPUTE") {
+    access = { kind: "founder-public", userId: FOUNDER_USER_ID };
+  } else {
+    access = { kind: "public-feedback" };
   }
-  if (capability === "PUBLIC_READ" || capability === "PUBLIC_COMPUTE") {
-    return { kind: "founder-public", userId: FOUNDER_USER_ID };
-  }
-  return { kind: "public-feedback" };
+  requestAccessContexts.set(req, access);
+  return access;
 }
 
 export function requestIdentity(req: http.IncomingMessage): RequestIdentity {
   const identity = requestIdentities.get(req);
   if (!identity) throw new Error("Authenticated request identity was not established.");
   return identity;
+}
+
+export function requestAccessContext(req: http.IncomingMessage): RequestAccessContext {
+  const access = requestAccessContexts.get(req);
+  if (!access) throw new Error("Request access context was not established.");
+  return access;
+}
+
+/**
+ * The authoritative owner for an explicitly classified owner-data route.
+ * Founder-public access stays separate from authenticated identity: callers
+ * can read the fixed founder owner, but requestIdentity() still fails.
+ */
+export function requestDataOwnerId(req: http.IncomingMessage): string {
+  const access = requestAccessContext(req);
+  if (access.kind === "authenticated") return access.identity.userId;
+  if (access.kind === "founder-public") return access.userId;
+  throw new Error("Public feedback has no owner-data context.");
 }
 
 type AuthenticatedHandler = (req: http.IncomingMessage, res: http.ServerResponse, url: URL, identity: RequestIdentity) => void | Promise<void>;

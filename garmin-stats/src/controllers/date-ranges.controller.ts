@@ -11,7 +11,8 @@ import { send, sendNoContent } from "../http/respond.ts";
 import { parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
 import { badRequest, conflict, notFound, unprocessable } from "../http/problem.ts";
-import { requestIdentity } from "../http/auth-context.ts";
+import { requestDataOwnerId } from "../http/auth-context.ts";
+import { founderPublicResponse } from "../http/founder-public-response.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
 import { createOwnedDateRangesRepo } from "../repositories/owned-date-ranges.repo.ts";
 
@@ -24,13 +25,13 @@ function parseId(pathname: string): number {
 type Body = Partial<{ name: string; from: string; to: string; activity_id: number | null }>;
 
 export function createDateRangesController(ctx: AppContext) {
-  const ownedRanges = (req: import("http").IncomingMessage) => createOwnedDateRangesRepo(ctx.db, requestIdentity(req).userId);
-  const ownedActivities = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, requestIdentity(req).userId);
+  const ownedRanges = (req: import("http").IncomingMessage) => createOwnedDateRangesRepo(ctx.db, requestDataOwnerId(req));
+  const ownedActivities = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, requestDataOwnerId(req));
 
   const list: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
     const total = (await ownedRanges(req).count())?.count ?? 0;
-    return send(res, paginated(await ownedRanges(req).listPage(limit, offset), total, limit, offset));
+    return send(res, founderPublicResponse(req, paginated(await ownedRanges(req).listPage(limit, offset), total, limit, offset)));
   };
 
   // Shared by create/update: name/from/to shape + the "link a race" rule

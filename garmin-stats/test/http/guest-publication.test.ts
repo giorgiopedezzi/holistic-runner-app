@@ -91,11 +91,17 @@ test("anonymous public routes expose only the published projection and opaque id
   }
 });
 
-test("anonymous private reads stay denied while guessed public identifiers reveal one generic unavailable response", async () => {
+test("approved live founder reads are anonymous while private reads and guessed public identifiers stay protected", async () => {
   const s = await startTestServer({ seed: true });
   try {
     await publish(s);
-    const privateRead = await anonymousGet(s, "/api/v1/activities/1");
+    const founderActivity = await anonymousGet(s, "/api/v1/activities/1");
+    assert.equal(founderActivity.response.status, 200);
+    assert.equal(founderActivity.response.headers.get("cache-control"), "no-store");
+    assert.equal(founderActivity.text.includes("filename"), false);
+    assert.equal(founderActivity.text.includes(FOUNDER_USER_ID), false);
+
+    const privateRead = await anonymousGet(s, "/api/v1/body-measurements");
     assert.equal(privateRead.response.status, 401);
 
     const guesses = [

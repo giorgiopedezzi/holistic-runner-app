@@ -8,6 +8,7 @@
   "servers": [
     { "url": "http://127.0.0.1:3001", "description": "Local API server" }
   ],
+  "security": [{ "runsFreeSession": [] }],
   "tags": [
     { "name": "activities", "description": "Activities, track points, and the workout classifier workflow" },
     { "name": "trends", "description": "Per-sport aggregate views (summary / weekly / monthly)" },
@@ -794,10 +795,10 @@
       "post": { "tags": ["publication"], "summary": "Immediately remove anonymous access while preserving private source data", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "X-RunsFree-CSRF", "in": "header", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Updated status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationStatus" } } } }, "403": { "description": "The caller lacks the founder publication entitlement.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } } } }
     },
     "/api/v1/auth/login": {
-      "get": { "tags": ["auth"], "summary": "Start the Auth0 Authorization Code BFF flow with an approved interactive method", "parameters": [{ "name": "method", "in": "query", "required": true, "schema": { "type": "string", "enum": ["google", "email"] }, "description": "Server-mapped Auth0 connection selector. Arbitrary connection names are not accepted." }], "responses": { "302": { "description": "Redirects to the configured authorization endpoint using the server-selected Google or Passwordless Email OTP connection." }, "400": { "$ref": "#/components/responses/BadRequest" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
+      "get": { "tags": ["auth"], "summary": "Start the Auth0 Authorization Code BFF flow with an approved interactive method", "security": [], "parameters": [{ "name": "method", "in": "query", "required": true, "schema": { "type": "string", "enum": ["google", "email"] }, "description": "Server-mapped Auth0 connection selector. Arbitrary connection names are not accepted." }], "responses": { "302": { "description": "Redirects to the configured authorization endpoint using the server-selected Google or Passwordless Email OTP connection." }, "400": { "$ref": "#/components/responses/BadRequest" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }
     },
     "/api/v1/auth/callback": {
-      "get": { "tags": ["auth"], "summary": "Consume one authorization callback and issue an opaque application session", "responses": { "302": { "description": "Redirects to the fixed browser origin after success or a generic safe failure state." } } }
+      "get": { "tags": ["auth"], "summary": "Consume one authorization callback and issue an opaque application session", "security": [], "responses": { "302": { "description": "Redirects to the fixed browser origin after success or a generic safe failure state." } } }
     },
     "/api/v1/auth/session": {
       "get": { "tags": ["auth"], "summary": "Return server-authoritative session profile and the in-memory CSRF token", "security": [{ "runsFreeSession": [] }], "responses": { "200": { "description": "Current user and CSRF bootstrap.", "content": { "application/json": { "schema": { "type": "object", "required": ["user", "entitlements", "csrfToken"], "properties": { "user": { "type": "object", "properties": { "auth_method": { "type": ["string", "null"], "enum": ["google", "email", null], "description": "Safe normalized sign-in method; never an Auth0 provider, connection, issuer, or subject." } } }, "entitlements": { "type": "array", "items": { "type": "string" } }, "csrfToken": { "type": "string" } } } } } }, "401": { "description": "Missing, expired, revoked, or unusable session." } } }
@@ -821,10 +822,11 @@
       "post": { "tags": ["account"], "summary": "Queue idempotent account deletion", "description": "Requires exact confirmation and a session issued within the previous five minutes. It immediately sets deletion_pending, revokes all sessions and integration credentials, and queues durable removal; retained backups are not immediately physically erased.", "security": [{ "runsFreeSession": [] }], "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["confirmation"], "properties": { "confirmation": { "type": "string", "enum": ["DELETE MY ACCOUNT"] } } } } } }, "responses": { "202": { "description": "Deletion request queued." }, "401": { "description": "Missing or non-recent authentication." }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
     },
     "/api/v1/range": {
-      "get": { "tags": ["activities"], "summary": "Min/max activity date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
+      "get": { "tags": ["activities"], "summary": "Min/max activity date", "security": [], "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
     },
     "/api/v1/activities": {
       "get": {
+        "security": [],
         "tags": ["activities"], "summary": "List activities in a date range (any source)",
         "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ],
         "responses": { "200": { "description": "Bare array of activities (no pagination envelope — see HRA-38).", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/Activity" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } }
@@ -836,16 +838,17 @@
       }
     },
     "/api/v1/activities/count": {
-      "get": { "tags": ["activities"], "summary": "Count activities in range", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
+      "get": { "tags": ["activities"], "summary": "Count activities in range", "security": [], "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Count.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Count" } } } } } }
     },
     "/api/v1/activities/trash": {
       "get": { "tags": ["activities"], "summary": "List soft-deleted (not purged) activities", "responses": { "200": { "description": "Trash rows.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityTrashRow" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/v1/activities/races": {
-      "get": { "tags": ["activities"], "summary": "Race-type activities (full history), for the 'link a race' dropdown", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Race activities.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/RaceActivity" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
+      "get": { "tags": ["activities"], "summary": "Race-type activities (full history), for the 'link a race' dropdown", "security": [], "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Race activities.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/RaceActivity" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/v1/activities/{id}": {
       "get": {
+        "security": [],
         "tags": ["activities"], "summary": "Get one activity",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
         "responses": {
@@ -861,7 +864,7 @@
       }
     },
     "/api/v1/activities/{id}/track": {
-      "get": { "tags": ["activities"], "summary": "Track points for one activity", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "Track points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TrackPoint" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
+      "get": { "tags": ["activities"], "summary": "Track points for one activity", "security": [], "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "Track points.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/TrackPoint" } } } } }, "400": { "$ref": "#/components/responses/BadRequest" } } }
     },
     "/api/v1/activities/{id}/type": {
       "put": {
@@ -922,13 +925,13 @@
       "post": { "tags": ["activities"], "summary": "Permanently purge activities from trash", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["ids"], "properties": { "ids": { "type": "array", "items": { "type": "integer" } } } } } } }, "responses": { "200": { "description": "Purged count.", "content": { "application/json": { "schema": { "type": "object", "properties": { "purged": { "type": "integer" } } } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/summary": {
-      "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
+      "get": { "tags": ["trends"], "summary": "Totals grouped by sport", "security": [], "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Per-sport summaries.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/SportSummary" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/v1/weekly": {
-      "get": { "tags": ["trends"], "summary": "Weekly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Weekly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/WeeklyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
+      "get": { "tags": ["trends"], "summary": "Weekly aggregates", "security": [], "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Weekly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/WeeklyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/v1/monthly": {
-      "get": { "tags": ["trends"], "summary": "Monthly aggregates", "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
+      "get": { "tags": ["trends"], "summary": "Monthly aggregates", "security": [], "parameters": [ { "$ref": "#/components/parameters/from" }, { "$ref": "#/components/parameters/to" } ], "responses": { "200": { "description": "Monthly points.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/MonthlyPoint" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } }
     },
     "/api/v1/body-measurements/range": {
       "get": { "tags": ["body"], "summary": "Min/max body-measurement date", "responses": { "200": { "description": "Date range.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DateRangeInfo" } } } } } }
@@ -1068,10 +1071,10 @@
       "delete": { "tags": ["integrations"], "summary": "Disconnect Strava", "description": "Best-effort revokes the token with Strava, then removes the caller's own stored credential. Does not delete previously imported activities.", "responses": { "200": { "description": "Whether a connection existed and was removed.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DisconnectResult" } } } }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/strava/callback": {
-      "get": { "tags": ["integrations"], "summary": "Strava OAuth redirect target", "description": "Handled on the main port (3001). Returns an HTML page.", "parameters": [ { "name": "code", "in": "query", "schema": { "type": "string" } }, { "name": "state", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "HTML result page.", "content": { "text/html": {} } } } }
+      "get": { "tags": ["integrations"], "summary": "Strava OAuth redirect target", "security": [], "description": "Handled on the main port (3001). Returns an HTML page.", "parameters": [ { "name": "code", "in": "query", "schema": { "type": "string" } }, { "name": "state", "in": "query", "schema": { "type": "string" } } ], "responses": { "200": { "description": "HTML result page.", "content": { "text/html": {} } } } }
     },
     "/api/v1/date-ranges": {
-      "get": { "tags": ["date-ranges"], "summary": "List saved date ranges, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Date ranges.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/DateRangeEntry" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
+      "get": { "tags": ["date-ranges"], "summary": "List saved date ranges, newest first", "security": [], "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Date ranges.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/DateRangeEntry" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "post": {
         "tags": ["date-ranges"], "summary": "Save a named date range, optionally linked to a race",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["name", "from", "to"], "properties": { "name": { "type": "string" }, "from": { "type": "string", "format": "date" }, "to": { "type": "string", "format": "date" }, "activity_id": { "type": ["integer", "null"] } } } } } },
@@ -1089,6 +1092,7 @@
     },
     "/api/v1/feedback": {
       "post": {
+        "security": [],
         "tags": ["feedback"], "summary": "Submit anonymous visitor feedback (HRA-226)",
         "description": "free_text, pricing_choice, pricing_why_not_free_text, feature_interest, feature_interest_other_free_text, and app_type_choice are all independently optional, but the request is rejected 422 if every field is empty/absent. pricing_choice, when present, must be one of the four defined tiers. feature_interest, when present, is an array whose entries are each multi_user_coach, shared_groups, or curated_content_feed. app_type_choice, when present, must be cloud or desktop. Deliberately NOT gated by DEMO_MODE — the one write route the demo guard must not block, since demo visitors are a primary source of submissions.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "properties": { "free_text": { "type": "string" }, "pricing_choice": { "type": "string", "enum": ["free_only", "3_5", "8_12", "15_plus"] }, "pricing_why_not_free_text": { "type": "string" }, "feature_interest": { "type": "array", "items": { "type": "string", "enum": ["multi_user_coach", "shared_groups", "curated_content_feed"] } }, "feature_interest_other_free_text": { "type": "string" }, "app_type_choice": { "type": "string", "enum": ["cloud", "desktop"] } } } } } },
@@ -1096,11 +1100,11 @@
       }
     },
     "/api/v1/activity-types": {
-      "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
+      "get": { "tags": ["activity-types"], "summary": "The fixed Training/Race lookup", "security": [], "responses": { "200": { "description": "Activity types.", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ActivityType" } } } } } } }
     },
     "/api/v1/plan-templates/generate": {
-      "security": [{ "runsFreeSession": [] }],
       "post": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Parse-only preview of DSL source — never persists (HRA-113)",
         "description": "Runs the same parse as POST /api/v1/plan-templates without writing a row. 422 only if the DSL fails to parse outright (ParseResult.ok:false); a plan with day-level warnings still returns 200 — what a review UI calls on every edit before the user is ready to save.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["dsl_source"], "properties": { "dsl_source": { "type": "string" } } } } } },
@@ -1108,8 +1112,8 @@
       }
     },
     "/api/v1/plan-templates/prompt-preview": {
-      "security": [{ "runsFreeSession": [] }],
       "post": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Parse-only-style preview of the AI conversion prompt (HRA-326) — never persists",
         "description": "Composes the same 'Plan text -> RunPlan DSL' conversion prompt via composeConversionPrompt() (domain/runplan/prompt-composer.ts) that a future real AI provider call will use — one function, not two implementations, so preview and the real send can never drift. text is required; language/event/event_name/distance_m/unit are all optional context fields. Plan text containing tag-like substrings (e.g. </training_plan>, <system>) is escaped so it can't terminate the envelope early or be read as new instructions.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["text"], "properties": { "text": { "type": "string" }, "language": { "type": "string" }, "event": { "type": "string", "enum": ["5k", "10k", "half", "marathon", "custom"] }, "event_name": { "type": "string" }, "distance_m": { "type": "number" }, "unit": { "type": "string", "enum": ["km", "mi"] } } } } } },
@@ -1135,7 +1139,7 @@
     },
     "/api/v1/plan-templates": {
       "security": [{ "runsFreeSession": [] }],
-      "get": { "tags": ["plan-templates"], "summary": "List plan templates, newest first", "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Plan templates.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanTemplate" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
+      "get": { "tags": ["plan-templates"], "summary": "List plan templates, newest first", "security": [], "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" } ], "responses": { "200": { "description": "Plan templates.", "content": { "application/json": { "schema": { "type": "object", "properties": { "data": { "type": "array", "items": { "$ref": "#/components/schemas/PlanTemplate" } }, "page": { "$ref": "#/components/schemas/Page" } }, "required": ["data", "page"] } } } } } },
       "post": {
         "tags": ["plan-templates"], "summary": "Save a template, parsing and validating its DSL source",
         "description": "Rejects (422) unless the DSL parses and has zero outstanding warnings anywhere in the tree (HRA-113 — replaces HRA-111's bottom-up valid/errors model; nothing the parser encounters is a hard error anymore, e.g. an interval missing rest is now a warning, not a rejection). event is required, one of 5k|10k|half|marathon|custom; distance_m is required iff event is custom, rejected (422) for any other event (HRA-120 — event/distance_m are explicit request fields now, overwriting whatever the DSL's now-vestigial EVENT/DISTANCE lines produced). The 422 body's errors[] lists every flagged day.",
@@ -1145,7 +1149,7 @@
     },
     "/api/v1/plan-templates/{id}": {
       "security": [{ "runsFreeSession": [] }],
-      "get": { "tags": ["plan-templates"], "summary": "Get one plan template", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "get": { "tags": ["plan-templates"], "summary": "Get one plan template", "security": [], "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The template.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanTemplate" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "put": {
         "tags": ["plan-templates"], "summary": "Replace a plan template (re-parses dsl_source from scratch)",
         "description": "Same zero-warning gate as POST, same event/distance_m validation (HRA-120). Always clears approved_at back to NULL (HRA-113 gate 2 — any edit revokes approval, even one that still parses with zero warnings).",
@@ -1165,8 +1169,8 @@
       }
     },
     "/api/v1/plan-templates/{id}/mobile-eligibility": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Structural check: can this template use mobile simplified race-plan creation? (HRA-302)",
         "description": "Read-only, never persists. Reuses instantiatePlan/pace.ts's own resolver (domain/runplan/mobile-eligibility.ts) rather than re-deriving anchor/offset logic: eligible when the template's own pace policy leaves at most one anchor symbolic and supplying any value for it makes every day resolve with needs_review false. race_pace_anchor is that single anchor name, or null when either no anchor is needed (already fully resolvable) or the template is not eligible. reason is one of already-resolved, ambiguous-anchors, unresolvable, or null when eligible with an anchor.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -1174,8 +1178,8 @@
       }
     },
     "/api/v1/plan-templates/{id}/instantiate/preview": {
-      "security": [{ "runsFreeSession": [] }],
       "post": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Parse-only preview of an instantiation, never persists (HRA-302)",
         "description": "Mirrors POST .../instantiate's goal_time -> pace_overrides conversion and instantiatePlan resolution, but never writes a plan_instances row. Feeds the mobile simplified-creation review step: shows the derived start_date and every resolved plan-level anchor pace before the runner commits to the real Create action. needs_review is true if any resolved day still needs review (e.g. an unsupported anchor, or the template turns out not to be fully resolvable) — the caller must not proceed to the real instantiate call when true.",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
@@ -1196,6 +1200,7 @@
     "/api/v1/plan-instances": {
       "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "List plan instances, newest first (HRA-118)",
         "description": "template_id is optional — omit for all instances, or scope to one template's own instances. 404 if template_id doesn't reference a real template.",
         "parameters": [ { "$ref": "#/components/parameters/limit" }, { "$ref": "#/components/parameters/offset" }, { "name": "template_id", "in": "query", "required": false, "schema": { "type": "integer" } } ],
@@ -1203,8 +1208,8 @@
       }
     },
     "/api/v1/plan-instances/active": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Get the one approved plan instance whose resolved days cover a date (HRA-248)",
         "description": "Feeds \"Your agenda\"'s today-centered home view. Extends the daysByDateAndWorkoutType pattern, scoped to approved_at IS NOT NULL and with no workout_type filter (a REST day is a real dated row too, HRA-124, and must resolve just as well as a workout day). 404 (not an empty 200) when no approved instance's resolved days include the date — lets the frontend tell \"no active plan today\" apart from a genuine fetch failure. Newest-instance-first if more than one approved instance's days cover the same date (overlap detection/activation blocking is a sibling Story, out of scope here).",
         "parameters": [ { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } } ],
@@ -1212,8 +1217,8 @@
       }
     },
     "/api/v1/plan-instance-days": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Every run-type plan_instance_day matching a calendar date, across every instance (HRA-206)",
         "description": "Feeds ActivityDetailBody's same-day planned-vs-actual picker: 0 matches -> no UI change, 1 -> the chart renders automatically, >=2 -> a picker labeled by instance name. Only workout_type === 'run' ever matches (REST/CROSS/STRENGTH/OTHER are excluded, docs/runplan-dsl.md). Matches across every instance regardless of approved_at state. No pagination envelope — a plain (possibly empty) array.",
         "parameters": [ { "name": "date", "in": "query", "required": true, "schema": { "type": "string", "format": "date" } } ],
@@ -1222,7 +1227,7 @@
     },
     "/api/v1/plan-instances/{id}": {
       "security": [{ "runsFreeSession": [] }],
-      "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
+      "get": { "tags": ["plan-templates"], "summary": "Get one resolved plan instance, with its days", "security": [], "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "200": { "description": "The instance.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PlanInstance" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } },
       "patch": {
         "tags": ["plan-templates"], "summary": "Partially update an instance's name/race info/resolved days (HRA-135, replacing the earlier PUT)",
         "description": "All body fields are optional, but at least one is required (422 otherwise). Each provided field replaces its current value; every omitted field is left untouched. race_name/race_date/race_url are nullable — send null to explicitly clear one. `days`, when provided, still fully replaces the day set (unchanged semantics from the old PUT, HRA-113/HRA-114/HRA-115) — each day is raw DSL text plus its section/week/date scope; the backend looks up that day's section/week in the source template's own parsed plan for its effective PacePolicy, merges in the instance's own pace_overrides, re-parses dsl against that policy, and resolves it the same way instantiation resolves a segment. Rejects (422) if any day's fresh parse still needs review, listing every flagged day. event is never accepted here, read-only/derived from the template. Never touches or re-instantiates the source template; an instance may diverge from what the template would currently produce. Clears approved_at back to NULL whenever any field in the body is applied, same gate-2 rule as the template PUT. schedule_timezone (HRA-332) corrects the instance's IANA timezone — rejected with 409 once the Original baseline has frozen. Whenever days and/or schedule_timezone are applied before Original freezes, Original is re-mirrored to match.",
@@ -1233,8 +1238,8 @@
       "delete": { "tags": ["plan-templates"], "summary": "Delete a plan instance (ON DELETE CASCADE removes its days, no trash, HRA-115)", "parameters": [ { "$ref": "#/components/parameters/id" } ], "responses": { "204": { "description": "Deleted." }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
     },
     "/api/v1/plan-instances/{id}/reports/workouts/{workoutId}": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["reporting"], "summary": "The single-workout/race report for one planned workout (HRA-336)",
         "description": "Reads Original, Current, their revisions, accepted HRA-334 association evidence, and asOf from one consistent application-level read boundary (services/reporting.service.ts) — the result never mixes plan content from one revision with a different reported revision. Reuses HRA-333's lineage classifier and HRA-335's shared metrics primitives rather than a second calculation engine. A workout counts as the plan's race day when its own placement date equals the instance's race_date (HRA-121); race actual comparison always uses elapsed time, never moving/active time. No official-result data source exists yet — race.actualSource is always 'activity' or 'none'.",
         "parameters": [
@@ -1246,8 +1251,8 @@
       }
     },
     "/api/v1/plan-instances/{id}/reports/weeks": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["reporting"], "summary": "The week report for one planned week — group-by-workout adaptation/execution/outcome (HRA-338)",
         "description": "Reuses HRA-335's shared buildReport engine (domain/reporting/report.ts), scoped to ONE week: a planned workout's own structural slot (section_name + week_number, lineage.ts's own 'moved' definition), never a calendar-date span. A workout that moved into or out of this exact slot still surfaces as moved_in/moved_out rather than silently vanishing from one side. evidence.hr/pauses blend across every accepted activity in this week's own date span; evidence.comparableStamina never blends — at most one session (the week's race, else its strict-max-distance completed run) carries its own stamina series.",
         "parameters": [
@@ -1261,8 +1266,8 @@
       }
     },
     "/api/v1/plan-instances/{id}/reports/plan": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["reporting"], "summary": "The entire-plan report — grouped by week for progression, drilling down to workouts (HRA-338)",
         "description": "Reuses HRA-335's shared buildReport engine once for the whole plan's own isolated totals (overall) and once per week (weeks[], in chronological order) — never a second calculation engine. An empty plan (no days on either side yet) returns an empty report rather than 404ing (the instance itself still exists).",
         "parameters": [
@@ -1274,8 +1279,8 @@
       }
     },
     "/api/v1/reports/range": {
-      "security": [{ "runsFreeSession": [] }],
       "get": {
+        "security": [],
         "tags": ["reporting"], "summary": "The date-range/race-range report — cross-plan, grouped automatically by window length (HRA-341)",
         "description": "Unlike every other report above (scoped to one plan instance), this scans EVERY plan instance whose Original or Current span overlaps [from,to] and gives each its own isolated buildReport call (associations pre-filtered to that instance's own workout ids, so one instance's evidence never leaks into another's totals within the same window). aggregate sums across every included instance; its Actual dataset and the range-wide unplanned/ambiguous lists are computed once against every activity in the window, never per instance. A race-range is just a saved date_ranges row's own {from,to} resolved by the caller before this call — there is no separate race-range endpoint. An empty window (no instances, no activities) returns an explicit empty report rather than 404ing.",
         "parameters": [
@@ -1298,8 +1303,8 @@
       }
     },
     "/api/v1/plan-instances/{id}/days/{dayId}/validate": {
-      "security": [{ "runsFreeSession": [] }],
       "post": {
+        "security": [],
         "tags": ["plan-templates"], "summary": "Parse-only preview of a day's DSL edit, never persists (HRA-162)",
         "description": "What the List view's per-day editor calls (debounced) as the user types, so warning feedback updates live instead of only after the whole-day bulk Save round-trip. Reuses the exact same parseDayEntry call and ParseWarning taxonomy the persisting PATCH .../days/{dayId} validates against, against this day's own existing section/week scope and the template's effective PacePolicy (merged with the instance's pace_overrides) — never a separate client-side grammar reimplementation. Always 200: parseDayEntry itself never hard-rejects (docs/runplan-dsl.md's warnings-only model), it only ever produces warnings. No approved-instance guard, unlike the PATCH above: this never mutates anything.",
         "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
@@ -1364,7 +1369,7 @@
       }
     },
     "/api/v1/locales/{lang}": {
-      "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+      "get": { "tags": ["locales"], "summary": "Translation bundle for a language", "security": [], "parameters": [ { "name": "lang", "in": "path", "required": true, "schema": { "type": "string", "enum": ["en", "it"] } } ], "responses": { "200": { "description": "Flat key→string JSON.", "content": { "application/json": { "schema": { "type": "object", "additionalProperties": { "type": "string" } } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
     },
     "/api/v1/source-files/extract": {
       "post": {
@@ -1375,10 +1380,10 @@
       }
     },
     "/api/v1/docs": {
-      "get": { "tags": ["docs"], "summary": "Rendered API documentation (self-contained HTML)", "responses": { "200": { "description": "Docs page.", "content": { "text/html": {} } } } }
+      "get": { "tags": ["docs"], "summary": "Rendered API documentation (self-contained HTML)", "security": [], "responses": { "200": { "description": "Docs page.", "content": { "text/html": {} } } } }
     },
     "/api/v1/openapi.json": {
-      "get": { "tags": ["docs"], "summary": "This OpenAPI spec", "responses": { "200": { "description": "The OpenAPI document.", "content": { "application/json": {} } } } }
+      "get": { "tags": ["docs"], "summary": "This OpenAPI spec", "security": [], "responses": { "200": { "description": "The OpenAPI document.", "content": { "application/json": {} } } } }
     }
   }
 }

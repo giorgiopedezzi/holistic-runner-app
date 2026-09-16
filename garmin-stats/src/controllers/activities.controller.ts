@@ -10,7 +10,8 @@ import { dateRange, parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
 import { badRequest, notFound, unprocessable } from "../http/problem.ts";
 import { WORKOUT_CLASSIFICATIONS } from "../integrations/ollama.ts";
-import { requestIdentity } from "../http/auth-context.ts";
+import { requestDataOwnerId, requestIdentity } from "../http/auth-context.ts";
+import { founderPublicResponse } from "../http/founder-public-response.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
 
 // Correction reasons for the thumbs-down flow (also duplicated in the dashboard's
@@ -31,20 +32,20 @@ export function createActivitiesController(ctx: AppContext) {
   const service = ctx.services.activities;
   const classification = ctx.services.classification;
   const associations = ctx.services.workoutAssociations;
-  const owned = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, requestIdentity(req).userId);
+  const owned = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, requestDataOwnerId(req));
 
-  const range: Handler = async (req, res) => send(res, await owned(req).dateRange());
+  const range: Handler = async (req, res) => send(res, founderPublicResponse(req, await owned(req).dateRange()));
 
   const list: Handler = async (req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
     const { limit, offset } = parsePageParams(url.searchParams);
     const total = (await owned(req).countInRange(from, to))?.count ?? 0;
-    return send(res, paginated(await owned(req).listPage(from, to, limit, offset), total, limit, offset));
+    return send(res, founderPublicResponse(req, paginated(await owned(req).listPage(from, to, limit, offset), total, limit, offset)));
   };
 
   const count: Handler = async (req, res, url) => {
     const { from, to } = dateRange(url.searchParams);
-    return send(res, await owned(req).countInRange(from, to));
+    return send(res, founderPublicResponse(req, await owned(req).countInRange(from, to)));
   };
 
   // GET /api/v1/activities/races — race-type activities (not Training), full
@@ -52,7 +53,7 @@ export function createActivitiesController(ctx: AppContext) {
   const races: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
     const total = (await owned(req).racesCount())?.count ?? 0;
-    return send(res, paginated(await owned(req).races(limit, offset), total, limit, offset));
+    return send(res, founderPublicResponse(req, paginated(await owned(req).races(limit, offset), total, limit, offset)));
   };
 
   const trash: Handler = async (req, res, url) => {
@@ -66,7 +67,7 @@ export function createActivitiesController(ctx: AppContext) {
     if (isNaN(id)) throw badRequest("Invalid activity id.");
     const row = await owned(req).byId(id);
     if (!row) throw notFound(`Activity ${id} not found.`);
-    return send(res, row);
+    return send(res, founderPublicResponse(req, row));
   };
 
   const track: Handler = async (req, res, url) => {
@@ -74,7 +75,7 @@ export function createActivitiesController(ctx: AppContext) {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/track$/)?.[1] ?? "");
     if (isNaN(id)) throw badRequest("Invalid activity id.");
     if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
-    return send(res, await owned(req).track(id));
+    return send(res, founderPublicResponse(req, await owned(req).track(id)));
   };
 
   const deleteRange: Handler = async (req, res, url) => {

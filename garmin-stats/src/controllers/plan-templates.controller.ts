@@ -34,7 +34,8 @@ import {
 } from "../http/problem.ts";
 import { loadConfig } from "../config.ts";
 import { isOriginalFrozen, isValidIanaTimeZone, SCHEDULE_TIMEZONE_BACKFILL_FALLBACK } from "../domain/plan-timezone.ts";
-import { requestIdentity } from "../http/auth-context.ts";
+import { requestDataOwnerId } from "../http/auth-context.ts";
+import { founderPublicResponse } from "../http/founder-public-response.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
 import { createOwnedPlanInstancesRepo } from "../repositories/owned-plan-instances.repo.ts";
 import { createOwnedPlanTemplatesRepo } from "../repositories/owned-plan-templates.repo.ts";
@@ -158,7 +159,7 @@ function collectAllWarnings(plan: RunPlan, planScoped: { line: number; message: 
 }
 
 export function createPlanTemplatesController(ctx: AppContext) {
-  const ownerId = (req: import("http").IncomingMessage) => requestIdentity(req).userId;
+  const ownerId = (req: import("http").IncomingMessage) => requestDataOwnerId(req);
   const templates = (req: import("http").IncomingMessage) => createOwnedPlanTemplatesRepo(ctx.db, ownerId(req));
   const activitiesRepo = (req: import("http").IncomingMessage) => createOwnedActivitiesRepo(ctx.db, ownerId(req));
   const instancesRepo = (req: import("http").IncomingMessage) => createOwnedPlanInstancesRepo(ctx.db, ownerId(req));
@@ -168,7 +169,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const list: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
     const [count, rows] = await Promise.all([templates(req).count(), templates(req).listPage(limit, offset)]);
-    return send(res, paginated(rows, count?.count ?? 0, limit, offset));
+    return send(res, founderPublicResponse(req, paginated(rows, count?.count ?? 0, limit, offset)));
   };
 
   const getById: Handler = async (req, res, url) => {
@@ -176,7 +177,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (!Number.isInteger(id)) throw badRequest("Invalid plan template id.");
     const row = await templates(req).byId(id);
     if (!row) throw notFound(`No plan template with id ${id}.`);
-    return send(res, row);
+    return send(res, founderPublicResponse(req, row));
   };
 
   // POST /api/v1/plan-templates/generate — parse-only preview, never
@@ -189,7 +190,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (!result.ok) {
       throw unprocessable("DSL failed to parse.", { errors: result.errors.map(e => ({ field: `line:${e.line}`, message: e.message })) });
     }
-    return send(res, { plan: result.plan, warnings: result.warnings });
+    return send(res, founderPublicResponse(req, { plan: result.plan, warnings: result.warnings }));
   };
 
   // POST /api/v1/plan-templates/prompt-preview (HRA-326) — parse-only-style
@@ -214,7 +215,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
       language: body.language, event: body.event as EventType | undefined, eventName: body.event_name,
       distanceM: body.distance_m, unit: body.unit as "km" | "mi" | undefined,
     });
-    return send(res, { prompt });
+    return send(res, founderPublicResponse(req, { prompt }));
   };
 
   // Maps the AI provider adapter's distinguishable error codes (HRA-325) onto
@@ -509,12 +510,12 @@ export function createPlanTemplatesController(ctx: AppContext) {
     } catch {
       distanceM = null;
     }
-    return send(res, {
+    return send(res, founderPublicResponse(req, {
       eligible: result.eligible,
       race_pace_anchor: result.racePaceAnchor,
       distance_m: distanceM,
       reason: result.reason ?? null,
-    });
+    }));
   };
 
   // POST /api/v1/plan-templates/:id/instantiate/preview — HRA-302: the same
@@ -549,12 +550,12 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
     const days = instantiatePlan(plan, { startDate: body.start_date, paceOverrides, restDayLabel: body.rest_day_label?.trim() || undefined });
     const overriddenPolicy = { ...plan.metadata.pace_policy, ...paceOverrides };
-    return send(res, {
+    return send(res, founderPublicResponse(req, {
       start_date: body.start_date,
       race_pace_anchor: body.race_pace_anchor ?? null,
       resolved_paces: resolveAllAnchors(overriddenPolicy),
       needs_review: days.some(d => d.needs_review),
-    });
+    }));
   };
 
   // GET /api/v1/plan-instances?template_id=&limit=&offset= — HRA-118's
@@ -571,7 +572,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
     const { limit, offset } = parsePageParams(url.searchParams);
     const [count, rows] = await Promise.all([instancesRepo(req).count(templateId), instancesRepo(req).listPage(limit, offset, templateId)]);
-    return send(res, paginated(rows, count?.count ?? 0, limit, offset));
+    return send(res, founderPublicResponse(req, paginated(rows, count?.count ?? 0, limit, offset)));
   };
 
   // GET /api/v1/plan-instance-days?date=YYYY-MM-DD (HRA-206) — every run-type
@@ -586,7 +587,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const daysByDate: Handler = async (req, res, url) => {
     const date = url.searchParams.get("date");
     if (!date || !ISO_DATE.test(date)) throw badRequest("date is required in YYYY-MM-DD format.");
-    return send(res, await instancesRepo(req).daysByDateAndWorkoutType(date, "run"));
+    return send(res, founderPublicResponse(req, await instancesRepo(req).daysByDateAndWorkoutType(date, "run")));
   };
 
   // GET /api/v1/plan-instances/active?date=YYYY-MM-DD (HRA-248) — "Your
@@ -604,7 +605,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const instanceId = await instancesRepo(req).activeInstanceIdForDate(date);
     if (instanceId == null) throw notFound(`No active plan instance for ${date}.`);
     const [instance, days] = await Promise.all([instancesRepo(req).instanceById(instanceId), instancesRepo(req).daysByInstance(instanceId)]);
-    return send(res, { ...instance, days });
+    return send(res, founderPublicResponse(req, { ...instance, days }));
   };
 
   const instanceById: Handler = async (req, res, url) => {
@@ -612,7 +613,7 @@ export function createPlanTemplatesController(ctx: AppContext) {
     if (!Number.isInteger(id)) throw badRequest("Invalid plan instance id.");
     const instance = await instancesRepo(req).instanceById(id);
     if (!instance) throw notFound(`No plan instance with id ${id}.`);
-    return send(res, { ...instance, days: await instancesRepo(req).daysByInstance(id) });
+    return send(res, founderPublicResponse(req, { ...instance, days: await instancesRepo(req).daysByInstance(id) }));
   };
 
   // PATCH /api/v1/plan-instances/:id — partial update (HRA-135, replacing
@@ -923,14 +924,14 @@ export function createPlanTemplatesController(ctx: AppContext) {
 
     const { parsedDay, policy } = await parseDayInScope(req, instance, day, body.dsl);
     if (parsedDay.needs_review) {
-      return send(res, { needs_review: true, warnings: parsedDay.warnings });
+      return send(res, founderPublicResponse(req, { needs_review: true, warnings: parsedDay.warnings }));
     }
     const resolved = resolveDay(parsedDay, day.section_name, day.week_number, day.date, policy);
-    return send(res, {
+    return send(res, founderPublicResponse(req, {
       needs_review: resolved.needs_review, warnings: parsedDay.warnings,
       workout_type: resolved.workout_type, segments: resolved.segments,
       activity_target: resolved.activity_target ?? null, activity_description: resolved.activity_description ?? null,
-    });
+    }));
   };
 
   // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202) — exports one

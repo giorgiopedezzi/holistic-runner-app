@@ -8,20 +8,29 @@ rendered at `GET /api/v1/docs`) is the source of truth for exact request/respons
 codes — this file is the human-readable index. The two must stay in sync (CLAUDE.md's routing-table
 rule); this table exists for quick lookup, not as a second contract.
 
-## Anonymous Guest publication boundary (HRA-361)
+## Anonymous Guest founder-data boundary (HRA-373)
 
-`GET /api/v1/public/profiles/:slug` exposes the projected founder profile. The sibling
-`/activities`, `/plans`, and `/reports` collection routes return projected resources, and appending
-`/:publicId` reads one resource by its opaque public UUID. These routes are intentionally anonymous,
-read-only, and backed only by `published_public_projections`; they cannot call private owner
-repositories. Every response contains only `{slug, projectedAt, data}` from the safe projection and
-uses `Cache-Control: no-store` so suspension cannot be bypassed by a shared cache.
+Approved sporting-data, trend, date-range, training-plan, Agenda, and report GET routes serve the
+founder's live domain data anonymously when the founder publication state is `published`. These
+requests use the fixed configured `FOUNDER_USER_ID`; they do not manufacture an authenticated
+session or accept a caller-selected owner. The same routes continue to use the authenticated user's
+own data whenever valid credentials are supplied, and invalid or revoked credentials return `401`
+instead of falling back to Guest access.
 
-Unknown slugs, missing public UUIDs, guessed private identifiers, unpublished/suspended projections,
-and stale projections (an incompatible schema or mismatched snapshot metadata) all return the same
-generic `404 application/problem+json`. The error instance is the constant `/api/v1/public`, so a
-guessed identifier is not reflected into the response. All owner routes retain their existing session
-authentication and tenant scope.
+Guest responses pass through the founder-public response boundary, which removes private provenance
+and account data such as filenames, owner/external identifiers, provider internals, tokens, notes,
+locations, and exact coordinates. Responses use `Cache-Control: no-store`. Missing, draft, or
+suspended publication states return the same generic `404 application/problem+json` with the constant
+instance `/api/v1/public`.
+
+Deterministic validation and preview routes are also anonymous where documented in OpenAPI. AI-backed
+generation, mutations, account/integration/sync/publication operations, trash, settings, body data,
+and workout-association management remain authenticated. Guest rendering uses application defaults
+rather than exposing the founder's private settings.
+
+The older `GET /api/v1/public/profiles/:slug` projection routes remain available as a transitional
+contract. They are still read-only, `no-store`, and backed by `published_public_projections`; live
+Runs Free reads do not use those snapshots as their primary data source.
 
 
 ### GET

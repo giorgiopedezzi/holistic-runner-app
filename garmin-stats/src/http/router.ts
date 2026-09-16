@@ -11,7 +11,7 @@ import type { AppContext, Handler } from "./context.ts";
 import { configureCors, send, sendProblem } from "./respond.ts";
 import { ApiProblem, notFound, internal, unauthorized } from "./problem.ts";
 import { demoGuarded } from "./demo-guard.ts";
-import { authenticateRequest } from "./auth-context.ts";
+import { deriveRequestAccessContext, type RequestAccessContext, type RouteCapability } from "./auth-context.ts";
 import { logSecurityEvent } from "./security-log.ts";
 import { createAuthController, expectedCsrfToken } from "../controllers/auth.controller.ts";
 import { createAccountPrivacyController } from "../controllers/account-privacy.controller.ts";
@@ -31,6 +31,61 @@ import { createSourceFilesController } from "../controllers/source-files.control
 import { createReportingController } from "../controllers/reporting.controller.ts";
 import { createGuestPublicationController } from "../controllers/guest-publication.controller.ts";
 import { createPublicationController } from "../controllers/publication.controller.ts";
+
+const PUBLIC_OWNER_READS = new Set([
+  "/api/v1/range", "/api/v1/summary", "/api/v1/weekly", "/api/v1/monthly",
+  "/api/v1/activities", "/api/v1/activities/count", "/api/v1/activities/races",
+  "/api/v1/date-ranges", "/api/v1/plan-templates", "/api/v1/plan-instances",
+  "/api/v1/plan-instances/active", "/api/v1/plan-instance-days", "/api/v1/reports/range",
+]);
+
+function isPublicOwnerRead(route: string): boolean {
+  return PUBLIC_OWNER_READS.has(route) ||
+    /^\/api\/v1\/activities\/\d+$/.test(route) ||
+    /^\/api\/v1\/activities\/\d+\/track$/.test(route) ||
+    /^\/api\/v1\/plan-templates\/\d+$/.test(route) ||
+    /^\/api\/v1\/plan-templates\/\d+\/mobile-eligibility$/.test(route) ||
+    /^\/api\/v1\/plan-instances\/\d+$/.test(route) ||
+    /^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+$/.test(route) ||
+    /^\/api\/v1\/plan-instances\/\d+\/reports\/weeks$/.test(route) ||
+    /^\/api\/v1\/plan-instances\/\d+\/reports\/plan$/.test(route);
+}
+
+function isPublicCompute(route: string): boolean {
+  return route === "/api/v1/plan-templates/generate" ||
+    route === "/api/v1/plan-templates/prompt-preview" ||
+    /^\/api\/v1\/plan-templates\/\d+\/instantiate\/preview$/.test(route) ||
+    /^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route);
+}
+
+function isOwnerScopedRoute(route: string): boolean {
+  return route === "/api/v1/range" || route === "/api/v1/summary" || route === "/api/v1/weekly" || route === "/api/v1/monthly" ||
+    route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
+    route.startsWith("/api/v1/date-ranges") || route.startsWith("/api/v1/settings") || route.startsWith("/api/v1/plan-templates") ||
+    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days" || route.startsWith("/api/v1/account") ||
+    route.startsWith("/api/v1/publication") || route === "/api/v1/garmin/status" || route === "/api/v1/source-files/extract" ||
+    route === "/api/v1/withings/status" || route === "/api/v1/withings/login-url" || route === "/api/v1/withings/connection" ||
+    route === "/api/v1/strava/status" || route === "/api/v1/strava/login-url" || route === "/api/v1/strava/connection" ||
+    route.startsWith("/api/v1/sync/") || route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
+}
+
+function routeCapability(method: string | undefined, route: string): RouteCapability | undefined {
+  if (method === "GET") {
+    if (isPublicOwnerRead(route) || route === "/api/v1/activity-types" || /^\/api\/v1\/locales\/[^/]+$/.test(route) ||
+        /^\/api\/v1\/public\/profiles\/[^/]+(?:\/(?:activities|plans|reports)(?:\/[^/]+)?)?$/.test(route)) return "PUBLIC_READ";
+    if (isOwnerScopedRoute(route)) return "AUTHENTICATED_READ";
+  }
+  if (method === "POST" && route === "/api/v1/feedback") return "PUBLIC_FEEDBACK";
+  if (method === "POST" && isPublicCompute(route)) return "PUBLIC_COMPUTE";
+  if (isOwnerScopedRoute(route)) return "AUTHENTICATED_WRITE";
+  return undefined;
+}
+
+function requiresPublishedFounder(method: string | undefined, route: string): boolean {
+  return (method === "GET" && isPublicOwnerRead(route)) ||
+    (method === "POST" && (/^\/api\/v1\/plan-templates\/\d+\/instantiate\/preview$/.test(route) ||
+      /^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route)));
+}
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -55,20 +110,6 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
   const demo = <T extends Handler>(h: T) => demoGuarded(ctx, h);
-  const ownerScopedRoute = (route: string) =>
-    route === "/api/v1/range" || route === "/api/v1/summary" || route === "/api/v1/weekly" || route === "/api/v1/monthly" ||
-    route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
-    route.startsWith("/api/v1/date-ranges") || route.startsWith("/api/v1/settings") || route.startsWith("/api/v1/plan-templates") ||
-    route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days" || route.startsWith("/api/v1/account") ||
-    route.startsWith("/api/v1/publication") ||
-    // HRA-352: provider connections/credentials and sync/import jobs are
-    // owner-scoped — deliberately NOT /api/v1/strava/callback (its owner
-    // comes from server-side OAuth state, not the request's own identity —
-    // see controllers/integrations.controller.ts's doc comment).
-    route === "/api/v1/withings/status" || route === "/api/v1/withings/login-url" || route === "/api/v1/withings/connection" ||
-    route === "/api/v1/strava/status" || route === "/api/v1/strava/login-url" || route === "/api/v1/strava/connection" ||
-    route.startsWith("/api/v1/sync/");
-
   return async (req, res) => {
     // Hosted demo — keep it out of search/AI indexing until it's ready to be
     // found. The dashboard has its own robots.txt/meta tag, but this API is
@@ -117,10 +158,24 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     const publicResourceMatch = /^\/api\/v1\/public\/profiles\/([^/]+)\/(activities|plans|reports)\/([^/]+)$/.exec(route);
 
     try {
-      const privateRoute = ownerScopedRoute(route) || route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
-      if (privateRoute) {
-        await authenticateRequest(req, ctx);
-        if (!["GET", "HEAD"].includes(req.method ?? "")) {
+      const capability = routeCapability(req.method, route);
+      let access: RequestAccessContext | undefined;
+      if (capability) {
+        access = await deriveRequestAccessContext(req, ctx, capability);
+        if (access.kind === "founder-public") {
+          res.setHeader("Cache-Control", "no-store");
+          if (requiresPublishedFounder(req.method, route)) {
+            let published = false;
+            try {
+              published = (await ctx.services.publicationLifecycle.status(access.userId)).state === "published";
+            } catch {
+              // Public availability fails closed without exposing whether the
+              // entitlement, publication row, or backing store failed.
+            }
+            if (!published) throw notFound("Public resource is unavailable.", { instance: "/api/v1/public" });
+          }
+        }
+        if (capability === "AUTHENTICATED_WRITE") {
           const sessionPart = (req.headers.cookie ?? "").split(";").map(part => part.trim()).find(part => part.startsWith("__Host-runsfree_session=") || part.startsWith("runsfree_session="));
           const session = sessionPart?.slice(sessionPart.indexOf("=") + 1);
           const csrf = req.headers["x-runsfree-csrf"];

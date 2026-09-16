@@ -10,7 +10,8 @@ import { send } from "../http/respond.ts";
 import { badRequest, notFound, unprocessable } from "../http/problem.ts";
 import { readJsonBody } from "../http/request.ts";
 import type { ReportRangeMode } from "../domain/reporting/types.ts";
-import { requestIdentity } from "../http/auth-context.ts";
+import { requestDataOwnerId } from "../http/auth-context.ts";
+import { founderPublicResponse } from "../http/founder-public-response.ts";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -53,7 +54,7 @@ function parseRange(url: URL): ReportRangeMode {
 
 export function createReportingController(ctx: AppContext) {
   const { reporting } = ctx.services;
-  const owned = (req: import("http").IncomingMessage) => reporting.forUser(requestIdentity(req).userId);
+  const owned = (req: import("http").IncomingMessage) => reporting.forUser(requestDataOwnerId(req));
 
   const getWorkoutReport: Handler = async (req, res, url) => {
     const { instanceId, workoutId } = parseInstanceIdAndWorkoutId(url.pathname);
@@ -63,7 +64,7 @@ export function createReportingController(ctx: AppContext) {
     const asOf = parseAsOf(url);
     const report = await owned(req).getWorkoutReport(instanceId, workoutId, asOf);
     if (!report) throw notFound(`No workout ${workoutId} found on plan instance ${instanceId}.`);
-    return send(res, report);
+    return send(res, founderPublicResponse(req, report));
   };
 
   // GET /api/v1/plan-instances/:id/reports/weeks?section_name=&week_number=&range=&as_of=
@@ -82,7 +83,7 @@ export function createReportingController(ctx: AppContext) {
 
     const report = await owned(req).getWeekReport(instanceId, sectionName, weekNumber, range, asOf);
     if (!report) throw notFound(`No week "${sectionName}" #${weekNumber} found on plan instance ${instanceId}.`);
-    return send(res, report);
+    return send(res, founderPublicResponse(req, report));
   };
 
   // GET /api/v1/plan-instances/:id/reports/plan?range=&as_of=
@@ -95,7 +96,7 @@ export function createReportingController(ctx: AppContext) {
 
     const report = await owned(req).getPlanReport(instanceId, range, asOf);
     if (!report) throw notFound(`No plan instance ${instanceId} found.`);
-    return send(res, report);
+    return send(res, founderPublicResponse(req, report));
   };
 
   // PUT /api/v1/plan-instances/:id/reports/workouts/:workoutId/quality-alignment/:segmentIndex
@@ -148,7 +149,7 @@ export function createReportingController(ctx: AppContext) {
     const range = parseRange(url);
     const asOf = parseAsOf(url);
 
-    return send(res, await owned(req).getRangeReport(from, to, range, asOf));
+    return send(res, founderPublicResponse(req, await owned(req).getRangeReport(from, to, range, asOf)));
   };
 
   return { getWorkoutReport, getWeekReport, getPlanReport, setQualityAlignment, removeQualityAlignment, getRangeReport };
