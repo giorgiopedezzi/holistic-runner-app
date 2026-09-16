@@ -111,4 +111,37 @@ describe("GuestOverview", () => {
       base, `${base}/activities`, `${base}/plans`, `${base}/reports`, `${base}/activities/${activityId}`,
     ]);
   });
+
+  it("opens public planned-versus-actual evidence by opaque ID without recalculating or fabricating metrics", async () => {
+    const reportId = "report-1";
+    const fetch = installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: {} }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([{ publicId: reportId, fields: { kind: "plan", generatedAt: "2026-09-15" } }]),
+      [`GET ${base}/reports/${reportId}`]: published({ publicId: reportId, fields: {
+        kind: "plan", generatedAt: "2026-09-15", datasets: {
+          original: { distanceM: 42000, durationSec: 14400, paceSecPerKm: 343 },
+          current: { distanceM: 40000 }, actual: {},
+        }, coverage: { trustedActivities: 4, ambiguousActivities: 1, extraActivities: 2 },
+        comparisons: { execution: [{ status: "completed" }], outcome: [] },
+      } }),
+    });
+
+    render(<GuestOverview view="reports" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /plan/i }));
+
+    expect(await screen.findByText("Original plan")).toBeInTheDocument();
+    expect(screen.getByText("42.00 km")).toBeInTheDocument();
+    expect(screen.getByText("Effective plan")).toBeInTheDocument();
+    expect(screen.getByText("No accepted actual activity was published.")).toBeInTheDocument();
+    expect(screen.getByText("Accepted actual activities")).toBeInTheDocument();
+    expect(screen.getByText("Unmatched or ambiguous activities")).toBeInTheDocument();
+    expect(screen.getByText("Execution")).toBeInTheDocument();
+    expect(screen.queryByText("0 km")).not.toBeInTheDocument();
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url), "http://localhost").pathname)).toEqual([
+      base, `${base}/activities`, `${base}/plans`, `${base}/reports`, `${base}/reports/${reportId}`,
+    ]);
+  });
 });

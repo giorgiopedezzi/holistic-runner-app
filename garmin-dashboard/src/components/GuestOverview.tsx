@@ -177,6 +177,107 @@ function GuestActivityList({ activities }: GuestActivityListProps) {
   </section>;
 }
 
+type DatasetName = "original" | "current" | "actual";
+
+function reportDataset(fields: Fields, name: DatasetName): Fields | null {
+  return objectField(objectField(fields, "datasets") ?? {}, name);
+}
+
+function DatasetEvidence({ report, name }: { report: PublicItem; name: DatasetName }) {
+  const { t } = useTranslation();
+  const dataset = reportDataset(report.fields, name);
+  const title = name === "original"
+    ? t("guest.report.original", "Original plan")
+    : name === "current"
+      ? t("guest.report.current", "Effective plan")
+      : t("guest.report.actual", "Actual activity");
+  const empty = name === "original"
+    ? t("guest.report.originalUnavailable", "No original plan data was published.")
+    : name === "current"
+      ? t("guest.report.currentUnavailable", "No effective plan data was published.")
+      : t("guest.report.actualUnavailable", "No accepted actual activity was published.");
+  const distance = dataset && numberField(dataset, "distanceM");
+  const duration = dataset && numberField(dataset, "durationSec");
+  const paceSec = dataset && numberField(dataset, "paceSecPerKm");
+  const hasMetrics = distance != null || duration != null || paceSec != null;
+
+  return <section className="hra-border rounded-lg p-3 flex flex-col gap-1.5">
+    <h3 className="hra-text-secondary text-label">{title}</h3>
+    {hasMetrics ? <dl>
+      {distance != null && <div className="hra-fact-row"><dt>{t("guest.activity.distance", "Distance")}</dt><dd>{fmtKm(distance)}</dd></div>}
+      {duration != null && <div className="hra-fact-row"><dt>{t("guest.activity.duration", "Duration")}</dt><dd>{fmtDuration(duration)}</dd></div>}
+      {paceSec != null && <div className="hra-fact-row"><dt>{t("guest.activity.pace", "Average pace")}</dt><dd>{fmtPace(paceSec / 60)}/km</dd></div>}
+    </dl> : <p className="hra-text-muted text-meta">{empty}</p>}
+  </section>;
+}
+
+function GuestReportDetail({ report }: { report: PublicItem }) {
+  const { t } = useTranslation();
+  const coverage = objectField(report.fields, "coverage");
+  const comparisons = objectField(report.fields, "comparisons");
+  const generatedAt = stringField(report.fields, "generatedAt") ?? stringField(report.fields, "asOf");
+  const comparisonKinds: Array<[string, string]> = [
+    ["adaptation", t("guest.report.adaptation", "Planned changes")],
+    ["execution", t("guest.report.execution", "Execution")],
+    ["outcome", t("guest.report.outcome", "Outcome")],
+  ];
+  const visibleComparisons = comparisonKinds.filter(([key]) => arrayField(comparisons ?? {}, key).length > 0);
+
+  return <section className="hra-guest-activity-detail" aria-label={t("guest.report.detailLabel", "Published comparison detail")}>
+    <div className="hra-guest-hero">
+      <p className="hra-label">{t("guest.report.eyebrow", "Published planned-versus-actual evidence")}</p>
+      <h2 className="text-heading">{stringField(report.fields, "kind") ?? t("guest.reports.publishedReport", "Published comparison")}</h2>
+      {generatedAt && <p className="hra-text-muted text-meta">{t("guest.report.snapshot", `Published ${fmtDate(generatedAt)}. This is a read-only snapshot.`, { generatedAt: fmtDate(generatedAt) })}</p>}
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {(["original", "current", "actual"] as const).map(name => <DatasetEvidence key={name} report={report} name={name} />)}
+    </div>
+    {coverage ? <section className="hra-bg-card hra-border-strong rounded-xl p-5">
+      <h3 className="hra-text-secondary text-label">{t("guest.report.coverage", "Published evidence coverage")}</h3>
+      <dl className="hra-guest-facts">
+        {numberField(coverage, "trustedActivities") != null && <div className="hra-fact-row"><dt>{t("guest.report.trusted", "Accepted actual activities")}</dt><dd>{numberField(coverage, "trustedActivities")}</dd></div>}
+        {numberField(coverage, "ambiguousActivities") != null && <div className="hra-fact-row"><dt>{t("guest.report.unmatched", "Unmatched or ambiguous activities")}</dt><dd>{numberField(coverage, "ambiguousActivities")}</dd></div>}
+        {numberField(coverage, "extraActivities") != null && <div className="hra-fact-row"><dt>{t("guest.report.extra", "Unplanned activities")}</dt><dd>{numberField(coverage, "extraActivities")}</dd></div>}
+      </dl>
+    </section> : <p className="hra-text-muted text-meta">{t("guest.report.coverageUnavailable", "Coverage is not available in this published snapshot.")}</p>}
+    <section className="hra-bg-card hra-border-strong rounded-xl p-5">
+      <h3 className="hra-text-secondary text-label">{t("guest.report.progress", "Published progress views")}</h3>
+      {visibleComparisons.length > 0 ? <ul className="hra-guest-facts">
+        {visibleComparisons.map(([key, label]) => <li key={key} className="hra-fact-row"><span>{label}</span><strong>{arrayField(comparisons ?? {}, key).length}</strong></li>)}
+      </ul> : <p className="hra-text-muted text-meta">{t("guest.report.progressUnavailable", "No comparable published progress is available for this snapshot.")}</p>}
+    </section>
+  </section>;
+}
+
+function GuestReportDetailFetch({ slug, publicId }: { slug: string; publicId: string }) {
+  const { t } = useTranslation();
+  const detail = useQuery(
+    () => readPublic<PublicResource<PublicItem>>(`/api/v1/public/profiles/${encodeURIComponent(slug)}/reports/${encodeURIComponent(publicId)}`),
+    [slug, publicId],
+  );
+  if (detail.state.status === "loading" || detail.state.status === "idle") return <LoadingSpinner label={t("guest.report.loading", "Loading published comparison…")} />;
+  return detail.state.status === "success"
+    ? <GuestReportDetail report={detail.state.data.data} />
+    : <Empty message={t("guest.report.unavailable", "This published comparison is currently unavailable.")} />;
+}
+
+function GuestReportList({ reports }: { reports: PublicResource<PublicItem[]> }) {
+  const { t } = useTranslation();
+  const [selected, setSelected] = useState<PublicItem | null>(null);
+  return <section className="hra-guest-overview" aria-label={t("guest.reports.label", "Published comparisons")}>
+    <div className="hra-guest-hero"><p className="hra-label">{t("guest.reports.eyebrow", "Published comparison")}</p><h1 className="hra-section-title">{t("guest.reports.title", "Training progress")}</h1></div>
+    {reports.data.length > 0 ? <div className="hra-guest-activity-layout">
+      <section className="hra-guest-activity-list" aria-label={t("guest.report.listLabel", "Published planned-versus-actual evidence")}>
+        {reports.data.map(report => <button key={report.publicId} type="button" className="hra-guest-activity-row" onClick={() => setSelected(report)} aria-pressed={selected?.publicId === report.publicId}>
+          <span>{stringField(report.fields, "kind") ?? t("guest.reports.publishedReport", "Published comparison")}</span>
+          <span className="hra-text-muted text-meta">{stringField(report.fields, "generatedAt") ? fmtDate(stringField(report.fields, "generatedAt")!) : t("guest.reports.available", "Available")}</span>
+        </button>)}
+      </section>
+      {selected && <GuestReportDetailFetch slug={reports.slug} publicId={selected.publicId} />}
+    </div> : <Empty message={t("guest.reports.unavailable", "No comparisons have been published.")} />}
+  </section>;
+}
+
 export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateToJourney }: Props) {
   const { t } = useTranslation();
   const query = useQuery(loadGuestData, []);
@@ -258,12 +359,7 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
   }
 
   if (view === "reports") {
-    return <section className="hra-guest-overview" aria-label={t("guest.reports.label", "Published comparisons")}>
-      <div className="hra-guest-hero"><p className="hra-label">{t("guest.reports.eyebrow", "Published comparison")}</p><h1 className="hra-section-title">{t("guest.reports.title", "Training progress")}</h1></div>
-      {reports.data.length > 0 ? <section className="hra-bg-card hra-border-strong rounded-xl p-5"><div className="hra-guest-facts">
-        {reports.data.map(report => <div key={report.publicId} className="hra-fact-row"><span>{stringField(report.fields, "kind") ?? t("guest.reports.publishedReport", "Published comparison")}</span><strong>{stringField(report.fields, "generatedAt") ? fmtDate(stringField(report.fields, "generatedAt")!) : t("guest.reports.available", "Available")}</strong></div>)}
-      </div></section> : <Empty message={t("guest.reports.unavailable", "No comparisons have been published.")} />}
-    </section>;
+    return <GuestReportList reports={reports} />;
   }
 
   return (
