@@ -21,6 +21,7 @@ interface Props {
   view?: GuestView;
   onNavigateToPlan?: () => void;
   onNavigateToJourney?: () => void;
+  onSignIn?: () => void;
 }
 
 const DEFAULT_FOUNDER_SLUG = "founder-journey";
@@ -112,6 +113,17 @@ function stateLabel(workout: Fields, state: "original" | "current" | "actual"): 
 
 interface GuestActivityListProps {
   activities: PublicResource<PublicItem[]>;
+}
+
+function GuestConversion({ action, description, onSignIn }: { action: string; description: string; onSignIn?: () => void }) {
+  const { t } = useTranslation();
+  if (!onSignIn) return null;
+  return <section className="hra-guest-conversion">
+    <p className="hra-label">{t("guest.conversion.eyebrow", "Make it yours")}</p>
+    <h2 className="text-heading">{action}</h2>
+    <p className="hra-text-secondary text-body">{description}</p>
+    <button type="button" className="hra-btn" onClick={onSignIn}>{t("guest.conversion.signIn", "Try Runs Free with your training")}</button>
+  </section>;
 }
 
 function GuestActivityDetail({ activity }: { activity: PublicItem }) {
@@ -278,7 +290,7 @@ function GuestReportList({ reports }: { reports: PublicResource<PublicItem[]> })
   </section>;
 }
 
-export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateToJourney }: Props) {
+export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateToJourney, onSignIn }: Props) {
   const { t } = useTranslation();
   const query = useQuery(loadGuestData, []);
 
@@ -347,6 +359,11 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
           <section className="hra-guest-next">
             <h2 className="text-heading">{t("guest.plan.readOnlyTitle", "A read-only published schedule")}</h2>
             <p className="hra-text-secondary text-body">{t("guest.plan.readOnlyDescription", "This view reflects the founder’s effective plan. Editing, swapping, export, and sync controls are available only after sign-in.")}</p>
+            <GuestConversion
+              action={t("guest.conversion.createPlan.title", "Create my plan")}
+              description={t("guest.conversion.createPlan.description", "Sign in to create and edit a private training plan. The published founder schedule stays separate from your account.")}
+              onSignIn={onSignIn}
+            />
             {onNavigateToJourney && <button type="button" className="hra-btn mt-3" onClick={onNavigateToJourney}>{t("guest.plan.backToJourney", "Back to founder journey")}</button>}
           </section>
         </> : <Empty message={t("guest.plan.unavailable", "A current plan has not been published.")} />}
@@ -355,11 +372,19 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
   }
 
   if (view === "activities") {
-    return <GuestActivityList activities={activities} />;
+    return <><GuestActivityList activities={activities} /><GuestConversion
+      action={t("guest.conversion.importActivities.title", "Import my activities")}
+      description={t("guest.conversion.importActivities.description", "Sign in to connect your own activity sources and keep them private to your account.")}
+      onSignIn={onSignIn}
+    /></>;
   }
 
   if (view === "reports") {
-    return <GuestReportList reports={reports} />;
+    return <><GuestReportList reports={reports} /><GuestConversion
+      action={t("guest.conversion.training.title", "See this with my training")}
+      description={t("guest.conversion.training.description", "Sign in to view progress built from your own training, not the founder’s published data.")}
+      onSignIn={onSignIn}
+    /></>;
   }
 
   return (
@@ -411,6 +436,11 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
         <p className="hra-text-secondary text-body">{t("guest.overview.exploreDescription", "Public plan, activity, and progress views will appear here as they are published.")}</p>
         {plan && onNavigateToPlan && <button type="button" className="hra-btn mt-3" onClick={onNavigateToPlan}>{t("guest.overview.viewPlan", "View current plan")}</button>}
       </section>
+      <GuestConversion
+        action={t("guest.conversion.journey.title", "Start your own running journey")}
+        description={t("guest.conversion.journey.description", "Sign in to create a private plan, import activities, and connect your own data.")}
+        onSignIn={onSignIn}
+      />
     </section>
   );
 }

@@ -51,6 +51,22 @@ describe("GuestOverview", () => {
     expect(screen.queryByText("0 km")).not.toBeInTheDocument();
   });
 
+  it("routes a personal Guest conversion point into the supplied sign-in flow", async () => {
+    const onSignIn = vi.fn();
+    installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: {} }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview onSignIn={onSignIn} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Try Runs Free with your training" }));
+    expect(onSignIn).toHaveBeenCalledOnce();
+    expect(screen.getByText("Start your own running journey")).toBeInTheDocument();
+  });
+
   it("renders the public effective-plan current week without private mutation controls", async () => {
     const fetch = installFetch({
       [`GET ${base}`]: published({ publicId: "profile-1", fields: { displayName: "Giorgio" } }),

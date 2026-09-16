@@ -1216,5 +1216,15 @@
   "account.deletionConfirmDescription": "L'azione disconnette subito e scollega le integrazioni. Digita DELETE MY ACCOUNT per continuare.",
   "account.deletionConfirmationLabel": "Conferma eliminazione",
   "account.deletionFailed": "Impossibile mettere in coda l'eliminazione dell'account.",
-  "account.privacyNotice": "Runs Free tratta misurazioni di allenamento e salute solo per fornire questo servizio e le integrazioni connesse. I controlli di esportazione ed eliminazione sono sopra. La pubblicazione è una capacità separata e opzionale e non viene modificata eliminando qui i dati privati dell'account."
+  "account.privacyNotice": "Runs Free tratta misurazioni di allenamento e salute solo per fornire questo servizio e le integrazioni connesse. I controlli di esportazione ed eliminazione sono sopra. La pubblicazione è una capacità separata e opzionale e non viene modificata eliminando qui i dati privati dell'account.",
+  "guest.conversion.eyebrow": "Rendilo tuo",
+  "guest.conversion.signIn": "Prova Runs Free con i tuoi allenamenti",
+  "guest.conversion.createPlan.title": "Crea il mio piano",
+  "guest.conversion.createPlan.description": "Accedi per creare e modificare un piano di allenamento privato. Il piano pubblicato dal fondatore resta separato dal tuo account.",
+  "guest.conversion.importActivities.title": "Importa le mie attività",
+  "guest.conversion.importActivities.description": "Accedi per collegare le tue fonti di attività e mantenerle private nel tuo account.",
+  "guest.conversion.training.title": "Vedi questo con i miei allenamenti",
+  "guest.conversion.training.description": "Accedi per vedere i progressi basati sui tuoi allenamenti, non sui dati pubblicati dal fondatore.",
+  "guest.conversion.journey.title": "Inizia il tuo percorso di corsa",
+  "guest.conversion.journey.description": "Accedi per creare un piano privato, importare attività e collegare i tuoi dati."
 }

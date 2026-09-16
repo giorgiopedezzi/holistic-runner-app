@@ -87,7 +87,7 @@ export function GuestShell() {
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
         {tier === "phone" && sidebarMode === "hidden" && <header className="hra-mobile-header"><button type="button" className="hra-mobile-header-trigger hra-nav-hover" onClick={toggleSidebar} aria-label={t("nav.openSidebar", "Open navigation")}><Menu size={18} aria-hidden="true" /></button></header>}
         <main className="hra-app-main">
-          <GuestOverview view={view} onNavigateToPlan={() => navigate("plan")} onNavigateToJourney={() => navigate("journey")} />
+          <GuestOverview view={view} onNavigateToPlan={() => navigate("plan")} onNavigateToJourney={() => navigate("journey")} onSignIn={signIn} />
         </main>
       </div>
     </div>

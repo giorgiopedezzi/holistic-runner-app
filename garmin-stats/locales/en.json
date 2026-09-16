@@ -1216,5 +1216,15 @@
   "account.deletionConfirmDescription": "This immediately signs you out and disconnects integrations. Type DELETE MY ACCOUNT to continue.",
   "account.deletionConfirmationLabel": "Deletion confirmation",
   "account.deletionFailed": "Could not queue account deletion.",
-  "account.privacyNotice": "Runs Free processes your training and health-adjacent measurements only to provide this service and connected integrations. Export and deletion controls are above. Publication is a separate, opt-in capability and is not changed by deleting private account data here."
+  "account.privacyNotice": "Runs Free processes your training and health-adjacent measurements only to provide this service and connected integrations. Export and deletion controls are above. Publication is a separate, opt-in capability and is not changed by deleting private account data here.",
+  "guest.conversion.eyebrow": "Make it yours",
+  "guest.conversion.signIn": "Try Runs Free with your training",
+  "guest.conversion.createPlan.title": "Create my plan",
+  "guest.conversion.createPlan.description": "Sign in to create and edit a private training plan. The published founder schedule stays separate from your account.",
+  "guest.conversion.importActivities.title": "Import my activities",
+  "guest.conversion.importActivities.description": "Sign in to connect your own activity sources and keep them private to your account.",
+  "guest.conversion.training.title": "See this with my training",
+  "guest.conversion.training.description": "Sign in to view progress built from your own training, not the founder’s published data.",
+  "guest.conversion.journey.title": "Start your own running journey",
+  "guest.conversion.journey.description": "Sign in to create a private plan, import activities, and connect your own data."
 }
