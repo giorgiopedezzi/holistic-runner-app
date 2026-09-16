@@ -4,7 +4,7 @@ import "@/i18n";
 import {
   CalendarDays, ListTodo, TrendingUp, Activity as ActivityIcon,
   HeartPulse, RefreshCw, Settings as SettingsIcon, MessageSquare,
-  PanelLeftClose, PanelLeftOpen, Menu, X, LogOut,
+  PanelLeftClose, PanelLeftOpen, Menu, X, LogOut, LogIn,
 } from "lucide-react";
 import { useDateRange } from "@/hooks/useDateRange";
 import { useCompareRange } from "@/hooks/useCompareRange";
@@ -29,6 +29,7 @@ import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
 import { AuthGate, useAuthenticationMethod } from "@/components/AuthGate";
+import { useAppMode } from "@/hooks/useAppMode";
 import { notify } from "@/utils/toast";
 
 // labelKey/fallback: the sidebar nav's own strings are the one concrete
@@ -39,16 +40,21 @@ import { notify } from "@/utils/toast";
 // (no heading), review (under "Review"), manage (under "Manage"), utility
 // (Settings/Feedback, pinned to the bottom of the nav). `icon` is purely
 // decorative (aria-hidden at render) — the visible label remains each item's
-// one accessible name.
+// one accessible name. `guestVisible` (HRA-374): the founder public-read
+// route matrix (HRA-373) is what actually protects the data behind each
+// tab — this flag only decides which destinations Guest is OFFERED. Body is
+// excluded because HRA-372's ADR explicitly did NOT approve body data for
+// public exposure; Data & Sync and Settings are private/account surfaces by
+// definition (sync credentials, publication administration, account config).
 const TABS = [
-  { id: "agenda",      labelKey: "nav.agenda",        fallback: "Your agenda",       group: "primary", icon: CalendarDays   },
-  { id: "plans",       labelKey: "nav.trainingPlans",  fallback: "Training plans",   group: "primary", icon: ListTodo       },
-  { id: "overview",    labelKey: "nav.overview",       fallback: "Overview & Trends", group: "review",  icon: TrendingUp     },
-  { id: "activities",  labelKey: "nav.activities",     fallback: "Activities",       group: "review",  icon: ActivityIcon   },
-  { id: "body",        labelKey: "nav.body",           fallback: "Body",             group: "review",  icon: HeartPulse     },
-  { id: "manage",      labelKey: "nav.manage",         fallback: "Data & Sync",      group: "manage",  icon: RefreshCw      },
-  { id: "settings",    labelKey: "nav.settings",       fallback: "Settings",         group: "utility", icon: SettingsIcon   },
-  { id: "feedback",    labelKey: "nav.feedback",       fallback: "Feedback",         group: "utility", icon: MessageSquare  },
+  { id: "agenda",      labelKey: "nav.agenda",        fallback: "Your agenda",       group: "primary", icon: CalendarDays,  guestVisible: true  },
+  { id: "plans",       labelKey: "nav.trainingPlans",  fallback: "Training plans",   group: "primary", icon: ListTodo,      guestVisible: true  },
+  { id: "overview",    labelKey: "nav.overview",       fallback: "Overview & Trends", group: "review",  icon: TrendingUp,    guestVisible: true  },
+  { id: "activities",  labelKey: "nav.activities",     fallback: "Activities",       group: "review",  icon: ActivityIcon,  guestVisible: true  },
+  { id: "body",        labelKey: "nav.body",           fallback: "Body",             group: "review",  icon: HeartPulse,    guestVisible: false },
+  { id: "manage",      labelKey: "nav.manage",         fallback: "Data & Sync",      group: "manage",  icon: RefreshCw,     guestVisible: false },
+  { id: "settings",    labelKey: "nav.settings",       fallback: "Settings",         group: "utility", icon: SettingsIcon,  guestVisible: false },
+  { id: "feedback",    labelKey: "nav.feedback",       fallback: "Feedback",         group: "utility", icon: MessageSquare, guestVisible: true  },
 ] as const;
 
 type TabId = typeof TABS[number]["id"];
@@ -159,11 +165,14 @@ function FeedbackBanner({ onNavigate, onDismiss }: { onNavigate: () => void; onD
 // SettingsProvider wraps AppShell (not the other way in-line) so every hook
 // below it — including useAppearance(), called inside AppShell's own body —
 // is a descendant of the provider and shares its one settings fetch.
+// HRA-374: AppRoot (formerly AuthenticatedApp) is now mounted for BOTH
+// resolved AuthGate states — Guest and authenticated visitors share this one
+// shell; AppShell branches on useAppMode() where behavior must differ.
 export default function App() {
-  return <AuthGate><AuthenticatedApp /></AuthGate>;
+  return <AuthGate><AppRoot /></AuthGate>;
 }
 
-function AuthenticatedApp() {
+function AppRoot() {
   return (
     <SettingsProvider>
       <UnsavedGuardProvider>
@@ -175,6 +184,7 @@ function AuthenticatedApp() {
 
 function AppShell() {
   const authMethod = useAuthenticationMethod();
+  const { mode } = useAppMode();
   // Backed by the URL's `from`/`to` params (HRA-196) so reloading a URL
   // carrying a specific range reproduces it instead of resetting to the
   // 30-day default.
@@ -213,7 +223,13 @@ function AppShell() {
   // useUrlState, which stays a generic string primitive with no knowledge
   // of TabId) — HRA-248: the app's default landing tab, ahead of Overview.
   const [rawTab, setTab] = useUrlState("tab", "agenda");
-  const tab: TabId = TABS.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "agenda";
+  // HRA-374: a Guest-only nav (below) never offers a private destination,
+  // but the URL is still user-controlled — validate against the same
+  // capability-filtered set so a stale/typed `?tab=manage` also falls back
+  // to "agenda" for Guest, rather than mounting a private-surface tab that
+  // just happens to have nothing in its own nav item any more.
+  const visibleTabs = TABS.filter(tabDef => mode === "authenticated" || tabDef.guestVisible);
+  const tab: TabId = visibleTabs.some(tabDef => tabDef.id === rawTab) ? (rawTab as TabId) : "agenda";
   // HRA-265: writes the same `activityId` URL param ActivitiesTab.tsx's own
   // useUrlState call reads on mount — this instance never reads its own
   // `value` back (ActivitiesTab, freshly mounted on the tab switch below, is
@@ -363,10 +379,10 @@ function AppShell() {
     />
   );
 
-  const primaryTabs = TABS.filter(tabDef => tabDef.group === "primary");
-  const reviewTabs = TABS.filter(tabDef => tabDef.group === "review");
-  const manageTabs = TABS.filter(tabDef => tabDef.group === "manage");
-  const utilityTabs = TABS.filter(tabDef => tabDef.group === "utility");
+  const primaryTabs = visibleTabs.filter(tabDef => tabDef.group === "primary");
+  const reviewTabs = visibleTabs.filter(tabDef => tabDef.group === "review");
+  const manageTabs = visibleTabs.filter(tabDef => tabDef.group === "manage");
+  const utilityTabs = visibleTabs.filter(tabDef => tabDef.group === "utility");
 
   // Shared renderer for every sidebar destination (HRA-253) — same
   // id/labelKey/fallback shape and tab/setTab mechanism the old header nav
@@ -462,23 +478,39 @@ function AppShell() {
             <div className="hra-sidebar-group">
               {primaryTabs.map(renderNavItem)}
             </div>
-            <div className="hra-sidebar-group">
-              <span className="hra-sidebar-group-heading">{t("nav.groupReview", "Review")}</span>
-              {reviewTabs.map(renderNavItem)}
-            </div>
-            <div className="hra-sidebar-group">
-              <span className="hra-sidebar-group-heading">{t("nav.groupManage", "Manage")}</span>
-              {manageTabs.map(renderNavItem)}
-            </div>
+            {reviewTabs.length > 0 && (
+              <div className="hra-sidebar-group">
+                <span className="hra-sidebar-group-heading">{t("nav.groupReview", "Review")}</span>
+                {reviewTabs.map(renderNavItem)}
+              </div>
+            )}
+            {/* HRA-374: empty for Guest (Data & Sync is a private/account
+                surface, never an ordinary Guest destination) — the whole
+                group, heading included, is absent rather than shown empty. */}
+            {manageTabs.length > 0 && (
+              <div className="hra-sidebar-group">
+                <span className="hra-sidebar-group-heading">{t("nav.groupManage", "Manage")}</span>
+                {manageTabs.map(renderNavItem)}
+              </div>
+            )}
           </div>
 
           <div className="hra-sidebar-group hra-sidebar-utility-group">
             {utilityTabs.map(renderNavItem)}
-            {authMethod && <span className="hra-sidebar-item-label hra-text-muted text-meta">{authMethod === "google" ? t("auth.method.google", "Google") : t("auth.method.email", "Email code")}</span>}
-            <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={logout}>
-              <span className="hra-sidebar-item-icon" aria-hidden="true"><LogOut size={16} /></span>
-              <span className="hra-sidebar-item-label">{t("auth.signOut", "Sign out")}</span>
-            </button>
+            {mode === "authenticated" ? (
+              <>
+                {authMethod && <span className="hra-sidebar-item-label hra-text-muted text-meta">{authMethod === "google" ? t("auth.method.google", "Google") : t("auth.method.email", "Email code")}</span>}
+                <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={logout}>
+                  <span className="hra-sidebar-item-icon" aria-hidden="true"><LogOut size={16} /></span>
+                  <span className="hra-sidebar-item-label">{t("auth.signOut", "Sign out")}</span>
+                </button>
+              </>
+            ) : (
+              <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={() => api.auth.login()}>
+                <span className="hra-sidebar-item-icon" aria-hidden="true"><LogIn size={16} /></span>
+                <span className="hra-sidebar-item-label">{t("guest.signIn", "Sign in")}</span>
+              </button>
+            )}
           </div>
         </nav>
 

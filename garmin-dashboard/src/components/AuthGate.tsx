@@ -1,7 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "@/api/client";
-import { GuestShell } from "@/components/GuestShell";
+import { AppModeContext, AUTHENTICATED_CAPABILITIES, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
+import { resolvePublicUrlToQueryState } from "@/routing/publicUrlBootstrap";
 
 type State = "loading" | "guest" | "unavailable" | "authenticated";
 type AuthenticationMethod = "google" | "email" | null;
@@ -22,6 +23,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [authMethod, setAuthMethod] = useState<AuthenticationMethod>(null);
   const [entitlements, setEntitlements] = useState<string[]>([]);
 
+  // Must run synchronously, before children ever mount — AppShell's
+  // useUrlState() hooks take their one lazy-init read of window.location on
+  // first render, which a useEffect here would run too late to beat. See
+  // publicUrlBootstrap.ts.
+  resolvePublicUrlToQueryState();
+
   useEffect(() => {
     let live = true;
     api.auth.session().then(
@@ -34,10 +41,20 @@ export function AuthGate({ children }: { children: ReactNode }) {
     return () => { live = false; };
   }, []);
 
+  // HRA-374: both resolved states mount the SAME shared AppShell tree (via
+  // children) — Guest is a capability set, not a second application. Only
+  // the authenticated branch also carries auth-method/entitlement context,
+  // which have no meaning for an anonymous founder-public read.
   if (state === "authenticated") {
-    return <AuthMethodContext.Provider value={authMethod}><EntitlementsContext.Provider value={entitlements}>{children}</EntitlementsContext.Provider></AuthMethodContext.Provider>;
+    return (
+      <AppModeContext.Provider value={AUTHENTICATED_CAPABILITIES}>
+        <AuthMethodContext.Provider value={authMethod}><EntitlementsContext.Provider value={entitlements}>{children}</EntitlementsContext.Provider></AuthMethodContext.Provider>
+      </AppModeContext.Provider>
+    );
   }
-  if (state === "guest") return <GuestShell />;
+  if (state === "guest") {
+    return <AppModeContext.Provider value={GUEST_CAPABILITIES}>{children}</AppModeContext.Provider>;
+  }
   const message = state === "loading"
     ? t("auth.loading", "Checking your secure session…")
     : t("auth.unavailable", "Sign-in is temporarily unavailable. Please try again.");

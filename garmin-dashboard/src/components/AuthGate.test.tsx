@@ -1,7 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { AuthGate } from "./AuthGate";
+import { render, screen } from "@testing-library/react";
+import { AuthGate, useAuthenticationMethod, useEntitlements } from "./AuthGate";
+import { useAppMode } from "@/hooks/useAppMode";
 import { ApiError, api } from "@/api/client";
+
+// HRA-374: AuthGate no longer forks between GuestShell and the private
+// children — Guest and authenticated visitors both mount the SAME children,
+// differing only in the AppModeContext (and, for authenticated, the auth
+// method/entitlement context) it wraps them in. This probe reads exactly
+// that context, the same way a real consumer (App.tsx, useSettings.tsx)
+// would, instead of asserting on which component tree got rendered.
+function Probe() {
+  const { mode, canPersist, canManageAccount } = useAppMode();
+  const authMethod = useAuthenticationMethod();
+  const entitlements = useEntitlements();
+  return (
+    <div>
+      <span>mode:{mode}</span>
+      <span>canPersist:{String(canPersist)}</span>
+      <span>canManageAccount:{String(canManageAccount)}</span>
+      <span>authMethod:{authMethod ?? "none"}</span>
+      <span>entitlements:{entitlements.join(",") || "none"}</span>
+    </div>
+  );
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -9,66 +31,57 @@ afterEach(() => {
 });
 
 describe("AuthGate", () => {
-  it("boots a guest shell without mounting private product content", async () => {
+  it("resolves Guest capabilities on a 401 session, mounting the same shared children with no auth-method/entitlement context", async () => {
     vi.spyOn(api.auth, "session").mockRejectedValue(new ApiError(401, "Authentication is required."));
-    const login = vi.spyOn(api.auth, "login").mockImplementation(() => undefined);
 
-    render(<AuthGate><div>Private dashboard</div></AuthGate>);
+    render(<AuthGate><Probe /></AuthGate>);
 
-    expect(await screen.findByText("Founder journey")).toBeInTheDocument();
-    expect(screen.queryByText("Private dashboard")).not.toBeInTheDocument();
-    expect(screen.queryByText(/you.?re signed out/i)).not.toBeInTheDocument();
-    expect(api.auth.session).toHaveBeenCalledTimes(1);
-    expect(login).not.toHaveBeenCalled();
-
-    expect(screen.queryByRole("button", { name: "Continue with Google" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Continue with email code" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    expect(login).toHaveBeenCalledOnce();
-    expect(login).toHaveBeenCalledWith();
+    expect(await screen.findByText("mode:guest")).toBeInTheDocument();
+    expect(screen.getByText("canPersist:false")).toBeInTheDocument();
+    expect(screen.getByText("canManageAccount:false")).toBeInTheDocument();
+    expect(screen.getByText("authMethod:none")).toBeInTheDocument();
+    expect(screen.getByText("entitlements:none")).toBeInTheDocument();
   });
 
-  it("mounts the private app for an authenticated session", async () => {
+  it("resolves authenticated capabilities and carries the real auth method/entitlements for a real session", async () => {
     vi.spyOn(api.auth, "session").mockResolvedValue({
-      user: { id: "founder", display_name: "Founder", locale: "en", unit_system: "metric", timezone: "Europe/Rome", role: "admin" },
-      entitlements: [], csrfToken: "test-csrf",
+      user: { id: "founder", display_name: "Founder", locale: "en", unit_system: "metric", timezone: "Europe/Rome", role: "admin", auth_method: "google" },
+      entitlements: ["founder_publication"], csrfToken: "test-csrf",
     });
 
-    render(<AuthGate><div>Private dashboard</div></AuthGate>);
+    render(<AuthGate><Probe /></AuthGate>);
 
-    expect(await screen.findByText("Private dashboard")).toBeInTheDocument();
-    expect(screen.queryByText("Founder journey")).not.toBeInTheDocument();
+    expect(await screen.findByText("mode:authenticated")).toBeInTheDocument();
+    expect(screen.getByText("canPersist:true")).toBeInTheDocument();
+    expect(screen.getByText("canManageAccount:true")).toBeInTheDocument();
+    expect(screen.getByText("authMethod:google")).toBeInTheDocument();
+    expect(screen.getByText("entitlements:founder_publication")).toBeInTheDocument();
   });
 
-  it("uses the existing phone drawer pattern for Guest navigation", async () => {
-    Object.defineProperty(window, "innerWidth", { value: 500, configurable: true });
-    vi.spyOn(api.auth, "session").mockRejectedValue(new ApiError(401, "Authentication is required."));
-    const { container } = render(<AuthGate><div>Private dashboard</div></AuthGate>);
+  it("shows a checking-session message, not either resolved mode, while the session request is in flight", async () => {
+    type Session = Awaited<ReturnType<typeof api.auth.session>>;
+    let resolveSession!: (value: Session) => void;
+    vi.spyOn(api.auth, "session").mockReturnValue(new Promise<Session>(resolve => { resolveSession = resolve; }));
 
-    await screen.findByText("Founder journey");
-    const sidebar = () => container.querySelector(".hra-sidebar");
-    expect(sidebar()).toHaveAttribute("data-tier", "phone");
-    expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
+    render(<AuthGate><Probe /></AuthGate>);
 
-    fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
-    expect(sidebar()).toHaveAttribute("data-collapsed", "false");
-    Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true });
+    expect(screen.getByText("Checking your secure session…")).toBeInTheDocument();
+    expect(screen.queryByText(/^mode:/)).not.toBeInTheDocument();
+
+    resolveSession({ user: { id: "founder", display_name: null, locale: null, unit_system: null, timezone: null, role: "admin" }, entitlements: [], csrfToken: "t" });
+    expect(await screen.findByText("mode:authenticated")).toBeInTheDocument();
   });
 
-  it("keeps the published current plan in stable Guest navigation", async () => {
+  it("normalizes a /p/founder-journey/activities/:id public URL into the shared tab/query-state model before the children mount", async () => {
+    window.history.replaceState({}, "", "/p/founder-journey/activities/42");
     vi.spyOn(api.auth, "session").mockRejectedValue(new ApiError(401, "Authentication is required."));
 
-    render(<AuthGate><div>Private dashboard</div></AuthGate>);
+    render(<AuthGate><Probe /></AuthGate>);
+    await screen.findByText("mode:guest");
 
-    const currentPlan = await screen.findByRole("button", { name: "Current plan" });
-    fireEvent.click(currentPlan);
-
-    expect(currentPlan).toHaveAttribute("aria-current", "page");
-    expect(window.location.pathname).toBe("/p/founder-journey/plan");
-    expect(screen.queryByText("Private dashboard")).not.toBeInTheDocument();
-    // Settles the unstubbed public-profile fetch (this test only asserts on
-    // the sidebar/URL, not GuestOverview's own content) before the test ends,
-    // so its rejection doesn't update React state after the test has finished.
-    await screen.findByText("This published journey is currently unavailable.");
+    expect(window.location.pathname).toBe("/");
+    const params = new URLSearchParams(window.location.search);
+    expect(params.get("tab")).toBe("activities");
+    expect(params.get("activityId")).toBe("42");
   });
 });

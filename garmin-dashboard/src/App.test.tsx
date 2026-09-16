@@ -11,6 +11,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import App from "./App";
+import { api } from "@/api/client";
 import { installFetch, paginated, json, problem, type Routes } from "@/test/api-stub";
 import {
   activity, sportSummary, bodyMeasurement, settings, dateRange,
@@ -42,6 +43,22 @@ function appRoutes(settingsBody = settings()): Routes {
     // HRA-248: "Your agenda" is now the default tab, so every mount fetches
     // this on render — a benign "no active plan today" default, same
     // reasoning as every other benign stub above.
+    "GET /api/v1/plan-instances/active": problem(404, "no active plan"),
+  };
+}
+
+// HRA-374: the anonymous-founder-read counterpart of appRoutes() — only the
+// PUBLIC_READ endpoints HRA-373's route capability matrix actually serves
+// without a session cookie. A 401 on /auth/session is what AuthGate reads as
+// "enter Guest mode" (see AuthGate.tsx); every account/private endpoint
+// (settings, garmin/withings/strava status, body-measurements, trash) is
+// deliberately absent — Guest's nav never reaches a tab that would call them.
+function guestRoutes(): Routes {
+  return {
+    "GET /api/v1/auth/session": problem(401, "Authentication is required."),
+    "GET /api/v1/range": dateRange(),
+    "GET /api/v1/activities/races": paginated([]),
+    "GET /api/v1/date-ranges": paginated([]),
     "GET /api/v1/plan-instances/active": problem(404, "no active plan"),
   };
 }
@@ -442,5 +459,58 @@ describe("in-app navigation guard for an unsaved race-plan instance (HRA-281 AC2
     fireEvent.click(screen.getByRole("button", { name: "Your agenda" }));
     expect(screen.queryByText("You have unsaved changes. Leave and discard them?")).not.toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Your agenda" })).toHaveAttribute("aria-current", "page"));
+  });
+});
+
+describe("Guest mode: the shared AppShell for an anonymous founder-read visitor (HRA-374)", () => {
+  it("renders the SAME AppShell (not a separate Guest shell), with a capability-filtered nav and Sign in instead of Sign out", async () => {
+    installFetch(guestRoutes());
+    render(<App />);
+
+    const nav = await screen.findByRole("navigation");
+    const navButtons = within(nav).getAllByRole("button");
+    // Data & Sync, Body, and Settings — private/account or not-yet-approved
+    // (HRA-372's ADR) surfaces — never appear as ordinary Guest destinations.
+    // The "Manage" group heading disappears with its only item.
+    expect(navButtons.map(b => b.textContent)).toEqual([
+      "Your agenda", "Training plans",
+      "Overview & Trends", "Activities",
+      "Feedback", "Sign in",
+    ]);
+    expect(screen.queryByText("Manage")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Google")).not.toBeInTheDocument();
+  });
+
+  it("Sign in redirects through the real OAuth login endpoint, not a client-side route", async () => {
+    installFetch(guestRoutes());
+    const login = vi.spyOn(api.auth, "login").mockImplementation(() => undefined);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    expect(login).toHaveBeenCalledOnce();
+    expect(login).toHaveBeenCalledWith();
+  });
+
+  it("falls back to the default 'Your agenda' tab for a stale/typed ?tab=manage URL — the private tab never mounts for Guest", async () => {
+    installFetch(guestRoutes());
+    window.history.replaceState(null, "", "/?tab=manage");
+    render(<App />);
+
+    await screen.findByText("There is no active plan today.");
+    expect(screen.queryByText("Not connected to Strava")).not.toBeInTheDocument();
+    const nav = screen.getByRole("navigation");
+    expect(within(nav).getByRole("button", { name: "Your agenda" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("restores a /p/founder-journey/activities public deep link into the shared Activities tab, collapsing the URL to the normal query-state model", async () => {
+    installFetch({ ...guestRoutes(), "GET /api/v1/activities": paginated([activity()], 1), "GET /api/v1/activities/count": { count: 1 } });
+    window.history.replaceState(null, "", "/p/founder-journey/activities");
+    render(<App />);
+
+    const nav = await screen.findByRole("navigation");
+    expect(within(nav).getByRole("button", { name: "Activities" })).toHaveAttribute("aria-current", "page");
+    expect(window.location.pathname).toBe("/");
+    expect(new URLSearchParams(window.location.search).get("tab")).toBe("activities");
   });
 });

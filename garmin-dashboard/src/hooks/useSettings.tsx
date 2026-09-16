@@ -2,6 +2,7 @@ import { createContext, use, useCallback, useEffect, useRef, useState } from "re
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
+import { useAppMode } from "@/hooks/useAppMode";
 import type { Settings } from "@/types/api";
 
 export interface SettingsContextValue {
@@ -59,8 +60,14 @@ const SettingsContext = createContext<SettingsContextValue | null>(null);
 // "exactly one api.settings.get() call site" this Story requires in the
 // real running app; every consumer below it shares this one fetch instead
 // of running its own.
+// HRA-374: GET /api/v1/settings is account configuration — AUTHENTICATED_READ,
+// never PUBLIC_READ (HRA-372's ADR, "Guest uses public product defaults").
+// Guest simply never fetches it; every consumer below already treats a null
+// `settings` as "not loaded yet" and falls back to a default, which for
+// Guest is then the permanent state, not a transient one.
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const value = useSettingsFetch(true);
+  const { canPersist } = useAppMode();
+  const value = useSettingsFetch(canPersist);
   return <SettingsContext value={value}>{children}</SettingsContext>;
 }
 
