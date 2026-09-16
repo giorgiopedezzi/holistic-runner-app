@@ -12,6 +12,7 @@ import { ClassificationCard } from "./ClassificationCard";
 import { installFetch, json } from "@/test/api-stub";
 import { activity, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
 import type { Activity } from "@/types/api";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
 const VERDICT_TITLE = "This card's result is the activity's confirmed classification";
 
@@ -96,5 +97,21 @@ describe("ClassificationCard flows", () => {
   it("renders no .card chrome of its own (HRA-303 AC8) — its sole caller already wraps it in an AccordionCard panel, itself a .card", () => {
     const { container } = render(<Harness initial={activity()} />);
     expect(container.querySelector(".card")).not.toBeInTheDocument();
+  });
+
+  it("Guest (cannot persist): Classify/thumbs-up/thumbs-down are disabled with sign-in messaging (HRA-375)", () => {
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <Harness initial={activity({ ai_classification: "Long Session" })} />
+      </AppModeContext.Provider>,
+    );
+
+    const classify = screen.getAllByRole("button", { name: "Reclassify" })[0];
+    const approve = screen.getByRole("button", { name: "👍" });
+    const reject = screen.getByRole("button", { name: "👎" });
+    for (const button of [classify, approve, reject]) {
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute("title", "Sign in to save this to your account.");
+    }
   });
 });

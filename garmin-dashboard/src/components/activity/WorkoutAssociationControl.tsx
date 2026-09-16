@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Select } from "@/components/ui";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 import type { AssociationStatus, AssociationView, PlanInstanceDayWithInstance } from "@/types/api";
 import { notify } from "@/utils/toast";
 
@@ -22,6 +23,11 @@ const STATUS_KEY: Record<AssociationStatus, string> = {
 export function WorkoutAssociationControl({ activityId }: { activityId: number }) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const { canPersist } = useAppMode();
+  const persistBlocked = demoMode || !canPersist;
+  const persistBlockedTitle = !canPersist
+    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+    : demoMode ? t("common.demoModeHint", "Not available for demo") : undefined;
   const [association, setAssociation] = useState<AssociationView | null>(null);
   const [candidates, setCandidates] = useState<PlanInstanceDayWithInstance[] | null>(null);
   const [picking, setPicking] = useState(false);
@@ -91,14 +97,14 @@ export function WorkoutAssociationControl({ activityId }: { activityId: number }
           </span>
           <span className="hra-text-muted text-meta">{t(STATUS_KEY[association.status!], association.status!)}</span>
           {association.status !== "manual_confirmed" && (
-            <button className="hra-btn text-meta py-1 px-2.5" disabled={demoMode || busy} onClick={() => save(association.workout_id!)}>
+            <button className="hra-btn text-meta py-1 px-2.5" disabled={persistBlocked || busy} title={persistBlockedTitle} onClick={() => save(association.workout_id!)}>
               {t("activity.association.confirm", "Confirm")}
             </button>
           )}
-          <button className="hra-btn text-meta py-1 px-2.5" disabled={demoMode || busy} onClick={openPicker}>
+          <button className="hra-btn text-meta py-1 px-2.5" disabled={persistBlocked || busy} title={persistBlockedTitle} onClick={openPicker}>
             {t("activity.association.replace", "Replace")}
           </button>
-          <button className="hra-btn text-meta py-1 px-2.5" data-tone="red" disabled={demoMode || busy} onClick={handleRemove}>
+          <button className="hra-btn text-meta py-1 px-2.5" data-tone="red" disabled={persistBlocked || busy} title={persistBlockedTitle} onClick={handleRemove}>
             {t("activity.association.remove", "Remove")}
           </button>
         </>
@@ -109,7 +115,7 @@ export function WorkoutAssociationControl({ activityId }: { activityId: number }
               ? t("activity.association.unplanned", "Not part of any plan")
               : t("activity.association.none", "No planned workout matched")}
           </span>
-          <button className="hra-btn text-meta py-1 px-2.5" disabled={demoMode || busy} onClick={openPicker}>
+          <button className="hra-btn text-meta py-1 px-2.5" disabled={persistBlocked || busy} title={persistBlockedTitle} onClick={openPicker}>
             {t("activity.association.link", "Link…")}
           </button>
         </>

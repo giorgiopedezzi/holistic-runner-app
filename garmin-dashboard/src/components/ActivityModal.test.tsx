@@ -18,9 +18,10 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import { ActivityDetailBody } from "./ActivityModal";
-import { installFetch, json, problem } from "@/test/api-stub";
+import { installFetch, json, paginated, problem } from "@/test/api-stub";
 import { activity, shortTrack, longTrack, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
 import { setUnitSystem } from "@/utils/units";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -63,6 +64,24 @@ describe("ActivityDetailBody", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Yes, delete/i }));
 
     await waitFor(() => expect(onDelete).toHaveBeenCalledWith(ID));
+  });
+
+  it("Guest (cannot persist): the popup header's Delete button is disabled with sign-in messaging, not a raw protected-API failure (HRA-375)", async () => {
+    installFetch({
+      [`GET /api/v1/activities/${ID}`]: activity(),
+      [`GET /api/v1/activities/${ID}/track`]: shortTrack(),
+      "GET /api/v1/settings": settings(),
+      "GET /api/v1/activity-types": paginated([]),
+    });
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <ActivityDetailBody activityId={ID} onDelete={vi.fn()} onClose={vi.fn()} />
+      </AppModeContext.Provider>,
+    );
+
+    const remove = await screen.findByRole("button", { name: /Remove activity/i });
+    expect(remove).toBeDisabled();
+    expect(remove).toHaveAttribute("title", "Sign in to save this to your account.");
   });
 
   it("surfaces the API error message when the activity fails to load", async () => {

@@ -21,6 +21,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ActivityRow, ActivitySportLegend } from "./ActivityRow";
 import { installFetch, paginated } from "@/test/api-stub";
 import { activity, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -108,6 +109,23 @@ describe("ActivityRow", () => {
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Remove activity" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "Save as" })).toBeDisabled();
+  });
+
+  it("disables Remove activity and Save as for Guest (cannot persist), with sign-in messaging (HRA-375)", async () => {
+    installFetch({ "GET /api/v1/activity-types": paginated([]) });
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+          onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />
+      </AppModeContext.Provider>,
+    );
+
+    const remove = screen.getByRole("button", { name: "Remove activity" });
+    const saveAs = screen.getByRole("button", { name: "Save as" });
+    await waitFor(() => expect(remove).toBeDisabled());
+    expect(saveAs).toBeDisabled();
+    expect(remove).toHaveAttribute("title", "Sign in to save this to your account.");
+    expect(saveAs).toHaveAttribute("title", "Sign in to save this to your account.");
   });
 
   it("nests no interactive control inside another interactive/clickable ancestor (HRA-280 AC1)", async () => {

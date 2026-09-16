@@ -7,6 +7,7 @@ import type { RaceActivity, SavedDateRange } from "@/types/api";
 import { fmtDate, fmtRaceLabel } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 
 const NO_RACE = "none";
 const NO_SELECTION = "";
@@ -34,6 +35,11 @@ interface LoadedRange { id: number; name: string; from: string; to: string; race
 export function DateRangesSection() {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const { canPersist } = useAppMode();
+  const persistBlocked = demoMode || !canPersist;
+  const persistBlockedTitle = !canPersist
+    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+    : t("common.demoModeHint", "Not available for demo");
   const [ranges, setRanges] = useState<SavedDateRange[] | null>(null);
   const [races,  setRaces]  = useState<RaceActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,7 +131,7 @@ export function DateRangesSection() {
   const isUpdateDirty = loaded != null && (
     updateFrom !== loaded.from || updateTo !== loaded.to || updateRaceId !== loaded.raceId
   );
-  const canUpdate = loaded != null && isUpdateDirty && updateFrom <= updateTo && !updating;
+  const canUpdate = loaded != null && isUpdateDirty && updateFrom <= updateTo && !updating && !persistBlocked;
 
   async function handleUpdate() {
     if (!loaded) return;
@@ -160,7 +166,7 @@ export function DateRangesSection() {
     }
   }
 
-  const canCreate = createName.trim().length > 0 && createFrom <= createTo && !creating;
+  const canCreate = createName.trim().length > 0 && createFrom <= createTo && !creating && !persistBlocked;
 
   return (
     <Card className="mb-4">
@@ -197,6 +203,7 @@ export function DateRangesSection() {
           data-tone="green"
           onClick={handleCreate}
           disabled={!canCreate}
+          title={persistBlocked ? persistBlockedTitle : undefined}
           aria-label={creating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.create", "Create")}
         >
           <Save size={14} />
@@ -232,7 +239,9 @@ export function DateRangesSection() {
           data-tone="green"
           onClick={handleUpdate}
           disabled={!canUpdate}
-          title={loaded == null ? t("manage.dateRanges.pickFirstTooltip", "Pick a saved range above first") : undefined}
+          title={persistBlocked
+            ? persistBlockedTitle
+            : loaded == null ? t("manage.dateRanges.pickFirstTooltip", "Pick a saved range above first") : undefined}
           aria-label={updating ? t("manage.dateRanges.savingEllipsis", "Saving…") : t("common.update", "Update")}
         >
           <Save size={14} />
@@ -270,8 +279,8 @@ export function DateRangesSection() {
           <button
             className="hra-btn hra-date-range-action hra-btn-icon-label" data-variant="cta" data-tone="red"
             onClick={() => setConfirmingDelete(true)}
-            disabled={deleteId === NO_SELECTION || demoMode}
-            title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+            disabled={deleteId === NO_SELECTION || persistBlocked}
+            title={persistBlocked ? persistBlockedTitle : undefined}
             aria-label={t("common.delete", "Delete")}
           >
             <Trash2 size={14} />

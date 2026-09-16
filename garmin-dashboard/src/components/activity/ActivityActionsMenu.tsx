@@ -5,6 +5,7 @@ import { api } from "@/api/client";
 import { Popover, PopoverTrigger, PopoverContent, ConfirmModal } from "@/components/ui";
 import type { Activity } from "@/types/api";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 import { ActivityTypePicker } from "./ActivityTypePicker";
 
 // HRA-291 mobile-width overflow menu: bundles type change, rename (both via
@@ -32,6 +33,8 @@ interface ActivityActionsMenuProps {
 export function ActivityActionsMenu({ activity, onUpdate, onDelete, onDeleted }: ActivityActionsMenuProps) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const { canPersist } = useAppMode();
+  const persistBlocked = demoMode || !canPersist;
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,8 +69,10 @@ export function ActivityActionsMenu({ activity, onUpdate, onDelete, onDeleted }:
               className="hra-btn flex items-center justify-center gap-1.5"
               data-variant="cta"
               data-tone="red"
-              disabled={demoMode}
-              title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+              disabled={persistBlocked}
+              title={!canPersist
+                ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+                : demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
               onClick={() => { setOpen(false); setConfirmOpen(true); }}
             >
               <Trash2 size={13} aria-hidden="true" />

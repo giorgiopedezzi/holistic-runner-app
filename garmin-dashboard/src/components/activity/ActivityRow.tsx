@@ -8,6 +8,7 @@ import { getResolvedTheme } from "@/utils/theme";
 import { fmtPace, fmtDuration, fmtKm, fmtDate, fmtSource } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { ActivityTypePicker } from "./ActivityTypePicker";
 import { ActivityActionsMenu } from "./ActivityActionsMenu";
@@ -107,6 +108,8 @@ interface ActivityRowProps {
 export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, onDelete, onUpdate, expandedContent }: ActivityRowProps) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  const { canPersist } = useAppMode();
+  const persistBlocked = demoMode || !canPersist;
   const isPhone = useIsPhone();
   const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
   const SportIcon = SPORT_ICON[a.sport ?? "other"] ?? ActivityIcon;
@@ -223,10 +226,12 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
                   data-variant="cta"
                   data-tone="red"
                   onClick={() => setConfirmDelete(true)}
-                  disabled={demoMode}
-                  title={demoMode
-                    ? t("common.demoModeHint", "Not available for demo")
-                    : t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
+                  disabled={persistBlocked}
+                  title={!canPersist
+                    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+                    : demoMode
+                      ? t("common.demoModeHint", "Not available for demo")
+                      : t("activity.detail.deleteTooltip", "Moves this activity to the local database's trash (Data & Sync tab) — it's not touched on your Garmin device, Strava, or Withings account, and you can restore it later. A resync won't bring it back on its own.")}
                 >
                   <Trash2 size={13} />
                   {t("activity.detail.deleteButton", "Remove activity")}
