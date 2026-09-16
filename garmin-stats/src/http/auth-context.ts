@@ -7,10 +7,9 @@
  * token, revoked session, disabled account) collapses to the same 401
  * (http/problem.ts's unauthorized()) before returning control to a caller.
  *
- * Not wired into router.ts — AUTH_ENABLED is off by default and this Story
- * introduces no login/callback HTTP route (see the HRA-348 review comment).
- * `requireAuth` exists so a future controller can opt in directly once one
- * does.
+ * router.ts establishes this strict identity for authenticated routes.
+ * Founder-public access is a separate, explicitly selected context;
+ * requestIdentity() never manufactures or falls back to the founder.
  */
 import type http from "http";
 import type { URL } from "url";
@@ -18,10 +17,34 @@ import type { JWTVerifyGetKey } from "jose";
 import type { AppContext, Handler } from "./context.ts";
 import { unauthorized } from "./problem.ts";
 import { requireAuthConfig } from "../config.ts";
+import { FOUNDER_USER_ID } from "../db/founder.ts";
 import { remoteJwks, verifyAccessToken, TokenValidationError, type ValidatedTokenIdentity } from "../domain/identity/token-validation.ts";
 import type { UserRole } from "../db.ts";
 
 export interface RequestIdentity { userId: string; role: UserRole; sessionId: string | null }
+
+export type RouteCapability =
+  | "PUBLIC_READ"
+  | "PUBLIC_COMPUTE"
+  | "AUTHENTICATED_READ"
+  | "AUTHENTICATED_WRITE"
+  | "PUBLIC_FEEDBACK";
+
+export interface AuthenticatedAccessContext {
+  kind: "authenticated";
+  identity: RequestIdentity;
+}
+
+export interface FounderPublicAccessContext {
+  kind: "founder-public";
+  userId: typeof FOUNDER_USER_ID;
+}
+
+export interface PublicFeedbackAccessContext {
+  kind: "public-feedback";
+}
+
+export type RequestAccessContext = AuthenticatedAccessContext | FounderPublicAccessContext | PublicFeedbackAccessContext;
 
 // Request identity is derived once at the HTTP boundary and kept off the
 // client-controlled request object. Controllers must obtain it through this
@@ -40,7 +63,13 @@ function readCookie(req: http.IncomingMessage, name: string): string | null {
   for (const part of header.split(";")) {
     const separatorIndex = part.indexOf("=");
     if (separatorIndex === -1) continue;
-    if (part.slice(0, separatorIndex).trim() === name) return decodeURIComponent(part.slice(separatorIndex + 1).trim());
+    if (part.slice(0, separatorIndex).trim() === name) {
+      try {
+        return decodeURIComponent(part.slice(separatorIndex + 1).trim());
+      } catch {
+        throw unauthorized();
+      }
+    }
   }
   return null;
 }
@@ -51,6 +80,17 @@ function readBearerToken(req: http.IncomingMessage): string | null {
   const [scheme, token] = header.split(" ");
   if (scheme?.toLowerCase() !== "bearer" || !token) return null;
   return token;
+}
+
+function hasSuppliedCredential(req: http.IncomingMessage): boolean {
+  if (req.headers.authorization !== undefined) return true;
+  const cookie = req.headers.cookie;
+  if (!cookie) return false;
+  return cookie.split(";").some(part => {
+    const separatorIndex = part.indexOf("=");
+    const name = part.slice(0, separatorIndex === -1 ? undefined : separatorIndex).trim();
+    return name === SESSION_COOKIE_NAME || name === LOCAL_SESSION_COOKIE_NAME;
+  });
 }
 
 // Discovery-document -> jwks_uri resolution, cached for the process lifetime
@@ -112,6 +152,30 @@ export async function authenticateRequest(req: http.IncomingMessage, ctx: AppCon
   const identity = await deriveRequestIdentity(req, ctx);
   requestIdentities.set(req, identity);
   return identity;
+}
+
+/**
+ * Resolves the access mode selected by an explicitly classified HTTP route.
+ * The caller must supply a capability from the reviewed route matrix; this
+ * function never infers public safety from the HTTP method.
+ *
+ * A missing credential may enter founder-public or feedback access. Any
+ * supplied session/bearer credential is authenticated first, so malformed,
+ * expired, revoked, wrong-issuer, or otherwise invalid credentials fail with
+ * 401 instead of silently downgrading to Guest access.
+ */
+export async function deriveRequestAccessContext(
+  req: http.IncomingMessage,
+  ctx: AppContext,
+  capability: RouteCapability,
+): Promise<RequestAccessContext> {
+  if (hasSuppliedCredential(req) || capability === "AUTHENTICATED_READ" || capability === "AUTHENTICATED_WRITE") {
+    return { kind: "authenticated", identity: await authenticateRequest(req, ctx) };
+  }
+  if (capability === "PUBLIC_READ" || capability === "PUBLIC_COMPUTE") {
+    return { kind: "founder-public", userId: FOUNDER_USER_ID };
+  }
+  return { kind: "public-feedback" };
 }
 
 export function requestIdentity(req: http.IncomingMessage): RequestIdentity {
