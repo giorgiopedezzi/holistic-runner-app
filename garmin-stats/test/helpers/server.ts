@@ -31,6 +31,7 @@ import { createWorkoutSegmentAlignmentsRepo } from "../../src/repositories/worko
 import { createIdentityRepo } from "../../src/repositories/identity.repo.ts";
 import { createAccountPrivacyRepo } from "../../src/repositories/account-privacy.repo.ts";
 import { createPublishedProjectionRepo } from "../../src/repositories/published-projection.repo.ts";
+import { createPublicProjectionRepo } from "../../src/repositories/public-projection.repo.ts";
 import { createActivitiesService } from "../../src/services/activities.service.ts";
 import { createBodyService } from "../../src/services/body.service.ts";
 import { createClassificationService } from "../../src/services/classification.service.ts";
@@ -42,6 +43,9 @@ import { createReportingService } from "../../src/services/reporting.service.ts"
 import { createIdentityService } from "../../src/services/identity.service.ts";
 import { createAccountPrivacyService } from "../../src/services/account-privacy.service.ts";
 import { createGuestPublicationService } from "../../src/services/guest-publication.service.ts";
+import { createPublicProjectionService } from "../../src/services/public-projection.service.ts";
+import { createPublicationLifecycleService } from "../../src/services/publication-lifecycle.service.ts";
+import { FOUNDER_PUBLIC_SLUG } from "../../src/db/founder.ts";
 import { FOUNDER_USER_ID } from "../../src/db/founder.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
 
@@ -76,6 +80,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const identityRepo = createIdentityRepo(runtimeDb);
   const accountPrivacyRepo = createAccountPrivacyRepo(runtimeDb);
   const publishedProjectionRepo = createPublishedProjectionRepo(runtimeDb);
+  const publicProjectionRepo = createPublicProjectionRepo(runtimeDb);
   const identityService = createIdentityService(runtimeDb, identityRepo);
   const accountPrivacyService = createAccountPrivacyService(runtimeDb, accountPrivacyRepo, identityRepo);
   const founderSession = await identityService.rotateSession(FOUNDER_USER_ID, { idleSeconds: 1800, absoluteSeconds: 43200 }, null);
@@ -106,6 +111,9 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       reporting: createReportingService(runtimeDb, planInstancesRepo, workoutAssociationsRepo, activitiesRepo, workoutSegmentAlignmentsRepo),
       identity: identityService, accountPrivacy: accountPrivacyService,
       guestPublication: createGuestPublicationService(publishedProjectionRepo),
+      publicationLifecycle: createPublicationLifecycleService(
+        identityRepo, publicProjectionRepo, createPublicProjectionService(runtimeDb, publicProjectionRepo), () => FOUNDER_PUBLIC_SLUG,
+      ),
     },
   });
 

@@ -23,6 +23,8 @@ import { useUrlState } from "@/hooks/useUrlState";
 // so its live pace preview must stay metric-only.
 import { fmtMinSecRaw } from "@/utils/fmt";
 import { AccountPrivacySection } from "@/components/AccountPrivacySection";
+import { PublicationSection, PUBLISH_PROFILE_ENTITLEMENT } from "@/components/PublicationSection";
+import { useEntitlements } from "@/components/AuthGate";
 
 // Theme swatch labels only — the actual colors are CSS (index.css's
 // [data-theme-preview="…"] blocks), not duplicated here as hex literals
@@ -344,6 +346,7 @@ interface Props {
 
 export function SettingsTab({ appearance }: Props) {
   const { t } = useTranslation();
+  const entitlements = useEntitlements();
   // Reads the shared settings singleton (useSettings, HRA-76) instead of
   // fetching its own copy. `saved` is the last-known-persisted value (what
   // "current: X" shows); `draft` is the editable form state — both still
@@ -575,6 +578,7 @@ export function SettingsTab({ appearance }: Props) {
           </>
         )}
       </AccordionCard>
+      {entitlements.includes(PUBLISH_PROFILE_ENTITLEMENT) && <PublicationSection />}
       <AccountPrivacySection />
     </div>
   );

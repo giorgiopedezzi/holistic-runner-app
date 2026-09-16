@@ -14,6 +14,7 @@ import type {
   FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport, WeekReport, PlanReport, ReportRangeMode, RangeReport,
 } from "@/types/api";
 import type { EventType, ParseWarning, ResolvedSegment, RunPlan, Target, WorkoutType } from "@/types/runplan";
+import type { PublicItem } from "@/components/GuestOverview";
 
 // Sentinel "give me everything" limit for consumers that need the full set
 // (charts, previews, bulk actions) rather than a page — see HRA-38. The server
@@ -62,6 +63,31 @@ export interface SourceExtractionResult {
   sourceType: "txt" | "csv" | "pdf";
   fileName: string;
   pageCount?: number;
+}
+
+// HRA-370: founder-only publication controls over the existing HRA-360
+// lifecycle. Never carries an owner UUID or a private resource id — see
+// garmin-stats/src/services/publication-lifecycle.service.ts.
+export interface PublicationStatus {
+  state: "draft" | "published" | "suspended" | "unconfigured";
+  publicUrl: string | null;
+  projectedAt: string | null;
+  lastError: "projection_refresh_failed" | null;
+  canRetry: boolean;
+}
+export interface PublicationPreview extends PublicationStatus {
+  snapshot: PublicProjectionSnapshot;
+  sourceVersion: string;
+}
+export interface PublicProjectionSnapshot {
+  schemaVersion: number;
+  slug: string;
+  sourceVersion: string;
+  projectedAt: string;
+  profile: PublicItem | null;
+  activities: PublicItem[];
+  plans: PublicItem[];
+  reports: PublicItem[];
 }
 
 // Error carrying the HTTP status (0 = the request never reached the server), so
@@ -552,5 +578,12 @@ export const api = {
   sourceFiles: {
     extract: (input: { fileName: string; sourceType: "txt" | "csv" | "pdf"; contentBase64: string }) =>
       request<SourceExtractionResult>("/api/v1/source-files/extract", "POST", undefined, input),
+  },
+  publication: {
+    status:  () => request<PublicationStatus>("/api/v1/publication"),
+    preview: () => request<PublicationPreview>("/api/v1/publication/preview"),
+    publish: () => request<PublicationStatus>("/api/v1/publication/publish", "POST"),
+    refresh: () => request<PublicationStatus>("/api/v1/publication/refresh", "POST"),
+    suspend: () => request<PublicationStatus>("/api/v1/publication/suspend", "POST"),
   },
 };

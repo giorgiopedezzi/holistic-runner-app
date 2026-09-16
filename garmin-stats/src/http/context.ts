@@ -32,6 +32,7 @@ import type { ReportingService } from "../services/reporting.service.ts";
 import type { IdentityService } from "../services/identity.service.ts";
 import type { AccountPrivacyService } from "../services/account-privacy.service.ts";
 import type { GuestPublicationService } from "../services/guest-publication.service.ts";
+import type { PublicationLifecycleService } from "../services/publication-lifecycle.service.ts";
 
 export interface AppContext {
   port: number;          // used by the router to build the URL base
@@ -56,6 +57,7 @@ export interface AppContext {
     workoutAssociations: WorkoutAssociationsService;
     reporting: ReportingService;
     identity: IdentityService; accountPrivacy: AccountPrivacyService; guestPublication: GuestPublicationService;
+    publicationLifecycle: PublicationLifecycleService;
   };
 }
 

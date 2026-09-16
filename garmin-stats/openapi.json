@@ -24,6 +24,7 @@
     { "name": "auth", "description": "Auth0 confidential-web BFF login, opaque application session, CSRF bootstrap, and logout" },
     { "name": "account", "description": "Owner-scoped profile, session, export, and deletion lifecycle controls" },
     { "name": "guest-publication", "description": "Anonymous read-only access to the explicit published projection; never backed by private owner repositories" },
+    { "name": "publication", "description": "Authenticated founder-only controls exposing the existing HRA-360 publication lifecycle (preview/publish/refresh/suspend/status) — never a second lifecycle implementation" },
     { "name": "docs", "description": "This API contract and its rendered docs" }
   ],
   "components": {
@@ -710,6 +711,48 @@
           "data": { "type": "array", "items": { "$ref": "#/components/schemas/PublicProjectedResource" } }
         },
         "required": ["slug", "projectedAt", "data"]
+      },
+      "PublicationStatus": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Safe founder-facing lifecycle status. Never carries an owner UUID or a private resource id.",
+        "properties": {
+          "state": { "type": "string", "enum": ["draft", "published", "suspended", "unconfigured"] },
+          "publicUrl": { "type": ["string", "null"], "description": "The stable /p/:slug path (HRA-368), or null before any projection has ever been created." },
+          "projectedAt": { "type": ["string", "null"], "format": "date-time" },
+          "lastError": { "type": ["string", "null"], "enum": ["projection_refresh_failed", null] },
+          "canRetry": { "type": "boolean" }
+        },
+        "required": ["state", "publicUrl", "projectedAt", "lastError", "canRetry"]
+      },
+      "PublicProjectionSnapshot": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "The same allowlisted/redacted snapshot shape anonymous Guests read — an authenticated preview never sees additional fields Guests don't.",
+        "properties": {
+          "schemaVersion": { "type": "integer" },
+          "slug": { "type": "string" },
+          "sourceVersion": { "type": "string", "description": "An HMAC digest of the private revision coordinate — never a plan revision, activity id, or timestamp coordinate." },
+          "projectedAt": { "type": "string", "format": "date-time" },
+          "profile": { "anyOf": [{ "$ref": "#/components/schemas/PublicProjectedResource" }, { "type": "null" }] },
+          "activities": { "type": "array", "items": { "$ref": "#/components/schemas/PublicProjectedResource" } },
+          "plans": { "type": "array", "items": { "$ref": "#/components/schemas/PublicProjectedResource" } },
+          "reports": { "type": "array", "items": { "$ref": "#/components/schemas/PublicProjectedResource" } }
+        },
+        "required": ["schemaVersion", "slug", "sourceVersion", "projectedAt", "profile", "activities", "plans", "reports"]
+      },
+      "PublicationPreview": {
+        "allOf": [
+          { "$ref": "#/components/schemas/PublicationStatus" },
+          {
+            "type": "object",
+            "properties": {
+              "snapshot": { "$ref": "#/components/schemas/PublicProjectionSnapshot" },
+              "sourceVersion": { "type": "string" }
+            },
+            "required": ["snapshot", "sourceVersion"]
+          }
+        ]
       }
     }
   },
@@ -734,6 +777,21 @@
     },
     "/api/v1/public/profiles/{slug}/reports/{publicId}": {
       "get": { "tags": ["guest-publication"], "summary": "Read one published report", "security": [], "parameters": [{ "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "publicId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }], "responses": { "200": { "description": "Projected report only.", "headers": { "Cache-Control": { "schema": { "type": "string", "const": "no-store" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/GuestPublicationResource" } } } }, "404": { "$ref": "#/components/responses/NotFound" } } }
+    },
+    "/api/v1/publication": {
+      "get": { "tags": ["publication"], "summary": "Read the founder's current publication status", "security": [{ "runsFreeSession": [] }], "responses": { "200": { "description": "Safe lifecycle status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationStatus" } } } }, "403": { "description": "The caller lacks the founder publication entitlement — identical for any other authenticated user, never distinguishable from a missing feature.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } } } }
+    },
+    "/api/v1/publication/preview": {
+      "get": { "tags": ["publication"], "summary": "Authenticated preview using the same safe projection contract Guests consume", "description": "Works before first publication and never publishes as a side effect.", "security": [{ "runsFreeSession": [] }], "responses": { "200": { "description": "Status plus the safe projected snapshot.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationPreview" } } } }, "403": { "description": "The caller lacks the founder publication entitlement.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } } } }
+    },
+    "/api/v1/publication/publish": {
+      "post": { "tags": ["publication"], "summary": "Publish the current safe projection", "description": "Delegates to the existing HRA-360 lifecycle service; makes the projection anonymously available at the stable /p/:slug URL.", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "X-RunsFree-CSRF", "in": "header", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Updated status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationStatus" } } } }, "403": { "description": "The caller lacks the founder publication entitlement.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } } } }
+    },
+    "/api/v1/publication/refresh": {
+      "post": { "tags": ["publication"], "summary": "Refresh or retry the published projection", "description": "Idempotent — an unchanged source never duplicates public resources or moves the public slug/identifiers.", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "X-RunsFree-CSRF", "in": "header", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Updated status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationStatus" } } } }, "403": { "description": "The caller lacks the founder publication entitlement.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } } } }
+    },
+    "/api/v1/publication/suspend": {
+      "post": { "tags": ["publication"], "summary": "Immediately remove anonymous access while preserving private source data", "security": [{ "runsFreeSession": [] }], "parameters": [{ "name": "X-RunsFree-CSRF", "in": "header", "required": true, "schema": { "type": "string" } }], "responses": { "200": { "description": "Updated status.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PublicationStatus" } } } }, "403": { "description": "The caller lacks the founder publication entitlement.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } } } }
     },
     "/api/v1/auth/login": {
       "get": { "tags": ["auth"], "summary": "Start the Auth0 Authorization Code BFF flow with an approved interactive method", "parameters": [{ "name": "method", "in": "query", "required": true, "schema": { "type": "string", "enum": ["google", "email"] }, "description": "Server-mapped Auth0 connection selector. Arbitrary connection names are not accepted." }], "responses": { "302": { "description": "Redirects to the configured authorization endpoint using the server-selected Google or Passwordless Email OTP connection." }, "400": { "$ref": "#/components/responses/BadRequest" }, "503": { "$ref": "#/components/responses/ServiceUnavailable" } } }

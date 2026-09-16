@@ -6,10 +6,10 @@ import { fmtDate, fmtDuration, fmtElevation, fmtKm, fmtPace } from "@/utils/fmt"
 import { Empty, LoadingSpinner } from "@/components/ui";
 import { type GuestView, guestPath, parseGuestRoute } from "@/routing/guestRoute";
 
-type PublicValue = null | boolean | number | string | PublicValue[] | { [key: string]: PublicValue };
-type Fields = Record<string, PublicValue>;
-interface PublicResource<T> { slug: string; projectedAt: string; data: T }
-interface PublicItem { publicId: string; fields: Fields }
+export type PublicValue = null | boolean | number | string | PublicValue[] | { [key: string]: PublicValue };
+export type Fields = Record<string, PublicValue>;
+export interface PublicResource<T> { slug: string; projectedAt: string; data: T }
+export interface PublicItem { publicId: string; fields: Fields }
 interface GuestData {
   profile: PublicResource<PublicItem>;
   activities: PublicResource<PublicItem[]>;
@@ -345,17 +345,10 @@ export function GuestOverview({
   }
 
   const { profile, activities, plans, reports } = query.state.data;
-  const founder = displayName(profile.data);
   const plan = currentPlan(plans.data);
-  const latest = newestActivity(activities.data);
   const planName = plan ? stringField(plan.fields, "name") : null;
   const raceName = plan ? stringField(plan.fields, "raceName") ?? stringField(plan.fields, "event") : null;
   const raceDate = plan ? stringField(plan.fields, "raceDate") : null;
-  const latestDate = latest ? stringField(latest.fields, "date") : null;
-  const latestTitle = latest ? stringField(latest.fields, "title") : null;
-  const latestDistance = latest ? numberField(latest.fields, "distanceM") : null;
-  const latestDuration = latest ? numberField(latest.fields, "movingTimeSec") ?? numberField(latest.fields, "durationSec") : null;
-  const latestPace = latest ? numberField(latest.fields, "avgPaceMinKm") : null;
   const projectedAt = profile.projectedAt;
 
   if (view === "plan") {
@@ -429,6 +422,41 @@ export function GuestOverview({
       onSignIn={onSignIn}
     /></>;
   }
+
+  return (
+    <FounderJourneySummary
+      profile={profile} activities={activities} plans={plans} reports={reports}
+      onNavigateToPlan={onNavigateToPlan} onSignIn={onSignIn}
+    />
+  );
+}
+
+// HRA-370: the founder-journey overview render, pulled out so the authenticated
+// Settings "Preview as Guest" control can render the SAME projected-data
+// contract Guests see, from a different (authenticated preview) data source,
+// without a second independently-selected-fields preview UI. GuestOverview
+// above is still the only caller of the anonymous /api/v1/public/... reads.
+export function FounderJourneySummary({ profile, activities, plans, reports, onNavigateToPlan, onSignIn }: {
+  profile: PublicResource<PublicItem>;
+  activities: PublicResource<PublicItem[]>;
+  plans: PublicResource<PublicItem[]>;
+  reports: PublicResource<PublicItem[]>;
+  onNavigateToPlan?: () => void;
+  onSignIn?: () => void;
+}) {
+  const { t } = useTranslation();
+  const founder = displayName(profile.data);
+  const plan = currentPlan(plans.data);
+  const latest = newestActivity(activities.data);
+  const planName = plan ? stringField(plan.fields, "name") : null;
+  const raceName = plan ? stringField(plan.fields, "raceName") ?? stringField(plan.fields, "event") : null;
+  const raceDate = plan ? stringField(plan.fields, "raceDate") : null;
+  const latestDate = latest ? stringField(latest.fields, "date") : null;
+  const latestTitle = latest ? stringField(latest.fields, "title") : null;
+  const latestDistance = latest ? numberField(latest.fields, "distanceM") : null;
+  const latestDuration = latest ? numberField(latest.fields, "movingTimeSec") ?? numberField(latest.fields, "durationSec") : null;
+  const latestPace = latest ? numberField(latest.fields, "avgPaceMinKm") : null;
+  const projectedAt = profile.projectedAt;
 
   return (
     <section className="hra-guest-overview" aria-label={t("guest.overview.label", "Founder journey overview")}>

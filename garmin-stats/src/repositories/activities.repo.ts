@@ -27,5 +27,9 @@ export function createActivitiesRepo(db: Queryable) { const repo = {
   races: (limit: number, offset: number) => db.all("SELECT id,date_only,activity_type_id,activity_name,distance_m FROM activities WHERE activity_type_id!=1 AND deleted_at IS NULL ORDER BY date_only DESC LIMIT $1 OFFSET $2", [limit,offset]),
   racesCount: () => db.get<{ count: number }>("SELECT COUNT(*)::int AS count FROM activities WHERE activity_type_id!=1 AND deleted_at IS NULL"),
   runningActivitiesForAssociation: () => db.all<{ id: number; activity_date: string }>("SELECT id,activity_date FROM activities WHERE sport='running' AND deleted_at IS NULL"),
+  // HRA-370: bounded, most-recent-first activities for one owner, used only by
+  // the authenticated publication orchestrator to build a public projection
+  // input — never by any owner-facing list view (those use list/listPage above).
+  recentForPublication: (userId: string, limit: number) => db.all(`SELECT ${FIELDS} FROM activities WHERE user_id=$1 AND deleted_at IS NULL ORDER BY activity_date DESC LIMIT $2`, [userId, limit]),
 }; return { ...repo, withDb: (query: Queryable) => createActivitiesRepo(query) }; }
 export type ActivitiesRepo = ReturnType<typeof createActivitiesRepo>;

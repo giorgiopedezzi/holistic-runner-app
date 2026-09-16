@@ -3,6 +3,13 @@ import type { Client } from "pg";
 // Deliberately stable and not derived from an email or provider identifier.
 export const FOUNDER_USER_ID = "00000000-0000-4000-8000-000000000001";
 export const PUBLISH_PROFILE_ENTITLEMENT = "can_publish_profile";
+// The founder's public slug is fixed, not user-chosen — there is exactly one
+// founder identity (HRA-370), so a stable literal keeps /p/<slug> immutable
+// without adding a slug-configuration surface this Story doesn't need.
+// Matches garmin-dashboard/src/routing/guestRoute.ts's DEFAULT_FOUNDER_SLUG
+// (HRA-368), which already assumes this exact value as the guest shell's
+// fallback slug.
+export const FOUNDER_PUBLIC_SLUG = "founder-journey";
 
 type FounderClient = Pick<Client, "query">;
 

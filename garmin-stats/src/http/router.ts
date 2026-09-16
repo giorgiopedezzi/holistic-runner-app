@@ -30,6 +30,7 @@ import { createFeedbackController } from "../controllers/feedback.controller.ts"
 import { createSourceFilesController } from "../controllers/source-files.controller.ts";
 import { createReportingController } from "../controllers/reporting.controller.ts";
 import { createGuestPublicationController } from "../controllers/guest-publication.controller.ts";
+import { createPublicationController } from "../controllers/publication.controller.ts";
 
 export function createApiHandler(ctx: AppContext): http.RequestListener {
   const activities   = createActivitiesController(ctx);
@@ -49,6 +50,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const auth         = createAuthController(ctx);
   const accountPrivacy = createAccountPrivacyController(ctx);
   const guestPublication = createGuestPublicationController(ctx);
+  const publication    = createPublicationController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -58,6 +60,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
     route === "/api/v1/reports/range" || route.startsWith("/api/v1/activities") || route.startsWith("/api/v1/body-measurements") ||
     route.startsWith("/api/v1/date-ranges") || route.startsWith("/api/v1/settings") || route.startsWith("/api/v1/plan-templates") ||
     route.startsWith("/api/v1/plan-instances") || route === "/api/v1/plan-instance-days" || route.startsWith("/api/v1/account") ||
+    route.startsWith("/api/v1/publication") ||
     // HRA-352: provider connections/credentials and sync/import jobs are
     // owner-scoped — deliberately NOT /api/v1/strava/callback (its owner
     // comes from server-side OAuth state, not the request's own identity —
@@ -140,6 +143,8 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/garmin/status")            return await integrations.garminStatus(req, res, url);
         if (route === "/api/v1/withings/status")          return await integrations.withingsStatus(req, res, url);
         if (route === "/api/v1/withings/login-url")       return await integrations.withingsLoginUrl(req, res, url);
+        if (route === "/api/v1/publication")               return await publication.status(req, res, url);
+        if (route === "/api/v1/publication/preview")       return await publication.preview(req, res, url);
         if (route === "/api/v1/settings")                 return await settings.get(req, res, url);
         if (route === "/api/v1/settings/background-image") return await settings.backgroundImage(req, res, url);
         if (route === "/api/v1/strava/status")            return await integrations.stravaStatus(req, res, url);
@@ -229,6 +234,9 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/account/sessions/revoke-others") return await accountPrivacy.revokeOthers(req, res, url);
         if (route === "/api/v1/account/exports")          return await accountPrivacy.createExport(req, res, url);
         if (route === "/api/v1/account/deletion-request") return await accountPrivacy.requestDeletion(req, res, url);
+        if (route === "/api/v1/publication/publish")      return await publication.publish(req, res, url);
+        if (route === "/api/v1/publication/refresh")      return await publication.refresh(req, res, url);
+        if (route === "/api/v1/publication/suspend")      return await publication.suspend(req, res, url);
         if (route === "/api/v1/sync/garmin")              return await demo(sync.garmin)(req, res, url);
         if (route === "/api/v1/sync/withings")            return await demo(sync.withings)(req, res, url);
         if (route === "/api/v1/sync/strava")              return await demo(sync.strava)(req, res, url);
