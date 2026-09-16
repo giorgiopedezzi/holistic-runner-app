@@ -2882,6 +2882,11 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
 .hra-guest-facts .hra-fact-row { display: flex; justify-content: space-between; gap: 16px; color: var(--text-secondary); }
 .hra-guest-facts strong { color: var(--text-primary); text-align: right; }
 .hra-guest-next { border-top: 1px solid var(--border); padding-top: 20px; }
+.hra-guest-week { display: flex; flex-direction: column; margin-top: 10px; }
+.hra-guest-week-day { display: grid; grid-template-columns: minmax(112px, 0.4fr) minmax(0, 1fr); gap: 6px 16px; padding: 12px 0; border-top: 1px solid var(--border); color: var(--text-primary); }
+.hra-guest-week-date { color: var(--text-secondary); }
+.hra-guest-week-states { grid-column: 2; display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--text-muted); font-size: var(--text-meta-size); }
+@media (max-width: 767px) { .hra-guest-week-day { grid-template-columns: 1fr; gap: 4px; } .hra-guest-week-states { grid-column: 1; } }
 @media (max-width: 767px) { .hra-guest-overview-grid { grid-template-columns: 1fr; } }
 .hra-plan-instance-section-gap { margin-bottom: var(--section-gap); }
 .hra-plan-instance-form-row { margin-bottom: 6px; }

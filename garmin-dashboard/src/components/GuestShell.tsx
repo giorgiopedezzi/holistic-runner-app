@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Compass, LogIn, Menu, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { api } from "@/api/client";
-import { GuestOverview } from "@/components/GuestOverview";
+import { GuestOverview, type GuestView } from "@/components/GuestOverview";
 
 type ViewportTier = "desktop" | "tablet" | "phone";
 type SidebarMode = "open" | "icon" | "hidden";
@@ -22,6 +22,10 @@ function defaultSidebarMode(tier: ViewportTier): SidebarMode {
 // owner-data request while an anonymous visitor is present.
 export function GuestShell() {
   const { t } = useTranslation();
+  const [view, setView] = useState<GuestView>(() => {
+    const requested = new URLSearchParams(window.location.search).get("guestView");
+    return requested === "plan" || requested === "activities" || requested === "reports" ? requested : "journey";
+  });
   const [tier, setTier] = useState<ViewportTier>(() => viewportTier(window.innerWidth));
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => defaultSidebarMode(viewportTier(window.innerWidth)));
 
@@ -52,6 +56,15 @@ export function GuestShell() {
   const collapsed = sidebarMode === "icon" ? "true" : sidebarMode === "hidden" ? "hidden" : "false";
   const signIn = () => api.auth.login();
 
+  function navigate(nextView: GuestView) {
+    const url = new URL(window.location.href);
+    if (nextView === "journey") url.searchParams.delete("guestView");
+    else url.searchParams.set("guestView", nextView);
+    window.history.pushState({}, "", url);
+    setView(nextView);
+    closeSidebar();
+  }
+
   return (
     <div className="flex h-screen overflow-hidden">
       {tier === "phone" && sidebarMode === "open" && <div className="hra-sidebar-backdrop" onClick={closeSidebar} />}
@@ -60,7 +73,10 @@ export function GuestShell() {
         <nav className="hra-sidebar-nav" aria-label={t("nav.mainNavigation", "Main navigation")}>
           <div className="hra-sidebar-core"><div className="hra-sidebar-group">
             <span className="hra-sidebar-group-heading">{t("guest.navigation", "Guest")}</span>
-            <span className="hra-sidebar-item" aria-current="page"><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.founderJourney", "Founder journey")}</span></span>
+            <button type="button" className="hra-sidebar-item hra-nav-hover" aria-current={view === "journey" ? "page" : undefined} onClick={() => navigate("journey")}><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.founderJourney", "Founder journey")}</span></button>
+            <button type="button" className="hra-sidebar-item hra-nav-hover" aria-current={view === "plan" ? "page" : undefined} onClick={() => navigate("plan")}><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.currentPlan", "Current plan")}</span></button>
+            <button type="button" className="hra-sidebar-item hra-nav-hover" aria-current={view === "activities" ? "page" : undefined} onClick={() => navigate("activities")}><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.activities.navigation", "Activities")}</span></button>
+            <button type="button" className="hra-sidebar-item hra-nav-hover" aria-current={view === "reports" ? "page" : undefined} onClick={() => navigate("reports")}><span className="hra-sidebar-item-icon" aria-hidden="true"><Compass size={16} /></span><span className="hra-sidebar-item-label">{t("guest.reports.navigation", "Progress")}</span></button>
           </div></div>
           <div className="hra-sidebar-group hra-sidebar-utility-group">
             <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={signIn}><span className="hra-sidebar-item-icon" aria-hidden="true"><LogIn size={16} /></span><span className="hra-sidebar-item-label">{t("guest.signIn", "Sign in")}</span></button>
@@ -71,7 +87,7 @@ export function GuestShell() {
       <div className="flex flex-col flex-1 min-w-0 h-screen overflow-y-auto">
         {tier === "phone" && sidebarMode === "hidden" && <header className="hra-mobile-header"><button type="button" className="hra-mobile-header-trigger hra-nav-hover" onClick={toggleSidebar} aria-label={t("nav.openSidebar", "Open navigation")}><Menu size={18} aria-hidden="true" /></button></header>}
         <main className="hra-app-main">
-          <GuestOverview />
+          <GuestOverview view={view} onNavigateToPlan={() => navigate("plan")} onNavigateToJourney={() => navigate("journey")} />
         </main>
       </div>
     </div>

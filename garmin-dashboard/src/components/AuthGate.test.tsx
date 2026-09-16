@@ -3,7 +3,10 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { AuthGate } from "./AuthGate";
 import { ApiError, api } from "@/api/client";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  window.history.replaceState({}, "", "/");
+});
 
 describe("AuthGate", () => {
   it("boots a guest shell without mounting private product content", async () => {
@@ -50,5 +53,18 @@ describe("AuthGate", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
     expect(sidebar()).toHaveAttribute("data-collapsed", "false");
     Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true });
+  });
+
+  it("keeps the published current plan in stable Guest navigation", async () => {
+    vi.spyOn(api.auth, "session").mockRejectedValue(new ApiError(401, "Authentication is required."));
+
+    render(<AuthGate><div>Private dashboard</div></AuthGate>);
+
+    const currentPlan = await screen.findByRole("button", { name: "Current plan" });
+    fireEvent.click(currentPlan);
+
+    expect(currentPlan).toHaveAttribute("aria-current", "page");
+    expect(window.location.search).toBe("?guestView=plan");
+    expect(screen.queryByText("Private dashboard")).not.toBeInTheDocument();
   });
 });

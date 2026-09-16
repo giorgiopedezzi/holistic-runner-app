@@ -10,7 +10,9 @@ function published(data: unknown) {
   return { slug: "founder-journey", projectedAt, data };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("GuestOverview", () => {
   it("renders public founder, plan, activity, and report signals without private reads", async () => {
@@ -47,5 +49,39 @@ describe("GuestOverview", () => {
     expect(screen.getByText("A current target has not been published.")).toBeInTheDocument();
     expect(screen.getByText("No recent training has been published.")).toBeInTheDocument();
     expect(screen.queryByText("0 km")).not.toBeInTheDocument();
+  });
+
+  it("renders the public effective-plan current week without private mutation controls", async () => {
+    const fetch = installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: { displayName: "Giorgio" } }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([{
+        publicId: "plan-1",
+        fields: {
+          name: "Boston build", startDate: "2026-09-01", raceDate: "2026-12-01",
+          workouts: [
+            { date: "2026-09-14", workoutType: "run", title: "Easy run", original: { title: "Base run" }, current: { title: "Easy run" }, actual: { title: "Completed easy run" } },
+            { date: "2026-09-15", workoutType: "rest" },
+            { date: "2026-09-16", workoutType: "unsupported" },
+          ],
+        },
+      }]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview view="plan" />);
+
+    expect(await screen.findByRole("heading", { name: "Boston build" })).toBeInTheDocument();
+    expect(screen.getByText("Easy run")).toBeInTheDocument();
+    expect(screen.getByText("Original: Base run")).toBeInTheDocument();
+    expect(screen.getByText("Current: Easy run")).toBeInTheDocument();
+    expect(screen.getByText("Actual: Completed easy run")).toBeInTheDocument();
+    expect(screen.getByText("Rest day")).toBeInTheDocument();
+    expect(screen.getByText("Published workout details are unavailable")).toBeInTheDocument();
+    expect(screen.getAllByText("No workout published")).toHaveLength(4);
+    expect(screen.queryByRole("button", { name: /edit|swap|export|sync/i })).not.toBeInTheDocument();
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url), "http://localhost").pathname)).toEqual([
+      base, `${base}/activities`, `${base}/plans`, `${base}/reports`,
+    ]);
   });
 });

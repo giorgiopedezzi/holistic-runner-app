@@ -14,6 +14,14 @@ interface GuestData {
   reports: PublicResource<PublicItem[]>;
 }
 
+export type GuestView = "journey" | "plan" | "activities" | "reports";
+
+interface Props {
+  view?: GuestView;
+  onNavigateToPlan?: () => void;
+  onNavigateToJourney?: () => void;
+}
+
 const DEFAULT_FOUNDER_SLUG = "founder-journey";
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -71,7 +79,37 @@ function displayName(profile: PublicItem): string | null {
   return stringField(profile.fields, "displayName");
 }
 
-export function GuestOverview() {
+function objectField(fields: Fields, key: string): Fields | null {
+  const value = fields[key];
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value : null;
+}
+
+function arrayField(fields: Fields, key: string): Fields[] {
+  const value = fields[key];
+  return Array.isArray(value) ? value.filter((item): item is Fields => item !== null && typeof item === "object" && !Array.isArray(item)) : [];
+}
+
+function weekDates(today = new Date()): string[] {
+  const monday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7));
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday);
+    date.setUTCDate(date.getUTCDate() + index);
+    return date.toISOString().slice(0, 10);
+  });
+}
+
+function workoutLabel(workout: Fields): string | null {
+  return stringField(workout, "title") ?? stringField(workout, "name") ?? stringField(workout, "dsl") ?? stringField(workout, "workoutType");
+}
+
+function stateLabel(workout: Fields, state: "original" | "current" | "actual"): string | null {
+  const value = objectField(workout, state);
+  if (value) return workoutLabel(value) ?? stringField(value, "status");
+  return stringField(workout, `${state}Label`);
+}
+
+export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateToJourney }: Props) {
   const { t } = useTranslation();
   const query = useQuery(loadGuestData, []);
 
@@ -95,6 +133,75 @@ export function GuestOverview() {
   const latestDuration = latest ? numberField(latest.fields, "movingTimeSec") ?? numberField(latest.fields, "durationSec") : null;
   const latestPace = latest ? numberField(latest.fields, "avgPaceMinKm") : null;
   const projectedAt = profile.projectedAt;
+
+  if (view === "plan") {
+    const workouts = plan ? arrayField(plan.fields, "workouts") : [];
+    const byDate = new Map(workouts.map(workout => [stringField(workout, "date"), workout]));
+    return (
+      <section className="hra-guest-overview" aria-label={t("guest.plan.label", "Published current plan")}>
+        <div className="hra-guest-hero">
+          <p className="hra-label">{t("guest.plan.eyebrow", "Published current plan")}</p>
+          <h1 className="hra-section-title">{planName ?? t("guest.plan.untitled", "Current training plan")}</h1>
+          {raceName && <p className="hra-text-secondary text-body">{raceName}</p>}
+          {raceDate && <p className="hra-text-muted text-meta">{t("guest.overview.targetDate", `Target: ${fmtDate(raceDate)}`, { date: fmtDate(raceDate) })}</p>}
+          <p className="hra-text-muted text-meta">{t("guest.plan.snapshot", `Published ${fmtDate(projectedAt)}. Schedule changes appear in the next snapshot.`, { projectedAt: fmtDate(projectedAt) })}</p>
+        </div>
+        {plan ? <>
+          <section className="hra-bg-card hra-border-strong rounded-xl p-5">
+            <p className="hra-label">{t("guest.plan.currentWeek", "Current week")}</p>
+            <ol className="hra-guest-week" aria-label={t("guest.plan.currentWeekLabel", "Current training week")}>
+              {weekDates().map(date => {
+                const workout = byDate.get(date);
+                const type = workout ? stringField(workout, "workoutType") : null;
+                const unsupported = type === "unsupported" || type === "other" || workout?.unsupported === true;
+                return <li key={date} className="hra-guest-week-day">
+                  <span className="hra-guest-week-date">{fmtDate(date)}</span>
+                  {!workout ? <span>{t("guest.plan.notPublished", "No workout published")}</span>
+                    : type === "rest" ? <span>{t("guest.plan.rest", "Rest day")}</span>
+                    : unsupported ? <span>{t("guest.plan.unsupported", "Published workout details are unavailable")}</span>
+                    : <span>{workoutLabel(workout) ?? t("guest.plan.workout", "Published workout")}</span>}
+                  {workout && <span className="hra-guest-week-states">
+                    {(["original", "current", "actual"] as const).map(state => {
+                      const label = stateLabel(workout, state);
+                      const stateName = state === "original"
+                        ? t("guest.plan.original", "Original")
+                        : state === "current"
+                          ? t("guest.plan.current", "Current")
+                          : t("guest.plan.actual", "Actual");
+                      return label ? <span key={state}>{stateName}: {label}</span> : null;
+                    })}
+                  </span>}
+                </li>;
+              })}
+            </ol>
+          </section>
+          <section className="hra-guest-next">
+            <h2 className="text-heading">{t("guest.plan.readOnlyTitle", "A read-only published schedule")}</h2>
+            <p className="hra-text-secondary text-body">{t("guest.plan.readOnlyDescription", "This view reflects the founder’s effective plan. Editing, swapping, export, and sync controls are available only after sign-in.")}</p>
+            {onNavigateToJourney && <button type="button" className="hra-btn mt-3" onClick={onNavigateToJourney}>{t("guest.plan.backToJourney", "Back to founder journey")}</button>}
+          </section>
+        </> : <Empty message={t("guest.plan.unavailable", "A current plan has not been published.")} />}
+      </section>
+    );
+  }
+
+  if (view === "activities") {
+    return <section className="hra-guest-overview" aria-label={t("guest.activities.label", "Published activities")}>
+      <div className="hra-guest-hero"><p className="hra-label">{t("guest.activities.eyebrow", "Published training")}</p><h1 className="hra-section-title">{t("guest.activities.title", "Recent training")}</h1></div>
+      {activities.data.length > 0 ? <section className="hra-bg-card hra-border-strong rounded-xl p-5"><div className="hra-guest-facts">
+        {activities.data.map(activity => <div key={activity.publicId} className="hra-fact-row"><span>{stringField(activity.fields, "title") ?? t("guest.overview.publishedActivity", "Published activity")}</span><strong>{stringField(activity.fields, "date") ? fmtDate(stringField(activity.fields, "date")!) : t("guest.activities.dateUnavailable", "Date unavailable")}</strong></div>)}
+      </div></section> : <Empty message={t("guest.activities.unavailable", "No activities have been published.")} />}
+    </section>;
+  }
+
+  if (view === "reports") {
+    return <section className="hra-guest-overview" aria-label={t("guest.reports.label", "Published comparisons")}>
+      <div className="hra-guest-hero"><p className="hra-label">{t("guest.reports.eyebrow", "Published comparison")}</p><h1 className="hra-section-title">{t("guest.reports.title", "Training progress")}</h1></div>
+      {reports.data.length > 0 ? <section className="hra-bg-card hra-border-strong rounded-xl p-5"><div className="hra-guest-facts">
+        {reports.data.map(report => <div key={report.publicId} className="hra-fact-row"><span>{stringField(report.fields, "kind") ?? t("guest.reports.publishedReport", "Published comparison")}</span><strong>{stringField(report.fields, "generatedAt") ? fmtDate(stringField(report.fields, "generatedAt")!) : t("guest.reports.available", "Available")}</strong></div>)}
+      </div></section> : <Empty message={t("guest.reports.unavailable", "No comparisons have been published.")} />}
+    </section>;
+  }
 
   return (
     <section className="hra-guest-overview" aria-label={t("guest.overview.label", "Founder journey overview")}>
@@ -143,6 +250,7 @@ export function GuestOverview() {
       <section className="hra-guest-next">
         <h2 className="text-heading">{t("guest.overview.exploreTitle", "Explore the journey")}</h2>
         <p className="hra-text-secondary text-body">{t("guest.overview.exploreDescription", "Public plan, activity, and progress views will appear here as they are published.")}</p>
+        {plan && onNavigateToPlan && <button type="button" className="hra-btn mt-3" onClick={onNavigateToPlan}>{t("guest.overview.viewPlan", "View current plan")}</button>}
       </section>
     </section>
   );
