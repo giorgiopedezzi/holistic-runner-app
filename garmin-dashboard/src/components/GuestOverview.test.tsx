@@ -160,4 +160,85 @@ describe("GuestOverview", () => {
       base, `${base}/activities`, `${base}/plans`, `${base}/reports`, `${base}/reports/${reportId}`,
     ]);
   });
+
+  it("sets a per-view title, canonical link, and Open Graph metadata sourced only from the public projection", async () => {
+    installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: { displayName: "Giorgio", bio: "Boston 2028" } }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview slug="founder-journey" view="plan" />);
+    await screen.findByRole("heading", { name: "Current training plan" });
+
+    expect(document.title).toBe("Giorgio's road to the start line · Published current plan");
+    const canonical = document.head.querySelector('link[rel="canonical"]');
+    expect(canonical).toHaveAttribute("href", `${window.location.origin}/p/founder-journey/plan`);
+    expect(document.head.querySelector('meta[property="og:title"]')).toHaveAttribute("content", "Giorgio's road to the start line · Published current plan");
+    expect(document.head.querySelector('meta[property="og:description"]')).toHaveAttribute("content", "Boston 2028");
+  });
+
+  it("never lets a field outside the public allowlist reach document head metadata", async () => {
+    installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: { displayName: "Giorgio", bio: "Boston 2028", note: "private founder note", internalId: "owner-99" } }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview slug="founder-journey" />);
+    await screen.findByRole("heading", { name: "Giorgio's road to the start line" });
+
+    const headHtml = document.head.innerHTML;
+    expect(headHtml).not.toContain("private founder note");
+    expect(headHtml).not.toContain("owner-99");
+  });
+
+  it("omits an Open Graph description rather than fabricating one when no bio was published", async () => {
+    installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: {} }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview slug="founder-journey" />);
+    await screen.findByRole("heading", { name: "A runner's road to the start line" });
+
+    expect(document.head.querySelector('meta[property="og:description"]')).not.toBeInTheDocument();
+  });
+
+  it("restores a specific published activity directly from a deep-linked public ID, without requiring a click", async () => {
+    const activityId = "activity-1";
+    const fetch = installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: {} }),
+      [`GET ${base}/activities`]: published([{ publicId: activityId, fields: { title: "Long run", date: "2026-09-15" } }]),
+      [`GET ${base}/activities/${activityId}`]: published({ publicId: activityId, fields: { title: "Long run", avgHr: 144 } }),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([]),
+    });
+
+    render(<GuestOverview view="activities" activityId={activityId} />);
+
+    expect(await screen.findByText("Average heart rate")).toBeInTheDocument();
+    expect(fetch.mock.calls.map(([url]) => new URL(String(url), "http://localhost").pathname)).toContain(`${base}/activities/${activityId}`);
+    expect(document.head.querySelector('link[rel="canonical"]')).toHaveAttribute("href", `${window.location.origin}/p/founder-journey/activities/${activityId}`);
+  });
+
+  it("restores a specific published comparison directly from a deep-linked public ID, without requiring a click", async () => {
+    const reportId = "report-1";
+    installFetch({
+      [`GET ${base}`]: published({ publicId: "profile-1", fields: {} }),
+      [`GET ${base}/activities`]: published([]),
+      [`GET ${base}/plans`]: published([]),
+      [`GET ${base}/reports`]: published([{ publicId: reportId, fields: { kind: "plan" } }]),
+      [`GET ${base}/reports/${reportId}`]: published({ publicId: reportId, fields: { kind: "plan", datasets: { original: { distanceM: 42000 } } } }),
+    });
+
+    render(<GuestOverview view="reports" reportId={reportId} />);
+
+    expect(await screen.findByText("Original plan")).toBeInTheDocument();
+    expect(document.head.querySelector('link[rel="canonical"]')).toHaveAttribute("href", `${window.location.origin}/p/founder-journey/reports/${reportId}`);
+  });
 });

@@ -1,8 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@/hooks/useQuery";
+import { useDocumentHead } from "@/hooks/useDocumentHead";
 import { fmtDate, fmtDuration, fmtElevation, fmtKm, fmtPace } from "@/utils/fmt";
 import { Empty, LoadingSpinner } from "@/components/ui";
+import { type GuestView, guestPath, parseGuestRoute } from "@/routing/guestRoute";
 
 type PublicValue = null | boolean | number | string | PublicValue[] | { [key: string]: PublicValue };
 type Fields = Record<string, PublicValue>;
@@ -15,22 +17,19 @@ interface GuestData {
   reports: PublicResource<PublicItem[]>;
 }
 
-export type GuestView = "journey" | "plan" | "activities" | "reports";
-
 interface Props {
   view?: GuestView;
+  slug?: string;
+  activityId?: string | null;
+  reportId?: string | null;
   onNavigateToPlan?: () => void;
   onNavigateToJourney?: () => void;
+  onNavigateToActivity?: (publicId: string | null) => void;
+  onNavigateToReport?: (publicId: string | null) => void;
   onSignIn?: () => void;
 }
 
-const DEFAULT_FOUNDER_SLUG = "founder-journey";
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
-
-function publicSlug(): string {
-  const match = /^\/p\/([^/]+)\/?$/.exec(window.location.pathname);
-  return match?.[1] ? decodeURIComponent(match[1]) : DEFAULT_FOUNDER_SLUG;
-}
 
 async function readPublic<T>(path: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, { credentials: "include" });
@@ -38,9 +37,8 @@ async function readPublic<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-async function loadGuestData(): Promise<GuestData> {
-  const slug = encodeURIComponent(publicSlug());
-  const base = `/api/v1/public/profiles/${slug}`;
+async function loadGuestData(slug: string): Promise<GuestData> {
+  const base = `/api/v1/public/profiles/${encodeURIComponent(slug)}`;
   const [profile, activities, plans, reports] = await Promise.all([
     readPublic<PublicResource<PublicItem>>(base),
     readPublic<PublicResource<PublicItem[]>>(`${base}/activities`),
@@ -113,6 +111,8 @@ function stateLabel(workout: Fields, state: "original" | "current" | "actual"): 
 
 interface GuestActivityListProps {
   activities: PublicResource<PublicItem[]>;
+  selectedPublicId: string | null;
+  onSelect: (publicId: string | null) => void;
 }
 
 function GuestConversion({ action, description, onSignIn }: { action: string; description: string; onSignIn?: () => void }) {
@@ -170,21 +170,20 @@ function GuestActivityDetailFetch({ slug, publicId }: { slug: string; publicId: 
     : <Empty message={t("guest.activity.unavailable", "This published activity is currently unavailable.")} />;
 }
 
-function GuestActivityList({ activities }: GuestActivityListProps) {
+function GuestActivityList({ activities, selectedPublicId, onSelect }: GuestActivityListProps) {
   const { t } = useTranslation();
-  const [selected, setSelected] = useState<PublicItem | null>(null);
 
   return <section className="hra-guest-overview" aria-label={t("guest.activities.label", "Published activities")}>
     <div className="hra-guest-hero"><p className="hra-label">{t("guest.activities.eyebrow", "Published training")}</p><h1 className="hra-section-title">{t("guest.activities.title", "Recent training")}</h1></div>
     {activities.data.length > 0 ? <div className="hra-guest-activity-layout">
       <section className="hra-guest-activity-list" aria-label={t("guest.activities.listLabel", "Published activity history")}>
-        {activities.data.map(activity => <button key={activity.publicId} type="button" className="hra-guest-activity-row" onClick={() => setSelected(activity)} aria-pressed={selected?.publicId === activity.publicId}>
+        {activities.data.map(activity => <button key={activity.publicId} type="button" className="hra-guest-activity-row" onClick={() => onSelect(activity.publicId)} aria-pressed={selectedPublicId === activity.publicId}>
           <span>{stringField(activity.fields, "title") ?? t("guest.overview.publishedActivity", "Published activity")}</span>
           <span className="hra-text-muted text-meta">{stringField(activity.fields, "date") ? fmtDate(stringField(activity.fields, "date")!) : t("guest.activities.dateUnavailable", "Date unavailable")}</span>
           {numberField(activity.fields, "distanceM") != null && <strong>{fmtKm(numberField(activity.fields, "distanceM")!)}</strong>}
         </button>)}
       </section>
-      {selected && <GuestActivityDetailFetch slug={activities.slug} publicId={selected.publicId} />}
+      {selectedPublicId && <GuestActivityDetailFetch slug={activities.slug} publicId={selectedPublicId} />}
     </div> : <Empty message={t("guest.activities.unavailable", "No activities have been published.")} />}
   </section>;
 }
@@ -273,26 +272,70 @@ function GuestReportDetailFetch({ slug, publicId }: { slug: string; publicId: st
     : <Empty message={t("guest.report.unavailable", "This published comparison is currently unavailable.")} />;
 }
 
-function GuestReportList({ reports }: { reports: PublicResource<PublicItem[]> }) {
+interface GuestReportListProps {
+  reports: PublicResource<PublicItem[]>;
+  selectedPublicId: string | null;
+  onSelect: (publicId: string | null) => void;
+}
+
+function GuestReportList({ reports, selectedPublicId, onSelect }: GuestReportListProps) {
   const { t } = useTranslation();
-  const [selected, setSelected] = useState<PublicItem | null>(null);
   return <section className="hra-guest-overview" aria-label={t("guest.reports.label", "Published comparisons")}>
     <div className="hra-guest-hero"><p className="hra-label">{t("guest.reports.eyebrow", "Published comparison")}</p><h1 className="hra-section-title">{t("guest.reports.title", "Training progress")}</h1></div>
     {reports.data.length > 0 ? <div className="hra-guest-activity-layout">
       <section className="hra-guest-activity-list" aria-label={t("guest.report.listLabel", "Published planned-versus-actual evidence")}>
-        {reports.data.map(report => <button key={report.publicId} type="button" className="hra-guest-activity-row" onClick={() => setSelected(report)} aria-pressed={selected?.publicId === report.publicId}>
+        {reports.data.map(report => <button key={report.publicId} type="button" className="hra-guest-activity-row" onClick={() => onSelect(report.publicId)} aria-pressed={selectedPublicId === report.publicId}>
           <span>{stringField(report.fields, "kind") ?? t("guest.reports.publishedReport", "Published comparison")}</span>
           <span className="hra-text-muted text-meta">{stringField(report.fields, "generatedAt") ? fmtDate(stringField(report.fields, "generatedAt")!) : t("guest.reports.available", "Available")}</span>
         </button>)}
       </section>
-      {selected && <GuestReportDetailFetch slug={reports.slug} publicId={selected.publicId} />}
+      {selectedPublicId && <GuestReportDetailFetch slug={reports.slug} publicId={selectedPublicId} />}
     </div> : <Empty message={t("guest.reports.unavailable", "No comparisons have been published.")} />}
   </section>;
 }
 
-export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateToJourney, onSignIn }: Props) {
+export function GuestOverview({
+  view = "journey", slug, activityId = null, reportId = null,
+  onNavigateToPlan, onNavigateToJourney, onNavigateToActivity, onNavigateToReport, onSignIn,
+}: Props) {
   const { t } = useTranslation();
-  const query = useQuery(loadGuestData, []);
+  const resolvedSlug = slug ?? parseGuestRoute(window.location.pathname).slug;
+  const query = useQuery(() => loadGuestData(resolvedSlug), [resolvedSlug]);
+
+  // Selection stays real internal state — not purely prop-driven — so this
+  // component keeps working standalone (its own test suite renders it
+  // without a routing parent). The two effects below only pull in an
+  // external deep link (GuestShell's parsed URL); a click always notifies
+  // the optional callback too, so a routing parent can mirror the choice
+  // into the browser URL (HRA-368) without owning the click itself.
+  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(activityId);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(reportId);
+  useEffect(() => { setSelectedActivityId(activityId); }, [activityId]);
+  useEffect(() => { setSelectedReportId(reportId); }, [reportId]);
+  function selectActivity(id: string | null) {
+    setSelectedActivityId(id);
+    onNavigateToActivity?.(id);
+  }
+  function selectReport(id: string | null) {
+    setSelectedReportId(id);
+    onNavigateToReport?.(id);
+  }
+
+  const loaded = query.state.status === "success" ? query.state.data : null;
+  const metaFounder = loaded ? displayName(loaded.profile.data) : null;
+  const metaBaseTitle = metaFounder
+    ? t("guest.overview.titleNamed", `${metaFounder}'s road to the start line`, { founder: metaFounder })
+    : loaded
+      ? t("guest.overview.title", "A runner's road to the start line")
+      : t("guest.title", "Follow the founder journey");
+  const metaSection = view === "plan" ? t("guest.plan.eyebrow", "Published current plan")
+    : view === "activities" ? (selectedActivityId ? t("guest.overview.publishedActivity", "Published activity") : t("guest.activities.title", "Recent training"))
+    : view === "reports" ? (selectedReportId ? t("guest.reports.publishedReport", "Published comparison") : t("guest.reports.title", "Training progress"))
+    : null;
+  const metaTitle = metaSection ? `${metaBaseTitle} · ${metaSection}` : metaBaseTitle;
+  const metaDescription = loaded ? stringField(loaded.profile.data.fields, "bio") : null;
+  const canonicalPath = guestPath(resolvedSlug, view, view === "activities" ? selectedActivityId : view === "reports" ? selectedReportId : undefined);
+  useDocumentHead({ title: metaTitle, description: metaDescription, canonicalPath });
 
   if (query.state.status === "loading" || query.state.status === "idle") {
     return <LoadingSpinner label={t("guest.overview.loading", "Loading the published journey…")} />;
@@ -372,7 +415,7 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
   }
 
   if (view === "activities") {
-    return <><GuestActivityList activities={activities} /><GuestConversion
+    return <><GuestActivityList activities={activities} selectedPublicId={selectedActivityId} onSelect={selectActivity} /><GuestConversion
       action={t("guest.conversion.importActivities.title", "Import my activities")}
       description={t("guest.conversion.importActivities.description", "Sign in to connect your own activity sources and keep them private to your account.")}
       onSignIn={onSignIn}
@@ -380,7 +423,7 @@ export function GuestOverview({ view = "journey", onNavigateToPlan, onNavigateTo
   }
 
   if (view === "reports") {
-    return <><GuestReportList reports={reports} /><GuestConversion
+    return <><GuestReportList reports={reports} selectedPublicId={selectedReportId} onSelect={selectReport} /><GuestConversion
       action={t("guest.conversion.training.title", "See this with my training")}
       description={t("guest.conversion.training.description", "Sign in to view progress built from your own training, not the founder’s published data.")}
       onSignIn={onSignIn}

@@ -64,7 +64,11 @@ describe("AuthGate", () => {
     fireEvent.click(currentPlan);
 
     expect(currentPlan).toHaveAttribute("aria-current", "page");
-    expect(window.location.search).toBe("?guestView=plan");
+    expect(window.location.pathname).toBe("/p/founder-journey/plan");
     expect(screen.queryByText("Private dashboard")).not.toBeInTheDocument();
+    // Settles the unstubbed public-profile fetch (this test only asserts on
+    // the sidebar/URL, not GuestOverview's own content) before the test ends,
+    // so its rejection doesn't update React state after the test has finished.
+    await screen.findByText("This published journey is currently unavailable.");
   });
 });
