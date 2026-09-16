@@ -692,6 +692,7 @@
   "manage.planTemplates.aiGenerate.generating": "Generating…",
   "manage.planTemplates.aiGenerate.failed": "Failed to generate DSL with AI.",
   "manage.planTemplates.aiGenerate.hint": "\"Generate DSL with AI\" sends this text straight to the configured AI provider and drops the result into Workout DSL below for review — no copy/paste needed. Prefer to use your own AI instead? Generate a prompt below and paste the result yourself.",
+  "manage.planTemplates.aiGenerate.guestHint": "AI generation uses a paid model and requires sign-in. The exact prompt, DSL editing, and deterministic plan tools remain available without signing in.",
   "manage.planTemplates.aiGenerate.needsReviewBadge": "AI-generated — review before saving",
   "manage.planTemplates.aiGenerate.overwriteConfirmBody": "Workout DSL already has manually-edited content — regenerating with AI will replace it. Continue?",
   "manage.planTemplates.pipeline.planTextHeader": "1 · Plan text",

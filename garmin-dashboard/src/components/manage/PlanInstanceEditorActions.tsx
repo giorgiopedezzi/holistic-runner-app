@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { Save, RotateCcw } from "lucide-react";
 import { DatePicker } from "@/components/ui";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 
 interface Props {
   fieldsLocked: boolean;
@@ -54,12 +55,20 @@ export function PlanInstanceEditorActions({
 }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
-  const demoTitle = demoMode ? t("common.demoModeHint", "Not available for demo") : undefined;
+  // HRA-376: Guest never persists an instance action (blocked server-side
+  // too, AUTHENTICATED_WRITE) — same persistBlocked/Title convention
+  // PlanTemplatesSection.tsx/ActivityRow.tsx etc. already use. A sign-in
+  // block always takes precedence over the generic demo hint.
+  const { canPersist } = useAppMode();
+  const blocked = demoMode || !canPersist;
+  const blockedTitle = !canPersist
+    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+    : demoMode ? t("common.demoModeHint", "Not available for demo") : undefined;
 
   return (
     <div className="hra-plan-instance-section-gap hra-row-wrap items-center" >
       {!fieldsLocked ? (
-        <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading || demoMode} title={demoTitle}>
+        <button className="hra-btn" data-variant="green" onClick={onInstantiate} disabled={!canInstantiate || instantiateLoading || blocked} title={blockedTitle}>
           {instantiateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.createButton", "Create plan from template")}
         </button>
       ) : (
@@ -71,7 +80,7 @@ export function PlanInstanceEditorActions({
               !saveEnabled when there's nothing dirty to save. */}
           <button
             className="hra-btn hra-btn-icon-label" data-variant="green"
-            onClick={onSaveClick} disabled={saveLoading || !hasSections || !saveEnabled || demoMode} title={demoTitle}
+            onClick={onSaveClick} disabled={saveLoading || !hasSections || !saveEnabled || blocked} title={blockedTitle}
             aria-label={saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
           >
             <Save size={14} />
@@ -83,7 +92,7 @@ export function PlanInstanceEditorActions({
               PlanInstancesSection.tsx's onDeactivate. */}
           <button
             className="hra-btn" onClick={isApproved ? onDeactivate : onApprove}
-            disabled={approveLoading || editingId == null || demoMode} title={demoTitle}
+            disabled={approveLoading || editingId == null || blocked} title={blockedTitle}
           >
             {isApproved
               ? (approveLoading ? t("manage.planInstances.deactivating", "Deactivating…") : t("manage.planInstances.deactivateButton", "Deactivate"))
@@ -102,18 +111,18 @@ export function PlanInstanceEditorActions({
               so opening the calendar doesn't also fire Regenerate. */}
           <div
             className="hra-btn hra-regenerate-unit inline-flex items-center gap-1.5" data-variant="green"
-            role="button" tabIndex={regenerateDisabled || demoMode ? -1 : 0}
-            onClick={() => { if (!regenerateDisabled && !demoMode) onRegenerateClick(); }}
-            onKeyDown={e => { if (!regenerateDisabled && !demoMode && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
-            data-disabled={regenerateDisabled || demoMode || undefined}
-            aria-disabled={regenerateDisabled || demoMode}
-            title={demoMode
-              ? demoTitle
+            role="button" tabIndex={regenerateDisabled || blocked ? -1 : 0}
+            onClick={() => { if (!regenerateDisabled && !blocked) onRegenerateClick(); }}
+            onKeyDown={e => { if (!regenerateDisabled && !blocked && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onRegenerateClick(); } }}
+            data-disabled={regenerateDisabled || blocked || undefined}
+            aria-disabled={regenerateDisabled || blocked}
+            title={blocked
+              ? blockedTitle
               : !isApproved && !regenerateBucketDirty ? t("manage.planInstances.regenerateDisabledHint", "Change start date or a pace anchor first.") : undefined}
           >
             <span>{regenerateLoading ? t("common.saving", "Saving…") : t("manage.planInstances.regenerateFromLabel", "Regenerate from")}</span>
             <span onClick={e => e.stopPropagation()} className="inline-flex">
-              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled || demoMode} />
+              <DatePicker value={effectiveFrom} onChange={setEffectiveFrom} min={minEffectiveFrom} disabled={regenerateDisabled || blocked} />
             </span>
           </div>
           {/* HRA-338: only once there's a real instantiated instance to

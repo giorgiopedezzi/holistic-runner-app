@@ -12,6 +12,7 @@ import { AgendaTab } from "./AgendaTab";
 import { installFetch, json, paginated, problem, type Routes } from "@/test/api-stub";
 import { activity, planInstance, planInstanceDay } from "@/test/fixtures";
 import { isoToday } from "@/utils/date";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
 // Radix Popover (CategoryCriteriaPopover, always rendered in the calendar's
 // own toolbar) calls these during pointer interaction — jsdom implements
@@ -150,5 +151,31 @@ describe("AgendaTab — an active plan covers today", () => {
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     expect(screen.getByLabelText("Workout plan text (DSL)")).toBeInTheDocument();
     expect(activeCalls).toBe(1);
+  });
+});
+
+// HRA-376: unlike Plans tab's own List/Agenda editors, this tab's swap and
+// scheduled-time edits call the backend directly and immediately (no
+// local-only mode) — Guest gets browsing only, never an edit/swap surface.
+describe("AgendaTab — Guest (cannot persist) (HRA-376)", () => {
+  it("shows today's workout read-only — no scheduled-time editor button", async () => {
+    const instance = {
+      ...planInstance({ name: "Boston Build" }),
+      days: [planInstanceDay({ date: TODAY, day: 1, workout_type: "run" })],
+    };
+    installFetch(activeRoutes({ "GET /api/v1/plan-instances/active": instance }));
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <AgendaTab onNavigateToPlans={() => {}} onNavigateToActivity={() => {}} />
+      </AppModeContext.Provider>,
+    );
+
+    // Browsing still works — Guest sees the founder's published plan.
+    expect(await screen.findByText(/Boston Build/)).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector(".hra-agenda-calendar")).toBeInTheDocument());
+
+    // The scheduled-time editor (immediate-persist, no local-only mode) never
+    // mounts its edit trigger for Guest — only the plain read-only chip/text.
+    expect(screen.queryByRole("button", { name: "Scheduled time" })).not.toBeInTheDocument();
   });
 });

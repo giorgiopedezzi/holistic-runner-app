@@ -47,6 +47,7 @@ import { notify } from "@/utils/toast";
 import type { PlanTemplate } from "@/types/api";
 import type { EventType, OffsetUnit, ParseWarning, RunPlan } from "@/types/runplan";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 
 interface EditorState { dslSource: string; sections: SectionView[]; offsetUnit: OffsetUnit }
 
@@ -262,6 +263,14 @@ interface Props {
 export function PlanTemplatesSection({ templates, templatesError, refreshTemplates }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  // HRA-376: Guest never persists a template CRUD/Approve action (blocked
+  // server-side too, AUTHENTICATED_WRITE) — same persistBlocked/Title
+  // convention ActivityRow.tsx/ClassificationCard.tsx etc. already use.
+  const { canPersist, canUseBillableAi } = useAppMode();
+  const persistBlocked = demoMode || !canPersist;
+  const persistBlockedTitle = !canPersist
+    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+    : t("common.demoModeHint", "Not available for demo");
   const isPhone = useIsPhone();
 
   // HRA-296: which row's compact mobile card is expanded — entirely separate
@@ -1377,12 +1386,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                   calls onGeneratePrompt/onGeneratePromptForAttachment itself
                   (AC3: no AI call on upload). */}
               <div className="hra-row-wrap" >
-                <label className="hra-btn cursor-pointer" aria-disabled={sourceUploading}>
+                <label
+                  className="hra-btn cursor-pointer" aria-disabled={sourceUploading || persistBlocked}
+                  title={persistBlocked ? persistBlockedTitle : undefined}
+                >
                   {sourceUploading
                     ? t("manage.planTemplates.sourceUpload.uploading", "Extracting…")
                     : t("manage.planTemplates.sourceUpload.uploadButton", "Upload .txt/.csv/.pdf…")}
                   <input
-                    type="file" accept=".txt,.csv,.pdf" className="hidden" disabled={sourceUploading}
+                    type="file" accept=".txt,.csv,.pdf" className="hidden" disabled={sourceUploading || persistBlocked}
                     onChange={e => { const file = e.target.files?.[0]; if (file) void onSourceFileUpload(file); e.target.value = ""; }}
                   />
                 </label>
@@ -1403,8 +1415,15 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                   className="hra-btn self-end"
                   data-variant="green"
                   onClick={onAiGenerateClick}
-                  disabled={aiGenerateDisabled || aiGenerating || demoMode}
-                  title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+                  disabled={aiGenerateDisabled || aiGenerating || demoMode || !canUseBillableAi}
+                  title={
+                    !canUseBillableAi
+                      ? t(
+                          "manage.planTemplates.aiGenerate.guestHint",
+                          "AI generation uses a paid model and requires sign-in. The exact prompt, DSL editing, and deterministic plan tools remain available without signing in.",
+                        )
+                      : demoMode ? t("common.demoModeHint", "Not available for demo") : undefined
+                  }
                 >
                   {aiGenerating
                     ? t("manage.planTemplates.aiGenerate.generating", "Generating…")
@@ -1507,15 +1526,16 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
             this Story. */}
         <div className="hra-plan-instance-section-gap hra-row-wrap" >
           <button
-            className="hra-btn hra-btn-icon-label" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading}
+            className="hra-btn hra-btn-icon-label" data-variant="green" onClick={onSave} disabled={!canSave || saveLoading || persistBlocked}
             aria-label={saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}
+            title={persistBlocked ? persistBlockedTitle : undefined}
           >
             <Save size={14} />
             <span className="hra-btn-label">{saveLoading ? t("common.saving", "Saving…") : t("common.save", "Save")}</span>
           </button>
           <button
-            className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading || demoMode}
-            title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+            className="hra-btn" onClick={onApprove} disabled={!canApprove || approveLoading || persistBlocked}
+            title={persistBlocked ? persistBlockedTitle : undefined}
           >
             {approveLoading ? t("manage.planTemplates.approving", "Activating…") : t("manage.planTemplates.approveButton", "Activate")}
           </button>
@@ -1896,8 +1916,8 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
                 <button
                   className="hra-card-delete-action hra-btn absolute py-1 px-2 inline-flex items-center" data-variant="danger"
                   onClick={() => setDeleteConfirmId(tpl.id)}
-                  disabled={demoMode}
-                  title={demoMode ? t("common.demoModeHint", "Not available for demo") : t("common.delete", "Delete")}
+                  disabled={persistBlocked}
+                  title={persistBlocked ? persistBlockedTitle : t("common.delete", "Delete")}
                   aria-label={t("common.delete", "Delete")}
                 >
                   <Trash2 size={13} />

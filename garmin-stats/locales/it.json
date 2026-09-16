@@ -692,6 +692,7 @@
   "manage.planTemplates.aiGenerate.generating": "Generazione…",
   "manage.planTemplates.aiGenerate.failed": "Impossibile generare il DSL con l'AI.",
   "manage.planTemplates.aiGenerate.hint": "\"Genera DSL con AI\" invia questo testo direttamente al provider AI configurato e inserisce il risultato in Workout DSL qui sotto per la revisione — senza copia/incolla. Preferisci usare la tua AI? Genera un prompt qui sotto e incolla tu stesso il risultato.",
+  "manage.planTemplates.aiGenerate.guestHint": "La generazione con AI usa un modello a pagamento e richiede l'accesso. Il prompt, la modifica del DSL e gli strumenti di piano deterministici restano disponibili senza accedere.",
   "manage.planTemplates.aiGenerate.needsReviewBadge": "Generato dall'AI — rivedi prima di salvare",
   "manage.planTemplates.aiGenerate.overwriteConfirmBody": "Workout DSL contiene già modifiche manuali — rigenerare con l'AI le sostituirà. Continuare?",
   "manage.planTemplates.pipeline.planTextHeader": "1 · Testo del piano",

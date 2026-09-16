@@ -10,6 +10,7 @@ import { AlertTriangle } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import { ErrorBanner, WarningBanner, AccordionCard, Badge } from "@/components/ui";
 import { useIsPhone } from "@/hooks/useIsPhone";
+import { useAppMode } from "@/hooks/useAppMode";
 import { useUnsavedGuard } from "@/hooks/useUnsavedGuard";
 import { TrainingPlanAccordion, DAY_PREFIX_RE, type DayRef, type EditedRef, type WeekRef, type WorkoutTypeSwitchValue } from "@/components/TrainingPlanAccordion";
 import { PlanInstanceCalendar, CategoryLegend } from "@/components/manage/PlanInstanceCalendar";
@@ -79,6 +80,10 @@ interface Props {
 
 export function PlanInstancesSection({ templates, onNavigateToActivity, onNavigateToAgenda }: Props) {
   const { t } = useTranslation();
+  // HRA-376: Guest never persists an immediate scheduled_time PATCH (or its
+  // day/week-swap follow-up) — threaded into usePlanDayEditor and into the
+  // Agenda calendar's own readOnlyScheduledTime override below.
+  const { canPersist } = useAppMode();
   const [instances, setInstances] = useState<PlanInstance[] | null>(null);
   const [listError, setListError] = useState<string | null>(null);
   const [activeKey, setActiveKey] = useState<RowKey | null>(null);
@@ -588,7 +593,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
     }
   }
 
-  const dayEditor = usePlanDayEditor({ editingId, sections, setSections, t, setHighlightedRef });
+  const dayEditor = usePlanDayEditor({ editingId, sections, setSections, t, setHighlightedRef, canPersist });
 
   function onWorkoutTypeEdit(sectionIndex: number, weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) {
     setConfirmation({
@@ -1162,7 +1167,7 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
             />
           ) : (
             <PlanInstanceCalendar
-              sections={sections} readOnlyDays={false}
+              sections={sections} readOnlyDays={false} readOnlyScheduledTime={!canPersist}
               onScheduledTimeEdit={onScheduledTimeEditByDayId} onDaySwap={onDayDragSwapByDayId}
               onDayEdit={onDayEditByDayId} onNavigateToActivity={onNavigateToActivity}
             />

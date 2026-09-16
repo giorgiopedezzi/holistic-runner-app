@@ -20,6 +20,7 @@ import { PlanTemplatesSection } from "./PlanTemplatesSection";
 import { ToastContainer } from "@/components/ui";
 import { installFetch, json, problem, type StubRequest } from "@/test/api-stub";
 import { planTemplate } from "@/test/fixtures";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
 const TEMPLATE = planTemplate();
 
@@ -925,5 +926,67 @@ describe("PlanTemplatesSection — AI-assisted DSL generation (HRA-329)", () => 
     fireEvent.click(pipelineHeader(/Workout DSL/));
     fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: "D1: REST" } });
     expect(screen.getByLabelText("Workout plan text")).toHaveValue("D1: REST");
+  });
+});
+
+// HRA-376: Guest may open the real authoring pipeline and use every
+// deterministic tool (prompt composition, DSL editing) anonymously, but
+// never persists a template or spends the founder's billable AI budget —
+// same persistBlocked/Title convention ClassificationCard.test.tsx's own
+// Guest test already established for a different feature area.
+describe("PlanTemplatesSection — Guest (cannot persist / cannot use billable AI) (HRA-376)", () => {
+  const GENERATE_EMPTY = json({ plan: { metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} }, sections: [] }, warnings: [] });
+
+  it("Save/Approve/Delete are disabled with sign-in messaging", async () => {
+    installFetch({ "POST /api/v1/plan-templates/generate": GENERATE_EMPTY });
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanTemplatesSection {...mountProps()} />
+      </AppModeContext.Provider>,
+    );
+
+    const deleteButton = await screen.findByRole("button", { name: "Delete" });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("title", "Sign in to save this to your account.");
+
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await screen.findByLabelText("Workout plan text");
+
+    const saveButton = screen.getByRole("button", { name: "Save" });
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveAttribute("title", "Sign in to save this to your account.");
+
+    const approveButton = screen.getByRole("button", { name: "Activate" });
+    expect(approveButton).toBeDisabled();
+    expect(approveButton).toHaveAttribute("title", "Sign in to save this to your account.");
+  });
+
+  it("AI generation is blocked with the paid-model/sign-in boundary explained; prompt composition and DSL editing remain available", async () => {
+    installFetch({ "POST /api/v1/plan-templates/prompt-preview": promptPreviewStub });
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanTemplatesSection {...mountProps()} />
+      </AppModeContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.change(await screen.findByLabelText("Original text"), { target: { value: "Week 1: 5km easy" } });
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(await screen.findByRole("option", { name: "5k" }));
+
+    const aiButton = screen.getByRole("button", { name: "Generate DSL with AI" });
+    expect(aiButton).toBeDisabled();
+    expect(aiButton).toHaveAttribute(
+      "title",
+      "AI generation uses a paid model and requires sign-in. The exact prompt, DSL editing, and deterministic plan tools remain available without signing in.",
+    );
+
+    // The exact prompt (PUBLIC_COMPUTE server-side) stays reachable anonymously.
+    fireEvent.click(screen.getByRole("button", { name: "Generate full prompt" }));
+    expect(await screen.findByLabelText("Generated prompt")).toHaveValue("PROMPT: Week 1: 5km easy");
+
+    // Direct DSL editing (local-only until a canPersist-gated Save) also stays usable.
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    fireEvent.change(await screen.findByLabelText("Workout plan text"), { target: { value: "D1: 5km @ RG" } });
+    expect(screen.getByLabelText("Workout plan text")).toHaveValue("D1: 5km @ RG");
   });
 });

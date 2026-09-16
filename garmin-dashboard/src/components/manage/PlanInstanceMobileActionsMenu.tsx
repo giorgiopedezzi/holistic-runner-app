@@ -3,6 +3,7 @@ import { MoreVertical, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 
 /**
  * PlanInstanceMobileActionsMenu.tsx (HRA-296)
@@ -25,6 +26,13 @@ interface Props {
 export function PlanInstanceMobileActionsMenu({ onRequestDelete }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  // HRA-376: same persistBlocked/Title convention this whole feature area
+  // uses — Guest never persists a delete.
+  const { canPersist } = useAppMode();
+  const blocked = demoMode || !canPersist;
+  const blockedTitle = !canPersist
+    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+    : t("common.demoModeHint", "Not available for demo");
   const [open, setOpen] = useState(false);
 
   return (
@@ -42,8 +50,8 @@ export function PlanInstanceMobileActionsMenu({ onRequestDelete }: Props) {
             className="hra-btn flex items-center justify-center gap-1.5"
             data-variant="cta"
             data-tone="red"
-            disabled={demoMode}
-            title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
+            disabled={blocked}
+            title={blocked ? blockedTitle : undefined}
             onClick={() => { setOpen(false); onRequestDelete(); }}
           >
             <Trash2 size={13} aria-hidden="true" />

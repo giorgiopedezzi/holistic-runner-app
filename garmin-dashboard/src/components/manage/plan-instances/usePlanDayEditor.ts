@@ -31,6 +31,15 @@ interface UsePlanDayEditorArgs {
   // call sites that never wire the highlight (if any exist later) don't
   // have to pass a no-op.
   setHighlightedRef?: (ref: EditedRef | null) => void;
+  // HRA-376: scheduled_time is the one DayView field with an "immediate
+  // persist regardless of Save" contract (HRA-149/150) — dsl/notes stay
+  // local until Save, which is already canPersist-gated in
+  // PlanInstanceEditorActions.tsx, but this immediate PATCH bypasses that
+  // gate entirely, so it needs its own guard. InstanceDayRow already
+  // disables the scheduled-time input itself for Guest (defense in depth,
+  // not the only guard) — this also covers the day/week-swap follow-up
+  // persist, which has no input of its own to disable.
+  canPersist: boolean;
 }
 
 function recomputeTotals(
@@ -48,7 +57,7 @@ function recomputeTotals(
   return next;
 }
 
-export function usePlanDayEditor({ editingId, sections, setSections, t, setHighlightedRef }: UsePlanDayEditorArgs) {
+export function usePlanDayEditor({ editingId, sections, setSections, t, setHighlightedRef, canPersist }: UsePlanDayEditorArgs) {
   const sectionsRef = useRef(sections);
   const validateTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
@@ -184,7 +193,7 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
     dayIndex: number,
     scheduledTime: string | null,
   ) {
-    if (editingId == null) return;
+    if (editingId == null || !canPersist) return;
     const day = dayStateAt(sectionIndex, weekIndex, dayIndex);
     if (day?.id == null) return;
     const previous = day.scheduled_time;
@@ -242,7 +251,12 @@ export function usePlanDayEditor({ editingId, sections, setSections, t, setHighl
   async function persistSwappedScheduledTimes(
     pairs: { day: DayView; newScheduledTime: string | null | undefined }[],
   ) {
-    if (editingId == null) return;
+    // Guest swap stays local-only (transient experiment) — the local
+    // scheduled_time exchange in swapDaysByRef/swapWeeksByRef above already
+    // happened either way; skip the doomed AUTHENTICATED_WRITE PATCH
+    // silently rather than surface a "failed to save" toast for an action
+    // that was never supposed to persist.
+    if (editingId == null || !canPersist) return;
     const instanceId = editingId;
     const results = await Promise.allSettled(
       pairs

@@ -19,6 +19,7 @@
 import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Bed, CircleHelp, Download, ListTodo, Play, SquareSlash } from "lucide-react";
+import { useAppMode } from "@/hooks/useAppMode";
 import { AccordionCard } from "./ui/AccordionCard";
 import { CATEGORY_CARD_CLASS, CATEGORY_ICONS } from "./manage/categoryVisuals";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -616,6 +617,15 @@ function InstanceDayRow({
   highlighted?: boolean;
 }) {
   const { t } = useTranslation();
+  // HRA-376: scheduled_time persists immediately on edit (HRA-149/150), with
+  // no local-only mode — unlike dsl/notes, Guest can't safely experiment
+  // with it, so it's disabled here the same way an approved instance's
+  // readOnlyDays already disables it, distinct wording so the reason is
+  // clear. dsl/note editing (below) stays untouched — those ARE safe local
+  // experiments for Guest (local until the Save button, which is itself
+  // canPersist-gated).
+  const { canPersist } = useAppMode();
+  const scheduledTimeReadOnly = readOnlyDays || !canPersist;
   const drag = useDragSwap(dayRef, readOnlyDays ? undefined : onDaySwap);
   const dateBadge = instanceDayDateLabel(date);
   // HRA-160: reuses the same TrainingLoadCategory -> icon/--cat-color data
@@ -758,8 +768,13 @@ function InstanceDayRow({
             aria-label={t("runplan.accordion.noteLabel", "Note")}
           />
         )}
-        {readOnlyDays ? (
-          <span className="hra-text-secondary row-start-2 col-start-3 text-meta" >{scheduledTime}</span>
+        {scheduledTimeReadOnly ? (
+          <span
+            className="hra-text-secondary row-start-2 col-start-3 text-meta"
+            title={!readOnlyDays && !canPersist ? t("guest.persistence.signInHint", "Sign in to save this to your account.") : undefined}
+          >
+            {scheduledTime}
+          </span>
         ) : (
           <input
             type="time"

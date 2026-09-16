@@ -44,7 +44,10 @@ export const GUEST_CAPABILITIES: AppCapabilities = {
   canExplore: true,
   canReplay: true,
   canCompare: true,
-  canEditTransiently: false,
+  // HRA-376: Guest may experiment with plan/day/workout state in local
+  // component state (DSL edits, day/week swap) — nothing here persists
+  // until a canPersist-gated Save, which stays false above.
+  canEditTransiently: true,
   canSendFeedback: true,
 };
 

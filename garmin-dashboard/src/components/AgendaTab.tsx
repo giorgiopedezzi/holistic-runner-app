@@ -41,6 +41,7 @@ import { apiDaysToSections, racePaceReferenceFromPlan } from "@/components/manag
 import type { RunPlan } from "@/types/runplan";
 import type { PlanInstanceWithDays } from "@/types/api";
 import { CategoryLegend, PlanInstanceCalendar } from "@/components/manage/PlanInstanceCalendar";
+import { useAppMode } from "@/hooks/useAppMode";
 import { WorkoutReportModal } from "@/components/manage/plan-instances/WorkoutReportModal";
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { instanceDayDateLabel } from "@/utils/fmt";
@@ -71,6 +72,12 @@ interface Props {
 
 export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   const { t } = useTranslation();
+  // HRA-376: unlike Plans tab's own List/Agenda editors (local-state edits
+  // gated behind a canPersist-gated Save), swap and scheduled-time here call
+  // the backend directly and immediately (swapWorkouts/patchDay, below) —
+  // there is no local-only mode to fall back to, so Guest gets no edit/swap
+  // affordance on this tab at all, only browsing.
+  const { canPersist } = useAppMode();
   const date = isoToday();
   const { state, refetch } = useQuery(() => api.planInstances.active(date), [date]);
   const { state: templatesState } = useQuery(() => api.planTemplates.list(), []);
@@ -83,7 +90,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   // predicate (memoized on `date`, which only changes once a day) rather
   // than a fresh arrow function every render, since PlanInstanceCalendar's
   // own EventComponent is memoized on this same prop's identity.
-  const readOnlyDays = useMemo(() => (dateKey: string) => dateKey < date, [date]);
+  const readOnlyDays = useMemo(() => (dateKey: string) => !canPersist || dateKey < date, [date, canPersist]);
   const [swapPending, setSwapPending] = useState<{ a: DayView; b: DayView } | null>(null);
   const [swapping, setSwapping] = useState(false);
   // HRA-336: the single-workout/race report. HRA-339: URL-backed by the
@@ -128,7 +135,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
     : null;
 
   async function handleScheduledTimeEdit(dayId: number, scheduledTime: string | null) {
-    if (instance == null) return;
+    if (instance == null || !canPersist) return;
     try {
       await api.planInstances.patchDay(instance.id, dayId, { scheduled_time: scheduledTime });
       refetch();
@@ -138,6 +145,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   }
 
   function handleDaySwap(aDayId: number, bDayId: number) {
+    if (!canPersist) return;
     const byId = dayViewsById(sections);
     const a = byId.get(aDayId);
     const b = byId.get(bDayId);
@@ -145,7 +153,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
   }
 
   async function confirmSwap() {
-    if (instance == null || swapPending == null) return;
+    if (instance == null || swapPending == null || !canPersist) return;
     const { a, b } = swapPending;
     if (a.id == null || b.id == null) return;
     setSwapping(true);
@@ -194,7 +202,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
       <PlanInstanceCalendar
         sections={sections}
         readOnlyDays={readOnlyDays}
-        readOnlyScheduledTime={false}
+        readOnlyScheduledTime={!canPersist}
         onScheduledTimeEdit={handleScheduledTimeEdit}
         onDaySwap={handleDaySwap}
         initialDate={new Date()}

@@ -20,6 +20,7 @@ import { installFetch, json, paginated, type Routes } from "@/test/api-stub";
 import { planTemplate, planInstance, planInstanceDay } from "@/test/fixtures";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import type { PlanInstanceDay } from "@/types/api";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
 // Radix Select (the Template picker) calls these during pointer interaction —
 // jsdom implements neither, so an unstubbed click on the trigger throws.
@@ -843,5 +844,79 @@ describe("PlanInstancesSection — mobile compact race-plan summary (HRA-298)", 
     await screen.findByText("My Plan");
     openRow();
     expect(await screen.findByText("No race date set.")).toBeInTheDocument();
+  });
+});
+
+// HRA-376: Guest may browse and experiment locally (dsl edits, day/week
+// swap — all local until a canPersist-gated Save), but never persists an
+// instance action, including the scheduled_time field's own
+// immediate-persist contract (HRA-149/150, which has no local-only mode).
+describe("PlanInstancesSection — Guest (cannot persist) (HRA-376)", () => {
+  it("Save/Approve/Delete are disabled with sign-in messaging, and scheduled_time becomes read-only", async () => {
+    const days = [day1(), day2()];
+    installFetch(mountRoutes({ "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }) }));
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />
+      </AppModeContext.Provider>,
+    );
+
+    const deleteButton = await screen.findByRole("button", { name: "Delete" });
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("title", "Sign in to save this to your account.");
+
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    const saveButton = await screen.findByRole("button", { name: "Save" });
+    expect(saveButton).toBeDisabled();
+    expect(saveButton).toHaveAttribute("title", "Sign in to save this to your account.");
+
+    const approveButton = screen.getByRole("button", { name: "Activate" });
+    expect(approveButton).toBeDisabled();
+    expect(approveButton).toHaveAttribute("title", "Sign in to save this to your account.");
+
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+    // The scheduled-time <input type="time"> is replaced by read-only text —
+    // it persists immediately on edit with no local-only mode to fall back to.
+    expect(screen.queryByLabelText("Scheduled time")).not.toBeInTheDocument();
+    expect(screen.getAllByText("08:00").length).toBeGreaterThan(0);
+  });
+
+  it("Instantiate/Regenerate are disabled with sign-in messaging", async () => {
+    installFetch(mountRoutes());
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />
+      </AppModeContext.Provider>,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Create race plan" }));
+    await pickTemplate("5K Base");
+    const instantiateButton = screen.getByRole("button", { name: "Create plan from template" });
+    expect(instantiateButton).toBeDisabled();
+    expect(instantiateButton).toHaveAttribute("title", "Sign in to save this to your account.");
+  });
+
+  it("editing a day's DSL stays reachable (deterministic parse/validate is PUBLIC_COMPUTE, not gated)", async () => {
+    const days = [day1(), day2()];
+    let validateCalls = 0;
+    installFetch(mountRoutes({
+      "GET /api/v1/plan-instances/10": () => json({ ...planInstance(), days }),
+      "POST /api/v1/plan-instances/10/days/100/validate": () => { validateCalls++; return json({ needs_review: false, warnings: [] }); },
+    }));
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanInstancesSection templates={[TEMPLATE]} onNavigateToActivity={() => {}} onNavigateToAgenda={() => {}} />
+      </AppModeContext.Provider>,
+    );
+
+    fireEvent.click((await screen.findByText("My Plan")).closest('[role="button"]')!);
+    await screen.findByRole("button", { name: "Save" });
+    fireEvent.click(screen.getByRole("button", { name: "List" }));
+    fireEvent.click(await screen.findByRole("button", { name: /Week 1/ }));
+
+    const dslInput = screen.getAllByLabelText("Workout plan text (DSL)")[0];
+    fireEvent.change(dslInput, { target: { value: "6km @ RG" } });
+    await waitFor(() => expect(validateCalls).toBeGreaterThan(0));
   });
 });

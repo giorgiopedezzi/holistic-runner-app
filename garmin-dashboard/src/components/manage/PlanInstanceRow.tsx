@@ -13,6 +13,7 @@ import { AlertTriangle, Trash2 } from "lucide-react";
 import { AccordionCard, Badge } from "@/components/ui";
 import type { PlanInstance } from "@/types/api";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useAppMode } from "@/hooks/useAppMode";
 import { fmtDate } from "@/utils/fmt";
 
 interface Props {
@@ -28,6 +29,14 @@ interface Props {
 export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft, onToggle, onDeleteClick, children }: Props) {
   const { t } = useTranslation();
   const demoMode = useDemoMode();
+  // HRA-376: Guest never persists a delete (blocked server-side too,
+  // AUTHENTICATED_WRITE) — same persistBlocked/Title convention this whole
+  // feature area uses.
+  const { canPersist } = useAppMode();
+  const blocked = demoMode || !canPersist;
+  const blockedTitle = !canPersist
+    ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
+    : t("common.demoModeHint", "Not available for demo");
 
   function rowStatusHint() {
     if (hasDraft) {
@@ -87,8 +96,8 @@ export function PlanInstanceRow({ instance, newInstanceName, expanded, hasDraft,
       <button
         className="hra-card-delete-action hra-btn absolute py-1 px-2 inline-flex items-center" data-variant="danger"
         onClick={() => onDeleteClick?.(instance.id)}
-        disabled={demoMode}
-        title={demoMode ? t("common.demoModeHint", "Not available for demo") : t("common.delete", "Delete")}
+        disabled={blocked}
+        title={blocked ? blockedTitle : t("common.delete", "Delete")}
         aria-label={t("common.delete", "Delete")}
       >
         <Trash2 size={13} />
