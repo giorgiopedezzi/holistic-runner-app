@@ -18,6 +18,7 @@ import { PlanTemplatesSection } from "@/components/manage/PlanTemplatesSection";
 import { PlanInstancesSection } from "@/components/manage/PlanInstancesSection";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { useUrlState } from "@/hooks/useUrlState";
+import { GuestContextHint } from "@/components/GuestContextHint";
 
 interface Props {
   // HRA-265: threaded from App.tsx, mirroring AgendaTab's existing
@@ -63,6 +64,7 @@ export function PlansTab({ onNavigateToActivity, onNavigateToAgenda }: Props) {
   if (isPhone) {
     return (
       <>
+        <GuestContextHint titleKey="guest.guide.plans.title" title="Experiment safely" bodyKey="guest.guide.plans.body" body="Guest edits are temporary: explore the canonical prompt, RunPlan DSL, workouts and schedule freely. Direct AI generation requires sign-in because it has a real processing cost." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
         <div className="flex items-center justify-between mb-2">
           <div className="hra-block-title">{t("manage.plans.mobileTitle", "Training plans")}</div>
           <HelpDisclosure
@@ -90,6 +92,7 @@ export function PlansTab({ onNavigateToActivity, onNavigateToAgenda }: Props) {
 
   return (
     <>
+      <GuestContextHint titleKey="guest.guide.plans.title" title="Experiment safely" bodyKey="guest.guide.plans.body" body="Guest edits are temporary: explore the canonical prompt, RunPlan DSL, workouts and schedule freely. Direct AI generation requires sign-in because it has a real processing cost." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
       <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
       <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} onNavigateToAgenda={onNavigateToAgenda} />
     </>

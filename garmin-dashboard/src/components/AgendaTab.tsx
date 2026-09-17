@@ -46,6 +46,7 @@ import { WorkoutReportModal } from "@/components/manage/plan-instances/WorkoutRe
 import { DAY_PREFIX_RE } from "@/components/TrainingPlanAccordion";
 import { instanceDayDateLabel } from "@/utils/fmt";
 import { Empty, ErrorBanner, LoadingSpinner, ConfirmModal } from "@/components/ui";
+import { GuestContextHint } from "@/components/GuestContextHint";
 
 function errorMessage(e: unknown): string {
   return e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
@@ -198,6 +199,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
           {t("agenda.emptyLine2", "Run free. Or rest. Be happy.")}
         </p>
       )}
+      <GuestContextHint titleKey="guest.guide.agenda.title" title="The real training calendar" bodyKey="guest.guide.agenda.body" body="This calendar connects the plan, changes made along the way, and what was actually completed. With your own data, it follows your plan and activities." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
       <CategoryLegend />
       <PlanInstanceCalendar
         sections={sections}

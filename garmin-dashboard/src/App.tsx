@@ -87,12 +87,23 @@ const SIDEBAR_COLLAPSED_KEY = "hra-sidebar-collapsed";
 // backend settings table. Versioned so a future change to the banner's own
 // message/purpose can re-surface it to someone who dismissed an older one.
 const FEEDBACK_BANNER_DISMISSED_KEY = "hra-feedback-banner-dismissed-v1";
+// Guest guidance is a client-only, versioned preference: it explains this
+// published dataset, so there is no account setting to persist server-side.
+const GUEST_TEASER_DISMISSED_KEY = "hra-guest-teaser-dismissed-v1";
 
 function readBannerDismissed(): boolean {
   try {
     return localStorage.getItem(FEEDBACK_BANNER_DISMISSED_KEY) === "1";
   } catch {
     return false; // storage unavailable — banner just shows every time
+  }
+}
+
+function readGuestTeaserDismissed(): boolean {
+  try {
+    return localStorage.getItem(GUEST_TEASER_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
   }
 }
 
@@ -160,6 +171,15 @@ function FeedbackBanner({ onNavigate, onDismiss }: { onNavigate: () => void; onD
       </button>
     </div>
   );
+}
+
+function GuestIntro({ onDismiss }: { onDismiss: () => void }) {
+  const { t } = useTranslation();
+  return <div className="hra-guest-intro text-label">
+    <span className="hra-guest-intro-text">{t("guest.guide.intro", "You're exploring Runs Free with Giorgio's real published training data. Everything here is interactive, but your changes can't modify his data. Sign in to use Runs Free with your own activities and plans.")}</span>
+    <button type="button" className="hra-guest-intro-cta" onClick={() => api.auth.login()}>{t("guest.guide.useOwnData", "Use my own data")}</button>
+    <button type="button" className="hra-feedback-banner-dismiss hra-nav-hover" onClick={onDismiss} aria-label={t("guest.guide.dismiss", "Close guest introduction")} title={t("guest.guide.dismiss", "Close guest introduction")}><X size={14} aria-hidden="true" /></button>
+  </div>;
 }
 
 // SettingsProvider wraps AppShell (not the other way in-line) so every hook
@@ -245,6 +265,7 @@ function AppShell() {
   }
   const [online, setOnline] = useState<boolean | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(readBannerDismissed);
+  const [guestTeaserDismissed, setGuestTeaserDismissed] = useState(readGuestTeaserDismissed);
   function dismissBanner() {
     setBannerDismissed(true);
     try {
@@ -252,6 +273,10 @@ function AppShell() {
     } catch {
       // storage unavailable — dismissal still applies for this session
     }
+  }
+  function dismissGuestTeaser() {
+    setGuestTeaserDismissed(true);
+    try { localStorage.setItem(GUEST_TEASER_DISMISSED_KEY, "1"); } catch { /* current session still dismisses */ }
   }
   const [viewportTier, setViewportTier] = useState<ViewportTier>(() =>
     resolveViewportTier(window.innerWidth)
@@ -506,10 +531,13 @@ function AppShell() {
                 </button>
               </>
             ) : (
+              <>
+              {guestTeaserDismissed && <span className="hra-guest-identity" title={t("guest.guide.identity", "Guest · Giorgio's public data")}>{t("guest.guide.identity", "Guest · Giorgio's public data")}</span>}
               <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={() => api.auth.login()}>
                 <span className="hra-sidebar-item-icon" aria-hidden="true"><LogIn size={16} /></span>
                 <span className="hra-sidebar-item-label">{t("guest.signIn", "Sign in")}</span>
               </button>
+              </>
             )}
           </div>
         </nav>
@@ -551,7 +579,8 @@ function AppShell() {
             </button>
           </header>
         )}
-        {tab !== "feedback" && !bannerDismissed && (
+        {mode === "guest" && !guestTeaserDismissed && <GuestIntro onDismiss={dismissGuestTeaser} />}
+        {tab !== "feedback" && !bannerDismissed && !(mode === "guest" && !guestTeaserDismissed) && (
           <FeedbackBanner onNavigate={() => guardedAction(() => setTab("feedback"))} onDismiss={dismissBanner} />
         )}
         <main className="hra-app-main flex-1">

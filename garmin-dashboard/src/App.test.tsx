@@ -88,6 +88,7 @@ afterEach(() => {
   // HRA-303: same reasoning — the feedback banner's dismissal choice
   // persists to localStorage too, and must not leak into a later test.
   localStorage.removeItem("hra-feedback-banner-dismissed-v1");
+  localStorage.removeItem("hra-guest-teaser-dismissed-v1");
   // HRA-267: restore jsdom's own default viewport so a test that changed it
   // doesn't leak a non-desktop tier into the next test's initial mount.
   Object.defineProperty(window, "innerWidth", { value: 1024, configurable: true, writable: true });
@@ -463,6 +464,30 @@ describe("in-app navigation guard for an unsaved race-plan instance (HRA-281 AC2
 });
 
 describe("Guest mode: the shared AppShell for an anonymous founder-read visitor (HRA-374)", () => {
+  it("shows the guest introduction ahead of feedback, persists dismissal, and uses the existing login flow", async () => {
+    installFetch(guestRoutes());
+    const login = vi.spyOn(api.auth, "login").mockImplementation(() => undefined);
+    render(<App />);
+
+    expect(await screen.findByText(/Giorgio's real published training data/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Close feedback message" })).not.toBeInTheDocument();
+    fireEvent.click(document.querySelector(".hra-guest-intro-cta") as HTMLButtonElement);
+    expect(login).toHaveBeenCalledOnce();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close guest introduction" }));
+    expect(localStorage.getItem("hra-guest-teaser-dismissed-v1")).toBe("1");
+    expect(screen.getByText("Guest · Giorgio's public data")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close feedback message" })).toBeInTheDocument();
+  });
+
+  it("renders an in-flow guest activity hint without changing the authenticated view", async () => {
+    installFetch({ ...guestRoutes(), "GET /api/v1/activities": paginated([activity()], 1), "GET /api/v1/activities/count": { count: 1 } });
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "Activities" }));
+    expect(await screen.findByText("Replay a real run")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use this with my activities" })).toBeInTheDocument();
+  });
+
   it("renders the SAME AppShell (not a separate Guest shell), with a capability-filtered nav and Sign in instead of Sign out", async () => {
     installFetch(guestRoutes());
     render(<App />);

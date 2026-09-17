@@ -2646,9 +2646,27 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   cursor: pointer;
 }
 .hra-feedback-banner-dismiss:hover { color: var(--text-primary); }
+.hra-guest-intro {
+  position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; color: var(--text-secondary); background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+}
+.hra-guest-intro-text { flex: 1; min-width: 0; }
+.hra-guest-intro-cta, .hra-guest-context-cta {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0;
+  border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 6px 9px;
+  color: var(--accent); background: transparent; cursor: pointer; font: inherit;
+}
+.hra-guest-identity { padding: 0 12px; color: var(--text-muted); font-size: var(--text-meta); }
+.hra-sidebar[data-collapsed="true"] .hra-guest-identity { width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; }
+.hra-guest-context-hint { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--bg-surface); }
+.hra-guest-context-hint p { margin: 0; }
 @media (max-width: 767px) {
   :root { --header-height: var(--mobile-header-height); }
   .hra-feedback-banner { position: static; padding: 8px 12px; }
+  .hra-guest-intro { position: static; padding: 8px 12px; align-items: flex-start; }
+  .hra-guest-intro-cta { margin-left: 0; }
+  .hra-guest-context-hint { align-items: flex-start; }
   .hra-feedback-banner-dismiss { width: 44px; height: 44px; }
 }
 
