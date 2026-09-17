@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "@/api/client";
 import type { Settings, Theme, StoredTheme, StoredUnitSystem, AccentColor, DateFormat, Language, StoredLanguage, Palette, StoredPalette, BackgroundKind } from "@/types/api";
 import { setUnitSystem, detectUnitSystemFromLocale, type ResolvedUnitSystem } from "@/utils/units";
 import { setResolvedTheme } from "@/utils/theme";
 import { setDateFormatSystem } from "@/utils/dateFormat";
 import { useSettings } from "@/hooks/useSettings";
+import { useAppMode } from "@/hooks/useAppMode";
+import { readGuestLanguage, writeGuestLanguage } from "@/utils/guestLanguage";
 import { BUNDLED_BACKGROUNDS } from "@/utils/backgrounds";
 import i18next, { detectLanguageFromLocale } from "@/i18n";
 import defaultBackgroundUrl from "@/assets/marathon-background.png";
@@ -184,10 +186,26 @@ export type AppearanceApi = AppearanceState & AppearanceActions & AppearanceMeta
  */
 export function useAppearance(): AppearanceApi {
   const { settings, update } = useSettings();
+  const { mode } = useAppMode();
 
   useEffect(() => {
     if (settings) applyToDocument(settings);
   }, [settings]);
+
+  // Guest never has a Settings row (HRA-374), so the effect above never
+  // fires for Guest — language is instead a browser-local preference
+  // (HRA-379). Applied as early as practical once Guest mode is known
+  // (useLayoutEffect, ahead of the browser's next paint) rather than moving
+  // app-mode resolution into i18n.ts's own synchronous init, which stays
+  // browser-locale-only by design. Re-runs on every mode change so
+  // returning to Guest (e.g. after logout) re-applies the stored preference.
+  const [guestLanguage, setGuestLanguage] = useState<Language | null>(null);
+  useLayoutEffect(() => {
+    if (mode !== "guest") return;
+    const resolved = readGuestLanguage() ?? detectLanguageFromLocale();
+    setGuestLanguage(resolved);
+    void i18next.changeLanguage(resolved);
+  }, [mode]);
 
   // The handler must always apply the LATEST settings (theme is read live
   // from the OS, but units still need to be whatever's current when the OS
@@ -235,12 +253,21 @@ export function useAppearance(): AppearanceApi {
   // PUTs the setting, then applies it immediately — deliberately not left to
   // wait for the settings-changed effect above to round-trip back down, since
   // react-i18next has its own subscription-based reactivity and doesn't need
-  // the tab-remount mechanism utils/units.ts relies on (HRA-104).
+  // the tab-remount mechanism utils/units.ts relies on (HRA-104). Guest never
+  // calls the authenticated Settings write API or touches a DB row (HRA-379)
+  // — it persists to its own browser-local key instead and applies
+  // immediately the same way.
   const setLanguage = useCallback(async (language: Language) => {
+    if (mode === "guest") {
+      writeGuestLanguage(language);
+      setGuestLanguage(language);
+      void i18next.changeLanguage(language);
+      return;
+    }
     const updated = await api.settings.setLanguage(language);
     update(updated);
     void i18next.changeLanguage(language);
-  }, [update]);
+  }, [update, mode]);
 
   const setPalette = useCallback(async (palette: Palette) => {
     const updated = await api.settings.setPalette(palette);
@@ -269,7 +296,7 @@ export function useAppearance(): AppearanceApi {
     uploadBackground,
     resolvedTheme: settings ? resolveTheme(settings.theme) : null,
     resolvedUnitSystem: settings ? resolveUnitSystem(settings.unit_system) : null,
-    resolvedLanguage: settings ? resolveLanguage(settings.language) : null,
+    resolvedLanguage: mode === "guest" ? (guestLanguage ?? detectLanguageFromLocale()) : (settings ? resolveLanguage(settings.language) : null),
     resolvedPalette: settings ? resolvePalette(settings.palette, resolveTheme(settings.theme)) : null,
   };
 }

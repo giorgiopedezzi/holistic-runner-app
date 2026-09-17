@@ -7,8 +7,8 @@
  *    / module state (the source of the load-bearing unit propagation).
  */
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { StrictMode } from "react";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { StrictMode, useState, type ReactNode } from "react";
+import { renderHook, act, waitFor, render, screen } from "@testing-library/react";
 import { useQuery } from "./useQuery";
 import { useDateRange } from "./useDateRange";
 import { useCompareRange } from "./useCompareRange";
@@ -17,6 +17,9 @@ import { useAppearance } from "./useAppearance";
 import { installFetch, json } from "@/test/api-stub";
 import { settings } from "@/test/fixtures";
 import { getUnitSystem, setUnitSystem } from "@/utils/units";
+import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
+import { SettingsProvider } from "@/hooks/useSettings";
+import i18next from "@/i18n";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -258,5 +261,162 @@ describe("useAppearance", () => {
 
     expect(addEventListener).toHaveBeenCalledTimes(1);
     expect(removeEventListener).not.toHaveBeenCalled();
+  });
+});
+
+// HRA-379: Guest language is a browser-local preference — never a Settings
+// row (HRA-374, Guest never fetches/writes /api/v1/settings).
+describe("useAppearance — Guest language (HRA-379)", () => {
+  const GUEST_KEY = "hra-guest-language-v1";
+  const setBrowserLang = (lang: string) =>
+    Object.defineProperty(window.navigator, "language", { value: lang, configurable: true });
+  // SettingsProvider (not just the AppModeContext) has to be mounted here —
+  // it's what actually gates the GET /api/v1/settings fetch by canPersist;
+  // useSettings()'s own standalone fallback (no SettingsProvider ancestor)
+  // fetches unconditionally, same as any other component would if mounted
+  // outside the real App tree.
+  const guestWrapper = ({ children }: { children: ReactNode }) => (
+    <AppModeContext value={GUEST_CAPABILITIES}><SettingsProvider>{children}</SettingsProvider></AppModeContext>
+  );
+
+  afterEach(async () => {
+    localStorage.clear();
+    await i18next.changeLanguage("en");
+  });
+
+  it("Guest saved preference wins over browser locale, and Settings is never fetched", async () => {
+    const fetchMock = installFetch({});
+    localStorage.setItem(GUEST_KEY, "it");
+    setBrowserLang("en-US");
+
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("it"));
+    await waitFor(() => expect(i18next.language).toBe("it"));
+    expect(fetchMock.mock.calls.some(([input]) => input.toString().includes("/api/v1/settings"))).toBe(false);
+  });
+
+  it("falls back to browser-locale detection with no saved Guest preference", async () => {
+    installFetch({});
+    setBrowserLang("fr-FR");
+
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("fr"));
+  });
+
+  it("falls back to English for an unsupported browser locale", async () => {
+    installFetch({});
+    setBrowserLang("nl-NL");
+
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("en"));
+  });
+
+  it("ignores an invalid stored value and falls back to browser locale, without crashing", async () => {
+    installFetch({});
+    localStorage.setItem(GUEST_KEY, "xx");
+    setBrowserLang("de-DE");
+
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("de"));
+  });
+
+  it("selecting a language persists it, applies immediately, and never calls the Settings API", async () => {
+    const fetchMock = installFetch({});
+    setBrowserLang("en-US");
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("en"));
+
+    await act(async () => { await result.current.setLanguage?.("ja"); });
+
+    expect(result.current.resolvedLanguage).toBe("ja");
+    expect(i18next.language).toBe("ja");
+    expect(localStorage.getItem(GUEST_KEY)).toBe("ja");
+    expect(fetchMock.mock.calls.some(([input]) => input.toString().includes("/api/v1/settings"))).toBe(false);
+  });
+
+  it("still applies the language for the running app when localStorage.setItem throws", async () => {
+    installFetch({});
+    setBrowserLang("en-US");
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("en"));
+
+    await act(async () => { await result.current.setLanguage?.("es"); });
+
+    expect(result.current.resolvedLanguage).toBe("es");
+    expect(i18next.language).toBe("es");
+    setItemSpy.mockRestore();
+  });
+
+  it("uses the browser-locale fallback and stays functional when localStorage.getItem throws", async () => {
+    installFetch({});
+    setBrowserLang("de-DE");
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+
+    const { result } = renderHook(() => useAppearance(), { wrapper: guestWrapper });
+
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("de"));
+    getItemSpy.mockRestore();
+  });
+
+  it("an authenticated user's persisted language is unaffected by a Guest localStorage preference", async () => {
+    localStorage.setItem(GUEST_KEY, "it");
+    installFetch({ "GET /api/v1/settings": settings({ language: "fr" }) });
+
+    const { result } = renderHook(() => useAppearance());
+
+    await waitFor(() => expect(result.current.resolvedLanguage).toBe("fr"));
+  });
+
+  it("changing the authenticated user's language calls the Settings API and leaves the Guest preference untouched", async () => {
+    localStorage.setItem(GUEST_KEY, "it");
+    const fetchMock = installFetch({
+      "GET /api/v1/settings": settings({ language: "en" }),
+      "PUT /api/v1/settings/language": json(settings({ language: "de" })),
+    });
+
+    const { result } = renderHook(() => useAppearance());
+    await waitFor(() => expect(result.current.settings).not.toBeNull());
+
+    await act(async () => { await result.current.setLanguage?.("de"); });
+
+    expect(fetchMock.mock.calls.some(([input, init]) =>
+      new URL(input.toString(), "http://localhost").pathname === "/api/v1/settings/language" &&
+      (init?.method ?? "GET").toUpperCase() === "PUT",
+    )).toBe(true);
+    expect(localStorage.getItem(GUEST_KEY)).toBe("it");
+  });
+
+  it("returning to Guest mode (e.g. after logout) re-applies the stored Guest preference", async () => {
+    localStorage.setItem(GUEST_KEY, "it");
+    installFetch({ "GET /api/v1/settings": settings({ language: "en" }) });
+
+    function Display() {
+      const appearance = useAppearance();
+      return <div data-testid="lang">{appearance.resolvedLanguage}</div>;
+    }
+    function Harness() {
+      const [mode, setMode] = useState<"authenticated" | "guest">("authenticated");
+      const capabilities = mode === "guest" ? GUEST_CAPABILITIES : undefined;
+      const body = <Display />;
+      return (
+        <>
+          <button onClick={() => setMode("guest")}>Log out</button>
+          {capabilities ? <AppModeContext value={capabilities}>{body}</AppModeContext> : body}
+        </>
+      );
+    }
+    // Renders authenticated first (settings resolve to "en"), then flips to
+    // Guest — the [mode]-keyed effect in useAppearance re-runs and restores
+    // the browser-local "it" preference.
+    render(<Harness />);
+    await waitFor(() => expect(screen.getByTestId("lang").textContent).toBe("en"));
+
+    act(() => screen.getByText("Log out").click());
+    await waitFor(() => expect(screen.getByTestId("lang").textContent).toBe("it"));
   });
 });
