@@ -25,6 +25,7 @@ import { fmtMinSecRaw } from "@/utils/fmt";
 import { AccountPrivacySection } from "@/components/AccountPrivacySection";
 import { PublicationSection, PUBLISH_PROFILE_ENTITLEMENT } from "@/components/PublicationSection";
 import { useEntitlements } from "@/components/AuthGate";
+import { formatAthleteMetrics, parseAthleteMetrics, type AthleteMetricsForm } from "@/utils/athleteMetrics";
 
 // Theme swatch labels only — the actual colors are CSS (index.css's
 // [data-theme-preview="…"] blocks), not duplicated here as hex literals
@@ -340,6 +341,29 @@ function SettingField({ label, current, value, onChange, min, step }: {
   );
 }
 
+function AthleteMetricField({ label, value, onChange, unit, placeholder, invalid }: {
+  label: string; value: string; onChange: (value: string) => void; unit: string; placeholder: string; invalid: boolean;
+}) {
+  return (
+    <div className="mb-3.5">
+      <label className="hra-text-secondary block text-meta mb-1.5">{label}</label>
+      <div className="hra-row gap-2.5">
+        <input
+          type="text"
+          inputMode="decimal"
+          aria-label={label}
+          value={value}
+          placeholder={placeholder}
+          aria-invalid={invalid}
+          onChange={event => onChange(event.target.value)}
+          className="hra-input-narrow"
+        />
+        <span className="hra-text-muted text-meta">{unit}</span>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   appearance: AppearanceApi;
 }
@@ -359,11 +383,14 @@ export function SettingsTab({ appearance }: Props) {
   const { settings: sharedSettings, loading, error: sharedError, update: updateShared } = useSettings();
   const [saved, setSaved] = useState<Settings | null>(null);
   const [draft, setDraft] = useState<Settings | null>(null);
+  const resolvedUnits = appearance.resolvedUnitSystem ?? "metric";
+  const [metricForm, setMetricForm] = useState<AthleteMetricsForm>({ easyPace: "", racePace: "", longRunTarget: "" });
+  const previousUnits = useRef(resolvedUnits);
   const [error, setError] = useState<string | null>(null);
   const primed = useRef(false);
   // Single-expand accordion, same pattern as ActivitiesTab.tsx's row
   // accordion (one section open at a time; all collapsed by default).
-  type SectionKey = "appearance" | "dateFormat" | "units" | "activityDetails" | "overviewTrends" | "outliers";
+  type SectionKey = "appearance" | "dateFormat" | "units" | "trainingMetrics" | "activityDetails" | "overviewTrends" | "outliers";
   // Backed by the URL's `settingsSection` param (HRA-194) so a refresh leaves
   // the same section expanded.
   const [expandedParam, setExpandedParam] = useUrlState("settingsSection", "");
@@ -373,7 +400,7 @@ export function SettingsTab({ appearance }: Props) {
   // explicit-save cards (Outlier detection, Overview & Trends) each save
   // independently, hitting their own PUT endpoint (HRA-40). Keyed rather than two
   // boolean pairs so only the clicked card shows its own "Saving…/Saved".
-  type SaveKey = "outliers" | "trend";
+  type SaveKey = "outliers" | "trend" | "athleteMetrics";
   const [savingKey, setSavingKey] = useState<SaveKey | null>(null);
   const [justSavedKey, setJustSavedKey] = useState<SaveKey | null>(null);
 
@@ -382,8 +409,16 @@ export function SettingsTab({ appearance }: Props) {
       primed.current = true;
       setSaved(sharedSettings);
       setDraft(sharedSettings);
+      setMetricForm(formatAthleteMetrics(sharedSettings, resolvedUnits));
     }
-  }, [sharedSettings]);
+  }, [sharedSettings, resolvedUnits]);
+
+  useEffect(() => {
+    if (previousUnits.current === resolvedUnits) return;
+    const canonical = parseAthleteMetrics(metricForm, previousUnits.current);
+    if (canonical) setMetricForm(formatAthleteMetrics(canonical, resolvedUnits));
+    previousUnits.current = resolvedUnits;
+  }, [metricForm, resolvedUnits]);
 
   useEffect(() => {
     if (sharedError) setError(sharedError);
@@ -395,6 +430,13 @@ export function SettingsTab({ appearance }: Props) {
     draft.outlier_min_speed_kmh !== saved.outlier_min_speed_kmh
   );
   const trendDirty = !!draft && !!saved && draft.min_trend_group_size !== saved.min_trend_group_size;
+  const parsedMetrics = parseAthleteMetrics(metricForm, resolvedUnits);
+  const metricsInvalid = parsedMetrics === undefined;
+  const metricsDirty = !!saved && !!parsedMetrics && (
+    parsedMetrics.current_easy_pace_sec_per_km !== saved.current_easy_pace_sec_per_km ||
+    parsedMetrics.current_race_pace_sec_per_km !== saved.current_race_pace_sec_per_km ||
+    parsedMetrics.current_long_run_target_m !== saved.current_long_run_target_m
+  );
 
   // Each card persists ONLY its own sub-resource (no combined write). The backend
   // returns the whole settings row, so saved+draft stay fully in sync either way.
@@ -417,6 +459,24 @@ export function SettingsTab({ appearance }: Props) {
   }
   const saveOutliers = () => saveCard("outliers", api.settings.updateOutliers);
   const saveThresholds = () => saveCard("trend", api.settings.updateThresholds);
+  async function saveAthleteMetrics() {
+    if (!parsedMetrics) return;
+    setSavingKey("athleteMetrics");
+    setJustSavedKey(null);
+    setError(null);
+    try {
+      const updated = await api.settings.updateAthleteMetrics(parsedMetrics);
+      setSaved(updated);
+      setDraft(updated);
+      setMetricForm(formatAthleteMetrics(updated, resolvedUnits));
+      updateShared(updated);
+      setJustSavedKey("athleteMetrics");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("settings.saveFailed", "Failed to save settings"));
+    } finally {
+      setSavingKey(null);
+    }
+  }
 
   // Immediate-apply, like theme/units/background — a "how I browse
   // activities" preference reads as a click-and-done toggle, not a form
@@ -432,7 +492,7 @@ export function SettingsTab({ appearance }: Props) {
   // One SaveBar per explicit-save card (Outlier detection, Overview & Trends).
   // Each has its own dirty state and its own save handler → persists only that
   // card's sub-resource (one card = one sub-resource, HRA-40).
-  function SaveBar({ cardKey, dirty, onSave }: { cardKey: SaveKey; dirty: boolean; onSave: () => void }) {
+  function SaveBar({ cardKey, dirty, onSave, invalid = false }: { cardKey: SaveKey; dirty: boolean; onSave: () => void; invalid?: boolean }) {
     const saving = savingKey === cardKey;
     return (
       <div className="hra-row gap-2.5 mt-1" >
@@ -441,7 +501,7 @@ export function SettingsTab({ appearance }: Props) {
           data-variant="cta"
           data-tone="green"
           onClick={onSave}
-          disabled={!dirty || saving}
+          disabled={!dirty || saving || invalid}
           aria-label={saving ? t("settings.savingEllipsis", "Saving…") : t("common.save", "Save")}
         >
           <Save size={14} />
@@ -490,6 +550,50 @@ export function SettingsTab({ appearance }: Props) {
           {t("settings.units.description", "Applies to distance, pace, speed, elevation and weight everywhere in the app. \"Auto\" guesses from your browser's language/region (e.g. a US locale defaults to imperial) — there's no direct way for a web page to read the OS's actual measurement-system setting, so this is a best-effort default you can always override.")}
         </p>
         <UnitsPicker appearance={appearance} />
+      </AccordionCard>
+
+      <AccordionCard title={t("settings.trainingMetrics.title", "Training metrics")} expanded={expanded === "trainingMetrics"} onToggle={() => toggle("trainingMetrics")}>
+        <p className="hra-text-secondary text-label mt-0 mb-4">
+          {t("settings.trainingMetrics.description", "Current reference values used by workout classification. Leave any field empty if it is not known yet.")}
+        </p>
+        {saved && (() => {
+          const missing = [
+            saved.current_easy_pace_sec_per_km == null ? t("settings.trainingMetrics.easyPace", "Current easy pace") : null,
+            saved.current_race_pace_sec_per_km == null ? t("settings.trainingMetrics.racePace", "Current race pace") : null,
+            saved.current_long_run_target_m == null ? t("settings.trainingMetrics.longRunTarget", "Current long-run target") : null,
+          ].filter((value): value is string => value !== null);
+          return missing.length > 0 ? (
+            <div className="hra-warning-banner">
+              {t("settings.trainingMetrics.incomplete", `Classification profile incomplete: ${missing.join(", ")}. Workout classification may be less precise.`, { missing: missing.join(", ") })}
+            </div>
+          ) : null;
+        })()}
+        <AthleteMetricField
+          label={t("settings.trainingMetrics.easyPace", "Current easy pace")}
+          value={metricForm.easyPace}
+          onChange={easyPace => setMetricForm(form => ({ ...form, easyPace }))}
+          unit={resolvedUnits === "imperial" ? "min/mi" : "min/km"}
+          placeholder="5:30"
+          invalid={metricForm.easyPace !== "" && parseAthleteMetrics({ ...metricForm, racePace: "", longRunTarget: "" }, resolvedUnits) === undefined}
+        />
+        <AthleteMetricField
+          label={t("settings.trainingMetrics.racePace", "Current race pace")}
+          value={metricForm.racePace}
+          onChange={racePace => setMetricForm(form => ({ ...form, racePace }))}
+          unit={resolvedUnits === "imperial" ? "min/mi" : "min/km"}
+          placeholder="4:30"
+          invalid={metricForm.racePace !== "" && parseAthleteMetrics({ ...metricForm, easyPace: "", longRunTarget: "" }, resolvedUnits) === undefined}
+        />
+        <AthleteMetricField
+          label={t("settings.trainingMetrics.longRunTarget", "Current long-run target")}
+          value={metricForm.longRunTarget}
+          onChange={longRunTarget => setMetricForm(form => ({ ...form, longRunTarget }))}
+          unit={resolvedUnits === "imperial" ? "mi" : "km"}
+          placeholder={resolvedUnits === "imperial" ? "12.43" : "20"}
+          invalid={metricForm.longRunTarget !== "" && parseAthleteMetrics({ ...metricForm, easyPace: "", racePace: "" }, resolvedUnits) === undefined}
+        />
+        {metricsInvalid && <p className="hra-text-danger text-meta">{t("settings.trainingMetrics.invalid", "Use positive values; enter pace as minutes:seconds (for example 5:30).")}</p>}
+        <SaveBar cardKey="athleteMetrics" dirty={metricsDirty} onSave={saveAthleteMetrics} invalid={metricsInvalid} />
       </AccordionCard>
 
       <AccordionCard title={t("settings.activityDetails.title", "Activity details")} expanded={expanded === "activityDetails"} onToggle={() => toggle("activityDetails")}>

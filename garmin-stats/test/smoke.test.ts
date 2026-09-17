@@ -11,11 +11,14 @@ test("fresh PostgreSQL schema has the runtime tables and founder settings", asyn
     for (const table of ["activities", "track_points", "body_measurements", "user_settings"]) {
       assert.ok(tables.includes(table), `expected table ${table} to exist`);
     }
-    const settings = await db.get<{ theme: string; unit_system: string; min_trend_group_size: number }>("SELECT theme, unit_system, min_trend_group_size FROM user_settings");
+    const settings = await db.get<{ theme: string; unit_system: string; min_trend_group_size: number; current_easy_pace_sec_per_km: number | null; current_race_pace_sec_per_km: number | null; current_long_run_target_m: number | null }>("SELECT theme, unit_system, min_trend_group_size, current_easy_pace_sec_per_km, current_race_pace_sec_per_km, current_long_run_target_m FROM user_settings");
     assert.ok(settings, "founder settings should exist");
     assert.equal(settings.theme, "auto");
     assert.equal(settings.unit_system, "auto");
     assert.equal(settings.min_trend_group_size, 5);
+    assert.equal(settings.current_easy_pace_sec_per_km, null);
+    assert.equal(settings.current_race_pace_sec_per_km, null);
+    assert.equal(settings.current_long_run_target_m, null);
   } finally {
     await cleanup();
   }

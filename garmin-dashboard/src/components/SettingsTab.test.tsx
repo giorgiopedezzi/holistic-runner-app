@@ -114,6 +114,45 @@ describe("SettingsTab save flows", () => {
     expect(appearance.setUnits).toHaveBeenCalledWith("imperial");
   });
 
+  it("lists missing athlete metrics and persists a complete canonical profile", async () => {
+    const fetchMock = installFetch({
+      "GET /api/v1/settings": settings(),
+      "PUT /api/v1/settings/athlete-metrics": ({ body }: StubRequest) => json(settings(body as Partial<ReturnType<typeof settings>>)),
+    });
+    render(<SettingsTab appearance={fakeAppearance()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Training metrics/ }));
+    expect(await screen.findByText(/Classification profile incomplete/)).toHaveTextContent("Current easy pace, Current race pace, Current long-run target");
+
+    const inputs = screen.getAllByRole("textbox");
+    fireEvent.change(inputs[0], { target: { value: "5:30" } });
+    fireEvent.change(inputs[1], { target: { value: "4:30" } });
+    fireEvent.change(inputs[2], { target: { value: "20" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/api/v1/settings/athlete-metrics"),
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({
+          current_easy_pace_sec_per_km: 330,
+          current_race_pace_sec_per_km: 270,
+          current_long_run_target_m: 20000,
+        }),
+      }),
+    ));
+  });
+
+  it("does not allow invalid athlete metrics to be saved", async () => {
+    const fetchMock = installFetch({ "GET /api/v1/settings": settings() });
+    render(<SettingsTab appearance={fakeAppearance()} />);
+    fireEvent.click(await screen.findByRole("button", { name: /Training metrics/ }));
+    fireEvent.change(screen.getAllByRole("textbox")[0], { target: { value: "0:00" } });
+    expect(screen.getByText(/Use positive values/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/v1/settings/athlete-metrics"), expect.anything());
+  });
+
   describe("expanded section URL persistence (HRA-194)", () => {
     it("writes the expanded section into the URL on click, and clears it on collapse", async () => {
       installFetch({ "GET /api/v1/settings": settings() });

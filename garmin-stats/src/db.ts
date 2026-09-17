@@ -1258,6 +1258,9 @@ export interface SettingsRow {
   date_format: string;
   language: string;
   palette: string;
+  current_easy_pace_sec_per_km: number | null;
+  current_race_pace_sec_per_km: number | null;
+  current_long_run_target_m: number | null;
 }
 
 // ── Typed param builders ──────────────────────────────────────────────────

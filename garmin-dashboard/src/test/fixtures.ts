@@ -27,6 +27,9 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   date_format: "literal_uk",
   language: "auto",
   palette: "metal",
+  current_easy_pace_sec_per_km: null,
+  current_race_pace_sec_per_km: null,
+  current_long_run_target_m: null,
   demo_mode: false,
   ...overrides,
 });

@@ -337,6 +337,8 @@ export const api = {
     setBackground: (kind: BackgroundKind, value?: string) =>
       request<Settings>("/api/v1/settings/background", "PUT", undefined, { background_kind: kind, background_value: value }),
     setUnits: (unitSystem: StoredUnitSystem) => request<Settings>("/api/v1/settings/units", "PUT", undefined, { unit_system: unitSystem }),
+    updateAthleteMetrics: (metrics: Pick<Settings, "current_easy_pace_sec_per_km" | "current_race_pace_sec_per_km" | "current_long_run_target_m">) =>
+      request<Settings>("/api/v1/settings/athlete-metrics", "PUT", undefined, metrics),
     setDetailView: (view: ActivityDetailView) => request<Settings>("/api/v1/settings/detail-view", "PUT", undefined, { activity_detail_view: view }),
     setAccentColor: (accent: AccentColor) => request<Settings>("/api/v1/settings/accent", "PUT", undefined, { accent_color: accent }),
     setDateFormat: (format: DateFormat) => request<Settings>("/api/v1/settings/date-format", "PUT", undefined, { date_format: format }),

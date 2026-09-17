@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, afterEach } from "vitest";
 import {
-  kmToMi, mToFt, kgToLb, paceKmToMi, kmhToMph,
+  kmToMi, miToKm, mToFt, kgToLb, paceKmToMi, paceMiToKm, kmhToMph,
   setUnitSystem, getUnitSystem, detectUnitSystemFromLocale,
   distanceUnitLabel, paceUnitLabel, speedUnitLabel, weightUnitLabel, elevationUnitLabel,
 } from "./units";
@@ -12,6 +12,7 @@ import {
 describe("unit conversions (exact constants)", () => {
   it("converts distance/elevation/weight against known factors", () => {
     expect(kmToMi(1.609344)).toBeCloseTo(1, 10);
+    expect(miToKm(1)).toBeCloseTo(1.609344, 10);
     expect(mToFt(0.3048)).toBeCloseTo(1, 10);
     expect(kgToLb(0.45359237)).toBeCloseTo(1, 10);
   });
@@ -19,6 +20,7 @@ describe("unit conversions (exact constants)", () => {
   it("converts pace and speed", () => {
     // min/km → min/mi scales UP by km-per-mile (a mile takes longer).
     expect(paceKmToMi(5)).toBeCloseTo(5 * 1.609344, 10);
+    expect(paceMiToKm(5 * 1.609344)).toBeCloseTo(5, 10);
     expect(kmhToMph(1.609344)).toBeCloseTo(1, 10);
   });
 

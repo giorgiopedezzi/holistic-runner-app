@@ -127,6 +127,23 @@ export function createSettingsController(ctx: AppContext) {
     return await sendSettings(req, res);
   };
 
+  const updateAthleteMetrics: Handler = async (req, res) => {
+    const body = await readJsonBody<Partial<SettingsRow>>(req);
+    const values = [body.current_easy_pace_sec_per_km, body.current_race_pace_sec_per_km, body.current_long_run_target_m];
+    if (values.some(value => value === undefined)) {
+      throw unprocessable("All athlete metric fields are required; use null to clear a value.");
+    }
+    if (values.some(value => value !== null && (typeof value !== "number" || !Number.isInteger(value) || value <= 0))) {
+      throw unprocessable("Athlete pace and distance metrics must be positive integers or null.");
+    }
+    await repo(req).updateAthleteMetrics({
+      $current_easy_pace_sec_per_km: body.current_easy_pace_sec_per_km,
+      $current_race_pace_sec_per_km: body.current_race_pace_sec_per_km,
+      $current_long_run_target_m: body.current_long_run_target_m,
+    });
+    return await sendSettings(req, res);
+  };
+
   // PUT /api/v1/settings/timezone — HRA-332: the owner-configured schedule
   // timezone, its own sub-resource (rest-api-standards §1/§2 — a full
   // single-value replacement is PUT, same as theme/units above). This is the
@@ -220,5 +237,5 @@ export function createSettingsController(ctx: AppContext) {
     return await sendSettings(req, res);
   };
 
-  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateTimezone, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };
+  return { get, updateOutliers, updateThresholds, updateTheme, updateBackground, updateUnits, updateAthleteMetrics, updateTimezone, updateDetailView, updateAccent, updateDateFormat, updateLanguage, updatePalette, backgroundImage, uploadBackground };
 }

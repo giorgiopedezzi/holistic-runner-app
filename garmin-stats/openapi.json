@@ -244,6 +244,9 @@
           "date_format": { "type": "string", "enum": ["numeric_uk", "numeric_us", "literal_uk", "literal_us"] },
           "language": { "type": "string", "enum": ["auto", "en", "it"] },
           "palette": { "type": "string", "enum": ["metal", "warm", "graphite", "auto"], "description": "Dashboard palette flavor. 'metal'/'warm' cross with theme (dark/light) for 4 total looks; 'graphite' is a third, standalone, dark-only palette (no light counterpart). 'auto' is the DEFAULT sentinel for 'never explicitly chosen' (same relationship 'auto' has with theme) — the client resolves it to 'graphite' when the resolved theme is dark, 'warm' when light; never accepted by PUT /palette. Replaces the earlier style_pack (HRA-119)." },
+          "current_easy_pace_sec_per_km": { "type": ["integer", "null"], "minimum": 1, "description": "Current easy pace in canonical integer seconds per kilometre." },
+          "current_race_pace_sec_per_km": { "type": ["integer", "null"], "minimum": 1, "description": "Current reference race pace in canonical integer seconds per kilometre." },
+          "current_long_run_target_m": { "type": ["integer", "null"], "minimum": 1, "description": "Current long-run target in canonical integer metres." },
           "demo_mode": { "type": "boolean", "description": "Computed from the DEMO_MODE env var (HRA-220), not a stored column — read-only, never accepted by any settings write. true means the write endpoints listed in that Story's Forbidden response are rejected server-side; the frontend uses this to disable the matching controls." }
         }
       },
@@ -1019,6 +1022,15 @@
     "/api/v1/settings/units": {
       "security": [{ "runsFreeSession": [] }],
       "put": { "tags": ["settings"], "summary": "Set unit system (replace singleton)", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["unit_system"], "properties": { "unit_system": { "type": "string", "enum": ["metric", "imperial", "auto"] } } } } } }, "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } } }
+    },
+    "/api/v1/settings/athlete-metrics": {
+      "security": [{ "runsFreeSession": [] }],
+      "put": {
+        "tags": ["settings"], "summary": "Replace the athlete classification metrics",
+        "description": "All three current athlete metrics are sent together. Each value is either a positive canonical integer or null to leave that metric unset.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["current_easy_pace_sec_per_km", "current_race_pace_sec_per_km", "current_long_run_target_m"], "properties": { "current_easy_pace_sec_per_km": { "type": ["integer", "null"], "minimum": 1 }, "current_race_pace_sec_per_km": { "type": ["integer", "null"], "minimum": 1 }, "current_long_run_target_m": { "type": ["integer", "null"], "minimum": 1 } } } } } },
+        "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
     },
     "/api/v1/settings/timezone": {
       "security": [{ "runsFreeSession": [] }],

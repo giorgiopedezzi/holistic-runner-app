@@ -1,6 +1,6 @@
 import type { Queryable } from "../db/query.ts";
 type Values = readonly unknown[];
-const FIELDS = "outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, timezone, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette";
+const FIELDS = "outlier_speed_delta_per_sec, outlier_cadence_delta_per_sec, outlier_min_speed_kmh, theme, background_kind, background_value, unit_system, timezone, min_trend_group_size, activity_detail_view, accent_color, date_format, language, palette, current_easy_pace_sec_per_km, current_race_pace_sec_per_km, current_long_run_target_m";
 export function createSettingsRepo(db: Queryable) {
   const update = (columnSql: string, values: Values) => db.run(`UPDATE user_settings SET ${columnSql}, updated_at = now() WHERE user_id = (SELECT id FROM users ORDER BY created_at LIMIT 1)`, values);
   return {
@@ -10,6 +10,7 @@ export function createSettingsRepo(db: Queryable) {
     updateTheme: (p: Record<string, unknown>) => update("theme=$1", [p.$theme]),
     updateBackground: (p: Record<string, unknown>) => update("background_kind=$1, background_value=$2", [p.$background_kind, p.$background_value]),
     updateUnits: (p: Record<string, unknown>) => update("unit_system=$1", [p.$unit_system]),
+    updateAthleteMetrics: (p: Record<string, unknown>) => update("current_easy_pace_sec_per_km=$1, current_race_pace_sec_per_km=$2, current_long_run_target_m=$3", [p.$current_easy_pace_sec_per_km, p.$current_race_pace_sec_per_km, p.$current_long_run_target_m]),
     updateTimezone: (p: Record<string, unknown>) => update("timezone=$1", [p.$timezone]),
     updateDetailView: (p: Record<string, unknown>) => update("activity_detail_view=$1", [p.$activity_detail_view]),
     updateAccent: (p: Record<string, unknown>) => update("accent_color=$1", [p.$accent_color]),

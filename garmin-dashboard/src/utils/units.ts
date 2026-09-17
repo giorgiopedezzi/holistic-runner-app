@@ -54,11 +54,13 @@ const M_PER_FT = 0.3048;
 const KG_PER_LB = 0.45359237;
 
 export const kmToMi = (km: number): number => km / KM_PER_MI;
+export const miToKm = (mi: number): number => mi * KM_PER_MI;
 export const mToFt = (m: number): number => m / M_PER_FT;
 export const kgToLb = (kg: number): number => kg / KG_PER_LB;
 // Minutes-per-km → minutes-per-mile: a pace in min/km takes KM_PER_MI times
 // as long to cover a mile, so scale up by the same factor.
 export const paceKmToMi = (minPerKm: number): number => minPerKm * KM_PER_MI;
+export const paceMiToKm = (minPerMi: number): number => minPerMi / KM_PER_MI;
 export const kmhToMph = (kmh: number): number => kmh / KM_PER_MI;
 
 export function distanceUnitLabel(): string {

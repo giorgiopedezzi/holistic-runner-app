@@ -207,6 +207,46 @@ test("PUT /api/v1/settings/outliers persists the three outlier values, leaves th
   });
 });
 
+test("PUT /api/v1/settings/athlete-metrics persists, reloads, clears, and validates nullable canonical metrics", async () => {
+  await withServer(async (s) => {
+    const complete = { current_easy_pace_sec_per_km: 330, current_race_pace_sec_per_km: 270, current_long_run_target_m: 20000 };
+    const saved = await s.api("/api/v1/settings/athlete-metrics", putJson(complete));
+    assert.equal(saved.status, 200);
+    assert.deepEqual(saved.json && {
+      current_easy_pace_sec_per_km: (saved.json as typeof complete).current_easy_pace_sec_per_km,
+      current_race_pace_sec_per_km: (saved.json as typeof complete).current_race_pace_sec_per_km,
+      current_long_run_target_m: (saved.json as typeof complete).current_long_run_target_m,
+    }, complete);
+    const reloaded = await s.api("/api/v1/settings");
+    assert.equal((reloaded.json as typeof complete).current_long_run_target_m, 20000);
+
+    const partial = { ...complete, current_race_pace_sec_per_km: null };
+    const cleared = await s.api("/api/v1/settings/athlete-metrics", putJson(partial));
+    assert.equal(cleared.status, 200);
+    assert.equal((cleared.json as typeof partial).current_race_pace_sec_per_km, null);
+
+    for (const invalid of [
+      { ...complete, current_easy_pace_sec_per_km: 0 },
+      { ...complete, current_race_pace_sec_per_km: -1 },
+      { ...complete, current_long_run_target_m: 0 },
+      { current_easy_pace_sec_per_km: 330, current_race_pace_sec_per_km: 270 },
+    ]) {
+      assert.equal((await s.api("/api/v1/settings/athlete-metrics", putJson(invalid))).status, 422);
+    }
+  });
+});
+
+test("guest requests cannot read or persist private Settings athlete metrics", async () => {
+  await withServer(async (s) => {
+    assert.equal((await fetch(`${s.baseUrl}/api/v1/settings`, { headers: { origin: "http://test.invalid" } })).status, 401);
+    assert.equal((await fetch(`${s.baseUrl}/api/v1/settings/athlete-metrics`, {
+      method: "PUT",
+      headers: { origin: "http://test.invalid", "content-type": "application/json" },
+      body: JSON.stringify({ current_easy_pace_sec_per_km: 330, current_race_pace_sec_per_km: 270, current_long_run_target_m: 20000 }),
+    })).status, 401);
+  });
+});
+
 test("PUT /api/v1/settings/thresholds persists the trend-grouping value, leaves the outliers untouched, rejects bad ones", async () => {
   await withServer(async (s) => {
     const ok = await s.api("/api/v1/settings/thresholds", putJson({ min_trend_group_size: 4 }));

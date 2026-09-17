@@ -763,6 +763,9 @@ export interface Settings {
   date_format: DateFormat;
   language: StoredLanguage;
   palette: StoredPalette;
+  current_easy_pace_sec_per_km: number | null;
+  current_race_pace_sec_per_km: number | null;
+  current_long_run_target_m: number | null;
   // Computed from the backend's DEMO_MODE env var (HRA-220), not a stored
   // preference — read-only, never PUT anywhere. The one signal the frontend
   // uses to disable the write controls the backend also rejects.

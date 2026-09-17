@@ -269,6 +269,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/theme")           return await settings.updateTheme(req, res, url);
         if (route === "/api/v1/settings/background")      return await settings.updateBackground(req, res, url);
         if (route === "/api/v1/settings/units")           return await settings.updateUnits(req, res, url);
+        if (route === "/api/v1/settings/athlete-metrics") return await settings.updateAthleteMetrics(req, res, url);
         if (route === "/api/v1/settings/timezone")        return await settings.updateTimezone(req, res, url);
         if (route === "/api/v1/settings/detail-view")     return await settings.updateDetailView(req, res, url);
         if (route === "/api/v1/settings/accent")          return await settings.updateAccent(req, res, url);
