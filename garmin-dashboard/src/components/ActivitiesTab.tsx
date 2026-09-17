@@ -140,7 +140,7 @@ export function ActivitiesTab({ from, to }: Props) {
 
   return (
     <div>
-      <GuestContextHint titleKey="guest.guide.activities.title" title="Replay a real run" bodyKey="guest.guide.activities.body" body="Open an activity and replay the run. Explore pace, HR, cadence, stamina and pauses together, then use your own activities after sign-in." ctaKey="guest.guide.activities.cta" cta="Use this with my activities" />
+      <GuestContextHint titleKey="guest.guide.activities.title" title="Replay a real run" bodyKey="guest.guide.activities.body" body="Open an activity and replay the run. Explore pace, HR, cadence, stamina and pauses together, then use your own activities after sign-in." />
       {pagination}
 
       <div className="flex justify-end">

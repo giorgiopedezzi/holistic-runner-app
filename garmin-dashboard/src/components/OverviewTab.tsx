@@ -1812,7 +1812,7 @@ export function OverviewTab({ range, compareRange, savedRanges }: Props) {
       <div className="hra-sticky-summary">
         {renderDateRangeBar(totals.acts)}
       </div>
-      <GuestContextHint titleKey="guest.guide.overview.title" title="Compare meaningful training blocks" bodyKey="guest.guide.overview.body" body="Try founder saved ranges and races to compare real training periods. With your own activities, these charts become your training history." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
+      <GuestContextHint titleKey="guest.guide.overview.title" title="Compare meaningful training blocks" bodyKey="guest.guide.overview.body" body="Try founder saved ranges and races to compare real training periods. With your own activities, these charts become your training history." />
       {linkedRaceRow && <Card className="mb-5">{linkedRaceRow}</Card>}
 
       {/* HRA-307: one page-level mobile KPI summary, above the graph —

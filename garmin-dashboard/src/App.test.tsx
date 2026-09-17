@@ -485,7 +485,8 @@ describe("Guest mode: the shared AppShell for an anonymous founder-read visitor 
     render(<App />);
     fireEvent.click(await screen.findByRole("button", { name: "Activities" }));
     expect(await screen.findByText("Replay a real run")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use this with my activities" })).toBeInTheDocument();
+    const hint = screen.getByRole("complementary", { name: "Replay a real run" });
+    expect(within(hint).getByRole("button", { name: "Sign in" })).toBeInTheDocument();
   });
 
   it("renders the SAME AppShell (not a separate Guest shell), with a capability-filtered nav and Sign in instead of Sign out", async () => {
@@ -512,7 +513,8 @@ describe("Guest mode: the shared AppShell for an anonymous founder-read visitor 
     const login = vi.spyOn(api.auth, "login").mockImplementation(() => undefined);
     render(<App />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Sign in" }));
+    const nav = await screen.findByRole("navigation");
+    fireEvent.click(within(nav).getByRole("button", { name: "Sign in" }));
     expect(login).toHaveBeenCalledOnce();
     expect(login).toHaveBeenCalledWith();
   });

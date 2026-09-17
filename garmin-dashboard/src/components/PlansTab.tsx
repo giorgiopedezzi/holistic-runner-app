@@ -64,7 +64,7 @@ export function PlansTab({ onNavigateToActivity, onNavigateToAgenda }: Props) {
   if (isPhone) {
     return (
       <>
-        <GuestContextHint titleKey="guest.guide.plans.title" title="Experiment safely" bodyKey="guest.guide.plans.body" body="Guest edits are temporary: explore the canonical prompt, RunPlan DSL, workouts and schedule freely. Direct AI generation requires sign-in because it has a real processing cost." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
+        <GuestContextHint titleKey="guest.guide.plans.title" title="Experiment safely" bodyKey="guest.guide.plans.body" body="Guest edits are temporary: explore the canonical prompt, RunPlan DSL, workouts and schedule freely. Direct AI generation requires sign-in because it has a real processing cost." />
         <div className="flex items-center justify-between mb-2">
           <div className="hra-block-title">{t("manage.plans.mobileTitle", "Training plans")}</div>
           <HelpDisclosure
@@ -92,7 +92,7 @@ export function PlansTab({ onNavigateToActivity, onNavigateToAgenda }: Props) {
 
   return (
     <>
-      <GuestContextHint titleKey="guest.guide.plans.title" title="Experiment safely" bodyKey="guest.guide.plans.body" body="Guest edits are temporary: explore the canonical prompt, RunPlan DSL, workouts and schedule freely. Direct AI generation requires sign-in because it has a real processing cost." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
+      <GuestContextHint titleKey="guest.guide.plans.title" title="Experiment safely" bodyKey="guest.guide.plans.body" body="Guest edits are temporary: explore the canonical prompt, RunPlan DSL, workouts and schedule freely. Direct AI generation requires sign-in because it has a real processing cost." />
       <PlanTemplatesSection templates={templates} templatesError={templatesError} refreshTemplates={refreshTemplates} />
       <PlanInstancesSection templates={templates} onNavigateToActivity={onNavigateToActivity} onNavigateToAgenda={onNavigateToAgenda} />
     </>

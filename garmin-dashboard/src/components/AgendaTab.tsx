@@ -199,7 +199,7 @@ export function AgendaTab({ onNavigateToPlans, onNavigateToActivity }: Props) {
           {t("agenda.emptyLine2", "Run free. Or rest. Be happy.")}
         </p>
       )}
-      <GuestContextHint titleKey="guest.guide.agenda.title" title="The real training calendar" bodyKey="guest.guide.agenda.body" body="This calendar connects the plan, changes made along the way, and what was actually completed. With your own data, it follows your plan and activities." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
+      <GuestContextHint titleKey="guest.guide.agenda.title" title="The real training calendar" bodyKey="guest.guide.agenda.body" body="This calendar connects the plan, changes made along the way, and what was actually completed. With your own data, it follows your plan and activities." />
       <CategoryLegend />
       <PlanInstanceCalendar
         sections={sections}

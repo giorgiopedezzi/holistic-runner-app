@@ -2652,11 +2652,13 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   border-bottom: 1px solid var(--border);
 }
 .hra-guest-intro-text { flex: 1; min-width: 0; }
-.hra-guest-intro-cta, .hra-guest-context-cta {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex-shrink: 0;
-  border: 1px solid var(--accent); border-radius: var(--radius-sm); padding: 6px 9px;
+.hra-sign-in-link {
+  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+  border: none; padding: 0; border-radius: 0;
   color: var(--accent); background: transparent; cursor: pointer; font: inherit;
+  text-decoration: underline; text-underline-offset: 2px;
 }
+.hra-sign-in-link:hover { text-decoration-thickness: 2px; }
 .hra-guest-identity { padding: 0 12px; color: var(--text-muted); font-size: var(--text-meta); }
 .hra-sidebar[data-collapsed="true"] .hra-guest-identity { width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; padding: 0; }
 .hra-guest-context-hint { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--bg-surface); }

@@ -29,6 +29,7 @@ import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
 import { AuthGate, useAuthenticationMethod } from "@/components/AuthGate";
+import { SignInLink } from "@/components/SignInLink";
 import { useAppMode } from "@/hooks/useAppMode";
 import { notify } from "@/utils/toast";
 
@@ -177,7 +178,7 @@ function GuestIntro({ onDismiss }: { onDismiss: () => void }) {
   const { t } = useTranslation();
   return <div className="hra-guest-intro text-label">
     <span className="hra-guest-intro-text">{t("guest.guide.intro", "You're exploring Runs Free with Giorgio's real published training data. Everything here is interactive, but your changes can't modify his data. Sign in to use Runs Free with your own activities and plans.")}</span>
-    <button type="button" className="hra-guest-intro-cta" onClick={() => api.auth.login()}>{t("guest.guide.useOwnData", "Use my own data")}</button>
+    <SignInLink className="hra-guest-intro-cta" />
     <button type="button" className="hra-feedback-banner-dismiss hra-nav-hover" onClick={onDismiss} aria-label={t("guest.guide.dismiss", "Close guest introduction")} title={t("guest.guide.dismiss", "Close guest introduction")}><X size={14} aria-hidden="true" /></button>
   </div>;
 }

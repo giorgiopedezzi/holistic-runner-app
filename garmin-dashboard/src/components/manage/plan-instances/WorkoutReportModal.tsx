@@ -305,7 +305,7 @@ function ReportBody({
 
   return (
     <div className="flex flex-col gap-4">
-      <GuestContextHint titleKey="guest.guide.report.title" title="The evidence behind a plan" bodyKey="guest.guide.report.body" body="Runs Free connects Original, Current and Actual: what the plan started as, how it changed, and what really happened. With your own data, your completed activities become the evidence." ctaKey="guest.guide.useOwnData" cta="Use my own data" />
+      <GuestContextHint titleKey="guest.guide.report.title" title="The evidence behind a plan" bodyKey="guest.guide.report.body" body="Runs Free connects Original, Current and Actual: what the plan started as, how it changed, and what really happened. With your own data, your completed activities become the evidence." />
       <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2 flex-wrap">
           {displayDate && <span className="hra-text-primary text-label font-semibold">{instanceDayDateLabel(displayDate)}</span>}
