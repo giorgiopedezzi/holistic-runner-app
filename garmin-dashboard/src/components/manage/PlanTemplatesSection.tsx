@@ -48,6 +48,7 @@ import type { PlanTemplate } from "@/types/api";
 import type { EventType, OffsetUnit, ParseWarning, RunPlan } from "@/types/runplan";
 import { useDemoMode } from "@/hooks/useDemoMode";
 import { useAppMode } from "@/hooks/useAppMode";
+import { SignInLink } from "@/components/SignInLink";
 
 interface EditorState { dslSource: string; sections: SectionView[]; offsetUnit: OffsetUnit }
 
@@ -272,6 +273,17 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
     ? t("guest.persistence.signInHint", "Sign in to save this to your account.")
     : t("common.demoModeHint", "Not available for demo");
   const isPhone = useIsPhone();
+
+  // HRA-383: the app-wide ambient/marathon background (useAppearance.ts's
+  // applyBackground, index.css's body::before) competes with this surface's
+  // own DSL text — opt out for as long as this section is mounted, desktop
+  // or mobile, restoring the app-wide background on unmount (e.g. leaving
+  // the Plans tab). body::before lives outside this component's own DOM
+  // subtree, so a data attribute on the root is the only way to reach it.
+  useEffect(() => {
+    document.documentElement.setAttribute("data-hide-ambient-background", "");
+    return () => { document.documentElement.removeAttribute("data-hide-ambient-background"); };
+  }, []);
 
   // HRA-296: which row's compact mobile card is expanded — entirely separate
   // from `activeKey`/the desktop editor below. Templates are strictly
@@ -1542,6 +1554,18 @@ export function PlanTemplatesSection({ templates, templatesError, refreshTemplat
           <button className="hra-btn" onClick={onRestoreClick} disabled={!isEditorDirty()}>
             {t("manage.planTemplates.clearPendingChangesButton", "Clear pending changes")}
           </button>
+          {/* HRA-383 AC3: a disabled button + hover tooltip alone is easy to
+              miss (no hover on touch at all) — Guest specifically (not the
+              separate demoMode case, which has no sign-in fix) gets a
+              visible contextual Sign in link right next to the blocked
+              actions, so persistence being unavailable is never a silent
+              dead end. */}
+          {!canPersist && !demoMode && (
+            <span className="hra-text-secondary text-meta inline-flex items-center gap-1.5">
+              {t("guest.persistence.signInPromptTemplate", "Sign in to save this template.")}
+              <SignInLink />
+            </span>
+          )}
         </div>
 
         {patchError && <ErrorBanner message={patchError} />}

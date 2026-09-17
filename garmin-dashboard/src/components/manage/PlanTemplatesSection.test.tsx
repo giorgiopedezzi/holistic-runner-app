@@ -990,3 +990,95 @@ describe("PlanTemplatesSection — Guest (cannot persist / cannot use billable A
     expect(screen.getByLabelText("Workout plan text")).toHaveValue("D1: 5km @ RG");
   });
 });
+
+// HRA-383: Guest gets the same real editing/reordering interactions as
+// authenticated mode (transient only — see useAppMode.ts's canEditTransiently),
+// and a contextual Sign in link (not just a hover-only tooltip) wherever
+// persistence is the blocked capability.
+describe("PlanTemplatesSection — Guest reorder & persistence boundary (HRA-383)", () => {
+  const WEEK1_DSL = ["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 5km @ RG", "D3: 4x1000m @ RG-20"].join("\n");
+  function mockGenerate() {
+    return json({
+      plan: {
+        metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} },
+        sections: [{
+          name: "Base", week_spec: "1", raw_dsl: "SECTION \"Base\" WEEKS 1", pace_policy: {},
+          weeks: [{
+            number: 1, raw_dsl: "WEEK 1", pace_policy: {},
+            days: [
+              { day: 1, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D1: 5km @ RG", segments: [{ type: "continuous", target: { kind: "distance", distance_m: 5000, raw: "5km" }, intensity: { kind: "anchor", anchor: "RG", raw: "RG" }, raw: "5km @ RG" }] },
+              { day: 3, workout_type: "run", needs_review: false, warnings: [], raw_dsl: "D3: 4x1000m @ RG-20", segments: [{ type: "interval", reps: 4, work_target: { kind: "distance", distance_m: 1000, raw: "1000m" }, work_intensity: { kind: "offset", anchor: "RG", offset_sec_per_km: -20, raw: "RG-20" }, raw: "4x1000m @ RG-20" }] },
+            ],
+          }],
+        }],
+      },
+      warnings: [],
+    });
+  }
+  function dayTitle(text: string): HTMLElement {
+    return screen.getAllByText(text).find(el => el.tagName === "SPAN")!;
+  }
+  function fakeDataTransfer() {
+    const store: Record<string, string> = {};
+    return { setData: (t: string, v: string) => { store[t] = v; }, getData: (t: string) => store[t] ?? "", effectAllowed: "", dropEffect: "" };
+  }
+  // Only a write (create/update/approve/delete) counts — generate/prompt-preview
+  // previews are expected and harmless even for Guest.
+  function isWriteCall(input: string | URL | Request): boolean {
+    const url = typeof input === "string" ? input : input.toString();
+    return /\/api\/v1\/plan-templates(\/\d+)?(\/approve)?$/.test(new URL(url, "http://localhost").pathname);
+  }
+
+  it("Guest can drag-reorder days transiently in the Agenda view, and Save/Approve never call the write API", async () => {
+    const fetchMock = installFetch({ "POST /api/v1/plan-templates/generate": mockGenerate() });
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanTemplatesSection {...mountProps()} />
+      </AppModeContext.Provider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New template" }));
+    fireEvent.click(pipelineHeader(/Workout DSL/));
+    const dslField = await screen.findByLabelText("Workout plan text");
+    fireEvent.change(dslField, { target: { value: WEEK1_DSL } });
+    await waitFor(() => expect(pipelineHeader(/Workout DSL/)).toHaveTextContent("Valid"), { timeout: 2000 });
+    fireEvent.click(screen.getByRole("button", { name: "Agenda" }));
+
+    const day1 = dayTitle("5km @ RG").closest('[data-swappable="true"]') as HTMLElement;
+    const day3 = dayTitle("4x1000m @ RG-20").closest('[data-swappable="true"]') as HTMLElement;
+    const dataTransfer = fakeDataTransfer();
+    fireEvent.dragStart(day1, { dataTransfer });
+    fireEvent.drop(day3, { dataTransfer });
+
+    // The swap applied to local state (dslSource/editor.sections) — same as
+    // authenticated mode, since onWeekViewDaySwap never touches the network.
+    // A patch highlights the just-touched line, swapping the plain textarea
+    // for a wrapped variant (renderDslTextarea) — re-query fresh rather than
+    // reusing the earlier captured `dslField`, same workaround this file's
+    // own base Agenda-swap test already uses for the identical reason.
+    await waitFor(() => {
+      const field = document.querySelector(".hra-dsl-editor-textarea, textarea[aria-label='Workout plan text']") as HTMLTextAreaElement | null;
+      expect(field).toHaveValue(["SECTION \"Base\" WEEKS 1", "WEEK 1", "D1: 4x1000m @ RG-20", "D3: 5km @ RG"].join("\n"));
+    });
+
+    // Disabled Save/Approve fire no handler — clicking them is a no-op, so
+    // the create/update/approve/delete endpoints are never even attempted.
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    fireEvent.click(screen.getByRole("button", { name: "Activate" }));
+    expect(fetchMock.mock.calls.some(([input]) => isWriteCall(input))).toBe(false);
+  });
+
+  it("shows a visible Sign in link next to Save/Approve for Guest (not just a hover tooltip)", async () => {
+    installFetch({
+      "POST /api/v1/plan-templates/generate": json({ plan: { metadata: { unit: "km", offset_unit: "s/km", default_rest: "jog", pace_policy: {} }, sections: [] }, warnings: [] }),
+    });
+    render(
+      <AppModeContext.Provider value={GUEST_CAPABILITIES}>
+        <PlanTemplatesSection {...mountProps()} />
+      </AppModeContext.Provider>,
+    );
+    fireEvent.click((await screen.findByText("5K Base")).closest('[role="button"]')!);
+    await screen.findByLabelText("Workout plan text");
+    expect(screen.getByText("Sign in to save this template.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+  });
+});

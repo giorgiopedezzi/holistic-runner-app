@@ -35,7 +35,7 @@
  */
 import { useState, type DragEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { Bed, ChevronLeft, ChevronRight } from "lucide-react";
+import { Bed, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
 import { flattenWeeks, type DayView, type SectionView } from "@/domain/runplan-aggregate";
 import { useDragSwap, type DayRef, type EditedRef } from "@/components/TrainingPlanAccordion";
 import type { OffsetUnit } from "@/types/runplan";
@@ -77,6 +77,12 @@ function TemplateAgendaRow({ dayNumber, day, dayRef, onDaySwap, onMaterialize }:
   }
   return (
     <div className={`hra-template-agenda-row${drag.isDragOver ? " hra-swap-drop-target" : ""}`} data-swappable={drag.swappable} {...drag.handlers} onClick={!day ? () => onMaterialize?.() : undefined} onDrop={!day ? dropOnRest : ("onDrop" in drag.handlers ? drag.handlers.onDrop : undefined)}>
+      {/* HRA-383 AC4: the grip is the row's own drag/reorder affordance —
+          shown only for a real, swappable day (an undeclared REST slot has
+          no dayRef to drag). The slot itself always renders (empty
+          otherwise) so the row's grid columns stay aligned across both
+          kinds of row. */}
+      <span className="hra-template-agenda-grip">{drag.swappable && <GripVertical size={14} className="hra-drag-grip" aria-hidden="true" />}</span>
       <span className="hra-template-agenda-day">{t("runplan.weekView.dayHeader", `Day ${dayNumber}`, { n: dayNumber })}</span>
       <span className="hra-template-agenda-workout">
         {isRest && <Bed size={16} aria-hidden="true" />}
@@ -168,6 +174,9 @@ export function PlanTemplateAgendaView(props: Props) {
           <ChevronRight size={15} />
         </button>
       </div>
+      {/* HRA-383 AC4: one concise hint, not a tutorial — the grip icon on
+          each row (above) is the actual affordance. */}
+      <div className="hra-text-muted text-meta">{t("runplan.agenda.dragHint", "Drag a day to reorder the week.")}</div>
       <div className="hra-template-agenda-list">
         {DAY_NUMBERS.map(dayNumber => {
           const dayIndex = week.days.findIndex(day => day.day === dayNumber);
