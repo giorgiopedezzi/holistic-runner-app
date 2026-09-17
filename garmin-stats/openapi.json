@@ -121,6 +121,9 @@
           "avg_speed_ms": { "type": ["number", "null"] },
           "max_speed_ms": { "type": ["number", "null"] },
           "source": { "type": "string", "enum": ["garmin", "strava"] },
+          "system_classification": { "type": ["string", "null"], "description": "Latest stored Runs Free deterministic result." },
+          "system_explanation": { "type": ["string", "null"] },
+          "manual_classification": { "type": ["string", "null"], "description": "Persistent human override; effective when non-null." },
           "ai_classification": { "type": ["string", "null"] },
           "ai_explanation": { "type": ["string", "null"] },
           "statistical_classification": { "type": ["string", "null"] },
@@ -926,10 +929,23 @@
     },
     "/api/v1/activities/{id}/classify": {
       "post": {
-        "tags": ["activities"], "summary": "Classify a running activity (AI or statistical)",
+        "tags": ["activities"], "summary": "Re-run Runs Free classification using current athlete metrics",
         "parameters": [ { "$ref": "#/components/parameters/id" } ],
-        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "splitMeters": { "type": "number", "default": 1000 }, "method": { "type": "string", "enum": ["ai", "statistical"], "default": "ai" } } } } } },
+        "requestBody": { "content": { "application/json": { "schema": { "type": "object", "properties": { "splitMeters": { "type": "number", "default": 1000 } } } } } },
         "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "400": { "$ref": "#/components/responses/BadRequest" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "500": { "$ref": "#/components/responses/ServerError" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      }
+    },
+    "/api/v1/activities/{id}/classification-override": {
+      "put": {
+        "tags": ["activities"], "summary": "Set the manual classification override",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["classification"], "properties": { "classification": { "type": "string" } } } } } },
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" }, "403": { "$ref": "#/components/responses/Forbidden" } }
+      },
+      "delete": {
+        "tags": ["activities"], "summary": "Clear the manual override and reveal the stored system result",
+        "parameters": [ { "$ref": "#/components/parameters/id" } ],
+        "responses": { "200": { "description": "The updated activity.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Activity" } } } }, "404": { "$ref": "#/components/responses/NotFound" }, "403": { "$ref": "#/components/responses/Forbidden" } }
       }
     },
     "/api/v1/activities/{id}/feedback": {

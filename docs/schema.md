@@ -91,6 +91,8 @@ redaction, idempotency, and fail-closed contract.
 | `source` | TEXT | `'garmin'` or `'strava'`, `NOT NULL DEFAULT 'garmin'`. Added via a migration in `initSchema()` (`PRAGMA table_info` check + `ALTER TABLE ADD COLUMN`, since `CREATE TABLE IF NOT EXISTS` doesn't alter existing tables) — the first schema migration this app has needed. Existing pre-migration rows correctly default to `'garmin'` |
 | `deleted_at` / `purged` | TEXT / INTEGER | Soft delete — see "Soft delete & trash" below |
 | `activity_type_id` | INTEGER | FK to `activity_types(id)`, `NOT NULL DEFAULT 1` (Training). Set via `PUT /api/v1/activities/:id/type`; only a type whose `min_distance_m` is ≤ the activity's own `distance_m` may be assigned. No `REFERENCES` clause on this column specifically — SQLite's `ALTER TABLE ADD COLUMN` rejects a `REFERENCES` column paired with a non-`NULL` `DEFAULT`, so the FK is enforced application-side (the controller looks up the type before writing) rather than schema-side |
+| `system_classification` / `system_explanation` | TEXT | Latest persisted deterministic Runs Free result and explanation. Reclassification updates this pair without touching a manual override. |
+| `manual_classification` | TEXT | Nullable human override. When present this is the effective displayed category; clearing it reveals the stored system result without recomputing. Migration 009 derives it from earlier rejected/final corrections and backfills the system pair from the earlier classification slots. |
 | `activity_name` | TEXT | Nullable free-text label set alongside `activity_type_id` (e.g. a race's name, "Boston Marathon 2026"). Shown on the Activities tab's row when present |
 
 ### `activity_types`

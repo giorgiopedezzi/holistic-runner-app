@@ -256,8 +256,12 @@ export const api = {
     // endpoint: ManageTab's ClassifySection loops this single-activity call
     // sequentially for real per-item progress — see server.ts's note on why
     // there's no bulk classify route.
-    classify:     (id: number, splitMeters?: number, method?: ClassificationMethod) =>
-      request<Activity>(`/api/v1/activities/${id}/classify`, "POST", undefined, { splitMeters, method }),
+    classify:     (id: number, splitMeters?: number) =>
+      request<Activity>(`/api/v1/activities/${id}/classify`, "POST", undefined, { splitMeters }),
+    overrideClassification: (id: number, classification: WorkoutClassification) =>
+      request<Activity>(`/api/v1/activities/${id}/classification-override`, "PUT", undefined, { classification }),
+    restoreSystemClassification: (id: number) =>
+      request<Activity>(`/api/v1/activities/${id}/classification-override`, "DELETE"),
     feedback:     (id: number, body: FeedbackBody) => request<Activity>(`/api/v1/activities/${id}/feedback`, "POST", undefined, body),
     confirmBulk:  (ids: number[], method?: ClassificationMethod) =>
       request<ConfirmResult>("/api/v1/activities/confirm", "POST", undefined, { ids, method }),

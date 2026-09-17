@@ -38,6 +38,9 @@ export interface Activity {
   avg_speed_ms:   number | null;
   max_speed_ms:   number | null;
   source?:        string;
+  system_classification: string | null;
+  system_explanation: string | null;
+  manual_classification: string | null;
   // AI workout classifier + feedback — see CLAUDE.md's "AI workout
   // classifier" notes. Two independent result slots (both null = neither
   // method has run yet) — running one never overwrites the other, so both
@@ -836,15 +839,10 @@ export type UserFeedback = "approved" | "rejected";
 // splits, zero-pace events — no LLM, no network call, instant).
 export type ClassificationMethod = "ai" | "statistical";
 
-// Status drives the yellow/green badge in both ActivityModal and ManageTab's
-// bulk classify list — derived, not stored (see CLAUDE.md).
-export type ClassificationStatus = "unclassified" | "pending" | "confirmed";
-
-export function classificationStatus(a: {
-  ai_classification: string | null; statistical_classification: string | null; user_feedback: UserFeedback | null;
-}): ClassificationStatus {
-  if (!a.ai_classification && !a.statistical_classification) return "unclassified";
-  return a.user_feedback ? "confirmed" : "pending";
+// The manual value is the effective result when present; clearing it reveals
+// the independently stored latest system result without recomputation.
+export function effectiveClassification(a: Pick<Activity, "system_classification" | "manual_classification">): string | null {
+  return a.manual_classification ?? a.system_classification;
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────

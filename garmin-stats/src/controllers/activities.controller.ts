@@ -94,16 +94,33 @@ export function createActivitiesController(ctx: AppContext) {
   const classify: Handler = async (req, res, url) => {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/classify$/)![1]);
     if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
-    const body = await readJsonBody<{ splitMeters?: unknown; method?: unknown }>(req);
+    const body = await readJsonBody<{ splitMeters?: unknown }>(req);
     const splitMeters = body.splitMeters != null ? Number(body.splitMeters) : 1000;
     if (!Number.isFinite(splitMeters) || splitMeters <= 0) {
       throw unprocessable("splitMeters must be a positive number.");
     }
-    const method = body.method ?? "ai";
-    if (method !== "ai" && method !== "statistical") {
-      throw unprocessable("method must be 'ai' or 'statistical'.");
+    await classification.classify(requestIdentity(req).userId, id, splitMeters);
+    return send(res, await owned(req).byId(id));
+  };
+
+  // The manual choice is stored independently from the latest system result,
+  // so later reprocessing cannot replace the effective override and clearing
+  // it never triggers a fresh classification.
+  const setClassificationOverride: Handler = async (req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/classification-override$/)![1]);
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    const body = await readJsonBody<{ classification?: unknown }>(req);
+    if (typeof body.classification !== "string" || !(WORKOUT_CLASSIFICATIONS as readonly string[]).includes(body.classification)) {
+      throw unprocessable(`classification must be one of: ${WORKOUT_CLASSIFICATIONS.join(", ")}`);
     }
-    await classification.classify(requestIdentity(req).userId, id, splitMeters, method);
+    await owned(req).updateManualClassification({ $id: id, $classification: body.classification });
+    return send(res, await owned(req).byId(id));
+  };
+
+  const clearClassificationOverride: Handler = async (req, res, url) => {
+    const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/classification-override$/)![1]);
+    if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
+    await owned(req).clearManualClassification(id);
     return send(res, await owned(req).byId(id));
   };
 
@@ -238,7 +255,8 @@ export function createActivitiesController(ctx: AppContext) {
   };
 
   return {
-    range, list, count, races, trash, getById, track, deleteRange, deleteById, classify, feedback, setType, confirm, restorePurge,
+    range, list, count, races, trash, getById, track, deleteRange, deleteById, classify, feedback,
+    setClassificationOverride, clearClassificationOverride, setType, confirm, restorePurge,
     getAssociation, associationCandidates, setAssociation, clearAssociation,
   };
 }

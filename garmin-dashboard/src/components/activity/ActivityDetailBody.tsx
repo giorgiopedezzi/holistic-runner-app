@@ -13,7 +13,7 @@ import { ActivityActionsMenu } from "./ActivityActionsMenu";
 import { WorkoutAssociationControl } from "./WorkoutAssociationControl";
 import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
-import { SPORT_COLOR, classificationStatus, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
+import { SPORT_COLOR, effectiveClassification, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtDuration, fmtElevation, fmtDate, fmtSource } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
@@ -354,13 +354,14 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 2. one row of badges, 3/4. the chart section's own selector
                 rows, 5. the graph(s). */}
             {activity.sport === "running" && (() => {
-              const status = classificationStatus(activity);
               const classificationLabel = (c: string | null) =>
                 c ? t(WORKOUT_CLASSIFICATION_KEY[c as WorkoutClassification] ?? "unknown", c) : t("activity.classify.notYetClassified", "Not yet classified");
-              const statusLabel = status === "confirmed"
-                ? t("activity.classify.confirmedShort", "Confirmed")
-                : status === "pending" ? t("activity.classify.pendingReview", "Pending review")
-                : t("activity.classify.notYetClassified", "Not yet classified");
+              const effective = effectiveClassification(activity);
+              const provenance = activity.manual_classification
+                ? t("activity.classify.provenanceUser", "Classified by you")
+                : activity.system_classification
+                  ? t("activity.classify.provenanceSystem", "Classified by Runs Free")
+                  : t("activity.classify.notYetClassified", "Not yet classified");
               // HRA-303 corrective round, section 2: the default mobile state
               // is ONE compact disclosure row — type/date-style label, an
               // info hint, the single resolved value on the right, collapsed
@@ -369,9 +370,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
               // exactly the "expanded nested Classification card shown by
               // default" the corrective spec calls out — it's gone from the
               // mobile collapsed row entirely, not just restyled.
-              const collapsedValue = status === "confirmed" && activity.final_classification
-                ? classificationLabel(activity.final_classification)
-                : statusLabel;
+              const collapsedValue = effective ? classificationLabel(effective) : provenance;
               return (
                 <AccordionCard
                   expanded={classificationExpanded}
@@ -381,7 +380,7 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                     <div className="flex items-center justify-between gap-2 flex-1 min-w-0">
                       <span className="hra-row-inline gap-1.5 items-center">
                         {t("activity.classify.title", "Classification")}
-                        <span className="hra-text-muted inline-flex" title={t("activity.classify.infoTooltip", "AI and statistical analysis of this workout's pace/HR pattern")}>
+                        <span className="hra-text-muted inline-flex" title={t("activity.classify.infoTooltip", "Runs Free classification using this workout and your current training metrics")}>
                           <Info size={14} aria-hidden="true" />
                         </span>
                       </span>
@@ -393,15 +392,10 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                       {/* Collapsed summary — sized/weighted as meta text
                           (secondary info), not a competing headline. */}
                       <span className="hra-text-secondary text-meta">
-                        {t("activity.classify.summaryAi", `AI: ${classificationLabel(activity.ai_classification)}`, { classification: classificationLabel(activity.ai_classification) })}
-                        {" · "}
-                        {t("activity.classify.summaryStatistical", `Statistical: ${classificationLabel(activity.statistical_classification)}`, { classification: classificationLabel(activity.statistical_classification) })}
+                        {effective && <>{classificationLabel(effective)}{" · "}</>}
+                        {provenance}
                         {" · "}
                         {t("activity.classify.summarySampling", `Sampling: ${splitMeters === 1000 ? "1km" : "0.5km"}`, { sampling: splitMeters === 1000 ? "1km" : "0.5km" })}
-                        {" · "}
-                        <span className="hra-classification-status hra-dyn-color font-semibold" data-status={status}>
-                          {statusLabel}
-                        </span>
                       </span>
                     </div>
                   )}

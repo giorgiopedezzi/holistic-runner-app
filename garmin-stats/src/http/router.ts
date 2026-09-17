@@ -244,6 +244,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
 
       if (req.method === "DELETE") {
         if (route === "/api/v1/activities")               return await demo(activities.deleteRange)(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/classification-override$/.test(route)) return await demo(activities.clearClassificationOverride)(req, res, url);
         if (/^\/api\/v1\/activities\/\d+$/.test(route))        return await demo(activities.deleteById)(req, res, url);
         if (route === "/api/v1/body-measurements")        return await demo(body.deleteRange)(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await demo(dateRanges.remove)(req, res, url);
@@ -276,6 +277,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/settings/date-format")     return await settings.updateDateFormat(req, res, url);
         if (route === "/api/v1/settings/language")        return await settings.updateLanguage(req, res, url);
         if (route === "/api/v1/settings/palette")         return await settings.updatePalette(req, res, url);
+        if (/^\/api\/v1\/activities\/\d+\/classification-override$/.test(route)) return await demo(activities.setClassificationOverride)(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/type$/.test(route)) return await demo(activities.setType)(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/association$/.test(route)) return await demo(activities.setAssociation)(req, res, url);
         if (/^\/api\/v1\/date-ranges\/\d+$/.test(route))  return await dateRanges.update(req, res, url);

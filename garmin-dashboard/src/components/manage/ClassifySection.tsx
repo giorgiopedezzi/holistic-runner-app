@@ -2,77 +2,59 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, LoadingSpinner, ProgressBar, Checkbox, DatePicker } from "@/components/ui";
-import type { Activity, ClassificationMethod, WorkoutClassification } from "@/types/api";
-import { classificationStatus, WORKOUT_CLASSIFICATION_KEY } from "@/types/api";
+import type { Activity, WorkoutClassification } from "@/types/api";
+import { effectiveClassification, WORKOUT_CLASSIFICATION_KEY } from "@/types/api";
 import { fmtKm, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 import { useDemoMode } from "@/hooks/useDemoMode";
+import { useSettings } from "@/hooks/useSettings";
 
-// ── AI workout classification (bulk) ────────────────────────────────────
-// Same date-range → checkbox-list → bulk-action shape as DeleteSection/
-// TrashSection above, but with two distinct actions (classify/reclassify vs
-// confirm) and live progress, since classifying is genuinely slow. No bulk
-// backend endpoint for classify — this loops POST /api/activities/:id/classify
-// sequentially so the "Classifying N/M…" counter is real, not simulated
-// (see server.ts's note on why there's no bulk classify route). Confirm is
-// fast/DB-only, so it does use the real bulk endpoint.
 export function ClassifySection() {
   const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
   const demoMode = useDemoMode();
+  const { settings } = useSettings();
   const [from, setFrom] = useState(isoAgo(30));
-  const [to,   setTo]   = useState(isoToday());
+  const [to, setTo] = useState(isoToday());
   const [activities, setActivities] = useState<Activity[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [splitMeters, setSplitMeters] = useState(1000);
-  const [method, setMethod] = useState<ClassificationMethod>("ai");
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState<{ current: number; total: number } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // "Mark where you are" — briefly highlights whichever rows a bulk confirm
-  // just touched. Selection itself gets cleared right after (activities
-  // changing reference re-triggers the setSelected(new Set()) effect below),
-  // so without this there'd be no visual trace of what just happened once
-  // the checkboxes clear, especially now that scroll position is preserved
-  // and the list doesn't visibly "jump" to draw the eye on its own.
-  const [justConfirmed, setJustConfirmed] = useState<Set<number>>(new Set());
-  const justConfirmedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function load() {
+  useEffect(() => {
     setLoading(true);
     setLoadError(null);
     api.garmin.activities(from, to)
-      // Scoped to running only — the six categories are running-specific
-      // terminology, classifying e.g. a bike ride wouldn't be meaningful.
-      .then(all => setActivities(all.filter(a => a.sport === "running")))
-      .catch(e => setLoadError(e instanceof Error ? e.message : t("manage.classify.loadFailed", "Failed to load activities")))
+      .then(all => setActivities(all.filter(activity => activity.sport === "running")))
+      .catch(caught => setLoadError(caught instanceof Error ? caught.message : tRef.current("manage.classify.loadFailed", "Failed to load activities")))
       .finally(() => setLoading(false));
-  }
-  // Same fetch as load(), but never toggles `loading` — load() gates the
-  // whole scrollable list behind {!loading && ...}, so calling it after an
-  // in-place action (like bulk confirm) unmounts and remounts the list
-  // container, resetting its scroll position to the top. This variant keeps
-  // the container mounted the whole time, so the browser preserves scroll
-  // offset the same way it would for any other in-place content update.
-  function refresh() {
-    api.garmin.activities(from, to)
-      .then(all => setActivities(all.filter(a => a.sport === "running")))
-      .catch(e => setActionError(e instanceof Error ? e.message : t("manage.classify.refreshFailed", "Failed to refresh")));
-  }
-  useEffect(() => { load(); }, [from, to]);
+  }, [from, to]);
+
   useEffect(() => setSelected(new Set()), [activities]);
-  useEffect(() => () => { if (justConfirmedTimer.current) clearTimeout(justConfirmedTimer.current); }, []);
+
+  const missingMetrics = settings ? [
+    settings.current_easy_pace_sec_per_km == null ? t("settings.trainingMetrics.easyPace", "Current easy pace") : null,
+    settings.current_race_pace_sec_per_km == null ? t("settings.trainingMetrics.racePace", "Current race pace") : null,
+    settings.current_long_run_target_m == null ? t("settings.trainingMetrics.longRunTarget", "Current long-run target") : null,
+  ].filter((value): value is string => value != null) : [];
 
   function toggle(id: number) {
-    setSelected(s => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+    setSelected(current => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   }
+
   function toggleAll() {
-    setSelected(s => (activities && s.size === activities.length ? new Set() : new Set(activities?.map(a => a.id) ?? [])));
-  }
-  function updateOne(id: number, updated: Activity) {
-    setActivities(list => list ? list.map(a => (a.id === id ? updated : a)) : list);
+    setSelected(current => activities && current.size === activities.length
+      ? new Set()
+      : new Set(activities?.map(activity => activity.id) ?? []));
   }
 
   async function classifySelected() {
@@ -82,15 +64,16 @@ export function ClassifySection() {
     setActionError(null);
     setProgress({ current: 0, total: ids.length });
     const errors: string[] = [];
-    for (let i = 0; i < ids.length; i++) {
+    for (let index = 0; index < ids.length; index++) {
       try {
-        updateOne(ids[i], await api.garmin.classify(ids[i], splitMeters, method));
-      } catch (e) {
-        errors.push(`#${ids[i]}: ${e instanceof Error ? e.message : t("manage.classify.itemFailed", "failed")}`);
+        const updated = await api.garmin.classify(ids[index], splitMeters);
+        setActivities(current => current?.map(activity => activity.id === ids[index] ? updated : activity) ?? current);
+      } catch (caught) {
+        errors.push(`#${ids[index]}: ${caught instanceof Error ? caught.message : t("manage.classify.itemFailed", "failed")}`);
       }
-      setProgress({ current: i + 1, total: ids.length });
+      setProgress({ current: index + 1, total: ids.length });
     }
-    if (errors.length) {
+    if (errors.length > 0) {
       const extra = errors.length > 3 ? t("manage.classify.moreErrors", ` (+${errors.length - 3} more)`, { count: errors.length - 3 }) : "";
       setActionError(errors.slice(0, 3).join("; ") + extra);
     }
@@ -98,41 +81,26 @@ export function ClassifySection() {
     setBusy(false);
   }
 
-  async function confirmSelected() {
-    const ids = [...selected];
-    if (ids.length === 0) return;
-    setBusy(true);
-    setActionError(null);
-    try {
-      await api.garmin.confirmBulk(ids, method);
-      refresh(); // in-place refresh, not load() — see refresh()'s note on why (preserves scroll position)
-      if (justConfirmedTimer.current) clearTimeout(justConfirmedTimer.current);
-      setJustConfirmed(new Set(ids));
-      justConfirmedTimer.current = setTimeout(() => setJustConfirmed(new Set()), 3000);
-    } catch (e) {
-      setActionError(e instanceof Error ? e.message : t("manage.classify.confirmFailed", "Confirm failed"));
-    }
-    setBusy(false);
-  }
-
-  // Confirm always acts on the currently-selected method's slot (same
-  // switch classify uses), not "either slot" — matches confirmActivityById's
-  // $source-scoped WHERE clause in server.ts.
-  const canConfirm = [...selected].some(id => {
-    const a = activities?.find(a2 => a2.id === id);
-    return method === "ai" ? a?.ai_classification : a?.statistical_classification;
-  });
+  const classificationLabel = (value: string) =>
+    t(WORKOUT_CLASSIFICATION_KEY[value as WorkoutClassification] ?? "unknown", value);
 
   return (
     <Card>
-      <div className="hra-block-title mb-1" >{t("manage.classify.title", "Identify workout types")}</div>
-      <div className="hra-text-secondary text-meta mb-3" >
-        {t("manage.classify.description", "Classifies running activities (Recovery Run, Long Session, Repeats/Intervals, Progressive Run, Fartlek, Tapasciata / Light Maintenance) using either a local Ollama model or instant deterministic rules — nothing leaves this machine either way. Each batch run here uses one method (switch below); the single-activity detail view can run and compare both. Reclassifying is always allowed, even on an already-confirmed activity, and resets it back to pending review.")}
+      <div className="hra-block-title mb-1">{t("manage.classify.title", "Identify workout types")}</div>
+      <div className="hra-text-secondary text-meta mb-3">
+        {t("manage.classify.description", "Runs Free classifies running activities with deterministic rules and your current training metrics, not the metrics from each activity date. Reclassification is explicit and never runs merely because Settings changed.")}
       </div>
 
-      <div className="hra-date-pair mb-3" >
+      {missingMetrics.length > 0 && (
+        <div className="hra-text-secondary text-meta mb-3">
+          {t("activity.classify.incompleteProfile", `Classification profile incomplete: ${missingMetrics.join(", ")}. Runs Free will use its existing fallback behavior for the missing values.`, { fields: missingMetrics.join(", ") })}{" "}
+          <a className="hra-link" href="?tab=settings">{t("activity.classify.openSettings", "Open Settings")}</a>
+        </div>
+      )}
+
+      <div className="hra-date-pair mb-3">
         <DatePicker value={from} onChange={setFrom} max={to} />
-        <span className="hra-text-muted text-meta" >→</span>
+        <span className="hra-text-muted text-meta">→</span>
         <DatePicker value={to} onChange={setTo} min={from} />
       </div>
 
@@ -142,48 +110,27 @@ export function ClassifySection() {
       {!loading && !loadError && activities && (
         <>
           {activities.length === 0 ? (
-            <div className="hra-text-muted text-meta mb-3" >{t("manage.classify.noActivities", "No running activities in this range.")}</div>
+            <div className="hra-text-muted text-meta mb-3">{t("manage.classify.noActivities", "No running activities in this range.")}</div>
           ) : (
-            <div className="hra-border max-h-60 overflow-auto rounded-md p-2 mb-2.5" >
-              <label className="hra-list-row hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5" >
+            <div className="hra-border max-h-60 overflow-auto rounded-md p-2 mb-2.5">
+              <label className="hra-list-row hra-text-muted hra-border-bottom flex items-center gap-1.5 text-meta cursor-pointer mb-1.5 pb-1.5">
                 <Checkbox checked={selected.size === activities.length} onCheckedChange={toggleAll} />
                 {t("manage.classify.selectAll", `Select all (${activities.length})`, { count: activities.length })}
               </label>
-              {activities.map(a => {
-                const status = classificationStatus(a);
-                const pill = (text: string, key: string, isConfirmedSource: boolean) => {
-                  // Both slots always get their own pill, regardless of
-                  // confirm state — collapsing to a single "Confirmed: X"
-                  // pill (an earlier version) hid whichever result wasn't
-                  // chosen as final, even though it's still stored and still
-                  // useful to see for comparison. The confirmed slot (if
-                  // any) is just colored/marked differently, not the only
-                  // one shown.
-                  const tone = isConfirmedSource ? "confirmed" : status === "confirmed" ? "muted" : "pending";
-                  return (
-                    <span key={key} className="hra-classification-pill hra-classification-pill-compact hra-dyn-border hra-dyn-color text-meta font-semibold uppercase" data-tone={tone}>
-                      {isConfirmedSource && "✓ "}{text}
-                    </span>
-                  );
-                };
-                const classificationLabel = (c: string) => t(WORKOUT_CLASSIFICATION_KEY[c as WorkoutClassification] ?? "unknown", c);
-                const resultPills = [
-                  a.ai_classification && pill(
-                    t("manage.classify.aiPill", `AI: ${classificationLabel(a.ai_classification)}`, { classification: classificationLabel(a.ai_classification) }),
-                    "ai", status === "confirmed" && a.classification_method === "ai"),
-                  a.statistical_classification && pill(
-                    t("manage.classify.statsPill", `Stats: ${classificationLabel(a.statistical_classification)}`, { classification: classificationLabel(a.statistical_classification) }),
-                    "stats", status === "confirmed" && a.classification_method === "statistical"),
-                ].filter((x): x is React.ReactElement => Boolean(x));
+              {activities.map(activity => {
+                const effective = effectiveClassification(activity);
                 return (
-                  <label key={a.id} className="hra-classify-row hra-text-secondary flex items-center gap-2 text-meta cursor-pointer" data-just-confirmed={justConfirmed.has(a.id)}>
-                    {/* The data attribute drives the bulk-confirm flash and fade. */}
-                    <Checkbox checked={selected.has(a.id)} onCheckedChange={() => toggle(a.id)} />
-                    <span className="hra-classify-date">{fmtDate(a.date_only)}</span>
-                    <span className="min-w-15">{fmtKm(a.distance_m)}</span>
-                    {resultPills.length > 0 ? resultPills : (
-                      <span className="hra-text-muted text-meta" >{t("manage.classify.unclassified", "unclassified")}</span>
-                    )}
+                  <label key={activity.id} className="hra-classify-row hra-text-secondary flex items-center gap-2 text-meta cursor-pointer">
+                    <Checkbox checked={selected.has(activity.id)} onCheckedChange={() => toggle(activity.id)} />
+                    <span className="hra-classify-date">{fmtDate(activity.date_only)}</span>
+                    <span className="min-w-15">{fmtKm(activity.distance_m)}</span>
+                    {effective ? (
+                      <span className="hra-classification-pill hra-classification-pill-compact hra-dyn-border hra-dyn-color text-meta font-semibold uppercase" data-tone={activity.manual_classification ? "confirmed" : "pending"}>
+                        {classificationLabel(effective)} · {activity.manual_classification
+                          ? t("activity.classify.provenanceUser", "Classified by you")
+                          : t("activity.classify.provenanceSystem", "Classified by Runs Free")}
+                      </span>
+                    ) : <span className="hra-text-muted text-meta">{t("manage.classify.unclassified", "unclassified")}</span>}
                   </label>
                 );
               })}
@@ -191,53 +138,19 @@ export function ClassifySection() {
           )}
 
           <div className="hra-row-wrap">
-            <div className="hra-segment inline-flex rounded-full overflow-hidden"
-              title={t("manage.classify.methodTooltip", "Classification method: a local Ollama model, or instant deterministic rules over the same pace-variance/split/pause stats (no LLM, works even if Ollama isn't running)")}>
-              {(["ai", "statistical"] as const).map(m => (
-                <button key={m} onClick={() => setMethod(m)}
-                  className="hra-segment-item hra-classification-segment-item text-meta border-0 cursor-pointer"
-                  data-active={method === m}>
-                  {m === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical")}
+            <div className="hra-segment inline-flex rounded-full overflow-hidden" title={t("activity.classify.splitTooltip", "Split granularity used to (re)classify") }>
+              {([1000, 500] as const).map(meters => (
+                <button key={meters} onClick={() => setSplitMeters(meters)} className="hra-segment-item hra-classification-segment-item text-meta border-0 cursor-pointer" data-active={splitMeters === meters}>
+                  {meters === 1000 ? t("activity.classify.split1km", "1km") : t("activity.classify.split05km", "0.5km")}
                 </button>
               ))}
             </div>
-            <div className="hra-segment inline-flex rounded-full overflow-hidden"
-              title={t("activity.classify.splitTooltip", "Split granularity used to (re)classify — finer splits can surface short interval structure a coarser split smooths out")}>
-              {([1000, 500] as const).map(m => (
-                <button key={m} onClick={() => setSplitMeters(m)}
-                  className="hra-segment-item hra-classification-segment-item text-meta border-0 cursor-pointer"
-                  data-active={splitMeters === m}>
-                  {m === 1000 ? t("activity.classify.split1km", "1km") : t("activity.classify.split05km", "0.5km")}
-                </button>
-              ))}
-            </div>
-            <button
-              className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy || demoMode}
-              title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}
-            >
+            <button className="hra-btn" data-variant="cta" onClick={classifySelected} disabled={selected.size === 0 || busy || demoMode} title={demoMode ? t("common.demoModeHint", "Not available for demo") : undefined}>
               {t("manage.classify.classifySelected", "Classify / Reclassify selected")}
-            </button>
-            <button
-              className="hra-btn" data-variant="cta"
-              data-tone="green"
-              onClick={confirmSelected} disabled={!canConfirm || busy || demoMode}
-              title={demoMode ? t("common.demoModeHint", "Not available for demo") : (() => {
-                const methodLabel = method === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical");
-                return t("manage.classify.confirmTooltip", `Bulk-approves the ${methodLabel} classification for already-classified selected activities, no reason needed — same as thumbs-up per activity`, { method: methodLabel });
-              })()}
-            >
-              {(() => {
-                const methodLabel = method === "ai" ? t("activity.classify.methodAi", "AI") : t("activity.classify.methodStatistical", "Statistical");
-                return t("manage.classify.confirmSelected", `Confirm selected (${methodLabel})`, { method: methodLabel });
-              })()}
             </button>
           </div>
 
-          {progress && (
-            <div className="mt-2.5">
-              <ProgressBar label={t("manage.classify.classifyingProgress", `Classifying ${progress.current}/${progress.total}…`, { current: progress.current, total: progress.total })} current={progress.current} total={progress.total} accent="var(--accent)" />
-            </div>
-          )}
+          {progress && <div className="mt-2.5"><ProgressBar label={t("manage.classify.classifyingProgress", `Classifying ${progress.current}/${progress.total}…`, { current: progress.current, total: progress.total })} current={progress.current} total={progress.total} accent="var(--accent)" /></div>}
           {actionError && <div className="mt-2.5"><ErrorBanner message={actionError} /></div>}
         </>
       )}

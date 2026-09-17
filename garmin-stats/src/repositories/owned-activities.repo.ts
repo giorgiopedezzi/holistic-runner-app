@@ -3,7 +3,7 @@ import type { FitActivity, FitTrackPoint } from "../domain/fit-parser.ts";
 
 type NamedParams = Record<string, string | number | null>;
 
-const FIELDS = "id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name";
+const FIELDS = "id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,system_classification,system_explanation,manual_classification,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name";
 
 // Private activity access is deliberately exposed only through this factory.
 // The owner is an explicit, required input and is present in every WHERE
@@ -47,6 +47,9 @@ export function createOwnedActivitiesRepo(db: Queryable, userId: string) {
     purgeById: (id: number) => db.run("UPDATE activities SET purged=true,distance_m=NULL,avg_pace_minkm=NULL,calories=NULL,avg_hr=NULL,max_hr=NULL,avg_cadence=NULL,ascent_m=NULL,descent_m=NULL,avg_speed_ms=NULL,max_speed_ms=NULL,moving_time_sec=NULL,duration_sec=NULL WHERE user_id=$1 AND id=$2", [userId, id]),
     updateAiClassification: (p: NamedParams) => db.run("UPDATE activities SET ai_classification=$1,ai_explanation=$2,user_feedback=NULL,user_correction_reason=NULL,final_classification=NULL,classification_method=NULL WHERE user_id=$3 AND id=$4", [p.$classification, p.$explanation, userId, p.$id]),
     updateStatisticalClassification: (p: NamedParams) => db.run("UPDATE activities SET statistical_classification=$1,statistical_explanation=$2,user_feedback=NULL,user_correction_reason=NULL,final_classification=NULL,classification_method=NULL WHERE user_id=$3 AND id=$4", [p.$classification, p.$explanation, userId, p.$id]),
+    updateSystemClassification: (p: NamedParams) => db.run("UPDATE activities SET system_classification=$1,system_explanation=$2,statistical_classification=$1,statistical_explanation=$2 WHERE user_id=$3 AND id=$4", [p.$classification, p.$explanation, userId, p.$id]),
+    updateManualClassification: (p: NamedParams) => db.run("UPDATE activities SET manual_classification=$1 WHERE user_id=$2 AND id=$3", [p.$classification, userId, p.$id]),
+    clearManualClassification: (id: number) => db.run("UPDATE activities SET manual_classification=NULL WHERE user_id=$1 AND id=$2", [userId, id]),
     updateFeedback: (p: NamedParams) => db.run("UPDATE activities SET user_feedback=$1,user_correction_reason=$2,final_classification=$3,classification_method=$4 WHERE user_id=$5 AND id=$6", [p.$user_feedback,p.$user_correction_reason,p.$final_classification,p.$classification_method,userId,p.$id]),
     confirmById: (p: NamedParams) => db.run("UPDATE activities SET user_feedback='approved',final_classification=CASE WHEN $1='ai' THEN ai_classification ELSE statistical_classification END,classification_method=$1,user_correction_reason=NULL WHERE user_id=$2 AND id=$3 AND (CASE WHEN $1='ai' THEN ai_classification ELSE statistical_classification END) IS NOT NULL", [p.$source,userId,p.$id]),
     updateType: (p: NamedParams) => db.run("UPDATE activities SET activity_type_id=$1,activity_name=$2 WHERE user_id=$3 AND id=$4", [p.$activity_type_id,p.$activity_name,userId,p.$id]),

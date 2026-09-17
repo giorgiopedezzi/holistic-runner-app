@@ -1,6 +1,6 @@
 import type { Queryable } from "../db/query.ts";
 type NamedParams = Record<string, string | number | null>;
-const FIELDS = "id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name";
+const FIELDS = "id,filename,activity_date,date_only,sport,duration_sec,moving_time_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,system_classification,system_explanation,manual_classification,ai_classification,ai_explanation,statistical_classification,statistical_explanation,user_feedback,user_correction_reason,final_classification,classification_method,activity_type_id,activity_name";
 export function createActivitiesRepo(db: Queryable) { const repo = {
   dateRange: () => db.get("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE deleted_at IS NULL"),
   list: (from: string, to: string) => db.all(`SELECT ${FIELDS} FROM activities WHERE date_only BETWEEN $1 AND $2 AND deleted_at IS NULL ORDER BY activity_date DESC`, [from, to]),

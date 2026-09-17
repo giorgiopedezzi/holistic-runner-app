@@ -87,3 +87,42 @@ test("classification is always one of the six known labels", () => {
   assert.ok(known.has(r.classification));
   assert.ok(r.explanation.length > 0);
 });
+
+test("current easy and race paces scale the existing intensity threshold", () => {
+  const workout = summary({ paceStdDevMinKm: 0.3, splits: splits([5, 5.2, 5.1]) });
+  assert.equal(classifyByStatistics(workout).classification, "Recovery Run");
+  assert.equal(classifyByStatistics(workout, {
+    currentEasyPaceSecPerKm: 360,
+    currentRacePaceSecPerKm: 330,
+    currentLongRunTargetM: 20000,
+  }).classification, "Fartlek");
+});
+
+test("current long-run target replaces only the existing distance threshold", () => {
+  const workout = summary({ distanceM: 10000, durationSec: 3600, paceStdDevMinKm: 0.1 });
+  assert.equal(classifyByStatistics(workout).classification, "Recovery Run");
+  assert.equal(classifyByStatistics(workout, {
+    currentEasyPaceSecPerKm: 360,
+    currentRacePaceSecPerKm: 300,
+    currentLongRunTargetM: 8000,
+  }).classification, "Long Session");
+});
+
+test("a missing pace metric uses the pre-existing variance rule without fabricating its partner", () => {
+  const workout = summary({ paceStdDevMinKm: 0.3, splits: splits([5, 5.2, 5.1]) });
+  for (const metrics of [
+    { currentEasyPaceSecPerKm: null, currentRacePaceSecPerKm: 330, currentLongRunTargetM: 20000 },
+    { currentEasyPaceSecPerKm: 360, currentRacePaceSecPerKm: null, currentLongRunTargetM: 20000 },
+  ]) {
+    assert.equal(classifyByStatistics(workout, metrics).classification, "Recovery Run");
+  }
+});
+
+test("a missing long-run target retains the existing distance/duration fallback", () => {
+  const workout = summary({ distanceM: 10000, durationSec: 3600, paceStdDevMinKm: 0.1 });
+  assert.equal(classifyByStatistics(workout, {
+    currentEasyPaceSecPerKm: 360,
+    currentRacePaceSecPerKm: 300,
+    currentLongRunTargetM: null,
+  }).classification, "Recovery Run");
+});

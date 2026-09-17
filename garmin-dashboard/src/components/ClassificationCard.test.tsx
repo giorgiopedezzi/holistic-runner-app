@@ -1,117 +1,127 @@
-/**
- * ClassificationCard.test.tsx  (HRA-86)
- * Characterization of the workout-classification flows extracted from
- * ActivityModal — previously untested. Behaviour-level: renders the real card
- * through a stateful harness (so onUpdate drives a real re-render), stubs only
- * the classify/feedback endpoints, and asserts on rendered text.
- */
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { useState } from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { ClassificationCard } from "./ClassificationCard";
 import { installFetch, json } from "@/test/api-stub";
-import { activity, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
+import { activity, settings, REFERENCE_ACTIVITY_ID as ID } from "@/test/fixtures";
 import type { Activity } from "@/types/api";
 import { AppModeContext, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
 
-const VERDICT_TITLE = "This card's result is the activity's confirmed classification";
-
-// Real update loop: onUpdate = setActivity, mirroring ActivityDetailBody.
 function Harness({ initial }: { initial: Activity }) {
-  const [a, setA] = useState(initial);
-  return <ClassificationCard activity={a} onUpdate={setA} />;
+  const [current, setCurrent] = useState(initial);
+  return <ClassificationCard activity={current} onUpdate={setCurrent} />;
 }
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe("ClassificationCard flows", () => {
-  it("classify: runs a method and shows its returned result", async () => {
-    installFetch({
-      [`POST /api/v1/activities/${ID}/classify`]: json(activity({ ai_classification: "Long Session", ai_explanation: "steady aerobic hour" })),
-    });
-    render(<Harness initial={activity({ ai_classification: null, statistical_classification: null })} />);
+describe("ClassificationCard", () => {
+  it("shows one effective system category with Runs Free provenance and no implementation method labels", async () => {
+    const fetchMock = installFetch({ "GET /api/v1/settings": settings() });
+    render(<Harness initial={activity({ system_classification: "Long Session", system_explanation: "steady endurance effort" })} />);
 
-    // Two "Classify" buttons (AI + Statistical); AI is first.
-    fireEvent.click(screen.getAllByRole("button", { name: "Classify" })[0]);
-
-    expect(await screen.findByText("Long Session")).toBeInTheDocument();
-    expect(screen.getByText("steady aerobic hour")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/v1/settings"), expect.anything()));
+    expect(screen.getAllByText("Long Session").length).toBeGreaterThan(0);
+    expect(screen.getByText("Classified by Runs Free")).toBeInTheDocument();
+    expect(screen.getByText("steady endurance effort")).toBeInTheDocument();
+    expect(screen.queryByText("AI")).not.toBeInTheDocument();
+    expect(screen.queryByText("Statistical")).not.toBeInTheDocument();
   });
 
-  it("approve: thumbs-up confirms this card as the activity's verdict", async () => {
-    installFetch({
-      [`POST /api/v1/activities/${ID}/feedback`]: json(activity({
-        ai_classification: "Long Session", user_feedback: "approved", classification_method: "ai", final_classification: "Long Session",
-      })),
-    });
-    render(<Harness initial={activity({ ai_classification: "Long Session" })} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "👍" }));
-
-    expect(await screen.findByTitle(VERDICT_TITLE)).toBeInTheDocument();
-  });
-
-  it("reject-with-reason: thumbs-down → correction → submit posts reason + correction", async () => {
+  it("persists a manual override and presents it as the effective category after rerender", async () => {
     const fetchMock = installFetch({
-      [`POST /api/v1/activities/${ID}/feedback`]: json(activity({
-        ai_classification: "Long Session", user_feedback: "rejected", classification_method: "ai",
-        final_classification: "Recovery Run", user_correction_reason: "Perception felt harder than numbers",
+      "GET /api/v1/settings": settings(),
+      [`PUT /api/v1/activities/${ID}/classification-override`]: json(activity({
+        system_classification: "Recovery Run",
+        manual_classification: "Fartlek",
       })),
     });
-    render(<Harness initial={activity({ ai_classification: "Long Session" })} />);
+    render(<Harness initial={activity({ system_classification: "Recovery Run" })} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "👎" }));
-    const selects = screen.getAllByRole("combobox");
-    fireEvent.change(selects[0], { target: { value: "Perception felt harder than numbers" } });
-    fireEvent.change(selects[1], { target: { value: "Recovery Run" } });
-    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Classification override" }), { target: { value: "Fartlek" } });
+    fireEvent.click(screen.getByRole("button", { name: "Override classification" }));
 
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining(`/api/v1/activities/${ID}/feedback`),
-        expect.objectContaining({ method: "POST" }),
-      ),
-    );
-    expect(await screen.findByText(/Corrected to: Recovery Run/)).toBeInTheDocument();
+    expect(await screen.findByText("Classified by you")).toBeInTheDocument();
+    expect(screen.getAllByText("Fartlek").length).toBeGreaterThan(0);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/activities/${ID}/classification-override`),
+      expect.objectContaining({ method: "PUT" }),
+    ));
   });
 
-  it("reclassify: reflects the server resetting the verdict back to pending", async () => {
-    installFetch({
-      [`POST /api/v1/activities/${ID}/classify`]: json(activity({
-        ai_classification: "Fartlek", user_feedback: null, classification_method: null, final_classification: null,
+  it("restores the latest stored system result without reclassifying", async () => {
+    const fetchMock = installFetch({
+      "GET /api/v1/settings": settings(),
+      [`DELETE /api/v1/activities/${ID}/classification-override`]: json(activity({
+        system_classification: "Long Session",
+        manual_classification: null,
       })),
     });
-    render(<Harness initial={activity({
-      ai_classification: "Long Session", user_feedback: "approved", classification_method: "ai", final_classification: "Long Session",
-    })} />);
+    render(<Harness initial={activity({ system_classification: "Long Session", manual_classification: "Fartlek" })} />);
 
-    // Starts confirmed → verdict ✓ present, AI button reads "Reclassify".
-    expect(screen.getByTitle(VERDICT_TITLE)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Restore system classification" }));
+
+    expect(await screen.findByText("Classified by Runs Free")).toBeInTheDocument();
+    expect(screen.getAllByText("Long Session").length).toBeGreaterThan(0);
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/classify"), expect.anything());
+  });
+
+  it("warns that current metrics are used, names missing values, and reclassification preserves an override", async () => {
+    const fetchMock = installFetch({
+      "GET /api/v1/settings": settings({
+        current_easy_pace_sec_per_km: 330,
+        current_race_pace_sec_per_km: null,
+        current_long_run_target_m: null,
+      }),
+      [`POST /api/v1/activities/${ID}/classify`]: json(activity({
+        system_classification: "Progressive Run",
+        manual_classification: "Fartlek",
+      })),
+    });
+    render(<Harness initial={activity({ system_classification: "Recovery Run", manual_classification: "Fartlek" })} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reclassify" }));
+    expect(await screen.findByText(/current training metrics, not the metrics/)).toBeInTheDocument();
+    expect(screen.getByText(/Current race pace, Current long-run target/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Settings" })).toHaveAttribute("href", "?tab=settings");
+
+    fireEvent.click(screen.getByRole("button", { name: "Run classification" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/api/v1/activities/${ID}/classify`),
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText("Classified by you")).toBeInTheDocument();
+    expect(screen.getAllByText("Fartlek").length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    [{ current_easy_pace_sec_per_km: null, current_race_pace_sec_per_km: 300, current_long_run_target_m: 15000 }, "Current easy pace"],
+    [{ current_easy_pace_sec_per_km: 360, current_race_pace_sec_per_km: null, current_long_run_target_m: 15000 }, "Current race pace"],
+    [{ current_easy_pace_sec_per_km: 360, current_race_pace_sec_per_km: 300, current_long_run_target_m: null }, "Current long-run target"],
+  ] as const)("names each missing athlete metric before reclassification: %s", async (missing, label) => {
+    installFetch({ "GET /api/v1/settings": settings(missing) });
+    render(<Harness initial={activity({ system_classification: "Recovery Run" })} />);
+
     fireEvent.click(screen.getByRole("button", { name: "Reclassify" }));
 
-    expect(await screen.findByText("Fartlek")).toBeInTheDocument();
-    // Server reset user_feedback to null → the confirmed indicator is gone.
-    expect(screen.queryByTitle(VERDICT_TITLE)).not.toBeInTheDocument();
+    expect(await screen.findByText(new RegExp(`Classification profile incomplete: ${label}`))).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open Settings" })).toHaveAttribute("href", "?tab=settings");
   });
 
-  it("renders no .card chrome of its own (HRA-303 AC8) — its sole caller already wraps it in an AccordionCard panel, itself a .card", () => {
-    const { container } = render(<Harness initial={activity()} />);
-    expect(container.querySelector(".card")).not.toBeInTheDocument();
-  });
-
-  it("Guest (cannot persist): Classify/thumbs-up/thumbs-down are disabled with sign-in messaging (HRA-375)", () => {
+  it("does not offer a founder-data write to Guest", () => {
+    installFetch({});
     render(
       <AppModeContext.Provider value={GUEST_CAPABILITIES}>
-        <Harness initial={activity({ ai_classification: "Long Session" })} />
+        <Harness initial={activity({ system_classification: "Long Session" })} />
       </AppModeContext.Provider>,
     );
 
-    const classify = screen.getAllByRole("button", { name: "Reclassify" })[0];
-    const approve = screen.getByRole("button", { name: "👍" });
-    const reject = screen.getByRole("button", { name: "👎" });
-    for (const button of [classify, approve, reject]) {
+    for (const button of [
+      screen.getByRole("button", { name: "Reclassify" }),
+      screen.getByRole("button", { name: "Override classification" }),
+    ]) {
       expect(button).toBeDisabled();
       expect(button).toHaveAttribute("title", "Sign in to save this to your account.");
     }
+    expect(screen.getByRole("combobox", { name: "Classification override" })).toBeDisabled();
   });
 });
