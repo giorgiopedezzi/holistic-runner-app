@@ -1,4 +1,5 @@
 import type { Queryable } from "../db/query.ts";
+import type { FitActivity, FitTrackPoint } from "../domain/fit-parser.ts";
 
 type NamedParams = Record<string, string | number | null>;
 
@@ -9,6 +10,18 @@ const FIELDS = "id,filename,activity_date,date_only,sport,duration_sec,moving_ti
 // clause, including track-point access through its owning activity.
 export function createOwnedActivitiesRepo(db: Queryable, userId: string) {
   return {
+    insertGarminActivity: (activity: FitActivity) => db.get<{ id: number }>(`INSERT INTO activities
+      (user_id,filename,activity_date,date_only,sport,duration_sec,distance_m,avg_pace_minkm,calories,avg_hr,max_hr,avg_cadence,ascent_m,descent_m,avg_speed_ms,max_speed_ms,source,moving_time_sec)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'garmin',$17)
+      ON CONFLICT (user_id,filename) DO NOTHING RETURNING id`,
+      [userId, activity.filename, activity.activity_date, activity.date_only, activity.sport, activity.duration_sec, activity.distance_m,
+        activity.avg_pace_minkm, activity.calories, activity.avg_hr, activity.max_hr, activity.avg_cadence, activity.ascent_m,
+        activity.descent_m, activity.avg_speed_ms, activity.max_speed_ms, activity.moving_time_sec]),
+    insertTrackPoint: (activityId: number, point: FitTrackPoint) => db.run(`INSERT INTO track_points
+      (activity_id,elapsed_sec,timestamp_unix,distance_m,heart_rate,speed_ms,cadence,altitude_m,temperature,power,lat,lon,stamina)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [activityId, point.elapsed_sec, point.timestamp_unix, point.distance_m, point.heart_rate, point.speed_ms, point.cadence,
+        point.altitude_m, point.temperature, point.power, point.lat, point.lon, point.stamina]),
     dateRange: () => db.get("SELECT MIN(date_only) AS min_date, MAX(date_only) AS max_date FROM activities WHERE user_id=$1 AND deleted_at IS NULL", [userId]),
     list: (from: string, to: string) => db.all(`SELECT ${FIELDS} FROM activities WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND deleted_at IS NULL ORDER BY activity_date DESC`, [userId, from, to]),
     listPage: (from: string, to: string, limit: number, offset: number) => db.all(`SELECT ${FIELDS} FROM activities WHERE user_id=$1 AND date_only BETWEEN $2 AND $3 AND deleted_at IS NULL ORDER BY activity_date DESC LIMIT $4 OFFSET $5`, [userId, from, to, limit, offset]),

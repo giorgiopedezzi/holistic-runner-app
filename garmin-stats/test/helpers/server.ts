@@ -45,6 +45,7 @@ import { createAccountPrivacyService } from "../../src/services/account-privacy.
 import { createGuestPublicationService } from "../../src/services/guest-publication.service.ts";
 import { createPublicProjectionService } from "../../src/services/public-projection.service.ts";
 import { createPublicationLifecycleService } from "../../src/services/publication-lifecycle.service.ts";
+import { createFitImportService } from "../../src/services/fit-import.service.ts";
 import { FOUNDER_PUBLIC_SLUG } from "../../src/db/founder.ts";
 import { FOUNDER_USER_ID } from "../../src/db/founder.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
@@ -114,6 +115,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
       publicationLifecycle: createPublicationLifecycleService(
         identityRepo, publicProjectionRepo, createPublicProjectionService(runtimeDb, publicProjectionRepo), () => FOUNDER_PUBLIC_SLUG,
       ),
+      fitImport: createFitImportService(runtimeDb),
     },
   });
 

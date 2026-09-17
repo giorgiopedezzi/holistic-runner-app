@@ -10,6 +10,12 @@
 4. `sync-garmin.ts` parses each .FIT, inserts into SQLite
 5. Raw .FIT files are kept permanently in `fit-archive/` — never deleted after import. They carry more detail than the SQLite rows (e.g. full track-point streams, dev fields) and are the intended input for future AI-driven correlation analysis, which may also motivate extending `fit-parser.ts` to decode more fields.
 
+## Authenticated FIT ZIP import
+
+`POST /api/v1/imports/fit-zip` accepts one raw ZIP body containing 1-14 activity FIT files. ZIP handling is an in-memory orchestration layer: every extracted FIT calls the same `fit-import.service.ts` per-file operation used by the Garmin MTP command, including the authoritative custom parser, independent cross-validation, tenant-scoped filename dedupe, normalized activity/track-point persistence, and planned-workout reconciliation.
+
+Unlike device sync, browser uploads are never copied to `fit-archive/`. The archive and extracted entry buffers are zeroed on success and exception paths. The reader rejects encrypted, ZIP64, absolute/traversal, malformed, and oversized archives before importing any FIT; non-FIT metadata/junk is ignored. Each FIT then runs in its own transaction with bounded concurrency, so malformed files do not roll back successfully imported siblings.
+
 ### Progress reporting
 Both phases (download, import) emit `PROGRESS <phase> <current> <total> [<label>]` lines to stdout as plain text — harmless noise when run directly in a console, but parsed by `server.ts`'s `streamSyncScript()` and relayed to the dashboard as NDJSON (`{type:"progress",...}`) so `ManageTab.tsx`'s `UploadSection` can render a live `ProgressBar` (`ui.tsx`). The download total comes from the PS1 script's up-front enumeration; the import total is the count of files not already in the DB (most of `fit-archive/` is already-imported history since files are never deleted, so the import bar only tracks real work, not the whole archive).
 

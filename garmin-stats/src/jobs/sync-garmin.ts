@@ -12,8 +12,7 @@ import readline from "readline";
 import { loadConfig, requireGarminConfig, getArg, hasFlag } from "../config.ts";
 import { openPostgresDatabase } from "../db/postgres.ts";
 import { FOUNDER_USER_ID } from "../db/founder.ts";
-import { parseFit } from "../domain/fit-parser.ts";
-import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
+import { createFitImportService } from "../services/fit-import.service.ts";
 import { createWorkoutAssociationsService } from "../services/workout-associations.service.ts";
 
 // Handle ESM path resolution requirements natively
@@ -30,6 +29,8 @@ const VERBOSE = hasFlag("--verbose") || hasFlag("-v");
 const USER_ID = getArg("--user-id") ?? FOUNDER_USER_ID;
 
 const db = openPostgresDatabase();
+
+const fitImport = createFitImportService(db);
 
 // Shared across both phases: what's already imported, so the PS1 script knows
 // what to skip and the import phase can size its progress total up front.
@@ -139,49 +140,26 @@ async function processLocalSync(targetFolder: string): Promise<void> {
 
   let imported = 0, skipped = 0, errors = 0, done = 0;
 
-  await db.transaction(async client => {
-    for (const fname of files) {
-      if (existingFilenames.has(fname) && config.sync.skip_duplicates) {
-        if (VERBOSE) console.log(`  skip  ${fname}`);
-        skipped++; continue;
-      }
-
-      try {
-        const buf = fs.readFileSync(path.join(targetFolder, fname));
-        const parsed = parseFit(buf, fname);
-        const { activity, trackPoints } = parsed;
-
-        // Validation-only — never affects what gets written below. See
-        // fit-file-parser-validate.ts for why this stays a side channel.
-        await crossValidateFitParser(buf, fname, parsed);
-
-        const inserted = await client.query<{ id: number }>(`INSERT INTO activities
-          (user_id, filename, activity_date, date_only, sport, duration_sec, distance_m, avg_pace_minkm, calories, avg_hr, max_hr, avg_cadence, ascent_m, descent_m, avg_speed_ms, max_speed_ms, source, moving_time_sec)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
-          ON CONFLICT (user_id, filename) DO NOTHING RETURNING id`, [USER_ID, activity.filename, activity.activity_date, activity.date_only, activity.sport, activity.duration_sec, activity.distance_m, activity.avg_pace_minkm, activity.calories, activity.avg_hr, activity.max_hr, activity.avg_cadence, activity.ascent_m, activity.descent_m, activity.avg_speed_ms, activity.max_speed_ms, "garmin", activity.moving_time_sec]);
-        const row = inserted.rows[0] ?? (await client.query<{ id: number }>("SELECT id FROM activities WHERE user_id=$1 AND filename=$2", [USER_ID, fname])).rows[0];
-        if (!row) { errors++; done++; emitProgress("import", done, pending.length, fname); continue; }
-
-        for (const pt of trackPoints) {
-          await client.query(`INSERT INTO track_points (activity_id, elapsed_sec, timestamp_unix, distance_m, heart_rate, speed_ms, cadence, altitude_m, temperature, power, lat, lon, stamina)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [row.id, pt.elapsed_sec, pt.timestamp_unix, pt.distance_m, pt.heart_rate, pt.speed_ms, pt.cadence, pt.altitude_m, pt.temperature, pt.power, pt.lat, pt.lon, pt.stamina]);
-        }
-
-        imported++;
-        done++;
-        emitProgress("import", done, pending.length, fname);
-        if (VERBOSE) {
-          const dist = activity.distance_m ? `${(activity.distance_m / 1000).toFixed(2)} km` : "-";
-          console.log(`  ✓  ${fname}  ${activity.date_only}  ${activity.sport}  ${dist}`);
-        }
-      } catch (e) {
-        console.error(`  ✗  ${fname}: ${e instanceof Error ? e.message : e}`);
-        errors++;
-        done++;
-        emitProgress("import", done, pending.length, fname);
-      }
+  for (const fname of files) {
+    if (existingFilenames.has(fname) && config.sync.skip_duplicates) {
+      if (VERBOSE) console.log(`  skip  ${fname}`);
+      skipped++; continue;
     }
-  });
+
+    const result = await fitImport.importOne(USER_ID, fname, fs.readFileSync(path.join(targetFolder, fname)));
+    if (result.status === "imported") {
+      imported++;
+      if (VERBOSE) console.log(`  ✓  ${fname}`);
+    } else if (result.status === "duplicate") {
+      skipped++;
+      if (VERBOSE) console.log(`  skip  ${fname}`);
+    } else {
+      errors++;
+      console.error(`  ✗  ${fname}: ${result.reason}`);
+    }
+    done++;
+    emitProgress("import", done, pending.length, fname);
+  }
 
   console.log(`\n\nExecution Metrics:`);
   console.log(`  Imported : ${imported}`);

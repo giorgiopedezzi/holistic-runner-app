@@ -42,6 +42,7 @@ import { createAccountPrivacyService } from "./services/account-privacy.service.
 import { createGuestPublicationService } from "./services/guest-publication.service.ts";
 import { createPublicProjectionService } from "./services/public-projection.service.ts";
 import { createPublicationLifecycleService } from "./services/publication-lifecycle.service.ts";
+import { createFitImportService } from "./services/fit-import.service.ts";
 import { FOUNDER_PUBLIC_SLUG } from "./db/founder.ts";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -101,6 +102,7 @@ const accountPrivacyService = createAccountPrivacyService(db, accountPrivacyRepo
 const guestPublicationService = createGuestPublicationService(publishedProjectionRepo);
 const publicProjectionService = createPublicProjectionService(db, publicProjectionRepo);
 const publicationLifecycleService = createPublicationLifecycleService(identityRepo, publicProjectionRepo, publicProjectionService, () => FOUNDER_PUBLIC_SLUG);
+const fitImportService = createFitImportService(db);
 
 // HRA-354: queued account deletion is deliberately asynchronous so access is
 // revoked before physical purge. Failures stay durable and retry on the next
@@ -130,6 +132,7 @@ const server = http.createServer(createApiHandler({
     workoutAssociations: workoutAssociationsService, reporting: reportingService,
     identity: identityService, accountPrivacy: accountPrivacyService, guestPublication: guestPublicationService,
     publicationLifecycle: publicationLifecycleService,
+    fitImport: fitImportService,
   },
 }));
 

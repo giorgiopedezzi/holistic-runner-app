@@ -111,6 +111,7 @@ Soft delete only (see "Soft delete & trash") — these `UPDATE deleted_at`, they
 ### POST
 | Endpoint | Description |
 |---|---|
+| `/api/v1/imports/fit-zip` | Authenticated raw `application/zip` upload containing 1-14 activity `.fit` files. Returns ordered per-file `imported` / `duplicate` / `failed` results and a summary. Processing is partial-success; invalid archive structure, traversal, encryption, ZIP64, too many FIT files, or configured compressed/expanded resource limits reject the archive before import. ZIP/FIT bytes stay in memory and are zeroed after processing. |
 | `/api/sync/garmin` | Spawns `sync-garmin.ts`, streams NDJSON progress events (`{type:"progress",phase,current,total,label}`), ends with `{type:"done",imported,skipped,errors}` or `{type:"error",message}` |
 | `/api/sync/withings?from=&to=` | Spawns `sync-withings.ts` via `child_process.spawn` (passing `from`/`to` through as `--from`/`--to` CLI args if given), returns `{ imported, skipped, errors }` (blocking, single response). If `from`/`to` are omitted, the script falls back to its own default (since last synced measurement, or 2 years back on first run) |
 | `/api/sync/strava?from=&to=` | Same pattern as Withings' sync route, spawns `sync-strava.ts`. `skipped` in the response folds in cross-source duplicates (see "Strava sync" below) |

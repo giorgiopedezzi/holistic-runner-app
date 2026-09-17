@@ -4,7 +4,7 @@
  * out of server.ts (S1 refactor) — behavior is byte-identical.
  */
 import http from "http";
-import { badRequest } from "./problem.ts";
+import { badRequest, payloadTooLarge } from "./problem.ts";
 
 export interface DateRange { from: string; to: string; }
 
@@ -51,11 +51,31 @@ export async function readJsonBody<T = unknown>(req: http.IncomingMessage): Prom
 
 // For raw binary uploads (the background-image upload) — collecting Buffer
 // chunks instead of concatenating as a string avoids corrupting binary data.
-export function readBodyBuffer(req: http.IncomingMessage): Promise<Buffer> {
+export function readBodyBuffer(req: http.IncomingMessage, maxBytes?: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", chunk => chunks.push(chunk));
-    req.on("end", () => resolve(Buffer.concat(chunks)));
+    let total = 0;
+    let settled = false;
+    const declaredLength = Number(req.headers["content-length"]);
+    if (maxBytes !== undefined && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      reject(payloadTooLarge(`Upload exceeds the ${maxBytes}-byte compressed-size limit.`));
+      req.resume();
+      return;
+    }
+    req.on("data", chunk => {
+      if (settled) return;
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      total += bytes.length;
+      if (maxBytes !== undefined && total > maxBytes) {
+        settled = true;
+        chunks.length = 0;
+        reject(payloadTooLarge(`Upload exceeds the ${maxBytes}-byte compressed-size limit.`));
+        req.resume();
+        return;
+      }
+      chunks.push(bytes);
+    });
+    req.on("end", () => { if (!settled) resolve(Buffer.concat(chunks)); });
     req.on("error", reject);
   });
 }

@@ -31,6 +31,7 @@ import { createSourceFilesController } from "../controllers/source-files.control
 import { createReportingController } from "../controllers/reporting.controller.ts";
 import { createGuestPublicationController } from "../controllers/guest-publication.controller.ts";
 import { createPublicationController } from "../controllers/publication.controller.ts";
+import { createFitImportController } from "../controllers/fit-import.controller.ts";
 
 const PUBLIC_OWNER_READS = new Set([
   "/api/v1/range", "/api/v1/summary", "/api/v1/weekly", "/api/v1/monthly",
@@ -66,7 +67,8 @@ function isOwnerScopedRoute(route: string): boolean {
     route.startsWith("/api/v1/publication") || route === "/api/v1/garmin/status" || route === "/api/v1/source-files/extract" ||
     route === "/api/v1/withings/status" || route === "/api/v1/withings/login-url" || route === "/api/v1/withings/connection" ||
     route === "/api/v1/strava/status" || route === "/api/v1/strava/login-url" || route === "/api/v1/strava/connection" ||
-    route.startsWith("/api/v1/sync/") || route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
+    route.startsWith("/api/v1/sync/") || route.startsWith("/api/v1/imports/") ||
+    route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
 }
 
 function routeCapability(method: string | undefined, route: string): RouteCapability | undefined {
@@ -106,6 +108,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
   const accountPrivacy = createAccountPrivacyController(ctx);
   const guestPublication = createGuestPublicationController(ctx);
   const publication    = createPublicationController(ctx);
+  const fitImports     = createFitImportController(ctx);
   const { port } = ctx;
   // DEMO_MODE write gate (HRA-220) — one-line marker at each blocked route
   // below; see http/demo-guard.ts for the actual 403 behavior.
@@ -293,6 +296,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/publication/refresh")      return await publication.refresh(req, res, url);
         if (route === "/api/v1/publication/suspend")      return await publication.suspend(req, res, url);
         if (route === "/api/v1/sync/garmin")              return await demo(sync.garmin)(req, res, url);
+        if (route === "/api/v1/imports/fit-zip")          return await demo(fitImports.uploadZip)(req, res, url);
         if (route === "/api/v1/sync/withings")            return await demo(sync.withings)(req, res, url);
         if (route === "/api/v1/sync/strava")              return await demo(sync.strava)(req, res, url);
         if (/^\/api\/v1\/activities\/\d+\/classify$/.test(route)) return await demo(activities.classify)(req, res, url);

@@ -15,6 +15,7 @@
     { "name": "body", "description": "Withings body measurements + km/weight correlation" },
     { "name": "settings", "description": "Settings + appearance (theme, background, units)" },
     { "name": "sync", "description": "Trigger data syncs (Garmin stream, Withings, Strava)" },
+    { "name": "imports", "description": "Authenticated activity-file imports that reuse the Garmin FIT normalization and persistence path" },
     { "name": "integrations", "description": "Device presence + Withings/Strava OAuth" },
     { "name": "date-ranges", "description": "Saved named date ranges, optionally linked to the race a training block led up to" },
     { "name": "activity-types", "description": "The fixed Training/Race lookup used to tag an activity" },
@@ -249,6 +250,27 @@
       "SyncResult": {
         "type": "object",
         "properties": { "imported": { "type": "integer" }, "skipped": { "type": "integer" }, "errors": { "type": "integer" } }
+      },
+      "FitImportResult": {
+        "type": "object",
+        "required": ["filename", "status"],
+        "properties": {
+          "filename": { "type": "string" },
+          "status": { "type": "string", "enum": ["imported", "duplicate", "failed"] },
+          "reason": { "type": "string" }
+        }
+      },
+      "FitBatchImportResult": {
+        "type": "object",
+        "required": ["results", "summary"],
+        "properties": {
+          "results": { "type": "array", "minItems": 1, "maxItems": 14, "items": { "$ref": "#/components/schemas/FitImportResult" } },
+          "summary": {
+            "type": "object",
+            "required": ["imported", "duplicates", "failed"],
+            "properties": { "imported": { "type": "integer" }, "duplicates": { "type": "integer" }, "failed": { "type": "integer" } }
+          }
+        }
       },
       "TokenStatus": {
         "type": "object",
@@ -1038,6 +1060,21 @@
         "parameters": [ { "name": "ext", "in": "query", "required": true, "schema": { "type": "string", "enum": ["jpg", "jpeg", "png", "webp", "gif"] } } ],
         "requestBody": { "required": true, "content": { "image/jpeg": { "schema": { "type": "string", "format": "binary" } }, "image/png": { "schema": { "type": "string", "format": "binary" } }, "image/webp": { "schema": { "type": "string", "format": "binary" } }, "image/gif": { "schema": { "type": "string", "format": "binary" } } } },
         "responses": { "200": { "description": "Updated settings.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Settings" } } } }, "413": { "$ref": "#/components/responses/PayloadTooLarge" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+      }
+    },
+    "/api/v1/imports/fit-zip": {
+      "post": {
+        "tags": ["imports"],
+        "summary": "Import up to 14 activity FIT files from one ZIP",
+        "description": "Authenticated, partial-success import. The ZIP and extracted FIT bytes are processed only in memory and discarded. Non-FIT junk is ignored; unsafe, encrypted, oversized, ZIP64, or traversal-containing archives are rejected before any FIT import starts.",
+        "requestBody": { "required": true, "content": { "application/zip": { "schema": { "type": "string", "format": "binary" } } } },
+        "responses": {
+          "200": { "description": "Per-file import results.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FitBatchImportResult" } } } },
+          "401": { "description": "Authentication is required." },
+          "403": { "$ref": "#/components/responses/Forbidden" },
+          "413": { "$ref": "#/components/responses/PayloadTooLarge" },
+          "422": { "$ref": "#/components/responses/Unprocessable" }
+        }
       }
     },
     "/api/v1/sync/garmin": {

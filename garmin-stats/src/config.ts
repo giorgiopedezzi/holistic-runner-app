@@ -26,6 +26,13 @@ export interface Config {
     auto_on_start: boolean;
     skip_duplicates: boolean;
   };
+  fitZipImport: {
+    maxCompressedBytes: number;
+    maxExpandedBytes: number;
+    maxEntryBytes: number;
+    maxEntries: number;
+    parseConcurrency: number;
+  };
   // Demo-mode gate (HRA-220): when true, the router rejects the write
   // endpoints listed in http/demo-guard.ts with 403 so a public demo can't
   // destroy the database. Default false — unset behaves exactly as before.
@@ -129,6 +136,13 @@ export function loadConfig(): Config {
     sync: {
       auto_on_start: parseBoolEnv(process.env.SYNC_AUTO_ON_START, true),
       skip_duplicates: parseBoolEnv(process.env.SYNC_SKIP_DUPLICATES, true),
+    },
+    fitZipImport: {
+      maxCompressedBytes: parseIntEnv(process.env.FIT_ZIP_MAX_COMPRESSED_BYTES, 10 * 1024 * 1024),
+      maxExpandedBytes: parseIntEnv(process.env.FIT_ZIP_MAX_EXPANDED_BYTES, 50 * 1024 * 1024),
+      maxEntryBytes: parseIntEnv(process.env.FIT_ZIP_MAX_ENTRY_BYTES, 10 * 1024 * 1024),
+      maxEntries: parseIntEnv(process.env.FIT_ZIP_MAX_ENTRIES, 256),
+      parseConcurrency: parseIntEnv(process.env.FIT_ZIP_PARSE_CONCURRENCY, 2),
     },
     demoMode: parseBoolEnv(process.env.DEMO_MODE, false),
     ollama: {

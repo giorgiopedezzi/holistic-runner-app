@@ -176,6 +176,11 @@ function rp(from: string, to: string) { return { from, to }; }
 
 export interface DeleteResult { deleted: number; from?: string; to?: string; }
 export interface SyncResult { imported: number; skipped: number; errors: number; }
+export interface FitImportResult { filename: string; status: "imported" | "duplicate" | "failed"; reason?: string; }
+export interface FitBatchImportResult {
+  results: FitImportResult[];
+  summary: { imported: number; duplicates: number; failed: number };
+}
 export interface CountResult { count: number; }
 export interface RestoreResult { restored: number; }
 export interface PurgeResult { purged: number; }
@@ -227,6 +232,19 @@ export const api = {
     deleteRange: (from: string, to: string)  => request<DeleteResult>("/api/v1/activities", "DELETE", rp(from, to)),
     deleteOne:   (id: number)                => request<DeleteResult>(`/api/v1/activities/${id}`, "DELETE"),
     sync:        ()                          => request<SyncResult>("/api/v1/sync/garmin", "POST"),
+    importFitZip: async (file: File): Promise<FitBatchImportResult> => {
+      const path = "/api/v1/imports/fit-zip";
+      const headers: Record<string, string> = { "Content-Type": file.type || "application/zip" };
+      if (csrfToken) headers["X-RunsFree-CSRF"] = csrfToken;
+      let res: Response;
+      try {
+        res = await fetch(`${BASE}${path}`, { method: "POST", credentials: "include", headers, body: file });
+      } catch {
+        throw new ApiError(0, await translate("api.networkError", "Couldn't reach the API server. It may be down, restarting, or a long request was interrupted - the operation may still have finished, so wait a moment and try again."));
+      }
+      if (!res.ok) throw await buildApiError(res, path);
+      return res.json() as Promise<FitBatchImportResult>;
+    },
     deviceStatus:()                          => request<DeviceStatus>("/api/v1/garmin/status"),
     // Trash — deletes above are soft (deleted_at set, restorable). These
     // list/restore/permanently-remove what's currently in the trash.
