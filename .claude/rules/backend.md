@@ -18,5 +18,6 @@ paths:
 - The backend does not auto-reload by default. During development use `npm run server:watch` (`node --watch src/server.ts`) when auto-restart is needed.
 - Respect the architecture pipeline: `http/ → controllers/ → services/ → repositories/`; `domain/` stays pure/no-I/O.
 - Naming: integration/client modules are nouns; executable jobs/commands are verbs.
+- **Any value that should be environment-configurable must actually be wired as an env var** (`config.ts`'s `Config` interface + `loadConfig()`, via `parseIntEnv`/`parseBoolEnv`/`parseListEnv` or a plain `process.env.X`), not a bare source-code constant — even when it looks like an internal implementation detail (e.g. a cookie max-age). Add the var to `garmin-stats/.env.example` in the same edit, with a one-line comment (default value, when it's required). A hardcoded constant the human can't see or override defeats the purpose of a config layer.
 
 Before changing backend behavior, read the relevant routed document from root `AGENTS.md` (`docs/api.md`, `docs/schema.md`, or `docs/ingestion.md`).

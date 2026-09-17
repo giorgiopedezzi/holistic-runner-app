@@ -73,6 +73,7 @@ export interface Config {
     founderAllowlist: string[];
     sessionIdleSeconds: number;
     sessionAbsoluteSeconds: number;
+    preauthCookieSeconds: number;
     webClientId?: string;
     webClientSecret?: string;
     webCallbackUrl?: string;
@@ -149,6 +150,8 @@ export function loadConfig(): Config {
       // ADR defaults: 30 min idle / 12h absolute.
       sessionIdleSeconds: parseIntEnv(process.env.AUTH_SESSION_IDLE_SECONDS, 1800),
       sessionAbsoluteSeconds: parseIntEnv(process.env.AUTH_SESSION_ABSOLUTE_SECONDS, 43200),
+      // How long the OAuth-redirect preauth cookie (state/nonce binding) survives.
+      preauthCookieSeconds: parseIntEnv(process.env.AUTH_PREAUTH_COOKIE_SECONDS, 600),
       webClientId: process.env.AUTH_WEB_CLIENT_ID,
       webClientSecret: process.env.AUTH_WEB_CLIENT_SECRET,
       webCallbackUrl: process.env.AUTH_WEB_CALLBACK_URL,

@@ -84,7 +84,7 @@ export function createAuthController(ctx: AppContext): { login: Handler; callbac
       authorization.searchParams.set("state", transaction.state);
       authorization.searchParams.set("nonce", transaction.nonce);
       if (connection) authorization.searchParams.set("connection", connection);
-      redirect(res, authorization.toString(), [`${PREAUTH_COOKIE}=${transaction.preauth}; ${cookieAttributes(config.webCallbackUrl, 600)}`]);
+      redirect(res, authorization.toString(), [`${PREAUTH_COOKIE}=${transaction.preauth}; ${cookieAttributes(config.webCallbackUrl, ctx.config.auth.preauthCookieSeconds)}`]);
     },
     callback: async (req, res, url) => {
       if (!ctx.config.auth.enabled || !checkRate(req, "callback")) return redirect(res, callbackFailure());

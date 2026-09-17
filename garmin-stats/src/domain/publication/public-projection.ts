@@ -53,7 +53,7 @@ export const PUBLIC_FIELD_ALLOWLIST: Readonly<Record<PublicResourceKind, readonl
 export const PROHIBITED_PUBLIC_KEY_FRAGMENTS = [
   "authorization", "cookie", "credential", "device", "email", "externalidentity",
   "filename", "filepath", "latitude", "location", "longitude", "note", "password",
-  "path", "payload", "provider", "raw", "secret", "session", "subject", "token",
+  "path", "payload", "provider", "secret", "session", "subject", "token",
 ] as const;
 
 function normalizedKey(key: string): string {
