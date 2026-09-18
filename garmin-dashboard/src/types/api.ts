@@ -2,6 +2,8 @@
 // These mirror the shapes returned by server.ts exactly.
 // Add new fields here when extending the backend.
 
+import type { TrainingLoadCategory } from "@/domain/runplan-aggregate";
+
 // The list envelope every collection endpoint returns (HRA-38). Offset-based:
 // page.total is the full count, page.limit/offset the window returned.
 export interface Page {
@@ -794,33 +796,38 @@ export interface TrashedBodyMeasurement {
   deleted_at:  string;
 }
 
-// ── AI workout classifier ─────────────────────────────────────────────────
-// The six canonical labels — also duplicated in garmin-stats' ollama-service.ts
-// (no shared package between the two npm projects in this repo). Keep both
-// lists in sync if these ever change.
-export const WORKOUT_CLASSIFICATIONS = [
-  "Recovery Run",
-  "Long Session",
-  "Repeats/Intervals",
-  "Progressive Run",
-  "Fartlek",
-  "Tapasciata / Light Maintenance",
+// ── Actual-running workout classifier (HRA-394) ───────────────────────────
+// The seven canonical actual-running keys — also duplicated in garmin-stats'
+// domain/stats-classifier.ts's ACTUAL_RUNNING_CLASSIFICATIONS (no shared
+// package between the two npm projects in this repo). Keep both lists in
+// sync if these ever change. The first six reuse planned-workout
+// TrainingLoadCategory semantics 1:1; `tapasciata` is the one
+// actual-running-only category (`cross_training`/`rest` are planned-only and
+// never valid here) — see the assertion below, which fails to compile if the
+// two enums ever drift apart within this project.
+export const ACTUAL_RUNNING_CLASSIFICATIONS = [
+  "easy_recovery", "long_run", "intervals", "progressive", "threshold", "tempo", "tapasciata",
 ] as const;
-export type WorkoutClassification = typeof WORKOUT_CLASSIFICATIONS[number];
+export type ActualRunningClassification = typeof ACTUAL_RUNNING_CLASSIFICATIONS[number];
+export type _AssertSharedCategoriesReuseTrainingLoadCategory =
+  Exclude<ActualRunningClassification, "tapasciata"> extends TrainingLoadCategory ? true : never;
 
-// Display-only i18n key per classification (HRA-105) — the stored/compared
-// value above is the wire format (persisted, matched against ai_classification/
-// statistical_classification/final_classification) and stays untouched; only
-// what's rendered on screen goes through t(WORKOUT_CLASSIFICATION_KEY[c], c),
-// same "value stays stable, label goes through a lookup" pattern as
-// components/activity/shared.ts's METRIC_DEFS.
-export const WORKOUT_CLASSIFICATION_KEY: Record<WorkoutClassification, string> = {
-  "Recovery Run":                    "classification.recoveryRun",
-  "Long Session":                    "classification.longSession",
-  "Repeats/Intervals":               "classification.repeatsIntervals",
-  "Progressive Run":                 "classification.progressiveRun",
-  "Fartlek":                         "classification.fartlek",
-  "Tapasciata / Light Maintenance":  "classification.tapasciata",
+// Display-only [i18n key, English default] pair per classification (HRA-105)
+// — same [key, default] tuple shape categoryVisuals.tsx's CATEGORY_LABEL_KEYS
+// already uses, so a caller can pass the real English text as t()'s default
+// rather than the raw machine value (the stored/compared value is now a
+// snake_case key like "long_run", not human-readable text, unlike the
+// retired vocabulary). The six shared categories reuse the exact
+// planned-workout label keys+defaults so an equivalent planned/actual
+// category always renders identical text (HRA-394 AC).
+export const ACTUAL_RUNNING_CLASSIFICATION_KEY: Record<ActualRunningClassification, [string, string]> = {
+  easy_recovery: ["manage.planInstances.category.easyRecovery", "Easy/Recovery"],
+  long_run:      ["manage.planInstances.category.longRun", "Long run"],
+  intervals:     ["manage.planInstances.category.intervals", "Intervals"],
+  progressive:   ["manage.planInstances.category.progressive", "Progressive"],
+  threshold:     ["manage.planInstances.category.threshold", "Threshold"],
+  tempo:         ["manage.planInstances.category.tempo", "Tempo"],
+  tapasciata:    ["classification.tapasciata", "Tapasciata / Light Maintenance"],
 };
 
 // Also duplicated in garmin-stats' server.ts (CORRECTION_REASONS).

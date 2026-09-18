@@ -26,26 +26,26 @@ test("classification uses current metrics only on explicit execution and preserv
 
     const first = await server.api(`/api/v1/activities/${id}/classify`, json({ splitMeters: 1000 }));
     assert.equal(first.status, 200);
-    assert.equal((first.json as { system_classification: string }).system_classification, "Recovery Run");
+    assert.equal((first.json as { system_classification: string }).system_classification, "easy_recovery");
 
-    const override = await server.api(`/api/v1/activities/${id}/classification-override`, json({ classification: "Fartlek" }, "PUT"));
+    const override = await server.api(`/api/v1/activities/${id}/classification-override`, json({ classification: "tempo" }, "PUT"));
     assert.equal(override.status, 200);
-    assert.equal((override.json as { manual_classification: string }).manual_classification, "Fartlek");
+    assert.equal((override.json as { manual_classification: string }).manual_classification, "tempo");
 
     const changedMetrics = { ...initialMetrics, current_long_run_target_m: 5000 };
     assert.equal((await server.api("/api/v1/settings/athlete-metrics", json(changedMetrics, "PUT"))).status, 200);
     const unchanged = await server.api(`/api/v1/activities/${id}`);
-    assert.equal((unchanged.json as { system_classification: string }).system_classification, "Recovery Run");
-    assert.equal((unchanged.json as { manual_classification: string }).manual_classification, "Fartlek");
+    assert.equal((unchanged.json as { system_classification: string }).system_classification, "easy_recovery");
+    assert.equal((unchanged.json as { manual_classification: string }).manual_classification, "tempo");
 
     const reclassified = await server.api(`/api/v1/activities/${id}/classify`, json({ splitMeters: 1000 }));
     assert.equal(reclassified.status, 200);
-    assert.equal((reclassified.json as { system_classification: string }).system_classification, "Long Session");
-    assert.equal((reclassified.json as { manual_classification: string }).manual_classification, "Fartlek");
+    assert.equal((reclassified.json as { system_classification: string }).system_classification, "long_run");
+    assert.equal((reclassified.json as { manual_classification: string }).manual_classification, "tempo");
 
     const restored = await server.api(`/api/v1/activities/${id}/classification-override`, { method: "DELETE" });
     assert.equal(restored.status, 200);
-    assert.equal((restored.json as { system_classification: string }).system_classification, "Long Session");
+    assert.equal((restored.json as { system_classification: string }).system_classification, "long_run");
     assert.equal((restored.json as { manual_classification: string | null }).manual_classification, null);
   } finally {
     await server.close();
@@ -60,7 +60,7 @@ test("Guest cannot persist a classification override", async () => {
     const response = await fetch(`${server.baseUrl}/api/v1/activities/${id}/classification-override`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", origin: "http://test.invalid" },
-      body: JSON.stringify({ classification: "Fartlek" }),
+      body: JSON.stringify({ classification: "tempo" }),
     });
     assert.ok(response.status === 401 || response.status === 403);
     const stored = await server.db.get<{ manual_classification: string | null }>("SELECT manual_classification FROM activities WHERE id=$1", [id]);

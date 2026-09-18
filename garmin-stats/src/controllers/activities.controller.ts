@@ -10,6 +10,7 @@ import { dateRange, parsePageParams, readJsonBody } from "../http/request.ts";
 import { paginated } from "../http/envelope.ts";
 import { badRequest, notFound, unprocessable } from "../http/problem.ts";
 import { WORKOUT_CLASSIFICATIONS } from "../integrations/ollama.ts";
+import { ACTUAL_RUNNING_CLASSIFICATIONS } from "../domain/stats-classifier.ts";
 import { requestDataOwnerId, requestIdentity } from "../http/auth-context.ts";
 import { founderPublicResponse } from "../http/founder-public-response.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
@@ -110,8 +111,8 @@ export function createActivitiesController(ctx: AppContext) {
     const id = parseInt(url.pathname.match(/^\/api\/v1\/activities\/(\d+)\/classification-override$/)![1]);
     if (!await owned(req).byId(id)) throw notFound(`Activity ${id} not found.`);
     const body = await readJsonBody<{ classification?: unknown }>(req);
-    if (typeof body.classification !== "string" || !(WORKOUT_CLASSIFICATIONS as readonly string[]).includes(body.classification)) {
-      throw unprocessable(`classification must be one of: ${WORKOUT_CLASSIFICATIONS.join(", ")}`);
+    if (typeof body.classification !== "string" || !(ACTUAL_RUNNING_CLASSIFICATIONS as readonly string[]).includes(body.classification)) {
+      throw unprocessable(`classification must be one of: ${ACTUAL_RUNNING_CLASSIFICATIONS.join(", ")}`);
     }
     await owned(req).updateManualClassification({ $id: id, $classification: body.classification });
     return send(res, await owned(req).byId(id));

@@ -13,7 +13,7 @@ import { ActivityActionsMenu } from "./ActivityActionsMenu";
 import { WorkoutAssociationControl } from "./WorkoutAssociationControl";
 import { buildPaceTargetBandModel } from "@/domain/planned-workout";
 import type { ResolvedSegment } from "@/types/runplan";
-import { SPORT_COLOR, effectiveClassification, WORKOUT_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type WorkoutClassification } from "@/types/api";
+import { SPORT_COLOR, effectiveClassification, ACTUAL_RUNNING_CLASSIFICATION_KEY, type Activity, type PlanInstanceDayWithInstance, type TrackPoint, type ActualRunningClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtDuration, fmtElevation, fmtDate, fmtSource } from "@/utils/fmt";
 import { computeOutlierMask, computeMinSpeedMask } from "@/domain/outliers";
@@ -85,12 +85,8 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
   const [plannedShown, setPlannedShown] = useState(true);
   const [plannedCardShown, setPlannedCardShown] = useState(false);
   // Classification accordion (dashboard design-system rework, "reorganize
-  // activity layout") — collapsed by default; splitMeters is lifted out of
-  // ClassificationCard (which still falls back to its own local state when
-  // not given these) purely so the collapsed header can show the current
-  // sampling granularity without expanding the section.
+  // activity layout") — collapsed by default.
   const [classificationExpanded, setClassificationExpanded] = useState(false);
-  const [splitMeters, setSplitMeters] = useState(1000);
 
   const [xMode, setXMode] = useState<XMode>("distance");
   // Heart rate starts active by default (the rest are opt-in).
@@ -354,8 +350,11 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                 2. one row of badges, 3/4. the chart section's own selector
                 rows, 5. the graph(s). */}
             {activity.sport === "running" && (() => {
-              const classificationLabel = (c: string | null) =>
-                c ? t(WORKOUT_CLASSIFICATION_KEY[c as WorkoutClassification] ?? "unknown", c) : t("activity.classify.notYetClassified", "Not yet classified");
+              const classificationLabel = (c: string | null) => {
+                if (!c) return t("activity.classify.notYetClassified", "Not yet classified");
+                const pair = ACTUAL_RUNNING_CLASSIFICATION_KEY[c as ActualRunningClassification] as [string, string] | undefined;
+                return pair ? t(pair[0], pair[1]) : t("unknown", c);
+              };
               const effective = effectiveClassification(activity);
               const provenance = activity.manual_classification
                 ? t("activity.classify.provenanceUser", "Classified by you")
@@ -365,11 +364,10 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
               // HRA-303 corrective round, section 2: the default mobile state
               // is ONE compact disclosure row — type/date-style label, an
               // info hint, the single resolved value on the right, collapsed
-              // by default. The previous round's verbose AI/Statistical/
-              // Sampling summary (still used on desktop, `title` below) is
-              // exactly the "expanded nested Classification card shown by
-              // default" the corrective spec calls out — it's gone from the
-              // mobile collapsed row entirely, not just restyled.
+              // by default. The previous round's verbose AI/Statistical
+              // summary is exactly the "expanded nested Classification card
+              // shown by default" the corrective spec calls out — it's gone
+              // from the mobile collapsed row entirely, not just restyled.
               const collapsedValue = effective ? classificationLabel(effective) : provenance;
               return (
                 <AccordionCard
@@ -394,13 +392,11 @@ export function ActivityDetailBody({ activityId, onDelete, onClose, onActivityUp
                       <span className="hra-text-secondary text-meta">
                         {effective && <>{classificationLabel(effective)}{" · "}</>}
                         {provenance}
-                        {" · "}
-                        {t("activity.classify.summarySampling", `Sampling: ${splitMeters === 1000 ? "1km" : "0.5km"}`, { sampling: splitMeters === 1000 ? "1km" : "0.5km" })}
                       </span>
                     </div>
                   )}
                 >
-                  <ClassificationCard activity={activity} onUpdate={applyActivityUpdate} splitMeters={splitMeters} onSplitMetersChange={setSplitMeters} />
+                  <ClassificationCard activity={activity} onUpdate={applyActivityUpdate} />
                 </AccordionCard>
               );
             })()}

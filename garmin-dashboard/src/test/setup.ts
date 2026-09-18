@@ -39,6 +39,21 @@ if (typeof window.matchMedia !== "function") {
   })) as unknown as typeof window.matchMedia;
 }
 
+// Radix UI's Select/Dropdown primitives (ClassificationPicker.tsx, HRA-394)
+// call these pointer-capture/scroll APIs on open/select; jsdom implements
+// neither, so interacting with any Radix Select in a test throws without
+// this shim. No-op stand-ins are enough — no test in this suite asserts on
+// actual pointer capture or scroll position.
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 afterEach(() => {
   cleanup();
 });

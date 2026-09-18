@@ -3,7 +3,16 @@ import { clientQueryable } from "../db/query.ts";
 import { parseFit } from "../domain/fit-parser.ts";
 import { crossValidateFitParser } from "../domain/fit-file-parser-validate.ts";
 import { readFitZip, type ZipReadLimits } from "../domain/zip/reader.ts";
+import { summarizeWorkout, type WorkoutTrackPoint } from "../domain/workout-metrics.ts";
+import { classifyByStatistics } from "../domain/stats-classifier.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
+import { createOwnedSettingsRepo } from "../repositories/owned-settings.repo.ts";
+
+interface AthleteMetricRow {
+  current_easy_pace_sec_per_km: number | null;
+  current_race_pace_sec_per_km: number | null;
+  current_long_run_target_m: number | null;
+}
 
 export type FitImportStatus = "imported" | "duplicate" | "failed";
 export interface FitImportResult {
@@ -54,10 +63,32 @@ export function createFitImportService(db: PostgresDatabase) {
       const parsed = parseFit(data, filename);
       await crossValidateFitParser(data, filename, parsed);
       const inserted = await db.transaction(async client => {
-        const repo = createOwnedActivitiesRepo(clientQueryable(client), userId);
+        const queryable = clientQueryable(client);
+        const repo = createOwnedActivitiesRepo(queryable, userId);
         const row = await repo.insertGarminActivity(parsed.activity);
         if (!row) return false;
         for (const point of parsed.trackPoints) await repo.insertTrackPoint(row.id, point);
+
+        // HRA-394: classification is part of ingestion, not an on-demand
+        // afterthought — a successfully imported running activity must have
+        // system_classification populated before this transaction commits.
+        // Same domain calls (summarizeWorkout/classifyByStatistics) the
+        // explicit POST /classify path uses (classification.service.ts);
+        // inlined here rather than reused as a call because that path runs
+        // its own top-level PostgresDatabase statements, not this
+        // transaction's client — a classifier failure must roll back the
+        // whole import, never commit an activity with no classification.
+        if (parsed.activity.sport === "running") {
+          const settings = await createOwnedSettingsRepo(queryable, userId).get() as AthleteMetricRow | undefined;
+          const summary = summarizeWorkout(parsed.activity, parsed.trackPoints as WorkoutTrackPoint[], { splitMeters: 1000 });
+          const result = classifyByStatistics(summary, {
+            currentEasyPaceSecPerKm: settings?.current_easy_pace_sec_per_km ?? null,
+            currentRacePaceSecPerKm: settings?.current_race_pace_sec_per_km ?? null,
+            currentLongRunTargetM: settings?.current_long_run_target_m ?? null,
+          });
+          await repo.updateSystemClassification({ $id: row.id, $classification: result.classification, $explanation: result.explanation });
+        }
+
         return true;
       });
       return inserted ? { filename, status: "imported" } : { filename, status: "duplicate", reason: "Already imported." };

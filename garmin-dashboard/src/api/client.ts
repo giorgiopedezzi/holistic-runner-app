@@ -8,7 +8,7 @@ import type {
   TrackPoint, BodyMeasurement, MonthlyBody, CorrelationPoint,
   DeviceStatus, WithingsStatus, StravaStatus, Settings, Theme, BackgroundKind, StoredUnitSystem,
   ActivityDetailView, AccentColor, TrashedActivity, TrashedBodyMeasurement,
-  UserFeedback, CorrectionReason, WorkoutClassification, ClassificationMethod,
+  UserFeedback, CorrectionReason, ActualRunningClassification, ClassificationMethod,
   ActivityType, RaceActivity, SavedDateRange, DateFormat, StoredLanguage, Paginated, PlanTemplate,
   PlanInstance, PlanInstanceWithDays, PlanInstanceDay, PlanInstanceDayWithInstance, Palette,
   FeedbackSubmission, FeedbackEntry, AssociationView, WorkoutReport, WeekReport, PlanReport, ReportRangeMode, RangeReport,
@@ -214,7 +214,12 @@ export interface FeedbackBody {
   // activity, so approving/rejecting always applies to a specific card.
   source: ClassificationMethod;
   correctionReason?: CorrectionReason;
-  finalClassification?: WorkoutClassification;
+  // The legacy AI/statistical thumbs-up/down flow this belongs to predates
+  // HRA-394's actual-running taxonomy and is out of this Story's scope
+  // (Feedback boundary) — loosely typed rather than importing the retired
+  // WorkoutClassification enum, since nothing in the frontend currently
+  // calls api.garmin.feedback() at all.
+  finalClassification?: string;
 }
 
 function idsBody(ids: number[]) { return { ids }; }
@@ -280,7 +285,7 @@ export const api = {
     // there's no bulk classify route.
     classify:     (id: number, splitMeters?: number) =>
       request<Activity>(`/api/v1/activities/${id}/classify`, "POST", undefined, { splitMeters }),
-    overrideClassification: (id: number, classification: WorkoutClassification) =>
+    overrideClassification: (id: number, classification: ActualRunningClassification) =>
       request<Activity>(`/api/v1/activities/${id}/classification-override`, "PUT", undefined, { classification }),
     restoreSystemClassification: (id: number) =>
       request<Activity>(`/api/v1/activities/${id}/classification-override`, "DELETE"),

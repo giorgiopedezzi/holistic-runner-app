@@ -281,6 +281,30 @@ describe("ActivityRow mobile identity hierarchy (HRA-303 section 3/AC7)", () => 
     // its own near-empty row (see .hra-activity-row-actions' phone rule).
     expect(screen.getByRole("button", { name: "Activity actions" })).toBeInTheDocument();
   });
+
+  it("shows the effective classification icon+label for a classified running activity (HRA-394)", () => {
+    installFetch({});
+    render(
+      <ActivityRow activity={activity({ system_classification: "long_run" })} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+    expect(screen.getByText("Long run")).toBeInTheDocument();
+  });
+
+  it("shows nothing for an unclassified or non-running activity", () => {
+    installFetch({});
+    const { rerender } = render(
+      <ActivityRow activity={activity()} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+    expect(screen.queryByText("Long run")).not.toBeInTheDocument();
+
+    rerender(
+      <ActivityRow activity={activity({ sport: "cycling", system_classification: "long_run" })} expanded={false} expandIndicator="accordion"
+        onClick={vi.fn()} onDelete={vi.fn()} onUpdate={vi.fn()} />,
+    );
+    expect(screen.queryByText("Long run")).not.toBeInTheDocument();
+  });
 });
 
 describe("ActivitySportLegend", () => {

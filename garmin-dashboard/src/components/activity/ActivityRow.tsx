@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Trash2, Footprints, Bike, PersonStanding, WavesHorizontal, Mountain, Dumbbell, Activity as ActivityIcon, type LucideIcon } from "lucide-react";
 import { api } from "@/api/client";
 import { Badge, HelpDisclosure } from "@/components/ui";
-import { SPORT_COLOR, type Activity } from "@/types/api";
+import { ACTUAL_RUNNING_CATEGORY_ICONS } from "@/components/manage/categoryVisuals";
+import { SPORT_COLOR, effectiveClassification, ACTUAL_RUNNING_CLASSIFICATION_KEY, type Activity, type ActualRunningClassification } from "@/types/api";
 import { getResolvedTheme } from "@/utils/theme";
 import { fmtPace, fmtDuration, fmtKm, fmtDate, fmtSource } from "@/utils/fmt";
 import { distanceUnitLabel } from "@/utils/units";
@@ -113,6 +114,13 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
   const isPhone = useIsPhone();
   const color = SPORT_COLOR[getResolvedTheme()][a.sport ?? "other"] ?? "#888";
   const SportIcon = SPORT_ICON[a.sport ?? "other"] ?? ActivityIcon;
+  // HRA-394: the effective classification, discoverable in the row itself
+  // (not only inside the activity's own expanded ClassificationCard) — icon
+  // + localized label, same registry ClassificationCard/ClassifySection use.
+  const effectiveClass = a.sport === "running" ? effectiveClassification(a) as ActualRunningClassification | null : null;
+  const ClassificationIcon = effectiveClass ? ACTUAL_RUNNING_CATEGORY_ICONS[effectiveClass] : null;
+  const [classificationLabelKey, classificationLabelFallback] = effectiveClass ? ACTUAL_RUNNING_CLASSIFICATION_KEY[effectiveClass] : [null, null];
+  const classificationLabel = classificationLabelKey ? t(classificationLabelKey, classificationLabelFallback!) : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -162,6 +170,12 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
               <span className="hra-row-wrap gap-2 items-center hra-activity-row-mobile-top">
                 <Badge label={a.sport ?? "other"} color={color} icon={<SportIcon size={12} aria-hidden="true" />} />
                 <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
+                {ClassificationIcon && (
+                  <span className="hra-text-secondary text-meta hra-row-inline" title={classificationLabel ?? undefined}>
+                    <ClassificationIcon size={12} aria-hidden="true" />
+                    {classificationLabel}
+                  </span>
+                )}
               </span>
               <span className="text-display">{fmtKm(a.distance_m)}</span>
               <span className="hra-text-secondary text-label">
@@ -182,6 +196,12 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
             <>
               <Badge label={a.sport ?? "other"} color={color} icon={<SportIcon size={12} aria-hidden="true" />} />
               <span className="hra-text-muted text-meta">{fmtDate(a.date_only)}</span>
+              {ClassificationIcon && (
+                <span className="hra-text-secondary text-meta hra-row-inline" title={classificationLabel ?? undefined}>
+                  <ClassificationIcon size={12} aria-hidden="true" />
+                  {classificationLabel}
+                </span>
+              )}
               {a.activity_name && (
                 // Ellipsized, not wrapped — a long race name now truncates
                 // within its own budget instead of pushing the row taller (or,

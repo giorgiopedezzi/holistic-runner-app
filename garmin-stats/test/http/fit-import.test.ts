@@ -95,6 +95,20 @@ test("single-FIT import remains idempotent and archive bytes are cleared on succ
   } finally { await server.close(); }
 });
 
+test("a successfully imported running FIT has system_classification populated before the transaction completes (HRA-394)", async () => {
+  const server = await startTestServer();
+  try {
+    const service = createFitImportService(server.db);
+    const result = await service.importOne(FOUNDER_USER_ID, "classified.fit", referenceFit);
+    assert.equal(result.status, "imported");
+    const row = await server.db.get<{ sport: string; system_classification: string | null }>(
+      "SELECT sport,system_classification FROM activities WHERE user_id=$1 AND filename=$2", [FOUNDER_USER_ID, "classified.fit"],
+    );
+    assert.equal(row?.sport, "running");
+    assert.ok(row?.system_classification, "expected system_classification to be populated at ingestion, not left null");
+  } finally { await server.close(); }
+});
+
 test("FIT ZIP import is unavailable without authentication", async () => {
   const server = await startTestServer();
   try {

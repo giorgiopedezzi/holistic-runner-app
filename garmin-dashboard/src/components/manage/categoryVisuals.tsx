@@ -10,8 +10,9 @@
  * data from here instead of defining it locally — no behavior change there.
  */
 import type { ReactNode } from "react";
-import { Activity, Bed, Bike, Feather, Repeat, TrendingUp, Zap } from "lucide-react";
+import { Activity, Bed, Bike, Feather, Repeat, TrendingUp, Wind, Zap } from "lucide-react";
 import type { TrainingLoadCategory } from "@/domain/runplan-aggregate";
+import type { ActualRunningClassification } from "@/types/api";
 
 // HRA-148 Ask #2: one icon per HRA-147 classification category — Repeat for
 // Intervals, TrendingUp for Progressive (both named explicitly by the
@@ -70,6 +71,25 @@ export const CATEGORY_LABEL_KEYS: Record<TrainingLoadCategory, [string, string]>
   cross_training: ["manage.planInstances.category.crossTraining", "Cross training"],
   rest: ["manage.planInstances.category.rest", "Rest"],
 };
+// HRA-394: actual-running classification reuses these same icons/labels for
+// its six shared categories (equivalent planned/actual categories must
+// render identically) and adds one actual-only icon for tapasciata — `Wind`
+// rather than `Footprints` (already the running sport glyph elsewhere,
+// e.g. ActivityRow.tsx's SPORT_ICON) to avoid two different meanings sharing
+// one icon in the same row.
+export const ACTUAL_RUNNING_CATEGORY_ICONS: Record<ActualRunningClassification, (props: { size?: number }) => ReactNode> = {
+  easy_recovery: CATEGORY_ICONS.easy_recovery,
+  long_run: CATEGORY_ICONS.long_run,
+  intervals: CATEGORY_ICONS.intervals,
+  progressive: CATEGORY_ICONS.progressive,
+  threshold: CATEGORY_ICONS.threshold,
+  tempo: CATEGORY_ICONS.tempo,
+  tapasciata: Wind,
+};
+export const ACTUAL_RUNNING_CATEGORY_ORDER: ActualRunningClassification[] = [
+  "easy_recovery", "long_run", "intervals", "progressive", "threshold", "tempo", "tapasciata",
+];
+
 export const CATEGORY_CRITERIA_KEYS: Record<TrainingLoadCategory, [string, string]> = {
   easy_recovery: ["manage.planInstances.categoryCriteria.easyRecovery", "Slowest pace third of the plan, or pace not yet resolved."],
   long_run: ["manage.planInstances.categoryCriteria.longRun", "The week's longest run, by distance (or duration)."],

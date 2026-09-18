@@ -14,6 +14,7 @@
     "server:watch": "node --env-file-if-exists=.env --watch src/server.ts",
     "reprocess:fit": "node --env-file=.env src/jobs/reprocess-fit-archive.ts",
     "cleanup:plan-instance-dates": "node --env-file=.env src/jobs/cleanup-plan-instance-day-dates.ts",
+    "backfill:actual-classification": "node --env-file=.env src/jobs/backfill-actual-classification.ts",
     "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
     "db:migrate:status": "node --env-file-if-exists=.env src/db/migrate.ts --status",
     "db:bootstrap-founder": "node --env-file-if-exists=.env src/db/bootstrap-founder.ts",

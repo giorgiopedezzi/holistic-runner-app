@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
 import { Card, ErrorBanner, LoadingSpinner, ProgressBar, Checkbox, DatePicker } from "@/components/ui";
-import type { Activity, WorkoutClassification } from "@/types/api";
-import { effectiveClassification, WORKOUT_CLASSIFICATION_KEY } from "@/types/api";
+import type { Activity, ActualRunningClassification } from "@/types/api";
+import { effectiveClassification, ACTUAL_RUNNING_CLASSIFICATION_KEY } from "@/types/api";
 import { fmtKm, fmtDate } from "@/utils/fmt";
 import { isoToday, isoAgo } from "@/utils/date";
 import { useDemoMode } from "@/hooks/useDemoMode";
@@ -81,8 +81,10 @@ export function ClassifySection() {
     setBusy(false);
   }
 
-  const classificationLabel = (value: string) =>
-    t(WORKOUT_CLASSIFICATION_KEY[value as WorkoutClassification] ?? "unknown", value);
+  const classificationLabel = (value: string) => {
+    const pair = ACTUAL_RUNNING_CLASSIFICATION_KEY[value as ActualRunningClassification] as [string, string] | undefined;
+    return pair ? t(pair[0], pair[1]) : t("unknown", value);
+  };
 
   return (
     <Card>
