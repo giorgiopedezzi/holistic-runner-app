@@ -15,7 +15,7 @@ import { mkdtempSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { startTestServer } from "../helpers/server.ts";
-import { fromGarminWorkoutFit } from "../../src/integrations/garmin-workout.ts";
+import { decodeGarminWorkoutFit, fromGarminWorkoutFit, scheduledTimeToDate } from "../../src/integrations/garmin-workout.ts";
 
 const DSL = `PLAN
 NAME Smoke Plan
@@ -66,6 +66,25 @@ function extractAndDecode(zipBytes: Buffer): Record<string, ReturnType<typeof fr
   }
 }
 
+// HRA-390 AC7: every entry in a representative week ZIP must carry its own
+// correct Schedule message and plan date, propagated automatically through
+// the same canonical day exporter — no ZIP-specific scheduling logic.
+function extractAndDecodeSchedule(zipBytes: Buffer): Record<string, ReturnType<typeof decodeGarminWorkoutFit>> {
+  const dir = mkdtempSync(join(tmpdir(), "hra390-scope-fit-schedule-"));
+  try {
+    writeFileSync(join(dir, "plan.zip"), zipBytes);
+    execFileSync("unzip", ["-o", "plan.zip"], { cwd: dir });
+    const names = readdirSync(dir).filter(f => f !== "plan.zip");
+    const decoded: Record<string, ReturnType<typeof decodeGarminWorkoutFit>> = {};
+    for (const name of names) {
+      decoded[name] = decodeGarminWorkoutFit(execFileSync("unzip", ["-p", "plan.zip", name], { cwd: dir }));
+    }
+    return decoded;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 // Both weeks in the fixture DSL declare only some of D1-D7 (WEEK 1: D1/D2/D3,
 // WEEK 2: D1/D2) — HRA-124 auto-fills every undeclared D-number 1-7 as a rest
 // day, so each week actually resolves to 7 days (14 for the whole section),
@@ -90,6 +109,19 @@ test("GET .../fit?section_name= downloads a zip with one .fit per exportable day
     assert.ok(names.includes("Zip Export Instance_20260901.fit"));
     assert.ok(names.includes("Zip Export Instance_20260914.fit"));
     for (const outcome of Object.values(decoded)) assert.equal(outcome.ok, true, JSON.stringify(outcome));
+
+    const schedules = extractAndDecodeSchedule(bytes!);
+    for (const [name, { messages, errors }] of Object.entries(schedules)) {
+      assert.deepEqual(errors, [], name);
+      const scheduleMesgs = messages.scheduleMesgs as Array<{ type: string; scheduledTime: number }> | undefined;
+      assert.equal(scheduleMesgs?.length, 1, name);
+      assert.equal(scheduleMesgs![0].type, "workout", name);
+      const dateFromName = name.match(/_(\d{4})(\d{2})(\d{2})\.fit$/);
+      assert.ok(dateFromName, name);
+      const [, y, m, d] = dateFromName!;
+      const scheduledDate = scheduledTimeToDate(scheduleMesgs![0].scheduledTime);
+      assert.equal(scheduledDate.toISOString().slice(0, 10), `${y}-${m}-${d}`, name);
+    }
   } finally {
     await server.close();
   }

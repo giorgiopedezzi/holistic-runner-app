@@ -18,7 +18,7 @@
 // "customTargetSpeedLow" are a decode-time-only convenience and are silently
 // dropped if used as a write key, so every writeMesg() call below uses the
 // base field name (durationValue/targetValue/customTargetValueLow/...).
-import { Decoder, Encoder, Profile, Stream } from "@garmin/fitsdk";
+import { Decoder, Encoder, Profile, Stream, Utils } from "@garmin/fitsdk";
 import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { resolvedDayToGarminSteps } from "../domain/garmin-workout/export.ts";
 import { garminStepsToImportPreview } from "../domain/garmin-workout/import.ts";
@@ -37,6 +37,27 @@ import type {
 const DISTANCE_WIRE_UNITS_PER_METER = 100;
 const DURATION_WIRE_UNITS_PER_SECOND = 1000;
 const SPEED_WIRE_UNITS_PER_MPS = 1000;
+
+// HRA-390: shared FILE_ID identity, generated once per export and reused on
+// the SCHEDULE message so a device can associate the schedule with this file.
+const FILE_MANUFACTURER = "development";
+const FILE_PRODUCT = 1;
+
+// @garmin/fitsdk's own .d.ts re-exports every submodule via extensionless
+// relative specifiers (e.g. `export * from './types/utils'`), which NodeNext
+// module resolution can't resolve for an ESM package — the same gap this
+// file already works around for Decoder/Encoder/Profile/Stream by treating
+// their surface as loosely typed. `Utils`'s members come through as
+// `unknown` rather than `any`, so a narrow local cast is needed to call it.
+const convertDateToDateTime = Utils.convertDateToDateTime as (date: Date) => number;
+const convertDateTimeToDate = Utils.convertDateTimeToDate as (datetime: number) => Date;
+
+// Decodes a Schedule message's raw `scheduledTime` (FIT epoch seconds, see
+// the cast above) back to a JS Date — exported so callers/tests reading a
+// decoded Schedule message don't need their own cast against fitsdk's Utils.
+export function scheduledTimeToDate(scheduledTime: number): Date {
+  return convertDateTimeToDate(scheduledTime);
+}
 
 export type GarminWorkoutExportOutcome =
   | { ok: true; bytes: Buffer; warnings: GarminExportWarning[] }
@@ -72,16 +93,20 @@ export function toGarminWorkoutFit(day: ResolvedDay, band: PaceBandPolicy = PACE
   const result = resolvedDayToGarminSteps(day, band);
   if (!result.ok) return result;
 
+  // Deterministic by construction (HRA-184 AC): derived from the resolved
+  // day's own calendar date rather than the wall clock, so exporting the
+  // same ResolvedDay twice produces byte-identical output. Reused below for
+  // SCHEDULE.scheduledTime so both messages resolve to the same plan-day
+  // date regardless of server/browser/device timezone (HRA-390).
+  const dayDate = new Date(`${day.date}T00:00:00Z`);
+
   const encoder = new Encoder();
   encoder.writeMesg({
     mesgNum: Profile.MesgNum.FILE_ID,
     type: "workout",
-    manufacturer: "development",
-    product: 1,
-    // Deterministic by construction (HRA-184 AC): derived from the resolved
-    // day's own calendar date rather than the wall clock, so exporting the
-    // same ResolvedDay twice produces byte-identical output.
-    timeCreated: new Date(`${day.date}T00:00:00Z`),
+    manufacturer: FILE_MANUFACTURER,
+    product: FILE_PRODUCT,
+    timeCreated: dayDate,
   });
   encoder.writeMesg({
     mesgNum: Profile.MesgNum.WORKOUT,
@@ -92,6 +117,18 @@ export function toGarminWorkoutFit(day: ResolvedDay, band: PaceBandPolicy = PACE
   for (const step of result.steps) {
     encoder.writeMesg({ mesgNum: Profile.MesgNum.WORKOUT_STEP, ...toWireStep(step) });
   }
+  // HRA-390: SCHEDULE.scheduledTime is a "localDateTime" field — unlike
+  // FILE_ID.timeCreated's "dateTime" type, the encoder does not accept a
+  // Date object for it (throws), so it must be pre-converted to the raw FIT
+  // epoch integer. manufacturer/product reuse the FILE_ID identity above.
+  encoder.writeMesg({
+    mesgNum: Profile.MesgNum.SCHEDULE,
+    manufacturer: FILE_MANUFACTURER,
+    product: FILE_PRODUCT,
+    type: "workout",
+    completed: 0,
+    scheduledTime: convertDateToDateTime(dayDate),
+  });
 
   return { ok: true, bytes: Buffer.from(encoder.close()), warnings: result.warnings };
 }

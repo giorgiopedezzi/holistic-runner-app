@@ -11,7 +11,7 @@ import { parseDayEntry } from "../../src/domain/runplan/parser.ts";
 import { resolveDay } from "../../src/domain/runplan/instantiate.ts";
 import type { ResolvedDay } from "../../src/domain/runplan/instantiate.ts";
 import type { DayParseContext, PacePolicy } from "../../src/domain/runplan/types.ts";
-import { decodeGarminWorkoutFit, toGarminWorkoutFit } from "../../src/integrations/garmin-workout.ts";
+import { decodeGarminWorkoutFit, scheduledTimeToDate, toGarminWorkoutFit } from "../../src/integrations/garmin-workout.ts";
 
 const POLICY: PacePolicy = {
   RG: { kind: "absolute", pace_sec_per_km: 256 },
@@ -26,6 +26,11 @@ const CTX: DayParseContext = {
 function resolve(raw: string): ResolvedDay {
   const day = parseDayEntry(raw, CTX);
   return resolveDay(day, "Base", 1, "2026-01-05", POLICY);
+}
+
+function resolveAt(raw: string, date: string): ResolvedDay {
+  const day = parseDayEntry(raw, CTX);
+  return resolveDay(day, "Base", 1, date, POLICY);
 }
 
 interface DecodedWorkoutStep {
@@ -185,6 +190,52 @@ test("needs_review days and unsupported workout types return structured errors a
   assert.equal(strength.ok, false);
   if (strength.ok) throw new Error("unreachable");
   assert.ok(strength.errors.some(e => e.code === "UNSUPPORTED_WORKOUT_TYPE"));
+});
+
+// HRA-390: every exported workout also carries a Garmin SCHEDULE message
+// sharing the FILE_ID identity, so a compatible device recognizes the file
+// as scheduled for the resolved plan-day date.
+test("the exported FIT contains exactly one Schedule message, type workout, sharing the File Id identity", () => {
+  const day = resolve("D1: 10km @ RG");
+  const outcome = toGarminWorkoutFit(day);
+  assert.equal(outcome.ok, true);
+  if (!outcome.ok) throw new Error("unreachable");
+
+  const { messages, errors } = decodeGarminWorkoutFit(outcome.bytes);
+  assert.deepEqual(errors, []);
+
+  const [fileId] = messages.fileIdMesgs as Array<{ manufacturer: string; product: number }>;
+  const scheduleMesgs = messages.scheduleMesgs as Array<{
+    manufacturer: string; product: number; type: string; completed: number; scheduledTime: number;
+  }>;
+  assert.equal(scheduleMesgs.length, 1);
+  const [schedule] = scheduleMesgs;
+  assert.equal(schedule.type, "workout");
+  assert.equal(schedule.completed, 0);
+  assert.equal(schedule.manufacturer, fileId.manufacturer);
+  assert.equal(schedule.product, fileId.product);
+
+  const scheduledDate = scheduledTimeToDate(schedule.scheduledTime);
+  assert.equal(scheduledDate.toISOString().slice(0, 10), day.date);
+});
+
+// scheduledTime is built from the resolved day's own calendar-date string at
+// literal UTC midnight (mirroring FILE_ID.timeCreated), so it must resolve
+// to the exact same calendar date regardless of a DST transition on that
+// date — 2026-03-29 is the same Europe/Rome spring-forward boundary used in
+// test/domain/plan-timezone.test.ts.
+test("Schedule scheduledTime equals the resolved plan date for a normal date and a DST-boundary date", () => {
+  for (const date of ["2026-01-05", "2026-03-29"]) {
+    const day = resolveAt("D1: 10km @ RG", date);
+    const outcome = toGarminWorkoutFit(day);
+    assert.equal(outcome.ok, true, date);
+    if (!outcome.ok) throw new Error("unreachable");
+
+    const { messages } = decodeGarminWorkoutFit(outcome.bytes);
+    const [schedule] = messages.scheduleMesgs as Array<{ scheduledTime: number }>;
+    const scheduledDate = scheduledTimeToDate(schedule.scheduledTime);
+    assert.equal(scheduledDate.toISOString().slice(0, 10), date);
+  }
 });
 
 test("encoding the same day twice produces byte-identical FIT output (deterministic)", () => {
