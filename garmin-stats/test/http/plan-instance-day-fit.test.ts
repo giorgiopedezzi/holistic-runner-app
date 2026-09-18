@@ -1,15 +1,38 @@
 /**
- * test/http/plan-instance-day-fit.test.ts (HRA-202)
+ * test/http/plan-instance-day-fit.test.ts (HRA-202, packaging amended
+ * HRA-392)
  * GET /api/v1/plan-instances/:id/days/:dayId/fit — exports one resolved
- * plan_instance_days row as a Garmin Workout .fit file, wrapping
- * toGarminWorkoutFit (integrations/garmin-workout.ts). Verifies the response
- * bytes actually decode back to the same steps the domain function produces,
- * not just that a 200 was returned.
+ * plan_instance_days row as a zip bundling a Garmin Workout .fit and its
+ * paired Schedules .fit (toGarminWorkoutFit/toGarminSchedulesFit,
+ * integrations/garmin-workout.ts). Verifies the response bytes are a real
+ * zip (via a real external unzip tool, not just this repo's own writer)
+ * whose entries decode back to the expected FIT messages, not just that a
+ * 200 was returned.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, rmSync, readdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { startTestServer } from "../helpers/server.ts";
-import { fromGarminWorkoutFit } from "../../src/integrations/garmin-workout.ts";
+import { decodeGarminWorkoutFit, fromGarminWorkoutFit } from "../../src/integrations/garmin-workout.ts";
+
+function extractZip(zipBytes: Buffer): Record<string, Buffer> {
+  const dir = mkdtempSync(join(tmpdir(), "hra202-day-fit-"));
+  try {
+    writeFileSync(join(dir, "export.zip"), zipBytes);
+    execFileSync("unzip", ["-o", "export.zip"], { cwd: dir });
+    const names = readdirSync(dir).filter(f => f !== "export.zip");
+    const files: Record<string, Buffer> = {};
+    for (const name of names) {
+      files[name] = execFileSync("unzip", ["-p", "export.zip", name], { cwd: dir });
+    }
+    return files;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 const DSL = `PLAN
 NAME Smoke Plan
@@ -39,21 +62,38 @@ async function setUp(server: Awaited<ReturnType<typeof startTestServer>>, instan
   return { instanceId, runDayId: runDay.id as number, restDayId: restDay.id as number };
 }
 
-test("GET .../days/:dayId/fit downloads a .fit file that decodes to the day's steps", async () => {
+test("GET .../days/:dayId/fit downloads a zip with a workout .fit and a paired schedule .fit", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, runDayId } = await setUp(server, "Fit Export Instance");
-    const res = await fetch(`${server.baseUrl}/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`);
+    const res = await fetch(`${server.baseUrl}/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`, {
+      headers: { cookie: server.sessionCookie, origin: "http://test.invalid" },
+    });
     assert.equal(res.status, 200);
-    assert.equal(res.headers.get("content-type"), "application/octet-stream");
-    assert.equal(res.headers.get("content-disposition"), 'attachment; filename="Fit Export Instance_20260901.fit"');
+    assert.equal(res.headers.get("content-type"), "application/zip");
+    assert.equal(res.headers.get("content-disposition"), 'attachment; filename="Fit Export Instance_20260901.zip"');
 
-    const bytes = Buffer.from(await res.arrayBuffer());
-    const decoded = fromGarminWorkoutFit(bytes);
+    const files = extractZip(Buffer.from(await res.arrayBuffer()));
+    assert.deepEqual(Object.keys(files).sort(), [
+      "Fit Export Instance_20260901.fit",
+      "Fit Export Instance_20260901.schedule.fit",
+    ]);
+
+    const decoded = fromGarminWorkoutFit(files["Fit Export Instance_20260901.fit"]);
     assert.equal(decoded.ok, true, JSON.stringify(decoded));
     if (!decoded.ok) throw new Error("unreachable");
     assert.equal(decoded.preview.canApply, true, JSON.stringify(decoded.preview.warnings));
     assert.equal(decoded.preview.segments[0].type, "continuous");
+
+    // HRA-392: the paired file must be a File Id type "schedules" file
+    // scheduling this same date, not a message embedded in the workout file.
+    const { messages, errors } = decodeGarminWorkoutFit(files["Fit Export Instance_20260901.schedule.fit"]);
+    assert.deepEqual(errors, []);
+    const [fileId] = messages.fileIdMesgs as Array<{ type: string }>;
+    assert.equal(fileId.type, "schedules");
+    const scheduleMesgs = messages.scheduleMesgs as Array<{ type: string }>;
+    assert.equal(scheduleMesgs.length, 1);
+    assert.equal(scheduleMesgs[0].type, "workout");
   } finally {
     await server.close();
   }
@@ -63,9 +103,12 @@ test("GET .../days/:dayId/fit exports a rest day as a single rest_block", async 
   const server = await startTestServer();
   try {
     const { instanceId, restDayId } = await setUp(server);
-    const res = await fetch(`${server.baseUrl}/api/v1/plan-instances/${instanceId}/days/${restDayId}/fit`);
+    const res = await fetch(`${server.baseUrl}/api/v1/plan-instances/${instanceId}/days/${restDayId}/fit`, {
+      headers: { cookie: server.sessionCookie, origin: "http://test.invalid" },
+    });
     assert.equal(res.status, 200);
-    const decoded = fromGarminWorkoutFit(Buffer.from(await res.arrayBuffer()));
+    const files = extractZip(Buffer.from(await res.arrayBuffer()));
+    const decoded = fromGarminWorkoutFit(files["Fit Export Instance_20260902.fit"]);
     assert.equal(decoded.ok, true);
     if (!decoded.ok) throw new Error("unreachable");
     assert.equal(decoded.preview.segments[0].type, "rest_block");

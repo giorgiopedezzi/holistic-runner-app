@@ -20,7 +20,7 @@ import type { ResolvedDay } from "../domain/runplan/instantiate.ts";
 import { getEffectivePacePolicy } from "../domain/runplan/pace.ts";
 import { computeMobileEligibility, resolveAllAnchors } from "../domain/runplan/mobile-eligibility.ts";
 import { eventTypeSchema } from "../domain/runplan/schema.ts";
-import { toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
+import { toGarminSchedulesFit, toGarminWorkoutFit } from "../integrations/garmin-workout.ts";
 import { generatePlanTemplate, PlanTemplateAiError } from "../integrations/plan-template-ai.ts";
 import { dedupeZipEntryNames, writeZip } from "../domain/zip/writer.ts";
 import { DayNotInInstanceError, type PlanInstanceDayReplacement } from "../services/plan-instances.service.ts";
@@ -934,11 +934,16 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }));
   };
 
-  // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202) — exports one
-  // already-resolved plan_instance_days row as a Garmin Workout .fit file,
-  // wrapping toGarminWorkoutFit (integrations/garmin-workout.ts) — the same
-  // domain transform the DSL editor's characterization tests exercise. Read-
-  // only: nothing is parsed or persisted here, so an approved instance is not
+  // GET /api/v1/plan-instances/:id/days/:dayId/fit (HRA-202, packaging
+  // amended HRA-392) — exports one already-resolved plan_instance_days row as
+  // a zip bundling a Garmin Workout .fit (toGarminWorkoutFit) and its paired
+  // Schedules .fit (toGarminSchedulesFit, integrations/garmin-workout.ts) —
+  // the same domain transform the DSL editor's characterization tests
+  // exercise. Two separate FIT files rather than one: a Forerunner 965 only
+  // recognizes a Training Calendar entry from a dedicated Schedules-type
+  // file, not a Schedule message embedded in the Workout file (HRA-392's
+  // root cause — see the integration module's own header note). Read-only:
+  // nothing is parsed or persisted here, so an approved instance is not
   // guarded against (unlike patchInstanceDay above). Rejects (422) exactly
   // the day states toGarminWorkoutFit itself rejects — needs_review, or a
   // workout_type other than run/rest — surfacing each GarminExportError as a
@@ -977,25 +982,37 @@ export function createPlanTemplatesController(ctx: AppContext) {
         errors: outcome.errors.map(e => ({ field: e.code, message: e.message })),
       });
     }
+    const scheduleBytes = toGarminSchedulesFit([day.date]);
 
     const instanceName = instance.name ?? `Plan Instance ${instance.id}`;
-    const filename = sanitizeFitFilename(`${instanceName}_${day.date.replace(/-/g, "")}.fit`);
+    const baseName = sanitizeFitFilename(`${instanceName}_${day.date.replace(/-/g, "")}`);
+    const dayDate = new Date(`${day.date}T00:00:00Z`);
+    const zipBytes = writeZip([
+      { name: `${baseName}.fit`, data: outcome.bytes, date: dayDate },
+      { name: `${baseName}.schedule.fit`, data: scheduleBytes, date: dayDate },
+    ]);
+
     res.writeHead(200, {
-      "Content-Type": "application/octet-stream",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Type": "application/zip",
+      "Content-Disposition": `attachment; filename="${baseName}.zip"`,
       ...corsHeaders(res),
     });
-    res.end(outcome.bytes);
+    res.end(zipBytes);
   };
 
-  // GET /api/v1/plan-instances/:id/fit?section_name=&week_number= (HRA-203) —
-  // bundles every exportable day in a section (or, when week_number is also
-  // given, one week within that section) into a single uncompressed ZIP,
-  // reusing dayFit's own toGarminWorkoutFit path per day. section_name/
-  // week_number are query params, not path segments (rest-api-standards §3:
-  // path = identity, query = filtering) — section_name is a free-text
-  // denormalized column, not a real addressable sub-resource, so this stays
-  // one route filtered two ways rather than two resource shapes.
+  // GET /api/v1/plan-instances/:id/fit?section_name=&week_number= (HRA-203,
+  // packaging amended HRA-392) — bundles every exportable day in a section
+  // (or, when week_number is also given, one week within that section) into
+  // a single uncompressed ZIP, reusing dayFit's own toGarminWorkoutFit path
+  // per day, plus exactly one shared Schedules .fit (toGarminSchedulesFit)
+  // covering every included day — a Forerunner 965 only ever keeps one
+  // Schedules-type file on the device (see the integration module's own
+  // header note), so one file with N entries is the correct shape, not N
+  // single-entry files. section_name/week_number are query params, not path
+  // segments (rest-api-standards §3: path = identity, query = filtering) —
+  // section_name is a free-text denormalized column, not a real addressable
+  // sub-resource, so this stays one route filtered two ways rather than two
+  // resource shapes.
   // Skip-and-continue (Story scope): a day toGarminWorkoutFit itself rejects
   // (needs_review, or a workout_type other than run/rest) is omitted from
   // the zip rather than failing the whole request — counts go back as
@@ -1034,12 +1051,17 @@ export function createPlanTemplatesController(ctx: AppContext) {
     }
 
     const instanceName = instance.name ?? `Plan Instance ${instance.id}`;
-    const entries = dedupeZipEntryNames(included.map(({ day, bytes }) => ({
+    const workoutEntries = dedupeZipEntryNames(included.map(({ day, bytes }) => ({
       name: sanitizeFitFilename(`${instanceName}_${day.date.replace(/-/g, "")}.fit`),
       data: bytes,
       date: new Date(`${day.date}T00:00:00Z`),
     })));
-    const zipBytes = writeZip(entries);
+    const scheduleEntry = {
+      name: sanitizeFitFilename(`${instanceName}_schedule.fit`),
+      data: toGarminSchedulesFit(included.map(({ day }) => day.date)),
+      date: new Date(`${included[0].day.date}T00:00:00Z`),
+    };
+    const zipBytes = writeZip([...workoutEntries, scheduleEntry]);
 
     const dates = included.map(({ day }) => day.date).sort();
     const zipFilename = sanitizeFitFilename(

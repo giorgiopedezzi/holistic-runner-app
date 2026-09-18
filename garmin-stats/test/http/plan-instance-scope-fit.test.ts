@@ -1,12 +1,14 @@
 /**
- * test/http/plan-instance-scope-fit.test.ts (HRA-203)
+ * test/http/plan-instance-scope-fit.test.ts (HRA-203, packaging amended
+ * HRA-392)
  * GET /api/v1/plan-instances/:id/fit?section_name=&week_number= — bundles
- * every exportable day in a section (or one week within it) into a single
- * uncompressed ZIP. Verifies both the HTTP contract (status/headers/skip
- * counts) and that the returned bytes are a real ZIP whose entries decode
- * back to the expected FIT steps — via a real external unzip tool, not just
- * this repo's own writer/reader, mirroring domain/zip-writer.test.ts's own
- * "don't just round-trip through your own code" verification.
+ * every exportable day in a section (or one week within it), plus one shared
+ * Schedules .fit covering all of them, into a single uncompressed ZIP.
+ * Verifies both the HTTP contract (status/headers/skip counts) and that the
+ * returned bytes are a real ZIP whose entries decode back to the expected
+ * FIT steps — via a real external unzip tool, not just this repo's own
+ * writer/reader, mirroring domain/zip-writer.test.ts's own "don't just
+ * round-trip through your own code" verification.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -46,43 +48,52 @@ async function setUp(server: Awaited<ReturnType<typeof startTestServer>>, instan
 }
 
 async function fetchZip(server: Awaited<ReturnType<typeof startTestServer>>, path: string) {
-  const res = await fetch(`${server.baseUrl}${path}`);
+  const res = await fetch(`${server.baseUrl}${path}`, {
+    headers: { cookie: server.sessionCookie, origin: "http://test.invalid" },
+  });
   return { res, bytes: res.ok ? Buffer.from(await res.arrayBuffer()) : null };
 }
 
-function extractAndDecode(zipBytes: Buffer): Record<string, ReturnType<typeof fromGarminWorkoutFit>> {
+// Names ending .schedule... never occur here — HRA-392's shared Schedules
+// file is named "<instance>_schedule.fit" (no per-date suffix), the one
+// name in the archive that isn't a per-day "<instance>_<yyyymmdd>.fit".
+function isScheduleFileName(name: string): boolean {
+  return !/_\d{8}\.fit$/.test(name);
+}
+
+function unzip(zipBytes: Buffer): Record<string, Buffer> {
   const dir = mkdtempSync(join(tmpdir(), "hra203-scope-fit-"));
   try {
     writeFileSync(join(dir, "plan.zip"), zipBytes);
     execFileSync("unzip", ["-o", "plan.zip"], { cwd: dir });
     const names = readdirSync(dir).filter(f => f !== "plan.zip");
-    const decoded: Record<string, ReturnType<typeof fromGarminWorkoutFit>> = {};
+    const files: Record<string, Buffer> = {};
     for (const name of names) {
-      decoded[name] = fromGarminWorkoutFit(execFileSync("unzip", ["-p", "plan.zip", name], { cwd: dir }));
+      files[name] = execFileSync("unzip", ["-p", "plan.zip", name], { cwd: dir });
     }
-    return decoded;
+    return files;
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-// HRA-390 AC7: every entry in a representative week ZIP must carry its own
-// correct Schedule message and plan date, propagated automatically through
-// the same canonical day exporter — no ZIP-specific scheduling logic.
-function extractAndDecodeSchedule(zipBytes: Buffer): Record<string, ReturnType<typeof decodeGarminWorkoutFit>> {
-  const dir = mkdtempSync(join(tmpdir(), "hra390-scope-fit-schedule-"));
-  try {
-    writeFileSync(join(dir, "plan.zip"), zipBytes);
-    execFileSync("unzip", ["-o", "plan.zip"], { cwd: dir });
-    const names = readdirSync(dir).filter(f => f !== "plan.zip");
-    const decoded: Record<string, ReturnType<typeof decodeGarminWorkoutFit>> = {};
-    for (const name of names) {
-      decoded[name] = decodeGarminWorkoutFit(execFileSync("unzip", ["-p", "plan.zip", name], { cwd: dir }));
-    }
-    return decoded;
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
+function extractAndDecode(zipBytes: Buffer): Record<string, ReturnType<typeof fromGarminWorkoutFit>> {
+  const decoded: Record<string, ReturnType<typeof fromGarminWorkoutFit>> = {};
+  for (const [name, bytes] of Object.entries(unzip(zipBytes))) {
+    if (isScheduleFileName(name)) continue;
+    decoded[name] = fromGarminWorkoutFit(bytes);
   }
+  return decoded;
+}
+
+// HRA-392: the one shared Schedules-type file in the archive must carry
+// exactly one Schedule entry per included day, each resolving to that day's
+// own plan date — order-independent, since the archive's entry order isn't
+// part of the contract.
+function decodeSharedSchedule(zipBytes: Buffer): { messages: Record<string, unknown[]>; errors: unknown[] } {
+  const files = unzip(zipBytes);
+  const [scheduleName] = Object.keys(files).filter(isScheduleFileName);
+  return decodeGarminWorkoutFit(files[scheduleName]);
 }
 
 // Both weeks in the fixture DSL declare only some of D1-D7 (WEEK 1: D1/D2/D3,
@@ -110,18 +121,26 @@ test("GET .../fit?section_name= downloads a zip with one .fit per exportable day
     assert.ok(names.includes("Zip Export Instance_20260914.fit"));
     for (const outcome of Object.values(decoded)) assert.equal(outcome.ok, true, JSON.stringify(outcome));
 
-    const schedules = extractAndDecodeSchedule(bytes!);
-    for (const [name, { messages, errors }] of Object.entries(schedules)) {
-      assert.deepEqual(errors, [], name);
-      const scheduleMesgs = messages.scheduleMesgs as Array<{ type: string; scheduledTime: number }> | undefined;
-      assert.equal(scheduleMesgs?.length, 1, name);
-      assert.equal(scheduleMesgs![0].type, "workout", name);
-      const dateFromName = name.match(/_(\d{4})(\d{2})(\d{2})\.fit$/);
-      assert.ok(dateFromName, name);
-      const [, y, m, d] = dateFromName!;
-      const scheduledDate = scheduledTimeToDate(scheduleMesgs![0].scheduledTime);
-      assert.equal(scheduledDate.toISOString().slice(0, 10), `${y}-${m}-${d}`, name);
-    }
+    // HRA-392: exactly one shared Schedules-type file covers every included
+    // day (a device keeps only one such file) — not one Schedule message
+    // per workout file.
+    const workoutDates = names.map((name) => {
+      const m = /_(\d{4})(\d{2})(\d{2})\.fit$/.exec(name);
+      assert.ok(m, name);
+      return `${m![1]}-${m![2]}-${m![3]}`;
+    }).sort();
+
+    const { messages, errors } = decodeSharedSchedule(bytes!);
+    assert.deepEqual(errors, []);
+    const [fileId] = messages.fileIdMesgs as Array<{ type: string }>;
+    assert.equal(fileId.type, "schedules");
+    const scheduleMesgs = messages.scheduleMesgs as Array<{ type: string; scheduledTime: number }>;
+    assert.equal(scheduleMesgs.length, 14);
+    assert.ok(scheduleMesgs.every(s => s.type === "workout"));
+    const scheduleDates = scheduleMesgs
+      .map(s => scheduledTimeToDate(s.scheduledTime).toISOString().slice(0, 10))
+      .sort();
+    assert.deepEqual(scheduleDates, workoutDates);
   } finally {
     await server.close();
   }

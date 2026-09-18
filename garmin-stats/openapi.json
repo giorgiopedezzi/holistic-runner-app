@@ -1380,17 +1380,17 @@
     "/api/v1/plan-instances/{id}/days/{dayId}/fit": {
       "security": [{ "runsFreeSession": [] }],
       "get": {
-        "tags": ["plan-templates"], "summary": "Export one resolved day as a Garmin Workout .fit file (HRA-202)",
-        "description": "Wraps toGarminWorkoutFit (integrations/garmin-workout.ts) for one plan_instance_days row. Read-only: nothing is parsed or persisted, so an approved instance is not guarded against. Rejected (422) exactly when toGarminWorkoutFit itself rejects the day — needs_review, or a workout_type other than run/rest.",
+        "tags": ["plan-templates"], "summary": "Export one resolved day as a Garmin Workout + Schedule .fit zip (HRA-202, packaging amended HRA-392)",
+        "description": "Wraps toGarminWorkoutFit and toGarminSchedulesFit (integrations/garmin-workout.ts) for one plan_instance_days row, bundling the Workout .fit and its paired Schedules .fit into a zip — a Forerunner 965 only recognizes a Training Calendar entry from a dedicated Schedules-type FIT file, never a Schedule message embedded in the Workout file (HRA-392). Read-only: nothing is parsed or persisted, so an approved instance is not guarded against. Rejected (422) exactly when toGarminWorkoutFit itself rejects the day — needs_review, or a workout_type other than run/rest.",
         "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
-        "responses": { "200": { "description": "Binary FIT file. Content-Disposition: attachment; filename=\"<instance name>_<YYYYMMDD>.fit\".", "content": { "application/octet-stream": {} } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": { "200": { "description": "Binary zip file containing <base>.fit and <base>.schedule.fit. Content-Disposition: attachment; filename=\"<instance name>_<YYYYMMDD>.zip\".", "content": { "application/zip": {} } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
       }
     },
     "/api/v1/plan-instances/{id}/fit": {
       "security": [{ "runsFreeSession": [] }],
       "get": {
-        "tags": ["plan-templates"], "summary": "Export every exportable day in a section (or one week within it) as a Garmin Workout .fit zip (HRA-203)",
-        "description": "Bundles one .fit per exportable plan_instance_days row in scope (filtered by section_name, and optionally week_number) into a single uncompressed (STORE) zip, reusing the same toGarminWorkoutFit path as the day-level export above. A day toGarminWorkoutFit itself rejects (needs_review, or a workout_type other than run/rest) is skipped rather than failing the request — X-Export-Total/X-Export-Included/X-Export-Skipped response headers report the counts, since the body itself is opaque binary. 422 with no zip written when zero days in scope are exportable.",
+        "tags": ["plan-templates"], "summary": "Export every exportable day in a section (or one week within it) as a Garmin Workout .fit zip (HRA-203, packaging amended HRA-392)",
+        "description": "Bundles one .fit per exportable plan_instance_days row in scope (filtered by section_name, and optionally week_number) plus one shared <instance name>_schedule.fit (toGarminSchedulesFit, HRA-392) covering every included day, into a single uncompressed (STORE) zip, reusing the same toGarminWorkoutFit path as the day-level export above. A device keeps only one Schedules-type file, so this is one file with N entries rather than N files. A day toGarminWorkoutFit itself rejects (needs_review, or a workout_type other than run/rest) is skipped rather than failing the request — X-Export-Total/X-Export-Included/X-Export-Skipped response headers report the counts, since the body itself is opaque binary. 422 with no zip written when zero days in scope are exportable.",
         "parameters": [
           { "$ref": "#/components/parameters/id" },
           { "name": "section_name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "The plan_instance_days.section_name to scope the export to." },

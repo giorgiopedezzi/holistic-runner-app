@@ -57,6 +57,12 @@ export interface TestServer {
   db: PostgresDatabase;
   /** GET/POST/etc. helper returning { status, json }. Path starts with /api/... */
   api: (path: string, init?: RequestInit) => Promise<{ status: number; json: unknown; text: string }>;
+  // HRA-392: the founder session cookie api() attaches automatically — for
+  // a test that must call plain fetch() directly (binary download endpoints,
+  // where api()'s own res.json() would choke on the body), so it can still
+  // authenticate rather than getting an unconditional 401 (this test server
+  // always force-enables auth, see the config override above).
+  sessionCookie: string;
   seed: () => Promise<{ activityIds: number[] }>;
   close: () => Promise<void>;
 }
@@ -144,6 +150,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     baseUrl,
     db,
     api,
+    sessionCookie: `__Host-runsfree_session=${founderSession}`,
     seed: () => seedSampleData(db),
     close: () =>
       new Promise<void>((resolve) => {
