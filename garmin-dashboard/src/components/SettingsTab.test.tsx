@@ -86,6 +86,38 @@ describe("SettingsTab save flows", () => {
     );
   });
 
+  // HRA-385 AC3/AC4: Reset to default only repopulates the draft form from
+  // Settings.outlier_defaults (never hardcoded here) — persisting still goes
+  // through the same explicit Save button as any other outlier edit.
+  it("Reset to default restores the effective defaults into the draft, then Save persists them", async () => {
+    const custom = settings({ outlier_speed_delta_per_sec: 9, outlier_cadence_delta_per_sec: 99, outlier_min_speed_kmh: 9 });
+    const fetchMock = installFetch({
+      "GET /api/v1/settings": custom,
+      "PUT /api/v1/settings/outliers": ({ body }: StubRequest) => json(settings(body as object)),
+    });
+    render(<SettingsTab appearance={fakeAppearance()} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /Outlier detection/ }));
+    const inputs = await screen.findAllByRole("spinbutton");
+    expect(inputs[0]).toHaveValue(9);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(inputs[0]).toHaveValue(custom.outlier_defaults.outlier_speed_delta_per_sec);
+
+    const saveBtn = screen.getAllByRole("button", { name: "Save" }).find((b) => !(b as HTMLButtonElement).disabled)!;
+    fireEvent.click(saveBtn);
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/v1/settings/outliers"),
+        expect.objectContaining({
+          method: "PUT",
+          body: JSON.stringify(custom.outlier_defaults),
+        }),
+      ),
+    );
+  });
+
   it("immediate-saves the activity detail view to /settings/detail-view", async () => {
     const fetchMock = installFetch({
       "GET /api/v1/settings": settings({ activity_detail_view: "accordion" }),

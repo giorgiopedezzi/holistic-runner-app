@@ -767,6 +767,14 @@ export interface Settings {
   // preference — read-only, never PUT anywhere. The one signal the frontend
   // uses to disable the write controls the backend also rejects.
   demo_mode: boolean;
+  // HRA-385 AC3/AC4: the same three column DEFAULTs the row was created
+  // with (domain/settings-defaults.ts on the backend) — read-only, exposed so
+  // SettingsTab's "Reset to default" never hardcodes these numbers itself.
+  outlier_defaults: {
+    outlier_speed_delta_per_sec:   number;
+    outlier_cadence_delta_per_sec: number;
+    outlier_min_speed_kmh:         number;
+  };
 }
 
 // ── Trash (soft-deleted activities / body measurements) ─────────────────

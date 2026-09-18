@@ -1,10 +1,21 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/api/client";
-import { AccordionCard, ConfirmModal, ErrorBanner } from "@/components/ui";
+import { AccordionCard, ConfirmModal, ErrorBanner, Select } from "@/components/ui";
 import { notify } from "@/utils/toast";
+import { useDisplayName } from "@/components/AuthGate";
 
 type Profile = { display_name: string | null; locale: string | null; unit_system: "metric" | "imperial" | null; timezone: string | null };
+
+// HRA-385 AC5/AC6: replaces the old free-text timezone <input> with a
+// selection of valid, canonical IANA identifiers — Intl.supportedValuesOf is
+// the standard's own canonical-zone-name list (no bundled zone data, no new
+// dependency), same "reach for a platform API before a library" approach
+// utils/locale.ts already takes for date-fns locales. A never-explicitly-set
+// profile.timezone (null) gets its own sentinel option since Radix Select
+// items can't carry an empty-string value.
+const TIMEZONE_UNSET = "__unset__";
+const TIMEZONE_IDS: string[] = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
 
 export function AccountPrivacySection() {
   const { t } = useTranslation();
@@ -13,6 +24,14 @@ export function AccountPrivacySection() {
   const [error, setError] = useState<string | null>(null);
   const [deletionOpen, setDeletionOpen] = useState(false);
   const [confirmation, setConfirmation] = useState("");
+  // HRA-385 AC7: the sidebar's own identity chrome reads this same context,
+  // so a saved display-name change shows there immediately, no reload.
+  const [, setDisplayName] = useDisplayName();
+
+  const timezoneOptions = useMemo(() => [
+    { value: TIMEZONE_UNSET, label: t("account.timezoneNotSet", "Not set") },
+    ...TIMEZONE_IDS.map(id => ({ value: id, label: id })),
+  ], [t]);
 
   useEffect(() => {
     api.auth.session().then(session => setProfile(session.user)).catch(() => setError(t("account.loadFailed", "Could not load account details.")));
@@ -20,8 +39,12 @@ export function AccountPrivacySection() {
 
   async function saveProfile() {
     if (!profile) return;
-    try { setProfile(await api.account.updateProfile(profile)); notify(t("account.profileSaved", "Account profile saved.")); }
-    catch (e) { setError(e instanceof Error ? e.message : t("account.saveFailed", "Could not save account details.")); }
+    try {
+      const updated = await api.account.updateProfile(profile);
+      setProfile(updated);
+      setDisplayName(updated.display_name);
+      notify(t("account.profileSaved", "Account profile saved."));
+    } catch (e) { setError(e instanceof Error ? e.message : t("account.saveFailed", "Could not save account details.")); }
   }
   async function revokeOthers() {
     if (!window.confirm(t("account.revokeOthersConfirm", "Sign out every other session? This cannot be undone on those devices."))) return;
@@ -50,7 +73,16 @@ export function AccountPrivacySection() {
       {error && <ErrorBanner message={error} />}
       {profile && <div className="hra-stack gap-3">
         <label className="hra-text-secondary text-meta">{t("account.displayName", "Display name")}<input className="hra-input w-full mt-1" value={profile.display_name ?? ""} onChange={e => setProfile({ ...profile, display_name: e.target.value || null })} /></label>
-        <label className="hra-text-secondary text-meta">{t("account.timezone", "Timezone")}<input className="hra-input w-full mt-1" value={profile.timezone ?? ""} onChange={e => setProfile({ ...profile, timezone: e.target.value || null })} /></label>
+        <div>
+          <div className="hra-text-secondary text-meta">{t("account.timezone", "Timezone")}</div>
+          <Select
+            triggerClassName="w-full mt-1"
+            value={profile.timezone ?? TIMEZONE_UNSET}
+            onValueChange={v => setProfile({ ...profile, timezone: v === TIMEZONE_UNSET ? null : v })}
+            options={timezoneOptions}
+            ariaLabel={t("account.timezone", "Timezone")}
+          />
+        </div>
         <button className="hra-btn" data-variant="cta" onClick={saveProfile}>{t("account.saveProfile", "Save profile")}</button>
       </div>}
       <div className="hra-stack gap-3 mt-5">

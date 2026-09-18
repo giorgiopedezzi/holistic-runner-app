@@ -2,7 +2,10 @@
   "compilerOptions": {
     "target":           "ES2020",
     "useDefineForClassFields": true,
-    "lib":              ["ES2020", "DOM", "DOM.Iterable"],
+    // ES2022.Intl only adds type declarations (Intl.supportedValuesOf, used
+    // by AccountPrivacySection.tsx's timezone picker) — target/emit stay
+    // ES2020, this doesn't change what JS actually ships.
+    "lib":              ["ES2020", "ES2022.Intl", "DOM", "DOM.Iterable"],
     "module":           "ESNext",
     "skipLibCheck":     true,
     "moduleResolution": "bundler",

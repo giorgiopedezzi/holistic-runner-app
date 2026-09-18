@@ -28,6 +28,7 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   language: "auto",
   palette: "metal",
   demo_mode: false,
+  outlier_defaults: { outlier_speed_delta_per_sec: 2.0, outlier_cadence_delta_per_sec: 60.0, outlier_min_speed_kmh: 6.0 },
   ...overrides,
 });
 

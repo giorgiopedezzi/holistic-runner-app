@@ -28,7 +28,7 @@ import { FeedbackTab }  from "@/components/FeedbackTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
 import { SplashScreen }  from "@/components/SplashScreen";
 import { ErrorBanner }  from "@/components/ui";
-import { AuthGate, useAuthenticationMethod } from "@/components/AuthGate";
+import { AuthGate, useAuthenticationMethod, useDisplayName } from "@/components/AuthGate";
 import { useAppMode } from "@/hooks/useAppMode";
 import { notify } from "@/utils/toast";
 
@@ -204,6 +204,7 @@ function AppRoot() {
 
 function AppShell() {
   const authMethod = useAuthenticationMethod();
+  const [displayName] = useDisplayName();
   const { mode } = useAppMode();
   // Backed by the URL's `from`/`to` params (HRA-196) so reloading a URL
   // carrying a specific range reproduces it instead of resetting to the
@@ -524,6 +525,11 @@ function AppShell() {
             {utilityTabs.map(renderNavItem)}
             {mode === "authenticated" ? (
               <>
+                {/* HRA-385 AC7: the account/identity chrome's own display of the
+                    saved display name — reflects a profile save immediately via
+                    AuthGate's DisplayNameContext, no decorative "Welcome, X"
+                    copy anywhere, no reload needed. */}
+                {displayName && <span className="hra-sidebar-item-label text-meta" title={displayName}>{displayName}</span>}
                 {authMethod && <span className="hra-sidebar-item-label hra-text-muted text-meta">{authMethod === "google" ? t("auth.method.google", "Google") : t("auth.method.email", "Email code")}</span>}
                 <button type="button" className="hra-sidebar-item hra-nav-hover" onClick={logout}>
                   <span className="hra-sidebar-item-icon" aria-hidden="true"><LogOut size={16} /></span>
