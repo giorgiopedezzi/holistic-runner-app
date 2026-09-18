@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError, api } from "@/api/client";
 import { AppModeContext, AUTHENTICATED_CAPABILITIES, GUEST_CAPABILITIES } from "@/hooks/useAppMode";
@@ -8,6 +8,13 @@ type State = "loading" | "guest" | "unavailable" | "authenticated";
 type AuthenticationMethod = "google" | "email" | null;
 const AuthMethodContext = createContext<AuthenticationMethod>(null);
 export function useAuthenticationMethod() { return useContext(AuthMethodContext); }
+
+// HRA-385 AC7: read once from /api/v1/auth/session, same server-authoritative
+// bootstrap pattern authMethod/entitlements already use — plus a setter, so
+// AccountPrivacySection's own profile save can push a fresh value straight
+// into the sidebar's identity chrome without a second round trip or reload.
+const DisplayNameContext = createContext<[string | null, Dispatch<SetStateAction<string | null>>]>([null, () => {}]);
+export function useDisplayName() { return useContext(DisplayNameContext); }
 
 // HRA-370: the founder publication entitlement (and any future one) surfaced
 // the same server-authoritative way auth method already is — read once from
@@ -22,6 +29,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const [state, setState] = useState<State>("loading");
   const [authMethod, setAuthMethod] = useState<AuthenticationMethod>(null);
   const [entitlements, setEntitlements] = useState<string[]>([]);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   // Must run synchronously, before children ever mount — AppShell's
   // useUrlState() hooks take their one lazy-init read of window.location on
@@ -32,7 +40,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true;
     api.auth.session().then(
-      (session) => { if (live) { setAuthMethod(session.user.auth_method ?? null); setEntitlements(session.entitlements); setState("authenticated"); } },
+      (session) => { if (live) { setAuthMethod(session.user.auth_method ?? null); setEntitlements(session.entitlements); setDisplayName(session.user.display_name); setState("authenticated"); } },
       (error: unknown) => {
         if (!live) return;
         setState(error instanceof ApiError && error.status === 401 ? "guest" : "unavailable");
@@ -48,7 +56,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (state === "authenticated") {
     return (
       <AppModeContext.Provider value={AUTHENTICATED_CAPABILITIES}>
-        <AuthMethodContext.Provider value={authMethod}><EntitlementsContext.Provider value={entitlements}>{children}</EntitlementsContext.Provider></AuthMethodContext.Provider>
+        <AuthMethodContext.Provider value={authMethod}><EntitlementsContext.Provider value={entitlements}><DisplayNameContext.Provider value={[displayName, setDisplayName]}>{children}</DisplayNameContext.Provider></EntitlementsContext.Provider></AuthMethodContext.Provider>
       </AppModeContext.Provider>
     );
   }

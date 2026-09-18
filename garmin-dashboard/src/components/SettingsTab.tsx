@@ -85,19 +85,17 @@ function ThemeSwatch({ theme, label, selected, onClick, title, disabled }: {
 // writes a real, explicit choice for the first time. Until then neither
 // swatch is "selected" by name, but whichever one matches the OS's current
 // scheme is highlighted anyway, so the picker still shows what's in effect.
+//
+// HRA-385 AC1/AC2: Theme is no longer disabled while Graphite is active —
+// it's PalettePicker's own Graphite swatch that disables itself while Light
+// is active (the one truly invalid direction). Switching Theme to Light
+// while Graphite is stored is exactly the case the backend's updateTheme now
+// normalizes atomically (settings.controller.ts), so this picker must stay
+// clickable for it to ever fire.
 export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
   const { t: translate } = useTranslation();
   const current = appearance.settings?.theme;
   const hasExplicitChoice = current === "dark" || current === "light";
-  // Graphite is dark-only and standalone (matches on data-palette alone,
-  // ignoring data-theme entirely) — Theme has no effect while it's active,
-  // so the picker disables itself rather than silently doing nothing when
-  // clicked. Checked against the RESOLVED palette, not the raw stored
-  // value — a never-explicitly-chosen ('auto') row can still resolve to
-  // 'graphite' (see resolvePalette), and the picker must disable itself
-  // then too, not just once graphite is explicitly persisted.
-  const graphiteActive = appearance.resolvedPalette === "graphite";
-  const disabledTitle = translate("settings.theme.disabledForGraphite", "Graphite is a fixed dark look — Theme doesn't apply while it's selected");
 
   return (
     <div className="hra-chip-row gap-2.5" >
@@ -108,8 +106,6 @@ export function ThemePicker({ appearance }: { appearance: AppearanceApi }) {
           label={translate(`settings.theme.${t}`, THEME_LABEL[t])}
           selected={hasExplicitChoice ? current === t : appearance.resolvedTheme === t}
           onClick={() => appearance.setTheme(t)}
-          disabled={graphiteActive}
-          title={graphiteActive ? disabledTitle : undefined}
         />
       ))}
     </div>
@@ -129,8 +125,8 @@ const PALETTE_LABEL: Record<Palette, string> = {
 // selected), keyed off data-palette-preview instead of data-theme-preview so
 // index.css can give it its own preview colors independent of whichever
 // theme (dark/light) happens to be active while browsing this picker.
-function PaletteSwatch({ palette, label, selected, onClick }: {
-  palette: Palette; label: string; selected: boolean; onClick: () => void;
+function PaletteSwatch({ palette, label, selected, onClick, title, disabled }: {
+  palette: Palette; label: string; selected: boolean; onClick: () => void; title?: string; disabled?: boolean;
 }) {
   return (
     <button
@@ -138,6 +134,8 @@ function PaletteSwatch({ palette, label, selected, onClick }: {
       data-palette-preview={palette}
       data-selected={selected}
       onClick={onClick}
+      title={title}
+      disabled={disabled}
     >
       <div className="hra-theme-swatch-preview">
         <div className="hra-theme-swatch-pill" />
@@ -160,6 +158,13 @@ export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
   // row that's never had a palette explicitly PUT (still 'auto') highlights
   // whichever swatch the resolved palette matches instead of none at all.
   const hasExplicitChoice = current === "metal" || current === "warm" || current === "graphite";
+  // HRA-385 AC1: Graphite is dark-only — disable its swatch outright while
+  // Light is the resolved theme, rather than silently doing nothing (or
+  // writing a combination useAppearance.ts's own applyToDocument would then
+  // have to reconcile) when clicked.
+  const lightActive = appearance.resolvedTheme === "light";
+  const disabledTitle = translate("settings.palette.disabledForLight", "Graphite is a dark-only look — it can't be selected while Light theme is active");
+
   return (
     <div className="hra-chip-row gap-2.5" >
       {PALETTE_NAMES.map(p => (
@@ -169,6 +174,8 @@ export function PalettePicker({ appearance }: { appearance: AppearanceApi }) {
           label={translate(`settings.palette.${p}`, PALETTE_LABEL[p])}
           selected={hasExplicitChoice ? current === p : appearance.resolvedPalette === p}
           onClick={() => appearance.setPalette?.(p)}
+          disabled={p === "graphite" && lightActive}
+          title={p === "graphite" && lightActive ? disabledTitle : undefined}
         />
       ))}
     </div>
@@ -511,6 +518,15 @@ export function SettingsTab({ appearance, savedRanges = [] }: Props) {
     }
   }
 
+  // HRA-385 AC3/AC4: restores the draft form to the same authoritative
+  // defaults the fields already fall back to display-wise (Settings.
+  // outlier_defaults, sourced from the backend's domain/settings-defaults.ts
+  // — never a magic number re-typed here) — still goes through the
+  // existing explicit-Save flow for this card, it doesn't persist by itself.
+  function resetOutliersToDefault() {
+    setDraft(d => d && saved && { ...d, ...saved.outlier_defaults });
+  }
+
   // Immediate-apply, like theme/units/background — a "how I browse
   // activities" preference reads as a click-and-done toggle, not a form
   // field to explicitly Save. Updates saved+draft together so it never shows
@@ -742,7 +758,12 @@ export function SettingsTab({ appearance, savedRanges = [] }: Props) {
                   </div>
                 </div>
 
-                <SaveBar cardKey="outliers" dirty={outliersDirty} onSave={saveOutliers} />
+                <div className="hra-row gap-2.5 mt-1">
+                  <SaveBar cardKey="outliers" dirty={outliersDirty} onSave={saveOutliers} />
+                  <button type="button" className="hra-btn" onClick={resetOutliersToDefault}>
+                    {t("settings.outliers.resetToDefault", "Reset to default")}
+                  </button>
+                </div>
               </>
             )}
           </AccordionCard>

@@ -12,6 +12,7 @@ import { send, corsHeaders } from "../http/respond.ts";
 import { readJsonBody, readBodyBuffer } from "../http/request.ts";
 import { notFound, unprocessable, payloadTooLarge } from "../http/problem.ts";
 import { isValidIanaTimeZone } from "../domain/plan-timezone.ts";
+import { OUTLIER_DEFAULTS } from "../domain/settings-defaults.ts";
 import { requestIdentity } from "../http/auth-context.ts";
 import { createOwnedSettingsRepo } from "../repositories/owned-settings.repo.ts";
 
@@ -58,7 +59,7 @@ export function createSettingsController(ctx: AppContext) {
   // ctx.config.demoMode source, never a separately hardcoded frontend flag.
   // Every settings response (not just GET) goes through this so a PUT's
   // response never drops the field the GET response carries.
-  const sendSettings = async (req: import("http").IncomingMessage, res: Parameters<typeof send>[0]) => send(res, { ...(await repo(req).get()), demo_mode: ctx.config.demoMode });
+  const sendSettings = async (req: import("http").IncomingMessage, res: Parameters<typeof send>[0]) => send(res, { ...(await repo(req).get()), demo_mode: ctx.config.demoMode, outlier_defaults: OUTLIER_DEFAULTS });
 
   const get: Handler = async (req, res) => sendSettings(req, res);
 
@@ -90,12 +91,26 @@ export function createSettingsController(ctx: AppContext) {
     return await sendSettings(req, res);
   };
 
+  // Graphite is dark-only and standalone (index.css matches it on
+  // data-palette alone) — switching Theme to light while Graphite is the
+  // stored palette would otherwise leave an invalid combination on the row.
+  // HRA-385 AC2: normalize atomically in the same request, not as a second
+  // client-side call (which could leave a real intermediate invalid state if
+  // it failed between the two writes).
   const updateTheme: Handler = async (req, res) => {
     const body = await readJsonBody<Partial<SettingsRow>>(req);
     if (!body.theme || !THEME_NAMES.includes(body.theme)) {
       throw unprocessable(`theme must be one of: ${THEME_NAMES.join(", ")}`);
     }
-    await repo(req).updateTheme({ $theme: body.theme });
+    const settingsRepo = repo(req);
+    if (body.theme === "light") {
+      const current = await settingsRepo.get() as unknown as SettingsRow;
+      if (current.palette === "graphite") {
+        await settingsRepo.updateThemeAndPalette({ $theme: body.theme, $palette: "warm", $accent_color: PALETTE_ACCENT.warm });
+        return await sendSettings(req, res);
+      }
+    }
+    await settingsRepo.updateTheme({ $theme: body.theme });
     return await sendSettings(req, res);
   };
 

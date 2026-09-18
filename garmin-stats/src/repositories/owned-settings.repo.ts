@@ -10,6 +10,10 @@ export function createOwnedSettingsRepo(db: Queryable, userId: string) {
     updateOutliers: (p: Record<string, unknown>) => update("outlier_speed_delta_per_sec=$2,outlier_cadence_delta_per_sec=$3,outlier_min_speed_kmh=$4", [p.$outlier_speed_delta_per_sec,p.$outlier_cadence_delta_per_sec,p.$outlier_min_speed_kmh]),
     updateThresholds: (p: Record<string, unknown>) => update("min_trend_group_size=$2", [p.$min_trend_group_size]),
     updateTheme: (p: Record<string, unknown>) => update("theme=$2", [p.$theme]),
+    // HRA-385 AC2: theme + palette (+ its paired accent) written in one
+    // UPDATE — the Graphite→Light normalization must be atomic, never two
+    // separate calls that could leave a real invalid intermediate row.
+    updateThemeAndPalette: (p: Record<string, unknown>) => update("theme=$2,palette=$3,accent_color=$4", [p.$theme,p.$palette,p.$accent_color]),
     updateBackground: (p: Record<string, unknown>) => update("background_kind=$2,background_value=$3", [p.$background_kind,p.$background_value]),
     updateUnits: (p: Record<string, unknown>) => update("unit_system=$2", [p.$unit_system]),
     updateAthleteMetrics: (p: Record<string, unknown>) => update("current_easy_pace_sec_per_km=$2,current_race_pace_sec_per_km=$3,current_long_run_target_m=$4", [p.$current_easy_pace_sec_per_km,p.$current_race_pace_sec_per_km,p.$current_long_run_target_m]),

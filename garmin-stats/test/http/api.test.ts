@@ -152,12 +152,16 @@ test("GET /api/v1/settings returns the seeded singleton with defaults", async ()
   await withServer(async (s) => {
     const row = (await s.api("/api/v1/settings")).json as {
       theme: string; unit_system: string; outlier_speed_delta_per_sec: number; min_trend_group_size: number; palette: string;
+      outlier_defaults: { outlier_speed_delta_per_sec: number; outlier_cadence_delta_per_sec: number; outlier_min_speed_kmh: number };
     };
     assert.equal(row.theme, "auto");
     assert.equal(row.unit_system, "auto");
     assert.equal(row.outlier_speed_delta_per_sec, 2.0);
     assert.equal(row.min_trend_group_size, 5);
     assert.equal(row.palette, "auto");
+    // HRA-385 AC3/AC4: the authoritative default source, so a "Reset to
+    // default" UI never has to hardcode these numbers itself.
+    assert.deepEqual(row.outlier_defaults, { outlier_speed_delta_per_sec: 2.0, outlier_cadence_delta_per_sec: 60.0, outlier_min_speed_kmh: 6.0 });
   });
 });
 
@@ -190,6 +194,30 @@ test("PUT /api/v1/settings/palette persists a valid palette (and its paired acce
 
     const bad = await s.api("/api/v1/settings/palette", putJson({ palette: "hipster" }));
     assert.equal(bad.status, 422); // validation failure (parsed OK, breaks the rule) — HRA-37
+  });
+});
+
+test("PUT /api/v1/settings/theme to light atomically normalizes an explicit Graphite palette (HRA-385 AC2)", async () => {
+  await withServer(async (s) => {
+    const graphite = await s.api("/api/v1/settings/palette", putJson({ palette: "graphite" }));
+    assert.equal(graphite.status, 200);
+
+    const toLight = await s.api("/api/v1/settings/theme", putJson({ theme: "light" }));
+    assert.equal(toLight.status, 200);
+    const row = toLight.json as { theme: string; palette: string; accent_color: string };
+    assert.equal(row.theme, "light");
+    assert.equal(row.palette, "warm"); // never left as the light-incompatible "graphite"
+    assert.equal(row.accent_color, "amber"); // written atomically with palette, same PALETTE_ACCENT pairing updatePalette uses
+  });
+});
+
+test("PUT /api/v1/settings/theme to light leaves a non-Graphite palette untouched", async () => {
+  await withServer(async (s) => {
+    await s.api("/api/v1/settings/palette", putJson({ palette: "metal" }));
+    const toLight = await s.api("/api/v1/settings/theme", putJson({ theme: "light" }));
+    const row = toLight.json as { theme: string; palette: string };
+    assert.equal(row.theme, "light");
+    assert.equal(row.palette, "metal");
   });
 });
 

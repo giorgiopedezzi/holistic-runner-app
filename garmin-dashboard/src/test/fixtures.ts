@@ -31,6 +31,7 @@ export const settings = (overrides: Partial<Settings> = {}): Settings => ({
   current_race_pace_sec_per_km: null,
   current_long_run_target_m: null,
   demo_mode: false,
+  outlier_defaults: { outlier_speed_delta_per_sec: 2.0, outlier_cadence_delta_per_sec: 60.0, outlier_min_speed_kmh: 6.0 },
   ...overrides,
 });
 
