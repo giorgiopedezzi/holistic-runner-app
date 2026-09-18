@@ -35,6 +35,7 @@ import {
 import { loadConfig } from "../config.ts";
 import { isOriginalFrozen, isValidIanaTimeZone, SCHEDULE_TIMEZONE_BACKFILL_FALLBACK } from "../domain/plan-timezone.ts";
 import { requestDataOwnerId } from "../http/auth-context.ts";
+import { ExportAllowanceExceededError } from "../services/export-allowance.service.ts";
 import { founderPublicResponse } from "../http/founder-public-response.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
 import { createOwnedPlanInstancesRepo } from "../repositories/owned-plan-instances.repo.ts";
@@ -165,6 +166,17 @@ export function createPlanTemplatesController(ctx: AppContext) {
   const instancesRepo = (req: import("http").IncomingMessage) => createOwnedPlanInstancesRepo(ctx.db, ownerId(req));
   const instancesService = (req: import("http").IncomingMessage) => ctx.services.planInstances.forUser(ownerId(req));
   const settingsRepo = (req: import("http").IncomingMessage) => createOwnedSettingsRepo(ctx.db, ownerId(req));
+  const allowance = ctx.services.exportAllowance;
+
+  // HRA-391: converts an ExportAllowanceExceededError (thrown by either
+  // allowance.precheck or allowance.consume) into the same 429 problem+json
+  // shape, carrying the structured `allowance` field so the frontend can
+  // render exact remaining/next-credit state without a second round trip.
+  function allowanceExceeded(error: ExportAllowanceExceededError): ApiProblem {
+    return tooManyRequests("This export would exceed your remaining FIT export allowance.", {
+      allowance: { remaining: error.remaining, required: error.required, next_credit_at: error.nextCreditAt },
+    });
+  }
 
   const list: Handler = async (req, res, url) => {
     const { limit, offset } = parsePageParams(url.searchParams);
@@ -976,6 +988,13 @@ export function createPlanTemplatesController(ctx: AppContext) {
     const day = await instancesRepo(req).dayById(dayId);
     if (!day || day.instance_id !== instanceId) throw notFound(`No day with id ${dayId} on plan instance ${instanceId}.`);
 
+    const owner = ownerId(req);
+    const cost = ctx.config.exportAllowance.costSingle;
+    // HRA-391: reject before generation when it's already known to be
+    // futile — a read-only check, not the enforcement boundary (see
+    // allowance.consume below).
+    try { await allowance.precheck(owner, cost); } catch (e) { if (e instanceof ExportAllowanceExceededError) throw allowanceExceeded(e); throw e; }
+
     const outcome = toGarminWorkoutFit(toResolvedDay(day));
     if (!outcome.ok) {
       throw unprocessable("This day cannot be exported to a Garmin Workout FIT file.", {
@@ -991,6 +1010,11 @@ export function createPlanTemplatesController(ctx: AppContext) {
       { name: `${baseName}.fit`, data: outcome.bytes, date: dayDate },
       { name: `${baseName}.schedule.fit`, data: scheduleBytes, date: dayDate },
     ]);
+
+    // HRA-391: the authoritative atomic check-then-consume, run only after
+    // generation succeeded — a generation failure above never reaches here,
+    // so it never spends a credit. Founder: allowance.consume is a no-op.
+    try { await allowance.consume(owner, "single", cost); } catch (e) { if (e instanceof ExportAllowanceExceededError) throw allowanceExceeded(e); throw e; }
 
     res.writeHead(200, {
       "Content-Type": "application/zip",
@@ -1039,6 +1063,25 @@ export function createPlanTemplatesController(ctx: AppContext) {
       ? await instancesRepo(req).daysBySectionAndWeek(id, sectionName, weekNumber)
       : await instancesRepo(req).daysBySection(id, sectionName);
 
+    // HRA-391: the week action always costs exactly costWeek regardless of
+    // included/skip counts (Story AC); a whole-section call (no week_number
+    // — retained only for compatibility, not a UI action, see AGENTS.md
+    // routing) is charged costWeek per DISTINCT plan week REPRESENTED in the
+    // requested scope, computed from the full scope (`days`), not from
+    // `included` — a day skipped for needs_review still occupied a real week
+    // slot. A week-scoped call always resolves to exactly one distinct week
+    // by construction, so this single formula covers both cases.
+    const owner = ownerId(req);
+    const distinctWeeks = new Set(days.map(d => d.week_number)).size;
+    const cost = ctx.config.exportAllowance.costWeek * distinctWeeks;
+    const action = weekNumber != null ? "week" : "section";
+    // An empty scope (distinctWeeks 0) always ends in the "no exportable
+    // days" 422 below regardless of allowance — skip the precheck so that
+    // genuinely-empty-scope 422 is never masked by a spurious 429.
+    if (distinctWeeks > 0) {
+      try { await allowance.precheck(owner, cost); } catch (e) { if (e instanceof ExportAllowanceExceededError) throw allowanceExceeded(e); throw e; }
+    }
+
     const included: { day: PlanInstanceDayRow; bytes: Buffer }[] = [];
     let skipped = 0;
     for (const day of days) {
@@ -1063,6 +1106,12 @@ export function createPlanTemplatesController(ctx: AppContext) {
     };
     const zipBytes = writeZip([...workoutEntries, scheduleEntry]);
 
+    // HRA-391: authoritative atomic check-then-consume, run only once
+    // generation actually succeeded (skip-and-continue above already
+    // resolved to a non-empty zip) — a validation/generation failure never
+    // reaches here, so it never spends a credit.
+    try { await allowance.consume(owner, action, cost); } catch (e) { if (e instanceof ExportAllowanceExceededError) throw allowanceExceeded(e); throw e; }
+
     const dates = included.map(({ day }) => day.date).sort();
     const zipFilename = sanitizeFitFilename(
       `${instanceName}_${dates[0].replace(/-/g, "")}-${dates[dates.length - 1].replace(/-/g, "")}.zip`,
@@ -1077,6 +1126,15 @@ export function createPlanTemplatesController(ctx: AppContext) {
       ...corsHeaders(res),
     });
     res.end(zipBytes);
+  };
+
+  // GET /api/v1/export-allowance (HRA-391) — authoritative rolling-window
+  // allowance state for the authenticated owner, so the frontend's export
+  // controls never reconstruct the window calculation themselves. The
+  // founder gets an explicit unlimited:true rather than a fabricated large
+  // remaining balance (Story AC).
+  const exportAllowanceStatus: Handler = async (req, res) => {
+    return send(res, await allowance.status(ownerId(req)));
   };
 
   // POST /api/v1/plan-instances/:id/regenerate — HRA-132: regenerate an
@@ -1202,6 +1260,6 @@ export function createPlanTemplatesController(ctx: AppContext) {
     list, getById, generate, composePromptPreview, generateDsl, create, update, approveTemplate, remove,
     instantiate, instanceById, patchInstance, patchInstanceDay, swapWorkouts, validateInstanceDay, dayFit, scopeFit,
     regenerateInstance, approveInstance, removeInstance, listInstances, daysByDate, activeForDate,
-    mobileEligibility, instantiatePreview,
+    mobileEligibility, instantiatePreview, exportAllowanceStatus,
   };
 }

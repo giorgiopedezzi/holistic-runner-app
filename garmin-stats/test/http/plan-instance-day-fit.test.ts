@@ -1,13 +1,15 @@
 /**
  * test/http/plan-instance-day-fit.test.ts (HRA-202, packaging amended
- * HRA-392)
- * GET /api/v1/plan-instances/:id/days/:dayId/fit — exports one resolved
+ * HRA-392, moved off GET to POST HRA-391)
+ * POST /api/v1/plan-instances/:id/days/:dayId/fit — exports one resolved
  * plan_instance_days row as a zip bundling a Garmin Workout .fit and its
  * paired Schedules .fit (toGarminWorkoutFit/toGarminSchedulesFit,
  * integrations/garmin-workout.ts). Verifies the response bytes are a real
  * zip (via a real external unzip tool, not just this repo's own writer)
  * whose entries decode back to the expected FIT messages, not just that a
- * 200 was returned.
+ * 200 was returned. Allowance metering itself is covered by
+ * export-allowance.test.ts — every call here runs as the default founder
+ * identity, which is exempt, so these are pure generation/contract tests.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,8 +17,17 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHmac } from "node:crypto";
 import { startTestServer } from "../helpers/server.ts";
 import { decodeGarminWorkoutFit, fromGarminWorkoutFit } from "../../src/integrations/garmin-workout.ts";
+
+// Raw-fetch calls (binary body — server.api()'s res.json() would choke on
+// it) must carry the same session+CSRF pair server.api() computes for POST
+// automatically. Mirrors test/helpers/server.ts's own api() helper.
+function csrfFor(cookie: string): string {
+  const session = /(?:__Host-runsfree_session|runsfree_session)=([^;]+)/.exec(cookie)?.[1] ?? "";
+  return createHmac("sha256", "runsfree-session-csrf-v1").update(decodeURIComponent(session)).digest("base64url");
+}
 
 function extractZip(zipBytes: Buffer): Record<string, Buffer> {
   const dir = mkdtempSync(join(tmpdir(), "hra202-day-fit-"));
@@ -62,12 +73,13 @@ async function setUp(server: Awaited<ReturnType<typeof startTestServer>>, instan
   return { instanceId, runDayId: runDay.id as number, restDayId: restDay.id as number };
 }
 
-test("GET .../days/:dayId/fit downloads a zip with a workout .fit and a paired schedule .fit", async () => {
+test("POST .../days/:dayId/fit downloads a zip with a workout .fit and a paired schedule .fit", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, runDayId } = await setUp(server, "Fit Export Instance");
     const res = await fetch(`${server.baseUrl}/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`, {
-      headers: { cookie: server.sessionCookie, origin: "http://test.invalid" },
+      method: "POST",
+      headers: { cookie: server.sessionCookie, origin: "http://test.invalid", "x-runsfree-csrf": csrfFor(server.sessionCookie) },
     });
     assert.equal(res.status, 200);
     assert.equal(res.headers.get("content-type"), "application/zip");
@@ -99,12 +111,13 @@ test("GET .../days/:dayId/fit downloads a zip with a workout .fit and a paired s
   }
 });
 
-test("GET .../days/:dayId/fit exports a rest day as a single rest_block", async () => {
+test("POST .../days/:dayId/fit exports a rest day as a single rest_block", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, restDayId } = await setUp(server);
     const res = await fetch(`${server.baseUrl}/api/v1/plan-instances/${instanceId}/days/${restDayId}/fit`, {
-      headers: { cookie: server.sessionCookie, origin: "http://test.invalid" },
+      method: "POST",
+      headers: { cookie: server.sessionCookie, origin: "http://test.invalid", "x-runsfree-csrf": csrfFor(server.sessionCookie) },
     });
     assert.equal(res.status, 200);
     const files = extractZip(Buffer.from(await res.arrayBuffer()));
@@ -117,30 +130,30 @@ test("GET .../days/:dayId/fit exports a rest day as a single rest_block", async 
   }
 });
 
-test("GET .../days/:dayId/fit 404s for an unknown instance", async () => {
+test("POST .../days/:dayId/fit 404s for an unknown instance", async () => {
   const server = await startTestServer();
   try {
     const { runDayId } = await setUp(server);
-    const res = await server.api(`/api/v1/plan-instances/999999/days/${runDayId}/fit`);
+    const res = await server.api(`/api/v1/plan-instances/999999/days/${runDayId}/fit`, { method: "POST" });
     assert.equal(res.status, 404);
   } finally {
     await server.close();
   }
 });
 
-test("GET .../days/:dayId/fit 404s for a day that belongs to a different instance", async () => {
+test("POST .../days/:dayId/fit 404s for a day that belongs to a different instance", async () => {
   const server = await startTestServer();
   try {
     const { instanceId: instanceA } = await setUp(server);
     const { runDayId: dayFromB } = await setUp(server);
-    const res = await server.api(`/api/v1/plan-instances/${instanceA}/days/${dayFromB}/fit`);
+    const res = await server.api(`/api/v1/plan-instances/${instanceA}/days/${dayFromB}/fit`, { method: "POST" });
     assert.equal(res.status, 404);
   } finally {
     await server.close();
   }
 });
 
-test("GET .../days/:dayId/fit 422s a day flagged needs_review, downloading nothing", async () => {
+test("POST .../days/:dayId/fit 422s a day flagged needs_review, downloading nothing", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, runDayId } = await setUp(server);
@@ -157,7 +170,7 @@ test("GET .../days/:dayId/fit 422s a day flagged needs_review, downloading nothi
     // the DB to set up the state under test rather than fighting that gate.
     await server.db.run("UPDATE plan_instance_workouts w SET needs_review = true FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1", [runDayId]);
 
-    const res = await server.api(`/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`);
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`, { method: "POST" });
     assert.equal(res.status, 422, JSON.stringify(res.json));
     assert.equal((res.json as any).errors[0].field, "NEEDS_REVIEW");
   } finally {
@@ -165,13 +178,13 @@ test("GET .../days/:dayId/fit 422s a day flagged needs_review, downloading nothi
   }
 });
 
-test("GET .../days/:dayId/fit 422s a day whose workout_type isn't run/rest", async () => {
+test("POST .../days/:dayId/fit 422s a day whose workout_type isn't run/rest", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, runDayId } = await setUp(server);
     await server.db.run("UPDATE plan_instance_workouts w SET workout_type = 'cross' FROM plan_instance_days d WHERE d.instance_id=w.instance_id AND d.workout_id=w.workout_id AND d.id=$1", [runDayId]);
 
-    const res = await server.api(`/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`);
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/days/${runDayId}/fit`, { method: "POST" });
     assert.equal(res.status, 422, JSON.stringify(res.json));
     assert.equal((res.json as any).errors[0].field, "UNSUPPORTED_WORKOUT_TYPE");
   } finally {

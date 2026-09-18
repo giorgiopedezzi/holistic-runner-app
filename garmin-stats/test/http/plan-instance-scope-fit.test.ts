@@ -1,14 +1,17 @@
 /**
  * test/http/plan-instance-scope-fit.test.ts (HRA-203, packaging amended
- * HRA-392)
- * GET /api/v1/plan-instances/:id/fit?section_name=&week_number= — bundles
+ * HRA-392, moved off GET to POST HRA-391)
+ * POST /api/v1/plan-instances/:id/fit?section_name=&week_number= — bundles
  * every exportable day in a section (or one week within it), plus one shared
  * Schedules .fit covering all of them, into a single uncompressed ZIP.
  * Verifies both the HTTP contract (status/headers/skip counts) and that the
  * returned bytes are a real ZIP whose entries decode back to the expected
  * FIT steps — via a real external unzip tool, not just this repo's own
  * writer/reader, mirroring domain/zip-writer.test.ts's own "don't just
- * round-trip through your own code" verification.
+ * round-trip through your own code" verification. Allowance metering itself
+ * is covered by export-allowance.test.ts — every call here runs as the
+ * default founder identity, which is exempt, so these are pure
+ * generation/contract tests.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,8 +19,14 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHmac } from "node:crypto";
 import { startTestServer } from "../helpers/server.ts";
 import { decodeGarminWorkoutFit, fromGarminWorkoutFit, scheduledTimeToDate } from "../../src/integrations/garmin-workout.ts";
+
+function csrfFor(cookie: string): string {
+  const session = /(?:__Host-runsfree_session|runsfree_session)=([^;]+)/.exec(cookie)?.[1] ?? "";
+  return createHmac("sha256", "runsfree-session-csrf-v1").update(decodeURIComponent(session)).digest("base64url");
+}
 
 const DSL = `PLAN
 NAME Smoke Plan
@@ -49,7 +58,8 @@ async function setUp(server: Awaited<ReturnType<typeof startTestServer>>, instan
 
 async function fetchZip(server: Awaited<ReturnType<typeof startTestServer>>, path: string) {
   const res = await fetch(`${server.baseUrl}${path}`, {
-    headers: { cookie: server.sessionCookie, origin: "http://test.invalid" },
+    method: "POST",
+    headers: { cookie: server.sessionCookie, origin: "http://test.invalid", "x-runsfree-csrf": csrfFor(server.sessionCookie) },
   });
   return { res, bytes: res.ok ? Buffer.from(await res.arrayBuffer()) : null };
 }
@@ -102,7 +112,7 @@ function decodeSharedSchedule(zipBytes: Buffer): { messages: Record<string, unkn
 // not just the lines the DSL text spells out. Assertions below check counts
 // and a couple of representative filenames rather than every one of the 14,
 // so they don't depend on re-deriving the full rest-day-autofill date math.
-test("GET .../fit?section_name= downloads a zip with one .fit per exportable day in the section", async () => {
+test("POST .../fit?section_name= downloads a zip with one .fit per exportable day in the section", async () => {
   const server = await startTestServer();
   try {
     const { instanceId } = await setUp(server, "Zip Export Instance");
@@ -146,7 +156,7 @@ test("GET .../fit?section_name= downloads a zip with one .fit per exportable day
   }
 });
 
-test("GET .../fit?section_name=&week_number= scopes the zip to one week only", async () => {
+test("POST .../fit?section_name=&week_number= scopes the zip to one week only", async () => {
   const server = await startTestServer();
   try {
     const { instanceId } = await setUp(server, "Week Scope Instance");
@@ -166,7 +176,7 @@ test("GET .../fit?section_name=&week_number= scopes the zip to one week only", a
   }
 });
 
-test("GET .../fit skips a needs_review day and reports it, downloading the rest", async () => {
+test("POST .../fit skips a needs_review day and reports it, downloading the rest", async () => {
   const server = await startTestServer();
   try {
     const { instanceId, days } = await setUp(server);
@@ -187,45 +197,45 @@ test("GET .../fit skips a needs_review day and reports it, downloading the rest"
   }
 });
 
-test("GET .../fit 422s and downloads nothing when every day in scope is non-exportable", async () => {
+test("POST .../fit 422s and downloads nothing when every day in scope is non-exportable", async () => {
   const server = await startTestServer();
   try {
     const { instanceId } = await setUp(server);
     await server.db.run("UPDATE plan_instance_workouts SET needs_review = true WHERE instance_id = $1", [instanceId]);
 
-    const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit?section_name=Base`);
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit?section_name=Base`, { method: "POST" });
     assert.equal(res.status, 422, JSON.stringify(res.json));
   } finally {
     await server.close();
   }
 });
 
-test("GET .../fit 422s when section_name matches no days at all", async () => {
+test("POST .../fit 422s when section_name matches no days at all", async () => {
   const server = await startTestServer();
   try {
     const { instanceId } = await setUp(server);
-    const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit?section_name=NoSuchSection`);
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit?section_name=NoSuchSection`, { method: "POST" });
     assert.equal(res.status, 422, JSON.stringify(res.json));
   } finally {
     await server.close();
   }
 });
 
-test("GET .../fit 400s when section_name is missing", async () => {
+test("POST .../fit 400s when section_name is missing", async () => {
   const server = await startTestServer();
   try {
     const { instanceId } = await setUp(server);
-    const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit`);
+    const res = await server.api(`/api/v1/plan-instances/${instanceId}/fit`, { method: "POST" });
     assert.equal(res.status, 400, JSON.stringify(res.json));
   } finally {
     await server.close();
   }
 });
 
-test("GET .../fit 404s for an unknown instance", async () => {
+test("POST .../fit 404s for an unknown instance", async () => {
   const server = await startTestServer();
   try {
-    const res = await server.api("/api/v1/plan-instances/999999/fit?section_name=Base");
+    const res = await server.api("/api/v1/plan-instances/999999/fit?section_name=Base", { method: "POST" });
     assert.equal(res.status, 404);
   } finally {
     await server.close();

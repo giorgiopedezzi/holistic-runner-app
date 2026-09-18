@@ -129,21 +129,38 @@ interface TrainingPlanAccordionProps {
   // have nothing resolved to export, so PlanTemplatesSection never passes
   // this — TemplateDayRow never renders the button at all (Story scope).
   onExportDayFit?: (day: DayView) => void;
-  // HRA-203: instance-only — "Generate fit" buttons in the Section/Week
-  // title rows, downloading a zip of every exportable day in that scope.
-  // Unlike onExportDayFit above, SectionView/WeekView aren't self-sufficient
-  // the same way: a WeekView alone has no section_name (only its own
-  // number), so onExportWeekFit is handed both the owning SectionView and
-  // the WeekView, and SectionEditor (the one place that has both in scope,
-  // via its own weeks.map) binds them into a plain zero-arg callback before
-  // handing it down to WeekEditor — WeekEditor's own onExportFit prop is
-  // that already-bound callback, not this two-arg one. onExportSectionFit
-  // needs no such binding (SectionView already carries its own name).
-  // Optional: templates have nothing resolved to export, so
-  // PlanTemplatesSection never passes either — the button is simply absent
-  // there, same convention as onExportDayFit.
-  onExportSectionFit?: (section: SectionView) => void;
+  // HRA-391: true once the owner's export allowance can't cover another
+  // single-workout export (registered users only — this prop is meaningless
+  // when onExportDayFit is undefined, i.e. Guest/templates, where the
+  // control isn't rendered at all). Disables the day badge/button rather
+  // than hiding it, since a registered user should see WHY, not have the
+  // control silently vanish.
+  exportDayDisabled?: boolean;
+  // Overrides the day badge's default title/aria-label — PlanInstancesSection
+  // uses this to state the disabled reason (or leaves it undefined to keep
+  // the plain default text when the action is available).
+  exportDayFitLabel?: string;
+  // HRA-203: instance-only — the "Generate fit" button in each Week title
+  // row, downloading a zip of every exportable day in that week. WeekView
+  // alone has no section_name (only its own number), so onExportWeekFit is
+  // handed both the owning SectionView and the WeekView; SectionEditor (the
+  // one place that has both in scope, via its own weeks.map) binds them into
+  // a plain zero-arg callback before handing it down to WeekEditor —
+  // WeekEditor's own onExportFit prop is that already-bound callback, not
+  // this two-arg one. Optional: templates have nothing resolved to export,
+  // so PlanTemplatesSection never passes this — the button is simply absent
+  // there, same convention as onExportDayFit. HRA-391: there is deliberately
+  // no section-scoped (whole-section) export action in this UI — the
+  // backend route retains that scope only for compatibility, never
+  // surfaced here.
   onExportWeekFit?: (section: SectionView, week: WeekView) => void;
+  // HRA-391: true once the owner's export allowance can't cover the week
+  // action's own credit cost. exportWeekFitLabel overrides the button's
+  // title/aria-label — used both to state the disabled reason AND, while
+  // enabled, to make the action's credit cost clear before execution
+  // (Story AC), since this is an icon-only button with no visible text.
+  exportWeekDisabled?: boolean;
+  exportWeekFitLabel?: string;
   // HRA-234: the plan's effective PACE offset unit (plan.metadata.offset_unit)
   // — needed only by TemplateDayRow's structured Pace/Recovery-pace field
   // editors, to serialize an edited offset intensity the same way the day
@@ -554,9 +571,9 @@ function NoteIcon({ note }: { note?: string }) {
 // matching onExportDayFit's own "keyboard-operable by construction"
 // precedent) — safe to nest here because AccordionCard's own trigger is a
 // role="button" div, not a real <button>, specifically to allow this.
-function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabel, t }: {
+function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabel, exportFitDisabled, t }: {
   label: string; summary?: string; hasWarning?: boolean; note?: string;
-  onExportFit?: () => void; exportFitLabel?: string; t: Translate;
+  onExportFit?: () => void; exportFitLabel?: string; exportFitDisabled?: boolean; t: Translate;
 }) {
   return (
     // HRA-269: flex-wrap so a long compactTotals summary (right side, shrink-0)
@@ -569,7 +586,8 @@ function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabe
         {onExportFit && (
           <button
             type="button"
-            className="hra-fit-export-btn inline-flex items-center bg-transparent border-0 p-0 cursor-pointer"
+            className={["hra-fit-export-btn inline-flex items-center bg-transparent border-0 p-0", exportFitDisabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"].join(" ")}
+            disabled={exportFitDisabled}
             onClick={e => { e.stopPropagation(); onExportFit(); }}
             // AccordionCard's trigger toggles on Enter/Space via its own
             // onKeyDown (it's a role="button" div, not a real <button> — see
@@ -602,7 +620,7 @@ function TitleRow({ label, summary, hasWarning, note, onExportFit, exportFitLabe
 // (day.date) already exists for exactly this kind of instance-only fork
 // (see dayLabel() above, HRA-125).
 function InstanceDayRow({
-  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, highlighted,
+  day, date, onEdit, readOnlyDays, dayRef, onDaySwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, exportDayDisabled, exportDayFitLabel, highlighted,
 }: {
   day: DayView;
   date: string;
@@ -614,6 +632,8 @@ function InstanceDayRow({
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  exportDayDisabled?: boolean;
+  exportDayFitLabel?: string;
   highlighted?: boolean;
 }) {
   const { t } = useTranslation();
@@ -702,17 +722,31 @@ function InstanceDayRow({
         {/* HRA-202: a real <button>, not a <span onClick> — keyboard-operable
             by construction. Tooltip/aria-label is the export action's own
             name, not the date it happens to be pinned to; the visible pill
-            text/icon are unchanged. */}
-        <button
-          type="button"
-          className={[`hra-day-date-badge ${categoryCatClass}`, "row-start-1 col-start-1"].filter(Boolean).join(" ")}
-          onClick={() => onExportDayFit?.(day)}
-          title={t("runplan.accordion.exportFitLabel", "Generate single workout fit")}
-          aria-label={t("runplan.accordion.exportFitLabel", "Generate single workout fit")}
-        >
-          {dateBadge}
-          <CategoryIcon size={12} />
-        </button>
+            text/icon are unchanged. HRA-391: only rendered as a button when
+            onExportDayFit is actually supplied — Guest (PlanInstancesSection
+            never passes it there) gets the plain, non-interactive badge
+            instead of a control that silently does nothing on click (Story
+            AC: "Guest UI exposes no FIT export control"). A registered user
+            out of credits still SEES the button (exportDayDisabled), just
+            unable to activate it — the label states why. */}
+        {onExportDayFit ? (
+          <button
+            type="button"
+            className={[`hra-day-date-badge ${categoryCatClass}`, "row-start-1 col-start-1", exportDayDisabled ? "opacity-50 cursor-not-allowed" : undefined].filter(Boolean).join(" ")}
+            disabled={exportDayDisabled}
+            onClick={() => onExportDayFit(day)}
+            title={exportDayFitLabel ?? t("runplan.accordion.exportFitLabel", "Generate single workout fit")}
+            aria-label={exportDayFitLabel ?? t("runplan.accordion.exportFitLabel", "Generate single workout fit")}
+          >
+            {dateBadge}
+            <CategoryIcon size={12} />
+          </button>
+        ) : (
+          <span className={[`hra-day-date-badge ${categoryCatClass}`, "row-start-1 col-start-1"].filter(Boolean).join(" ")}>
+            {dateBadge}
+            <CategoryIcon size={12} />
+          </span>
+        )}
         {/* HRA-126: once approved, the dsl/note inputs simply don't render —
             plain text takes their place so the row still reads correctly. */}
         {readOnlyDays ? (
@@ -1117,6 +1151,8 @@ function DayEditor({ offsetUnit, highlighted, ...props }: {
   onWorkoutTypeEdit?: (workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  exportDayDisabled?: boolean;
+  exportDayFitLabel?: string;
   offsetUnit: OffsetUnit;
   highlighted: boolean;
 }) {
@@ -1126,7 +1162,7 @@ function DayEditor({ offsetUnit, highlighted, ...props }: {
 }
 
 function WeekEditor({
-  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportFit, offsetUnit, highlightedRef,
+  week, sectionIndex, weekIndex, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, exportDayDisabled, exportDayFitLabel, onExportFit, exportFitDisabled, exportFitLabel, offsetUnit, highlightedRef,
 }: {
   week: WeekView;
   sectionIndex: number;
@@ -1141,9 +1177,13 @@ function WeekEditor({
   onWorkoutTypeEdit?: (dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
+  exportDayDisabled?: boolean;
+  exportDayFitLabel?: string;
   // HRA-203: already bound to (section, week) by SectionEditor below — see
   // that prop's own doc comment on TrainingPlanAccordionProps.
   onExportFit?: () => void;
+  exportFitDisabled?: boolean;
+  exportFitLabel?: string;
   offsetUnit: OffsetUnit;
   highlightedRef?: EditedRef;
 }) {
@@ -1170,7 +1210,8 @@ function WeekEditor({
           <TitleRow
             label={label} summary={summary} hasWarning={weekHasWarnings(week)} note={week.notes} t={t}
             onExportFit={onExportFit}
-            exportFitLabel={t("runplan.accordion.exportWeekFitLabel", "Generate fit for this week")}
+            exportFitLabel={exportFitLabel ?? t("runplan.accordion.exportWeekFitLabel", "Generate fit for this week")}
+            exportFitDisabled={exportFitDisabled}
           />
         }
         expanded={expanded} onToggle={() => setExpanded(v => !v)}
@@ -1196,6 +1237,8 @@ function WeekEditor({
               onWorkoutTypeEdit={onWorkoutTypeEdit ? workoutType => onWorkoutTypeEdit(dayIndex, workoutType) : undefined}
               isDayDirty={isDayDirty}
               onExportDayFit={onExportDayFit}
+              exportDayDisabled={exportDayDisabled}
+              exportDayFitLabel={exportDayFitLabel}
               offsetUnit={offsetUnit}
               highlighted={isDayHighlighted(highlightedRef, sectionIndex, weekIndex, dayIndex)}
             />
@@ -1207,7 +1250,7 @@ function WeekEditor({
 }
 
 function SectionEditor({
-  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit, highlightedRef,
+  section, sectionIndex, ownerName, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek, readOnlyDays, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, exportDayDisabled, exportDayFitLabel, onExportWeekFit, exportWeekDisabled, exportWeekFitLabel, offsetUnit, highlightedRef,
 }: {
   section: SectionView;
   sectionIndex: number;
@@ -1223,8 +1266,11 @@ function SectionEditor({
   onWorkoutTypeEdit?: (weekIndex: number, dayIndex: number, workoutType: WorkoutTypeSwitchValue) => void;
   isDayDirty?: (day: DayView) => boolean;
   onExportDayFit?: (day: DayView) => void;
-  onExportSectionFit?: (section: SectionView) => void;
+  exportDayDisabled?: boolean;
+  exportDayFitLabel?: string;
   onExportWeekFit?: (section: SectionView, week: WeekView) => void;
+  exportWeekDisabled?: boolean;
+  exportWeekFitLabel?: string;
   offsetUnit: OffsetUnit;
   highlightedRef?: EditedRef;
 }) {
@@ -1243,10 +1289,10 @@ function SectionEditor({
   return (
     <AccordionCard
       title={
+        // HRA-391: no section-scoped export action in this UI (Story AC) —
+        // the section title row never gets an onExportFit here at all.
         <TitleRow
           label={displayName} summary={compactTotals(section.totals, t)} hasWarning={sectionHasWarnings(section)} note={isDefaultSection ? undefined : section.notes} t={t}
-          onExportFit={onExportSectionFit ? () => onExportSectionFit(section) : undefined}
-          exportFitLabel={t("runplan.accordion.exportSectionFitLabel", "Generate fit for this section")}
         />
       }
       expanded={expanded} onToggle={() => setExpanded(v => !v)}
@@ -1294,7 +1340,11 @@ function SectionEditor({
             onWorkoutTypeEdit={onWorkoutTypeEdit ? (dayIndex, workoutType) => onWorkoutTypeEdit(weekIndex, dayIndex, workoutType) : undefined}
             isDayDirty={isDayDirty}
             onExportDayFit={onExportDayFit}
+            exportDayDisabled={exportDayDisabled}
+            exportDayFitLabel={exportDayFitLabel}
             onExportFit={onExportWeekFit ? () => onExportWeekFit(section, week) : undefined}
+            exportFitDisabled={exportWeekDisabled}
+            exportFitLabel={exportWeekFitLabel}
             offsetUnit={offsetUnit}
             highlightedRef={highlightedRef}
           />
@@ -1305,7 +1355,8 @@ function SectionEditor({
 }
 
 export function TrainingPlanAccordion({
-  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty, onExportDayFit, onExportSectionFit, onExportWeekFit, offsetUnit = "s/km", highlightedRef,
+  ownerName, sections, onSectionEdit, onWeekEdit, onDayEdit, readOnlySectionWeek = false, readOnlyDays = false, onDaySwap, onWeekSwap, onScheduledTimeEdit, onWorkoutTypeEdit, isDayDirty,
+  onExportDayFit, exportDayDisabled, exportDayFitLabel, onExportWeekFit, exportWeekDisabled, exportWeekFitLabel, offsetUnit = "s/km", highlightedRef,
 }: TrainingPlanAccordionProps) {
   return (
     <div>
@@ -1326,8 +1377,11 @@ export function TrainingPlanAccordion({
           onWorkoutTypeEdit={onWorkoutTypeEdit ? (weekIndex, dayIndex, workoutType) => onWorkoutTypeEdit(sectionIndex, weekIndex, dayIndex, workoutType) : undefined}
           isDayDirty={isDayDirty}
           onExportDayFit={onExportDayFit}
-          onExportSectionFit={onExportSectionFit}
+          exportDayDisabled={exportDayDisabled}
+          exportDayFitLabel={exportDayFitLabel}
           onExportWeekFit={onExportWeekFit}
+          exportWeekDisabled={exportWeekDisabled}
+          exportWeekFitLabel={exportWeekFitLabel}
           offsetUnit={offsetUnit}
           highlightedRef={highlightedRef}
         />

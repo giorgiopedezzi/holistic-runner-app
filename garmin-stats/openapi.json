@@ -78,9 +78,35 @@
             "type": "array",
             "description": "HRA-299: only on POST .../plan-instances/{id}/regenerate's 409 — every day in the requested range that already carries a customization marker and would be silently overwritten without confirm_overwrite: true.",
             "items": { "type": "object", "properties": { "id": { "type": "integer" }, "date": { "type": "string", "format": "date" }, "section_name": { "type": "string" }, "week_number": { "type": "integer" }, "day": { "type": "integer" }, "workout_type": { "type": "string" }, "notes": { "type": ["string", "null"] } } }
+          },
+          "allowance": {
+            "type": "object",
+            "description": "HRA-391: only on a 429 from a metered FIT export action.",
+            "properties": {
+              "remaining": { "type": "integer", "description": "Credits actually available to this caller right now." },
+              "required": { "type": "integer", "description": "Credits this attempt needed." },
+              "next_credit_at": { "type": ["string", "null"], "format": "date-time", "description": "When the oldest in-window usage row ages out and its credit returns; null when nothing useful is known." }
+            }
           }
         },
         "required": ["type", "title", "status"]
+      },
+      "ExportAllowanceStatus": {
+        "type": "object",
+        "description": "HRA-391: GET /api/v1/export-allowance's response.",
+        "properties": {
+          "unlimited": { "type": "boolean", "description": "true only for the founder — no numeric limit/remaining fields accompany it." },
+          "limit": { "type": "integer", "description": "Rolling-window credit ceiling (EXPORT_ALLOWANCE_LIMIT). Omitted when unlimited." },
+          "remaining": { "type": "integer", "description": "Credits available right now. Omitted when unlimited." },
+          "next_credit_at": { "type": ["string", "null"], "format": "date-time", "description": "When the oldest in-window usage row ages out and its credit returns; null when nothing is currently spent." },
+          "costs": {
+            "type": "object",
+            "description": "Always present, even when unlimited — lets the frontend state the week action's exact credit cost without hardcoding a copy of backend policy.",
+            "properties": { "single": { "type": "integer" }, "week": { "type": "integer" } },
+            "required": ["single", "week"]
+          }
+        },
+        "required": ["unlimited", "next_credit_at", "costs"]
       },
       "Page": {
         "type": "object",
@@ -1379,18 +1405,23 @@
     },
     "/api/v1/plan-instances/{id}/days/{dayId}/fit": {
       "security": [{ "runsFreeSession": [] }],
-      "get": {
-        "tags": ["plan-templates"], "summary": "Export one resolved day as a Garmin Workout + Schedule .fit zip (HRA-202, packaging amended HRA-392)",
-        "description": "Wraps toGarminWorkoutFit and toGarminSchedulesFit (integrations/garmin-workout.ts) for one plan_instance_days row, bundling the Workout .fit and its paired Schedules .fit into a zip — a Forerunner 965 only recognizes a Training Calendar entry from a dedicated Schedules-type FIT file, never a Schedule message embedded in the Workout file (HRA-392). Read-only: nothing is parsed or persisted, so an approved instance is not guarded against. Rejected (422) exactly when toGarminWorkoutFit itself rejects the day — needs_review, or a workout_type other than run/rest.",
+      "post": {
+        "tags": ["plan-templates"], "summary": "Metered export of one resolved day as a Garmin Workout + Schedule .fit zip (HRA-202/HRA-392; moved off GET to POST, HRA-391)",
+        "description": "Wraps toGarminWorkoutFit and toGarminSchedulesFit (integrations/garmin-workout.ts) for one plan_instance_days row, bundling the Workout .fit and its paired Schedules .fit into a zip — a Forerunner 965 only recognizes a Training Calendar entry from a dedicated Schedules-type FIT file, never a Schedule message embedded in the Workout file (HRA-392). Nothing is parsed, but a successful export now writes one export_allowance_usage row (HRA-391) — moved off GET since allowance consumption is a durable side effect a GET must never carry. Consumes exactly EXPORT_ALLOWANCE_COST_SINGLE (default 1) credit on success only; rejected (422) exactly when toGarminWorkoutFit itself rejects the day (needs_review, or a workout_type other than run/rest) consumes zero. The founder is exempt from both the allowance check and the credit write.",
         "parameters": [ { "$ref": "#/components/parameters/id" }, { "$ref": "#/components/parameters/dayId" } ],
-        "responses": { "200": { "description": "Binary zip file containing <base>.fit and <base>.schedule.fit. Content-Disposition: attachment; filename=\"<instance name>_<YYYYMMDD>.zip\".", "content": { "application/zip": {} } }, "404": { "$ref": "#/components/responses/NotFound" }, "422": { "$ref": "#/components/responses/Unprocessable" } }
+        "responses": {
+          "200": { "description": "Binary zip file containing <base>.fit and <base>.schedule.fit. Content-Disposition: attachment; filename=\"<instance name>_<YYYYMMDD>.zip\".", "content": { "application/zip": {} } },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "429": { "description": "This export would exceed the caller's remaining rolling-window FIT export allowance (HRA-391). The problem body's `allowance` field carries {remaining, required, next_credit_at}.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
+        }
       }
     },
     "/api/v1/plan-instances/{id}/fit": {
       "security": [{ "runsFreeSession": [] }],
-      "get": {
-        "tags": ["plan-templates"], "summary": "Export every exportable day in a section (or one week within it) as a Garmin Workout .fit zip (HRA-203, packaging amended HRA-392)",
-        "description": "Bundles one .fit per exportable plan_instance_days row in scope (filtered by section_name, and optionally week_number) plus one shared <instance name>_schedule.fit (toGarminSchedulesFit, HRA-392) covering every included day, into a single uncompressed (STORE) zip, reusing the same toGarminWorkoutFit path as the day-level export above. A device keeps only one Schedules-type file, so this is one file with N entries rather than N files. A day toGarminWorkoutFit itself rejects (needs_review, or a workout_type other than run/rest) is skipped rather than failing the request — X-Export-Total/X-Export-Included/X-Export-Skipped response headers report the counts, since the body itself is opaque binary. 422 with no zip written when zero days in scope are exportable.",
+      "post": {
+        "tags": ["plan-templates"], "summary": "Metered export of every exportable day in a section (or one week within it) as a Garmin Workout .fit zip (HRA-203/HRA-392; moved off GET to POST, HRA-391)",
+        "description": "Bundles one .fit per exportable plan_instance_days row in scope (filtered by section_name, and optionally week_number) plus one shared <instance name>_schedule.fit (toGarminSchedulesFit, HRA-392) covering every included day, into a single uncompressed (STORE) zip, reusing the same toGarminWorkoutFit path as the day-level export above. A device keeps only one Schedules-type file, so this is one file with N entries rather than N files. A day toGarminWorkoutFit itself rejects is skipped rather than failing the request — X-Export-Total/X-Export-Included/X-Export-Skipped response headers report the counts. 422 with no zip written when zero days in scope are exportable. Moved off GET to POST (HRA-391): a successful export consumes EXPORT_ALLOWANCE_COST_WEEK (default 7) credits per DISTINCT plan week represented in the requested scope — a week_number-scoped call (the registered-user \"week\" action) always resolves to exactly one week; an un-scoped whole-section call (retained only for compatibility, not a UI action) is charged that rate once per distinct week it spans. Checked before generation runs; a 422 consumes zero. The founder is exempt.",
         "parameters": [
           { "$ref": "#/components/parameters/id" },
           { "name": "section_name", "in": "query", "required": true, "schema": { "type": "string" }, "description": "The plan_instance_days.section_name to scope the export to." },
@@ -1400,8 +1431,17 @@
           "200": { "description": "Binary zip file. Content-Disposition: attachment; filename=\"<instance name>_<first date:yyyymmdd>-<last date:yyyymmdd>.zip\". Also carries X-Export-Total/X-Export-Included/X-Export-Skipped headers.", "content": { "application/zip": {} } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "404": { "$ref": "#/components/responses/NotFound" },
-          "422": { "$ref": "#/components/responses/Unprocessable" }
+          "422": { "$ref": "#/components/responses/Unprocessable" },
+          "429": { "description": "This export would exceed the caller's remaining rolling-window FIT export allowance (HRA-391). The problem body's `allowance` field carries {remaining, required, next_credit_at}.", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } } }
         }
+      }
+    },
+    "/api/v1/export-allowance": {
+      "security": [{ "runsFreeSession": [] }],
+      "get": {
+        "tags": ["plan-templates"], "summary": "Authoritative rolling-window FIT export allowance state for the authenticated owner (HRA-391)",
+        "description": "The frontend's export controls read this rather than reconstructing the rolling window client-side. The founder gets an explicit unlimited:true rather than a fabricated large remaining balance.",
+        "responses": { "200": { "description": "Allowance state.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ExportAllowanceStatus" } } } } }
       }
     },
     "/api/v1/plan-instances/{id}/approve": {

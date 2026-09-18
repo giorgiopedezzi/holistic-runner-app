@@ -87,6 +87,16 @@ export interface Config {
     webLogoutUrl?: string;
     allowedOrigins: string[];
   };
+  // HRA-391: registered-user FIT export allowance policy — a rolling window
+  // of credits, spent by the single-workout (costSingle) and week
+  // (costWeek) export actions. The founder is exempt regardless of these
+  // values (see db/founder.ts's FOUNDER_USER_ID).
+  exportAllowance: {
+    limit: number;
+    windowDays: number;
+    costSingle: number;
+    costWeek: number;
+  };
 }
 
 // "true" (case-insensitive) is the only truthy string; anything else,
@@ -171,6 +181,12 @@ export function loadConfig(): Config {
       webCallbackUrl: process.env.AUTH_WEB_CALLBACK_URL,
       webLogoutUrl: process.env.AUTH_WEB_LOGOUT_URL,
       allowedOrigins: parseListEnv(process.env.AUTH_ALLOWED_ORIGINS),
+    },
+    exportAllowance: {
+      limit: parseIntEnv(process.env.EXPORT_ALLOWANCE_LIMIT, 7),
+      windowDays: parseIntEnv(process.env.EXPORT_ALLOWANCE_WINDOW_DAYS, 7),
+      costSingle: parseIntEnv(process.env.EXPORT_ALLOWANCE_COST_SINGLE, 1),
+      costWeek: parseIntEnv(process.env.EXPORT_ALLOWANCE_COST_WEEK, 7),
     },
   };
 }

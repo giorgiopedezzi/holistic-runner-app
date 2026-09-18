@@ -46,6 +46,18 @@ export interface Problem {
     conflicts: PlanInstanceOverlap[];
   };
   customized_days?: PlanInstanceCustomizedDay[];
+  allowance?: ExportAllowanceInfo;
+}
+
+// HRA-391: only on a 429 from a metered FIT export action — how many credits
+// this attempt needed vs. how many remain, and when the next credit frees up
+// (null when the caller has never spent one, or once one already has and no
+// window entry gives a useful answer), so the frontend can render the exact
+// same state GET /api/v1/export-allowance would return without a second call.
+export interface ExportAllowanceInfo {
+  remaining: number;
+  required: number;
+  next_credit_at: string | null;
 }
 
 export class ApiProblem extends Error {

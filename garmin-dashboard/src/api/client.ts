@@ -90,15 +90,36 @@ export interface PublicProjectionSnapshot {
   reports: PublicItem[];
 }
 
+// HRA-391: the structured allowance body on a metered FIT export action's
+// 429, mirroring garmin-stats/src/http/problem.ts's Problem.allowance.
+export interface ExportAllowanceInfo {
+  remaining: number;
+  required: number;
+  next_credit_at: string | null;
+}
+
+// HRA-391: GET /api/v1/export-allowance's response — unlimited:true alone
+// for the founder (no fabricated numeric balance), otherwise the rolling
+// window's actual remaining/limit/next-credit state.
+export interface ExportAllowanceStatus {
+  unlimited: boolean;
+  limit?: number;
+  remaining?: number;
+  next_credit_at: string | null;
+  costs: { single: number; week: number };
+}
+
 // Error carrying the HTTP status (0 = the request never reached the server), so
 // callers can branch on it if they need to. Its message is already human — see
 // buildApiError. (HRA-43) `overlaps` is set only for a plan-instance activation
 // conflict (HRA-249); `customizedDays` (HRA-299) only for a regenerate
-// customization-overwrite conflict — every other caller leaves both undefined.
+// customization-overwrite conflict; `allowance` (HRA-391) only for a metered
+// FIT export action's 429 — every other caller leaves all three undefined.
 export class ApiError extends Error {
   constructor(
     public readonly status: number, message: string,
     public readonly overlaps?: PlanInstanceOverlaps, public readonly customizedDays?: PlanInstanceCustomizedDay[],
+    public readonly allowance?: ExportAllowanceInfo,
   ) {
     super(message);
     this.name = "ApiError";
@@ -130,6 +151,7 @@ async function translate(key: string, defaultValue: string, options?: Record<str
 async function buildApiError(res: Response, path: string): Promise<ApiError> {
   const problem = (await res.json().catch(() => null)) as {
     detail?: string; title?: string; overlaps?: PlanInstanceOverlaps; customized_days?: PlanInstanceCustomizedDay[];
+    allowance?: ExportAllowanceInfo;
   } | null;
   // A real problem+json body (this app's own backend, e.g. HRA-329's AI
   // provider error mapping) always carries detail/title — show that specific
@@ -142,7 +164,7 @@ async function buildApiError(res: Response, path: string): Promise<ApiError> {
       { status: res.status }));
   }
   const message = problem?.detail ?? problem?.title ?? await translate("api.genericError", `API error ${res.status}: ${path}`, { status: res.status, path });
-  return new ApiError(res.status, message, problem?.overlaps, problem?.customized_days);
+  return new ApiError(res.status, message, problem?.overlaps, problem?.customized_days, problem?.allowance);
 }
 
 async function request<T>(path: string, method = "GET", params?: Record<string, string>, body?: unknown): Promise<T> {
@@ -549,21 +571,28 @@ export const api = {
     // FIT file, not JSON, so this bypasses the shared request() helper (its
     // unconditional res.json() would choke on the body). Mirrors
     // buildApiError's own problem+json handling for a non-OK response (422
-    // when the day is needs_review or its workout_type isn't run/rest) so
+    // when the day is needs_review or its workout_type isn't run/rest, 429
+    // when it would exceed the caller's FIT export allowance — HRA-391) so
     // the caller gets the same human-readable ApiError message every other
     // endpoint throws. Filename comes from the response's own
     // Content-Disposition header, not recomputed client-side, so the two
-    // never drift.
+    // never drift. POST, not GET (HRA-391 moved this off GET): a successful
+    // call is now a durable side effect (spends an export credit), which a
+    // GET must never carry — same manual CSRF attachment request() applies
+    // automatically to every other POST.
     downloadDayFit: async (instanceId: number, dayId: number): Promise<{ blob: Blob; filename: string }> => {
       const path = `/api/v1/plan-instances/${instanceId}/days/${dayId}/fit`;
-      const res = await fetch(new URL(`${BASE}${path}`, window.location.origin));
+      const headers: Record<string, string> = {};
+      if (csrfToken) headers["X-RunsFree-CSRF"] = csrfToken;
+      const res = await fetch(new URL(`${BASE}${path}`, window.location.origin), { method: "POST", credentials: "include", headers });
       if (!res.ok) throw await buildApiError(res, path);
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "workout.fit";
       return { blob: await res.blob(), filename };
     },
-    // GET /api/v1/plan-instances/:id/fit?section_name=&week_number= (HRA-203)
-    // — same binary-download bypass of request() as downloadDayFit above.
+    // POST /api/v1/plan-instances/:id/fit?section_name=&week_number=
+    // (HRA-203, moved off GET to POST HRA-391) — same binary-download bypass
+    // of request() and POST/CSRF reasoning as downloadDayFit above.
     // week_number omitted exports the whole section; supplied, one week
     // within it. The skip count can't ride in the (opaque binary) body, so
     // it comes back as X-Export-* response headers instead — the caller
@@ -575,7 +604,9 @@ export const api = {
       const url = new URL(`${BASE}${path}`, window.location.origin);
       url.searchParams.set("section_name", sectionName);
       if (weekNumber != null) url.searchParams.set("week_number", String(weekNumber));
-      const res = await fetch(url);
+      const headers: Record<string, string> = {};
+      if (csrfToken) headers["X-RunsFree-CSRF"] = csrfToken;
+      const res = await fetch(url, { method: "POST", credentials: "include", headers });
       if (!res.ok) throw await buildApiError(res, path);
       const disposition = res.headers.get("Content-Disposition") ?? "";
       const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "workouts.zip";
@@ -586,6 +617,12 @@ export const api = {
         skipped: Number(res.headers.get("X-Export-Skipped") ?? "0"),
       };
     },
+  },
+  // GET /api/v1/export-allowance (HRA-391) — the authenticated owner's
+  // rolling-window FIT export allowance. The frontend never recomputes the
+  // window itself; it always reflects exactly what this returns.
+  exportAllowance: {
+    status: () => request<ExportAllowanceStatus>("/api/v1/export-allowance"),
   },
   // GET /api/v1/reports/range (HRA-341) — the date-range/race-range report,
   // cross-plan (unlike every report above, which is scoped to one plan

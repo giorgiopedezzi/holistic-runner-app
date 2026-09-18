@@ -27,6 +27,7 @@ const ENV_KEYS = [
   "AUTH_ENABLED", "AUTH_ISSUER_URL", "AUTH_DISCOVERY_URL", "AUTH_AUDIENCE",
   "AUTH_WEB_CLIENT_ID", "AUTH_WEB_CLIENT_SECRET", "AUTH_WEB_CALLBACK_URL", "AUTH_WEB_LOGOUT_URL",
   "AUTH_ALLOWED_ORIGINS", "AUTH_SESSION_IDLE_SECONDS", "AUTH_SESSION_ABSOLUTE_SECONDS", "NODE_ENV",
+  "EXPORT_ALLOWANCE_LIMIT", "EXPORT_ALLOWANCE_WINDOW_DAYS", "EXPORT_ALLOWANCE_COST_SINGLE", "EXPORT_ALLOWANCE_COST_WEEK",
 ] as const;
 
 // A complete, self-consistent AUTH_* set — every validateAuthConfig test
@@ -222,6 +223,23 @@ test("validateAuthConfig rejects an issuer/discovery host mismatch (cross-enviro
 test("validateAuthConfig rejects a logout URL whose origin isn't in AUTH_ALLOWED_ORIGINS", () => {
   withEnv({ DB_PATH: "./garmin.db", ...VALID_AUTH_ENV, AUTH_WEB_LOGOUT_URL: "https://staging.runsfree.app/" }, () => {
     assert.throws(() => validateAuthConfig(loadConfig()), /AUTH_ALLOWED_ORIGINS/);
+  });
+});
+
+// HRA-391: registered-user FIT export allowance policy defaults/overrides.
+test("exportAllowance defaults to 7 credits / 7-day window / 1-credit single / 7-credit week", () => {
+  withEnv({ DB_PATH: "./garmin.db" }, () => {
+    assert.deepEqual(loadConfig().exportAllowance, { limit: 7, windowDays: 7, costSingle: 1, costWeek: 7 });
+  });
+});
+
+test("exportAllowance reads every value from its own env var", () => {
+  withEnv({
+    DB_PATH: "./garmin.db",
+    EXPORT_ALLOWANCE_LIMIT: "10", EXPORT_ALLOWANCE_WINDOW_DAYS: "14",
+    EXPORT_ALLOWANCE_COST_SINGLE: "2", EXPORT_ALLOWANCE_COST_WEEK: "9",
+  }, () => {
+    assert.deepEqual(loadConfig().exportAllowance, { limit: 10, windowDays: 14, costSingle: 2, costWeek: 9 });
   });
 });
 

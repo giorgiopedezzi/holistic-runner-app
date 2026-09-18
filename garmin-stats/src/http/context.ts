@@ -34,6 +34,7 @@ import type { AccountPrivacyService } from "../services/account-privacy.service.
 import type { GuestPublicationService } from "../services/guest-publication.service.ts";
 import type { PublicationLifecycleService } from "../services/publication-lifecycle.service.ts";
 import type { FitImportService } from "../services/fit-import.service.ts";
+import type { ExportAllowanceService } from "../services/export-allowance.service.ts";
 
 export interface AppContext {
   port: number;          // used by the router to build the URL base
@@ -60,6 +61,7 @@ export interface AppContext {
     identity: IdentityService; accountPrivacy: AccountPrivacyService; guestPublication: GuestPublicationService;
     publicationLifecycle: PublicationLifecycleService;
     fitImport: FitImportService;
+    exportAllowance: ExportAllowanceService;
   };
 }
 

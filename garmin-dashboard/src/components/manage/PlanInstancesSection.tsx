@@ -7,7 +7,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle } from "lucide-react";
-import { api, ApiError } from "@/api/client";
+import { api, ApiError, type ExportAllowanceStatus } from "@/api/client";
 import { ErrorBanner, WarningBanner, AccordionCard, Badge } from "@/components/ui";
 import { useIsPhone } from "@/hooks/useIsPhone";
 import { useAppMode } from "@/hooks/useAppMode";
@@ -243,6 +243,39 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
   // refresh/direct-link entry restores the open plan report, and collapsing
   // the accordion row underneath no longer silently closes it.
   const [planReportInstanceId, setPlanReportInstanceId] = useReportNumericSelection("planReport");
+
+  // HRA-391: the authenticated owner's FIT export allowance — authoritative
+  // from the backend, never reconstructed here. Guest never fetches this
+  // (canPersist false, no export controls render for it anyway — see
+  // TrainingPlanAccordion's export props below, and the backend would 401
+  // regardless). Refetched whenever the editor opens a different instance,
+  // and again after every successful export since it just spent credits.
+  const [exportAllowance, setExportAllowance] = useState<ExportAllowanceStatus | null>(null);
+  function refreshExportAllowance() {
+    if (!canPersist) return;
+    api.exportAllowance.status().then(setExportAllowance).catch(() => setExportAllowance(null));
+  }
+  useEffect(() => {
+    if (editingId == null) { setExportAllowance(null); return; }
+    refreshExportAllowance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId, canPersist]);
+
+  // With 0 credits, no export action can execute; with fewer than the week
+  // action's own cost, only the single-workout action stays available
+  // (Story AC). unlimited (founder) never disables either. Labels are
+  // computed here (not inside TrainingPlanAccordion) so the exact backend
+  // cost value drives the copy rather than a hardcoded guess of it.
+  const exportDayDisabled = exportAllowance != null && !exportAllowance.unlimited && (exportAllowance.remaining ?? 0) <= 0;
+  const exportWeekDisabled = exportAllowance != null && !exportAllowance.unlimited && (exportAllowance.remaining ?? 0) < exportAllowance.costs.week;
+  const exportDayFitLabel = exportDayDisabled
+    ? t("manage.planInstances.exportDayFitDisabled", "No export credits remaining")
+    : undefined;
+  const exportWeekFitLabel = exportAllowance == null ? undefined : exportWeekDisabled
+    ? t("manage.planInstances.exportWeekFitDisabled",
+      `This week costs ${exportAllowance.costs.week} credits — only ${exportAllowance.remaining} left`,
+      { cost: exportAllowance.costs.week, remaining: exportAllowance.remaining })
+    : t("manage.planInstances.exportWeekFitLabel", `Generate fit for this week (${exportAllowance.costs.week} credits)`, { cost: exportAllowance.costs.week });
 
   const minEffectiveFrom = startDate > isoToday() ? startDate : isoToday();
   useEffect(() => {
@@ -638,22 +671,34 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+      // HRA-391: a successful export just spent a credit — refresh so the
+      // remaining-balance display and disabled states stay authoritative.
+      refreshExportAllowance();
     } catch (e) {
+      if (e instanceof ApiError && e.status === 429 && e.allowance) {
+        notify(t("manage.planInstances.exportAllowanceExceeded", `Export allowance reached — ${e.allowance.remaining} credit(s) left, this needs ${e.allowance.required}.`, { remaining: e.allowance.remaining, required: e.allowance.required }), "error");
+        refreshExportAllowance();
+        return;
+      }
       notify(e instanceof Error ? e.message : t("manage.planInstances.exportFitFailed", "Could not export this workout."), "error");
     }
   }
 
-  // HRA-203: Section/Week title row's own "Generate fit" button — same
-  // fetch -> Blob -> <a download> mechanism as onExportDayFit above, bundled
-  // into a zip server-side instead of a single .fit. Non-exportable days
-  // within the scope are skipped server-side rather than failing the whole
-  // request (Story AC3); when any were, a toast names how many, using the
-  // response's own X-Export-* counts rather than recomputing them
-  // client-side. A scope with zero exportable days throws (422) before any
-  // blob exists, so the catch below both covers "real" failures and this
-  // "nothing to export" case with the same error-toast pattern every other
-  // CTA here uses.
-  async function downloadScopeFitZip(sectionName: string, weekNumber?: number) {
+  // HRA-203: Week title row's own "Generate fit" button — same fetch -> Blob
+  // -> <a download> mechanism as onExportDayFit above, bundled into a zip
+  // server-side instead of a single .fit. Non-exportable days within the
+  // scope are skipped server-side rather than failing the whole request
+  // (Story AC3); when any were, a toast names how many, using the response's
+  // own X-Export-* counts rather than recomputing them client-side. A scope
+  // with zero exportable days throws (422) before any blob exists, so the
+  // catch below both covers "real" failures and this "nothing to export"
+  // case with the same error-toast pattern every other CTA here uses.
+  // HRA-391: this is now the ONLY caller — the whole-section variant (no
+  // week_number) is retained backend-side for compatibility but is
+  // deliberately not a UI action here (Story AC: "do not add or retain a
+  // section export action in the UI"), so this is always called with an
+  // explicit week.
+  async function downloadScopeFitZip(sectionName: string, weekNumber: number) {
     if (editingId == null) return;
     try {
       const { blob, filename, total, included, skipped } = await api.planInstances.downloadScopeFit(editingId, sectionName, weekNumber);
@@ -671,12 +716,15 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
           "success",
         );
       }
+      refreshExportAllowance();
     } catch (e) {
+      if (e instanceof ApiError && e.status === 429 && e.allowance) {
+        notify(t("manage.planInstances.exportAllowanceExceeded", `Export allowance reached — ${e.allowance.remaining} credit(s) left, this needs ${e.allowance.required}.`, { remaining: e.allowance.remaining, required: e.allowance.required }), "error");
+        refreshExportAllowance();
+        return;
+      }
       notify(e instanceof Error ? e.message : t("manage.planInstances.exportScopeFitFailed", "Could not export these workouts."), "error");
     }
-  }
-  function onExportSectionFit(section: SectionView) {
-    void downloadScopeFitZip(section.name);
   }
   function onExportWeekFit(section: SectionView, week: WeekView) {
     void downloadScopeFitZip(section.name, week.number);
@@ -1160,9 +1208,16 @@ export function PlanInstancesSection({ templates, onNavigateToActivity, onNaviga
               onScheduledTimeEdit={onScheduledTimeEdit}
               onWorkoutTypeEdit={onWorkoutTypeEdit}
               isDayDirty={day => day.date != null && persistedDsl[day.date] !== undefined && persistedDsl[day.date] !== day.dsl}
-              onExportDayFit={onExportDayFit}
-              onExportSectionFit={onExportSectionFit}
-              onExportWeekFit={onExportWeekFit}
+              // HRA-391: Guest gets neither export control at all (canPersist
+              // false) — not just a disabled one, per the Story's "Guest UI
+              // exposes no FIT export control" AC. There is deliberately no
+              // section-scoped export action in this UI.
+              onExportDayFit={canPersist ? onExportDayFit : undefined}
+              exportDayDisabled={exportDayDisabled}
+              exportDayFitLabel={exportDayFitLabel}
+              onExportWeekFit={canPersist ? onExportWeekFit : undefined}
+              exportWeekDisabled={exportWeekDisabled}
+              exportWeekFitLabel={exportWeekFitLabel}
               highlightedRef={highlightedRef ?? undefined}
             />
           ) : (

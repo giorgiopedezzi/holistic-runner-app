@@ -68,7 +68,8 @@ function isOwnerScopedRoute(route: string): boolean {
     route === "/api/v1/withings/status" || route === "/api/v1/withings/login-url" || route === "/api/v1/withings/connection" ||
     route === "/api/v1/strava/status" || route === "/api/v1/strava/login-url" || route === "/api/v1/strava/connection" ||
     route.startsWith("/api/v1/sync/") || route.startsWith("/api/v1/imports/") ||
-    route === "/api/v1/auth/session" || route === "/api/v1/auth/logout";
+    route === "/api/v1/auth/session" || route === "/api/v1/auth/logout" ||
+    route === "/api/v1/export-allowance";
 }
 
 function routeCapability(method: string | undefined, route: string): RouteCapability | undefined {
@@ -228,8 +229,7 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (route === "/api/v1/plan-instances")             return await planTemplates.listInstances(req, res, url);
         if (route === "/api/v1/plan-instances/active")      return await planTemplates.activeForDate(req, res, url);
         if (route === "/api/v1/plan-instance-days")         return await planTemplates.daysByDate(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/fit$/.test(route)) return await planTemplates.dayFit(req, res, url);
-        if (/^\/api\/v1\/plan-instances\/\d+\/fit$/.test(route)) return await planTemplates.scopeFit(req, res, url);
+        if (route === "/api/v1/export-allowance")           return await planTemplates.exportAllowanceStatus(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/workouts\/[^/]+$/.test(route)) return await reporting.getWorkoutReport(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/weeks$/.test(route)) return await reporting.getWeekReport(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/reports\/plan$/.test(route)) return await reporting.getPlanReport(req, res, url);
@@ -320,6 +320,13 @@ export function createApiHandler(ctx: AppContext): http.RequestListener {
         if (/^\/api\/v1\/plan-instances\/\d+\/approve$/.test(route))     return await demo(planTemplates.approveInstance)(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/validate$/.test(route)) return await planTemplates.validateInstanceDay(req, res, url);
         if (/^\/api\/v1\/plan-instances\/\d+\/workouts\/swap$/.test(route))      return await demo(planTemplates.swapWorkouts)(req, res, url);
+        // HRA-391: metered FIT export actions — moved off GET (was HRA-202/
+        // HRA-203) since allowance consumption is a durable side effect a GET
+        // must never carry. Same path, same generation code, now behind the
+        // authenticated non-GET action boundary every other plan-instances
+        // action above already uses (AUTHENTICATED_WRITE: session + CSRF).
+        if (/^\/api\/v1\/plan-instances\/\d+\/days\/\d+\/fit$/.test(route)) return await demo(planTemplates.dayFit)(req, res, url);
+        if (/^\/api\/v1\/plan-instances\/\d+\/fit$/.test(route)) return await demo(planTemplates.scopeFit)(req, res, url);
         // HRA-226: deliberately NOT wrapped in demo() — this is the one write
         // route DEMO_MODE must not block, since demo visitors are a primary
         // source of feedback submissions. Do not reflexively wrap this in

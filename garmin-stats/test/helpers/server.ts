@@ -46,6 +46,7 @@ import { createGuestPublicationService } from "../../src/services/guest-publicat
 import { createPublicProjectionService } from "../../src/services/public-projection.service.ts";
 import { createPublicationLifecycleService } from "../../src/services/publication-lifecycle.service.ts";
 import { createFitImportService } from "../../src/services/fit-import.service.ts";
+import { createExportAllowanceService } from "../../src/services/export-allowance.service.ts";
 import { FOUNDER_PUBLIC_SLUG } from "../../src/db/founder.ts";
 import { FOUNDER_USER_ID } from "../../src/db/founder.ts";
 import { createTestDb, seedSampleData } from "./db.ts";
@@ -64,10 +65,17 @@ export interface TestServer {
   // always force-enables auth, see the config override above).
   sessionCookie: string;
   seed: () => Promise<{ activityIds: number[] }>;
+  // HRA-391: registers (or re-logs-in) a non-founder external identity and
+  // returns its own session cookie header value — for tests that need a real
+  // registered-user identity distinct from the founder default (server.api()
+  // always authenticates as the founder unless a caller passes its own
+  // `cookie` header, as tenant-isolation.test.ts does by hand; this wraps
+  // that same resolveExternalLogin/rotateSession sequence).
+  loginAs: (subject: string) => Promise<{ userId: string; cookie: string }>;
   close: () => Promise<void>;
 }
 
-export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean } = {}): Promise<TestServer> {
+export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean; exportAllowance?: Partial<ReturnType<typeof loadConfig>["exportAllowance"]> } = {}): Promise<TestServer> {
   const { db, cleanup } = await createTestDb();
   const runtimeDb = db;
   if (opts.seed) await seedSampleData(db);
@@ -92,13 +100,22 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
   const accountPrivacyService = createAccountPrivacyService(runtimeDb, accountPrivacyRepo, identityRepo);
   const founderSession = await identityService.rotateSession(FOUNDER_USER_ID, { idleSeconds: 1800, absoluteSeconds: 43200 }, null);
 
+  // demoMode/exportAllowance overrides (HRA-220/HRA-391) — opts lets a test
+  // flip these without an env var, since loadConfig() reads process.env at
+  // call time.
+  const config = {
+    ...loadConfig(),
+    demoMode: opts.demoMode ?? loadConfig().demoMode,
+    auth: { ...loadConfig().auth, enabled: true, allowedOrigins: ["http://test.invalid"] },
+    exportAllowance: { ...loadConfig().exportAllowance, ...opts.exportAllowance },
+  };
+  const exportAllowanceService = createExportAllowanceService(runtimeDb, config.exportAllowance);
+
   const handler = createApiHandler({
     port: 0,
     scriptsDir: SRC_DIR,
     backgroundsDir,
-    // demoMode override (HRA-220) — opts.demoMode lets a test flip DEMO_MODE
-    // without an env var, since loadConfig() reads process.env at call time.
-    config: { ...loadConfig(), demoMode: opts.demoMode ?? loadConfig().demoMode, auth: { ...loadConfig().auth, enabled: true, allowedOrigins: ["http://test.invalid"] } },
+    config,
     db: runtimeDb,
     repos: {
       activities: activitiesRepo, body: bodyRepo, settings: settingsRepo, dateRanges: dateRangesRepo,
@@ -122,6 +139,7 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
         identityRepo, publicProjectionRepo, createPublicProjectionService(runtimeDb, publicProjectionRepo), () => FOUNDER_PUBLIC_SLUG,
       ),
       fitImport: createFitImportService(runtimeDb),
+      exportAllowance: exportAllowanceService,
     },
   });
 
@@ -152,6 +170,15 @@ export async function startTestServer(opts: { seed?: boolean; demoMode?: boolean
     api,
     sessionCookie: `__Host-runsfree_session=${founderSession}`,
     seed: () => seedSampleData(db),
+    loginAs: async (subject: string) => {
+      const login = await identityService.resolveExternalLogin(
+        { issuer: "https://idp.test.invalid/", subject, provider: "test", email: `${subject}@test.invalid` },
+        { mode: "open", founderAllowlist: [] },
+      );
+      if (login.outcome !== "authenticated") throw new Error(`loginAs(${subject}) did not authenticate: ${login.outcome}`);
+      const cookie = await identityService.rotateSession(login.user.id, { idleSeconds: 1800, absoluteSeconds: 43200 }, null);
+      return { userId: login.user.id, cookie: `__Host-runsfree_session=${cookie}` };
+    },
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => {
