@@ -11,12 +11,21 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Save } from "lucide-react";
 import { api } from "@/api/client";
-import { AccordionCard, ErrorBanner, LoadingSpinner } from "@/components/ui";
-import type { Settings, Theme, StoredUnitSystem, Palette } from "@/types/api";
+import { AccordionCard, ErrorBanner, LoadingSpinner, SectionTitle } from "@/components/ui";
+import type { Settings, Theme, StoredUnitSystem, Palette, SavedDateRange } from "@/types/api";
 import { THEME_NAMES, DATE_FORMAT_OPTIONS, PALETTE_NAMES } from "@/types/api";
 import type { AppearanceApi } from "@/hooks/useAppearance";
 import { useSettings } from "@/hooks/useSettings";
 import { useUrlState } from "@/hooks/useUrlState";
+import { useDateRange } from "@/hooks/useDateRange";
+import { SyncAllBar } from "@/components/manage/SyncAllBar";
+import { UploadSection } from "@/components/manage/UploadSection";
+import { OAuthSyncSection } from "@/components/manage/OAuthSyncSection";
+import { WITHINGS_PROVIDER, STRAVA_PROVIDER } from "@/components/manage/oauthProviders";
+import { DateRangesSection } from "@/components/manage/DateRangesSection";
+import { ClassifySection } from "@/components/manage/ClassifySection";
+import { DeleteSection } from "@/components/manage/DeleteSection";
+import { TrashSection } from "@/components/manage/TrashSection";
 // The non-converting m:ss formatter (HRA-68 dedup). Used here — not fmt.ts's
 // self-converting fmtPace — because outlier_min_speed_kmh is a technical tuning
 // parameter always stored/labeled in km/h regardless of the app's unit system,
@@ -366,11 +375,35 @@ function AthleteMetricField({ label, value, onChange, unit, placeholder, invalid
 
 interface Props {
   appearance: AppearanceApi;
+  // Optional (default []) so existing hand-written renders of this component
+  // (e.g. SettingsTab.test.tsx's save-flow tests, which never touch the Sync
+  // subpage) keep compiling unmodified — only OAuthSyncSection's named-range
+  // dropdown actually consumes it.
+  savedRanges?: SavedDateRange[];
 }
 
-export function SettingsTab({ appearance }: Props) {
+// HRA-384: Settings is now the one settings area/index for authenticated
+// users — General holds the pre-existing appearance/format/account cards
+// below, Data and Sync fold in what used to be the separate "Data & Sync"
+// (ManageTab) destination, split by the Story's own mental model ("Data =
+// imported/stored/processed training data; Sync = provider connection and
+// synchronization"). Backed by the URL (`settingsPage`, same pattern as
+// `settingsSection` below) so a reload or a direct link lands back on the
+// same subpage.
+type SettingsPage = "general" | "data" | "sync";
+const SETTINGS_PAGES: SettingsPage[] = ["general", "data", "sync"];
+
+export function SettingsTab({ appearance, savedRanges = [] }: Props) {
   const { t } = useTranslation();
   const entitlements = useEntitlements();
+  const [pageParam, setPageParam] = useUrlState("settingsPage", "general");
+  const settingsPage: SettingsPage = SETTINGS_PAGES.includes(pageParam as SettingsPage) ? (pageParam as SettingsPage) : "general";
+  // Sync's OAuthSyncSection cards each need their own date-range picker
+  // (matches ManageTab's prior wiring) — cheap enough to keep alive
+  // regardless of which subpage is active, same reasoning App.tsx's own
+  // AppShell uses for its always-on range hooks.
+  const withingsRange = useDateRange(30);
+  const stravaRange = useDateRange(30);
   // Reads the shared settings singleton (useSettings, HRA-76) instead of
   // fetching its own copy. `saved` is the last-known-persisted value (what
   // "current: X" shows); `draft` is the editable form state — both still
@@ -514,176 +547,234 @@ export function SettingsTab({ appearance }: Props) {
 
   return (
     <div>
-      {/* Background picker re-introduced per explicit product feedback (see
-          BackgroundPicker's own comment) — a third stacked row, same
-          full-width-group shape as Theme/Palette, then the live chrome
-          preview strip. */}
-      <AccordionCard title={t("settings.appearance.title", "Appearance")} expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
-        <div className="mb-5">
-          <div className="hra-text-secondary text-meta mb-2.5" >{t("settings.appearance.themeLabel", "Theme")}</div>
-          <ThemePicker appearance={appearance} />
-        </div>
-        <div className="mb-5">
-          <div className="hra-text-secondary text-meta mb-2.5" >
-            {t("settings.appearance.paletteDescription", "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.")}
-          </div>
-          <PalettePicker appearance={appearance} />
-        </div>
-        <div>
-          <div className="hra-text-secondary text-meta mb-2.5" >
-            {t("settings.appearance.backgroundDescription", "Background — upload your own image behind the app, in place of the automatic ambient glow.")}
-          </div>
-          <BackgroundPicker appearance={appearance} />
-        </div>
-        <ChromePreviewStrip />
-      </AccordionCard>
+      {/* Settings index (HRA-384): General holds every pre-existing card
+          below; Data/Sync fold in the former standalone "Data & Sync" tab.
+          Same `.hra-segment` control UnitsPicker/DateFormatPicker already
+          use, so this reads as one more app-native choice, not a new widget. */}
+      <div className="hra-segment mb-5">
+        {SETTINGS_PAGES.map(page => (
+          <button
+            key={page}
+            className="hra-segment-item"
+            data-active={settingsPage === page}
+            onClick={() => setPageParam(page)}
+          >
+            {t(`settings.page.${page}`, page === "general" ? "General" : page === "data" ? "Data" : "Sync")}
+          </button>
+        ))}
+      </div>
 
-      <AccordionCard title={t("settings.dateFormat.title", "Date format")} expanded={expanded === "dateFormat"} onToggle={() => toggle("dateFormat")}>
-        <p className="hra-text-secondary text-label mt-0 mb-3" >
-          {t("settings.dateFormat.description", "Applies to every date shown in the app. \"Numeric\" is dd/mm or mm/dd depending on region; \"Literal\" spells the month out. Overview & Trends' chart axes always stay numeric (no room for a spelled-out month on a compact axis tick) but still follow the region here.")}
-        </p>
-        <DateFormatPicker appearance={appearance} />
-      </AccordionCard>
-
-      <AccordionCard title={t("settings.units.title", "Units")} expanded={expanded === "units"} onToggle={() => toggle("units")}>
-        <p className="hra-text-secondary text-label mt-0 mb-3" >
-          {t("settings.units.description", "Applies to distance, pace, speed, elevation and weight everywhere in the app. \"Auto\" guesses from your browser's language/region (e.g. a US locale defaults to imperial) — there's no direct way for a web page to read the OS's actual measurement-system setting, so this is a best-effort default you can always override.")}
-        </p>
-        <UnitsPicker appearance={appearance} />
-      </AccordionCard>
-
-      <AccordionCard title={t("settings.trainingMetrics.title", "Training metrics")} expanded={expanded === "trainingMetrics"} onToggle={() => toggle("trainingMetrics")}>
-        <p className="hra-text-secondary text-label mt-0 mb-4">
-          {t("settings.trainingMetrics.description", "Current reference values used by workout classification. Leave any field empty if it is not known yet.")}
-        </p>
-        {saved && (() => {
-          const missing = [
-            saved.current_easy_pace_sec_per_km == null ? t("settings.trainingMetrics.easyPace", "Current easy pace") : null,
-            saved.current_race_pace_sec_per_km == null ? t("settings.trainingMetrics.racePace", "Current race pace") : null,
-            saved.current_long_run_target_m == null ? t("settings.trainingMetrics.longRunTarget", "Current long-run target") : null,
-          ].filter((value): value is string => value !== null);
-          return missing.length > 0 ? (
-            <div className="hra-warning-banner">
-              {t("settings.trainingMetrics.incomplete", `Classification profile incomplete: ${missing.join(", ")}. Workout classification may be less precise.`, { missing: missing.join(", ") })}
+      {settingsPage === "general" && (
+        <>
+          {/* Background picker re-introduced per explicit product feedback (see
+              BackgroundPicker's own comment) — a third stacked row, same
+              full-width-group shape as Theme/Palette, then the live chrome
+              preview strip. */}
+          <AccordionCard title={t("settings.appearance.title", "Appearance")} expanded={expanded === "appearance"} onToggle={() => toggle("appearance")}>
+            <div className="mb-5">
+              <div className="hra-text-secondary text-meta mb-2.5" >{t("settings.appearance.themeLabel", "Theme")}</div>
+              <ThemePicker appearance={appearance} />
             </div>
-          ) : null;
-        })()}
-        <AthleteMetricField
-          label={t("settings.trainingMetrics.easyPace", "Current easy pace")}
-          value={metricForm.easyPace}
-          onChange={easyPace => setMetricForm(form => ({ ...form, easyPace }))}
-          unit={resolvedUnits === "imperial" ? "min/mi" : "min/km"}
-          placeholder="5:30"
-          invalid={metricForm.easyPace !== "" && parseAthleteMetrics({ ...metricForm, racePace: "", longRunTarget: "" }, resolvedUnits) === undefined}
-        />
-        <AthleteMetricField
-          label={t("settings.trainingMetrics.racePace", "Current race pace")}
-          value={metricForm.racePace}
-          onChange={racePace => setMetricForm(form => ({ ...form, racePace }))}
-          unit={resolvedUnits === "imperial" ? "min/mi" : "min/km"}
-          placeholder="4:30"
-          invalid={metricForm.racePace !== "" && parseAthleteMetrics({ ...metricForm, easyPace: "", longRunTarget: "" }, resolvedUnits) === undefined}
-        />
-        <AthleteMetricField
-          label={t("settings.trainingMetrics.longRunTarget", "Current long-run target")}
-          value={metricForm.longRunTarget}
-          onChange={longRunTarget => setMetricForm(form => ({ ...form, longRunTarget }))}
-          unit={resolvedUnits === "imperial" ? "mi" : "km"}
-          placeholder={resolvedUnits === "imperial" ? "12.43" : "20"}
-          invalid={metricForm.longRunTarget !== "" && parseAthleteMetrics({ ...metricForm, easyPace: "", racePace: "" }, resolvedUnits) === undefined}
-        />
-        {metricsInvalid && <p className="hra-text-danger text-meta">{t("settings.trainingMetrics.invalid", "Use positive values; enter pace as minutes:seconds (for example 5:30).")}</p>}
-        <SaveBar cardKey="athleteMetrics" dirty={metricsDirty} onSave={saveAthleteMetrics} invalid={metricsInvalid} />
-      </AccordionCard>
-
-      <AccordionCard title={t("settings.activityDetails.title", "Activity details")} expanded={expanded === "activityDetails"} onToggle={() => toggle("activityDetails")}>
-        <p className="hra-text-secondary text-label mt-0 mb-3" >
-          {t("settings.activityDetails.description", "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.")}
-        </p>
-        <div className="hra-segment">
-          {(["accordion", "modal"] as const).map(v => {
-            const selected = saved?.activity_detail_view === v;
-            return (
-              <button
-                key={v}
-                className="hra-segment-item"
-                data-active={selected}
-                onClick={() => setDetailView(v)}
-              >
-                {v === "accordion" ? t("settings.activityDetails.accordion", "Accordion (inline)") : t("settings.activityDetails.popup", "Popup")}
-              </button>
-            );
-          })}
-        </div>
-      </AccordionCard>
-
-      <AccordionCard title={t("settings.overviewTrends.title", "Overview & Trends")} expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
-        <p className="hra-text-secondary text-label mt-0 mb-4" >
-          {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"By activity\" mode), or before \"By week\"/\"By month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
-        </p>
-        {draft && saved && (
-          <>
-            <SettingField
-              label={t("settings.overviewTrends.fieldLabel", "Minimum activities/groups for a trend")}
-              current={saved.min_trend_group_size}
-              value={draft.min_trend_group_size}
-              onChange={v => setDraft(d => d && { ...d, min_trend_group_size: Math.round(v) })}
-              min={2} step={1}
-            />
-            <SaveBar cardKey="trend" dirty={trendDirty} onSave={saveThresholds} />
-          </>
-        )}
-      </AccordionCard>
-
-      <AccordionCard title={t("settings.outliers.title", "Outlier detection")} expanded={expanded === "outliers"} onToggle={() => toggle("outliers")}>
-        <p className="hra-text-secondary text-label mt-0 mb-4" >
-          {t("settings.outliers.description", "Used by the activity chart's \"Remove outliers\" checkbox. Two independent rules: an isolated-spike filter (a point is flagged only when it jumps away and back from its neighbors faster than the rate below, so a genuine sustained change like a real sprint isn't affected), and an absolute floor for Speed/Pace — any sample slower than the walking-pace threshold is dropped outright, for a \"running only\" view.")}
-        </p>
-
-        {loading && <LoadingSpinner label={t("settings.loading", "Loading settings…")} />}
-        {error && <div className="mb-3"><ErrorBanner message={error} /></div>}
-
-        {draft && saved && (
-          <>
-            <SettingField
-              label={t("settings.outliers.speedFieldLabel", "Max speed change (m/s per second)")}
-              current={saved.outlier_speed_delta_per_sec}
-              value={draft.outlier_speed_delta_per_sec}
-              onChange={v => setDraft(d => d && { ...d, outlier_speed_delta_per_sec: v })}
-              min={0.1} step={0.1}
-            />
-            <div className="mb-1" />
-            <SettingField
-              label={t("settings.outliers.cadenceFieldLabel", "Max cadence change (steps/min per second)")}
-              current={saved.outlier_cadence_delta_per_sec}
-              value={draft.outlier_cadence_delta_per_sec}
-              onChange={v => setDraft(d => d && { ...d, outlier_cadence_delta_per_sec: v })}
-              min={1} step={1}
-            />
-            <div className="mb-1" />
-            <div className="mb-3.5">
-              <label className="hra-text-secondary block text-meta mb-1.5" >
-                {t("settings.outliers.minSpeedFieldLabel", "Min speed to count as running (km/h)")}
-              </label>
-              <div className="hra-row gap-2.5" >
-                <input
-                  type="number" min={0} step={0.5}
-                  value={draft.outlier_min_speed_kmh}
-                  onChange={e => setDraft(d => d && { ...d, outlier_min_speed_kmh: Number(e.target.value) })}
-                  className="hra-input-narrow"
-                />
-                <span className="hra-text-muted text-meta" >
-                  {draft.outlier_min_speed_kmh > 0 ? `≈ ${fmtMinSecRaw(60 / draft.outlier_min_speed_kmh)} min/km` : t("settings.outliers.off", "off")} · {t("settings.currentLabel", "current:")} <strong className="hra-text-secondary">{saved.outlier_min_speed_kmh}</strong>
-                </span>
+            <div className="mb-5">
+              <div className="hra-text-secondary text-meta mb-2.5" >
+                {t("settings.appearance.paletteDescription", "Palette — a full look (background, card, border, text, accent), crossed with theme for 4 total combinations. Never affects chart/data colors.")}
               </div>
+              <PalettePicker appearance={appearance} />
             </div>
+            <div>
+              <div className="hra-text-secondary text-meta mb-2.5" >
+                {t("settings.appearance.backgroundDescription", "Background — upload your own image behind the app, in place of the automatic ambient glow.")}
+              </div>
+              <BackgroundPicker appearance={appearance} />
+            </div>
+            <ChromePreviewStrip />
+          </AccordionCard>
 
-            <SaveBar cardKey="outliers" dirty={outliersDirty} onSave={saveOutliers} />
-          </>
-        )}
-      </AccordionCard>
-      {entitlements.includes(PUBLISH_PROFILE_ENTITLEMENT) && <PublicationSection />}
-      <AccountPrivacySection />
+          <AccordionCard title={t("settings.dateFormat.title", "Date format")} expanded={expanded === "dateFormat"} onToggle={() => toggle("dateFormat")}>
+            <p className="hra-text-secondary text-label mt-0 mb-3" >
+              {t("settings.dateFormat.description", "Applies to every date shown in the app. \"Numeric\" is dd/mm or mm/dd depending on region; \"Literal\" spells the month out. Overview & Trends' chart axes always stay numeric (no room for a spelled-out month on a compact axis tick) but still follow the region here.")}
+            </p>
+            <DateFormatPicker appearance={appearance} />
+          </AccordionCard>
+
+          <AccordionCard title={t("settings.units.title", "Units")} expanded={expanded === "units"} onToggle={() => toggle("units")}>
+            <p className="hra-text-secondary text-label mt-0 mb-3" >
+              {t("settings.units.description", "Applies to distance, pace, speed, elevation and weight everywhere in the app. \"Auto\" guesses from your browser's language/region (e.g. a US locale defaults to imperial) — there's no direct way for a web page to read the OS's actual measurement-system setting, so this is a best-effort default you can always override.")}
+            </p>
+            <UnitsPicker appearance={appearance} />
+          </AccordionCard>
+
+          <AccordionCard title={t("settings.activityDetails.title", "Activity details")} expanded={expanded === "activityDetails"} onToggle={() => toggle("activityDetails")}>
+            <p className="hra-text-secondary text-label mt-0 mb-3" >
+              {t("settings.activityDetails.description", "How clicking an activity in the Activities tab opens its detail — expand inline in the list, or open as a popup.")}
+            </p>
+            <div className="hra-segment">
+              {(["accordion", "modal"] as const).map(v => {
+                const selected = saved?.activity_detail_view === v;
+                return (
+                  <button
+                    key={v}
+                    className="hra-segment-item"
+                    data-active={selected}
+                    onClick={() => setDetailView(v)}
+                  >
+                    {v === "accordion" ? t("settings.activityDetails.accordion", "Accordion (inline)") : t("settings.activityDetails.popup", "Popup")}
+                  </button>
+                );
+              })}
+            </div>
+          </AccordionCard>
+
+          <AccordionCard title={t("settings.overviewTrends.title", "Overview & Trends")} expanded={expanded === "overviewTrends"} onToggle={() => toggle("overviewTrends")}>
+            <p className="hra-text-secondary text-label mt-0 mb-4" >
+              {t("settings.overviewTrends.description", "Minimum activities needed before a sport's trend chart is shown (in \"By activity\" mode), or before \"By week\"/\"By month\" grouping is offered — below this, a \"too few activities\" message is shown instead of a chart that would only have a couple of bars.")}
+            </p>
+            {draft && saved && (
+              <>
+                <SettingField
+                  label={t("settings.overviewTrends.fieldLabel", "Minimum activities/groups for a trend")}
+                  current={saved.min_trend_group_size}
+                  value={draft.min_trend_group_size}
+                  onChange={v => setDraft(d => d && { ...d, min_trend_group_size: Math.round(v) })}
+                  min={2} step={1}
+                />
+                <SaveBar cardKey="trend" dirty={trendDirty} onSave={saveThresholds} />
+              </>
+            )}
+          </AccordionCard>
+
+          {entitlements.includes(PUBLISH_PROFILE_ENTITLEMENT) && <PublicationSection />}
+          <AccountPrivacySection />
+        </>
+      )}
+
+      {settingsPage === "data" && (
+        <>
+          <AccordionCard title={t("settings.trainingMetrics.title", "Training metrics")} expanded={expanded === "trainingMetrics"} onToggle={() => toggle("trainingMetrics")}>
+            <p className="hra-text-secondary text-label mt-0 mb-4">
+              {t("settings.trainingMetrics.description", "Current reference values used by workout classification. Leave any field empty if it is not known yet.")}
+            </p>
+            {saved && (() => {
+              const missing = [
+                saved.current_easy_pace_sec_per_km == null ? t("settings.trainingMetrics.easyPace", "Current easy pace") : null,
+                saved.current_race_pace_sec_per_km == null ? t("settings.trainingMetrics.racePace", "Current race pace") : null,
+                saved.current_long_run_target_m == null ? t("settings.trainingMetrics.longRunTarget", "Current long-run target") : null,
+              ].filter((value): value is string => value !== null);
+              return missing.length > 0 ? (
+                <div className="hra-warning-banner">
+                  {t("settings.trainingMetrics.incomplete", `Classification profile incomplete: ${missing.join(", ")}. Workout classification may be less precise.`, { missing: missing.join(", ") })}
+                </div>
+              ) : null;
+            })()}
+            <AthleteMetricField
+              label={t("settings.trainingMetrics.easyPace", "Current easy pace")}
+              value={metricForm.easyPace}
+              onChange={easyPace => setMetricForm(form => ({ ...form, easyPace }))}
+              unit={resolvedUnits === "imperial" ? "min/mi" : "min/km"}
+              placeholder="5:30"
+              invalid={metricForm.easyPace !== "" && parseAthleteMetrics({ ...metricForm, racePace: "", longRunTarget: "" }, resolvedUnits) === undefined}
+            />
+            <AthleteMetricField
+              label={t("settings.trainingMetrics.racePace", "Current race pace")}
+              value={metricForm.racePace}
+              onChange={racePace => setMetricForm(form => ({ ...form, racePace }))}
+              unit={resolvedUnits === "imperial" ? "min/mi" : "min/km"}
+              placeholder="4:30"
+              invalid={metricForm.racePace !== "" && parseAthleteMetrics({ ...metricForm, easyPace: "", longRunTarget: "" }, resolvedUnits) === undefined}
+            />
+            <AthleteMetricField
+              label={t("settings.trainingMetrics.longRunTarget", "Current long-run target")}
+              value={metricForm.longRunTarget}
+              onChange={longRunTarget => setMetricForm(form => ({ ...form, longRunTarget }))}
+              unit={resolvedUnits === "imperial" ? "mi" : "km"}
+              placeholder={resolvedUnits === "imperial" ? "12.43" : "20"}
+              invalid={metricForm.longRunTarget !== "" && parseAthleteMetrics({ ...metricForm, easyPace: "", racePace: "" }, resolvedUnits) === undefined}
+            />
+            {metricsInvalid && <p className="hra-text-danger text-meta">{t("settings.trainingMetrics.invalid", "Use positive values; enter pace as minutes:seconds (for example 5:30).")}</p>}
+            <SaveBar cardKey="athleteMetrics" dirty={metricsDirty} onSave={saveAthleteMetrics} invalid={metricsInvalid} />
+          </AccordionCard>
+
+          {/* Outlier detection moved here from General (HRA-384 AC2: "Data
+              contains ... outlier controls where they currently belong") —
+              it tunes ActivityModal.tsx's chart filter over imported track
+              data, the same "processed training data" category as the
+              import/classify/delete/trash sections below it. */}
+          <AccordionCard title={t("settings.outliers.title", "Outlier detection")} expanded={expanded === "outliers"} onToggle={() => toggle("outliers")}>
+            <p className="hra-text-secondary text-label mt-0 mb-4" >
+              {t("settings.outliers.description", "Used by the activity chart's \"Remove outliers\" checkbox. Two independent rules: an isolated-spike filter (a point is flagged only when it jumps away and back from its neighbors faster than the rate below, so a genuine sustained change like a real sprint isn't affected), and an absolute floor for Speed/Pace — any sample slower than the walking-pace threshold is dropped outright, for a \"running only\" view.")}
+            </p>
+
+            {loading && <LoadingSpinner label={t("settings.loading", "Loading settings…")} />}
+            {error && <div className="mb-3"><ErrorBanner message={error} /></div>}
+
+            {draft && saved && (
+              <>
+                <SettingField
+                  label={t("settings.outliers.speedFieldLabel", "Max speed change (m/s per second)")}
+                  current={saved.outlier_speed_delta_per_sec}
+                  value={draft.outlier_speed_delta_per_sec}
+                  onChange={v => setDraft(d => d && { ...d, outlier_speed_delta_per_sec: v })}
+                  min={0.1} step={0.1}
+                />
+                <div className="mb-1" />
+                <SettingField
+                  label={t("settings.outliers.cadenceFieldLabel", "Max cadence change (steps/min per second)")}
+                  current={saved.outlier_cadence_delta_per_sec}
+                  value={draft.outlier_cadence_delta_per_sec}
+                  onChange={v => setDraft(d => d && { ...d, outlier_cadence_delta_per_sec: v })}
+                  min={1} step={1}
+                />
+                <div className="mb-1" />
+                <div className="mb-3.5">
+                  <label className="hra-text-secondary block text-meta mb-1.5" >
+                    {t("settings.outliers.minSpeedFieldLabel", "Min speed to count as running (km/h)")}
+                  </label>
+                  <div className="hra-row gap-2.5" >
+                    <input
+                      type="number" min={0} step={0.5}
+                      value={draft.outlier_min_speed_kmh}
+                      onChange={e => setDraft(d => d && { ...d, outlier_min_speed_kmh: Number(e.target.value) })}
+                      className="hra-input-narrow"
+                    />
+                    <span className="hra-text-muted text-meta" >
+                      {draft.outlier_min_speed_kmh > 0 ? `≈ ${fmtMinSecRaw(60 / draft.outlier_min_speed_kmh)} min/km` : t("settings.outliers.off", "off")} · {t("settings.currentLabel", "current:")} <strong className="hra-text-secondary">{saved.outlier_min_speed_kmh}</strong>
+                    </span>
+                  </div>
+                </div>
+
+                <SaveBar cardKey="outliers" dirty={outliersDirty} onSave={saveOutliers} />
+              </>
+            )}
+          </AccordionCard>
+
+          {/* Manual import + data processing/storage, moved from the former
+              ManageTab (HRA-384 AC2). */}
+          <UploadSection />
+
+          <SectionTitle>{t("manage.dateRangesSectionTitle", "Named date ranges")}</SectionTitle>
+          <DateRangesSection />
+
+          <SectionTitle>{t("manage.classifySectionTitle", "Identify workout types")}</SectionTitle>
+          <ClassifySection />
+
+          <SectionTitle>{t("manage.deleteSectionTitle", "Delete — local database only")}</SectionTitle>
+          <DeleteSection />
+
+          <SectionTitle>{t("manage.trashSectionTitle", "Trash")}</SectionTitle>
+          <TrashSection />
+        </>
+      )}
+
+      {settingsPage === "sync" && (
+        <>
+          {/* Provider connection state/actions, sync status and
+              provider-specific synchronization controls, moved from the
+              former ManageTab (HRA-384 AC3). */}
+          <SyncAllBar withingsFrom={withingsRange.from} withingsTo={withingsRange.to} stravaFrom={stravaRange.from} stravaTo={stravaRange.to} />
+          <OAuthSyncSection provider={WITHINGS_PROVIDER} range={withingsRange} savedRanges={savedRanges} />
+          <OAuthSyncSection provider={STRAVA_PROVIDER} range={stravaRange} savedRanges={savedRanges} />
+        </>
+      )}
     </div>
   );
 }

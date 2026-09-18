@@ -2872,11 +2872,6 @@ input::placeholder, textarea::placeholder { font-size: 13px; }
   line-height: 0;
 }
 .hra-flag-icon svg { display: block; }
-/* Manage tab's subtle red tint while inactive (a destructive-adjacent
-   section) — a data attribute instead of the inline conditional color the
-   nav used to compute per render. */
-.hra-sidebar-manage[data-active="false"] { color: var(--accent-red); opacity: 0.7; }
-
 /* ── KPI value/label text (Stat, hero cards) — a shared scale so the same
    pattern (uppercase micro-label → bold tabular value → optional smaller
    unit) isn't redefined ad hoc per component. --kpi-color is the one
