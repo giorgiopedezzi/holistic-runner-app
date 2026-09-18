@@ -9,6 +9,7 @@
  * Run once per environment after deploying HRA-394:
  *   npm run backfill:actual-classification
  */
+import { pathToFileURL } from "node:url";
 import { openPostgresDatabase } from "../db/postgres.ts";
 import { createActivitiesRepo } from "../repositories/activities.repo.ts";
 import { createOwnedActivitiesRepo } from "../repositories/owned-activities.repo.ts";
@@ -28,6 +29,20 @@ interface Row {
   manual_classification: string | null;
 }
 
+export type LegacyManualOverrideResolution = "map-to-tapasciata" | "clear" | "keep";
+
+// Pure decision, exported for unit testing without a database — never a
+// blind label-similarity translation. The only legacy manual label with an
+// explicit, safe semantic equivalence to a canonical key is the exact legacy
+// Tapasciata spelling; every other legacy label (Recovery Run, Long Session,
+// Repeats/Intervals, Fartlek, Progressive Run) or already-canonical/null
+// value is handled without guessing.
+export function resolveLegacyManualOverride(manualClassification: string | null): LegacyManualOverrideResolution {
+  if (manualClassification === LEGACY_TAPASCIATA_LABEL) return "map-to-tapasciata";
+  if (manualClassification == null || (ACTUAL_RUNNING_CLASSIFICATIONS as readonly string[]).includes(manualClassification)) return "keep";
+  return "clear";
+}
+
 async function main(): Promise<void> {
   const db = openPostgresDatabase();
   try {
@@ -44,13 +59,11 @@ async function main(): Promise<void> {
       await classification.classify(row.user_id, row.id, CLASSIFY_SPLIT_METERS);
       recomputed++;
 
-      if (row.manual_classification === LEGACY_TAPASCIATA_LABEL) {
+      const resolution = resolveLegacyManualOverride(row.manual_classification);
+      if (resolution === "map-to-tapasciata") {
         await createOwnedActivitiesRepo(db, row.user_id).updateManualClassification({ $id: row.id, $classification: "tapasciata" });
         overridesMapped++;
-      } else if (
-        row.manual_classification != null &&
-        !(ACTUAL_RUNNING_CLASSIFICATIONS as readonly string[]).includes(row.manual_classification)
-      ) {
+      } else if (resolution === "clear") {
         await createOwnedActivitiesRepo(db, row.user_id).clearManualClassification(row.id);
         overridesCleared++;
       }
@@ -65,4 +78,7 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+// Explicit entry-point guard — resolveLegacyManualOverride above is imported
+// directly by test/jobs/backfill-actual-classification.test.ts, which must
+// not trigger a real database connection merely by importing this module.
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) void main();
