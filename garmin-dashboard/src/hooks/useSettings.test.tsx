@@ -73,11 +73,12 @@ describe("settings — single fetch across the app (HRA-76)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Body" }));
     expect(await screen.findByText(/Latest measurement/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
-    expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
+
+    // HRA-384: Sync (former "Data & Sync") is now a Settings subpage.
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
 
     fireEvent.click(within(screen.getByRole("navigation")).getByRole("button", { name: "Overview & Trends" }));
     // Longer timeout than the default 1000ms — remounting Overview after a

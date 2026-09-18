@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import "@/i18n";
 import {
   CalendarDays, ListTodo, TrendingUp, Activity as ActivityIcon,
-  HeartPulse, RefreshCw, Settings as SettingsIcon, MessageSquare,
+  HeartPulse, Settings as SettingsIcon, MessageSquare,
   PanelLeftClose, PanelLeftOpen, Menu, X, LogOut, LogIn,
 } from "lucide-react";
 import { useDateRange } from "@/hooks/useDateRange";
@@ -22,7 +22,6 @@ import { OverviewTab }  from "@/components/OverviewTab";
 import { ActivitiesTab } from "@/components/ActivitiesTab";
 import { BodyTab }      from "@/components/BodyTab";
 import { PlansTab }     from "@/components/PlansTab";
-import { ManageTab }    from "@/components/ManageTab";
 import { SettingsTab }  from "@/components/SettingsTab";
 import { FeedbackTab }  from "@/components/FeedbackTab";
 import { LanguagePicker } from "@/components/LanguagePicker";
@@ -37,22 +36,22 @@ import { notify } from "@/utils/toast";
 // pre-existing English literal, used as t()'s defaultValue so nothing flashes
 // a bare translation key before the backend bundle loads.
 // `group` drives sidebar section placement (HRA-253) — top→bottom: primary
-// (no heading), review (under "Review"), manage (under "Manage"), utility
-// (Settings/Feedback, pinned to the bottom of the nav). `icon` is purely
-// decorative (aria-hidden at render) — the visible label remains each item's
-// one accessible name. `guestVisible` (HRA-374): the founder public-read
-// route matrix (HRA-373) is what actually protects the data behind each
-// tab — this flag only decides which destinations Guest is OFFERED. Body is
-// excluded because HRA-372's ADR explicitly did NOT approve body data for
-// public exposure; Data & Sync and Settings are private/account surfaces by
-// definition (sync credentials, publication administration, account config).
+// (no heading), review (under "Review"), utility (Settings/Feedback, pinned
+// to the bottom of the nav). `icon` is purely decorative (aria-hidden at
+// render) — the visible label remains each item's one accessible name.
+// `guestVisible` (HRA-374): the founder public-read route matrix (HRA-373)
+// is what actually protects the data behind each tab — this flag only
+// decides which destinations Guest is OFFERED. Body is excluded because
+// HRA-372's ADR explicitly did NOT approve body data for public exposure;
+// Settings — now also home to the Data/Sync subpages folded in by HRA-384 —
+// is a private/account surface by definition (sync credentials, publication
+// administration, account config).
 const TABS = [
   { id: "agenda",      labelKey: "nav.agenda",        fallback: "Your agenda",       group: "primary", icon: CalendarDays,  guestVisible: true  },
   { id: "plans",       labelKey: "nav.trainingPlans",  fallback: "Training plans",   group: "primary", icon: ListTodo,      guestVisible: true  },
   { id: "overview",    labelKey: "nav.overview",       fallback: "Overview & Trends", group: "review",  icon: TrendingUp,    guestVisible: true  },
   { id: "activities",  labelKey: "nav.activities",     fallback: "Activities",       group: "review",  icon: ActivityIcon,  guestVisible: true  },
   { id: "body",        labelKey: "nav.body",           fallback: "Body",             group: "review",  icon: HeartPulse,    guestVisible: false },
-  { id: "manage",      labelKey: "nav.manage",         fallback: "Data & Sync",      group: "manage",  icon: RefreshCw,     guestVisible: false },
   { id: "settings",    labelKey: "nav.settings",       fallback: "Settings",         group: "utility", icon: SettingsIcon,  guestVisible: false },
   { id: "feedback",    labelKey: "nav.feedback",       fallback: "Feedback",         group: "utility", icon: MessageSquare, guestVisible: true  },
 ] as const;
@@ -406,7 +405,6 @@ function AppShell() {
 
   const primaryTabs = visibleTabs.filter(tabDef => tabDef.group === "primary");
   const reviewTabs = visibleTabs.filter(tabDef => tabDef.group === "review");
-  const manageTabs = visibleTabs.filter(tabDef => tabDef.group === "manage");
   const utilityTabs = visibleTabs.filter(tabDef => tabDef.group === "utility");
 
   // Shared renderer for every sidebar destination (HRA-253) — same
@@ -423,12 +421,8 @@ function AppShell() {
       <button
         key={tabDef.id}
         type="button"
-        className={[
-          "hra-sidebar-item", "hra-nav-hover",
-          tabDef.id === "manage" ? "hra-sidebar-manage" : "",
-        ].filter(Boolean).join(" ")}
+        className="hra-sidebar-item hra-nav-hover"
         aria-current={isActive ? "page" : undefined}
-        data-active={tabDef.id === "manage" ? isActive : undefined}
         onClick={() => guardedAction(() => { setTab(tabDef.id); closeSidebarOverlay(); })}
         title={sidebarMode === "icon" ? label : undefined}
       >
@@ -507,15 +501,6 @@ function AppShell() {
               <div className="hra-sidebar-group">
                 <span className="hra-sidebar-group-heading">{t("nav.groupReview", "Review")}</span>
                 {reviewTabs.map(renderNavItem)}
-              </div>
-            )}
-            {/* HRA-374: empty for Guest (Data & Sync is a private/account
-                surface, never an ordinary Guest destination) — the whole
-                group, heading included, is absent rather than shown empty. */}
-            {manageTabs.length > 0 && (
-              <div className="hra-sidebar-group">
-                <span className="hra-sidebar-group-heading">{t("nav.groupManage", "Manage")}</span>
-                {manageTabs.map(renderNavItem)}
               </div>
             )}
           </div>
@@ -615,8 +600,7 @@ function AppShell() {
             <PlansTab onNavigateToActivity={navigateToActivity} onNavigateToAgenda={() => guardedAction(() => setTab("agenda"))} />
           )}
           {tab === "body"       && <BodyTab       from={range.from} to={range.to} />}
-          {tab === "manage"     && <ManageTab savedRanges={savedRanges} />}
-          {tab === "settings"   && <SettingsTab appearance={appearance} />}
+          {tab === "settings"   && <SettingsTab appearance={appearance} savedRanges={savedRanges} />}
           {tab === "feedback"   && <FeedbackTab />}
         </main>
 

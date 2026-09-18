@@ -128,14 +128,15 @@ describe("App tab switching", () => {
     fireEvent.click(screen.getByRole("button", { name: "Body" }));
     expect(await screen.findByText(/Latest measurement/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
-    expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
+
+    // HRA-384: Sync (former "Data & Sync") is now a Settings subpage.
+    fireEvent.click(screen.getByRole("button", { name: "Sync" }));
+    expect(await screen.findByText("Not connected to Strava")).toBeInTheDocument();
   });
 
-  it("renders exactly one nav landmark, grouped Primary/Review/Manage/utility, with the old horizontal header gone (HRA-253)", async () => {
+  it("renders exactly one nav landmark, grouped Primary/Review/utility, with the old horizontal header gone (HRA-253)", async () => {
     installFetch(appRoutes());
     const { container } = render(<App />);
     await screen.findByText("There is no active plan today.");
@@ -147,14 +148,14 @@ describe("App tab switching", () => {
     expect(navButtons.map(b => b.textContent)).toEqual([
       "Your agenda", "Training plans",
       "Overview & Trends", "Activities", "Body",
-      "Data & Sync",
       "Settings", "Feedback", "Sign out",
     ]);
 
-    // Review/Manage group headings are present and precede their items in
-    // document order (Primary has no heading, per scope).
+    // Review group heading is present (Primary has no heading, per scope;
+    // the Manage group is gone entirely now that Data/Sync moved under
+    // Settings, HRA-384).
     expect(screen.getByText("Review")).toBeInTheDocument();
-    expect(screen.getByText("Manage")).toBeInTheDocument();
+    expect(screen.queryByText("Manage")).not.toBeInTheDocument();
 
     // The old horizontal header/nav bar no longer renders anywhere.
     expect(container.querySelector(".hra-header")).not.toBeInTheDocument();
@@ -215,11 +216,11 @@ describe("App tab switching", () => {
     expect(current()).toHaveLength(1);
     expect(current()[0]).toHaveTextContent("Your agenda");
 
-    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
-    await screen.findByText("Not connected to Strava");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByText("Appearance");
 
     expect(current()).toHaveLength(1);
-    expect(current()[0]).toHaveTextContent("Data & Sync");
+    expect(current()[0]).toHaveTextContent("Settings");
   });
 
   it("selects the matching sidebar item as current when a tab is opened directly via URL (?tab=body)", async () => {
@@ -239,11 +240,11 @@ describe("App tab switching", () => {
     render(<App />);
     await screen.findByText("There is no active plan today.");
 
-    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
-    await screen.findByText("Not connected to Strava");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByText("Appearance");
 
     const params = new URLSearchParams(window.location.search);
-    expect(params.get("tab")).toBe("manage");
+    expect(params.get("tab")).toBe("settings");
     expect(params.get("from")).toBe("2026-07-01");
     expect(params.get("to")).toBe("2026-07-31");
     expect(params.get("compareFrom")).toBe("2026-06-01");
@@ -304,8 +305,8 @@ describe("responsive 3-state sidebar (HRA-267)", () => {
     // Picking a nav item closes it too.
     fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
     expect(sidebar()).toHaveAttribute("data-collapsed", "false");
-    fireEvent.click(screen.getByRole("button", { name: "Data & Sync" }));
-    await screen.findByText("Not connected to Strava");
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    await screen.findByText("Appearance");
     expect(sidebar()).toHaveAttribute("data-collapsed", "hidden");
     expect(screen.getByRole("button", { name: "Open navigation" })).toHaveFocus();
   });
@@ -494,9 +495,9 @@ describe("Guest mode: the shared AppShell for an anonymous founder-read visitor 
 
     const nav = await screen.findByRole("navigation");
     const navButtons = within(nav).getAllByRole("button");
-    // Data & Sync, Body, and Settings — private/account or not-yet-approved
-    // (HRA-372's ADR) surfaces — never appear as ordinary Guest destinations.
-    // The "Manage" group heading disappears with its only item.
+    // Body and Settings (now also home to the former Data & Sync subpages,
+    // HRA-384) — private/account or not-yet-approved (HRA-372's ADR)
+    // surfaces — never appear as ordinary Guest destinations.
     expect(navButtons.map(b => b.textContent)).toEqual([
       "Your agenda", "Training plans",
       "Overview & Trends", "Activities",
