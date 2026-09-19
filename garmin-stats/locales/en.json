@@ -263,6 +263,7 @@
   "manage.upload.zipResult.imported": "imported",
   "manage.upload.zipResult.duplicate": "duplicate",
   "manage.upload.zipResult.failed": "failed",
+  "manage.import.classificationParamsWarning": "New running activities may fall back to Tapasciata / Light Maintenance until you configure: {{fields}}.",
   "manage.sync.doneMessage": "Done — {{imported}} imported, {{skipped}} skipped, {{errors}} errors.",
   "manage.sync.noResult": "Sync ended without a result",
   "manage.sync.syncFailed": "Sync failed",

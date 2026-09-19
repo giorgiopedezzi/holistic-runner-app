@@ -20,6 +20,7 @@ import { useUrlState } from "@/hooks/useUrlState";
 import { useDateRange } from "@/hooks/useDateRange";
 import { SyncAllBar } from "@/components/manage/SyncAllBar";
 import { UploadSection } from "@/components/manage/UploadSection";
+import { ClassificationImportWarning } from "@/components/manage/ClassificationImportWarning";
 import { OAuthSyncSection } from "@/components/manage/OAuthSyncSection";
 import { WITHINGS_PROVIDER, STRAVA_PROVIDER } from "@/components/manage/oauthProviders";
 import { DateRangesSection } from "@/components/manage/DateRangesSection";
@@ -770,6 +771,7 @@ export function SettingsTab({ appearance, savedRanges = [] }: Props) {
 
           {/* Manual import + data processing/storage, moved from the former
               ManageTab (HRA-384 AC2). */}
+          <ClassificationImportWarning />
           <UploadSection />
 
           <SectionTitle>{t("manage.dateRangesSectionTitle", "Named date ranges")}</SectionTitle>
@@ -791,6 +793,7 @@ export function SettingsTab({ appearance, savedRanges = [] }: Props) {
           {/* Provider connection state/actions, sync status and
               provider-specific synchronization controls, moved from the
               former ManageTab (HRA-384 AC3). */}
+          <ClassificationImportWarning />
           <SyncAllBar withingsFrom={withingsRange.from} withingsTo={withingsRange.to} stravaFrom={stravaRange.from} stravaTo={stravaRange.to} />
           <OAuthSyncSection provider={WITHINGS_PROVIDER} range={withingsRange} savedRanges={savedRanges} />
           <OAuthSyncSection provider={STRAVA_PROVIDER} range={stravaRange} savedRanges={savedRanges} />

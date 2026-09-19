@@ -109,6 +109,33 @@ test("a successfully imported running FIT has system_classification populated be
   } finally { await server.close(); }
 });
 
+test("re-importing an already-imported filename preserves its existing system_classification (HRA-395)", async () => {
+  const server = await startTestServer();
+  try {
+    const service = createFitImportService(server.db);
+    assert.equal((await service.importOne(FOUNDER_USER_ID, "preserve.fit", referenceFit)).status, "imported");
+
+    const before = await server.db.get<{ id: number; system_classification: string | null }>(
+      "SELECT id,system_classification FROM activities WHERE user_id=$1 AND filename=$2", [FOUNDER_USER_ID, "preserve.fit"],
+    );
+    assert.ok(before?.system_classification, "expected the first import to have classified the activity");
+
+    // Simulate a human-visible classification (e.g. a manual override's
+    // effect, or simply a value later imports must not clobber) that a
+    // re-import of the same file must not silently overwrite.
+    await server.db.run("UPDATE activities SET system_classification='long_run',system_explanation='marker' WHERE id=$1", [before!.id]);
+
+    const duplicate = await service.importOne(FOUNDER_USER_ID, "preserve.fit", referenceFit);
+    assert.equal(duplicate.status, "duplicate");
+
+    const after = await server.db.get<{ system_classification: string | null; system_explanation: string | null }>(
+      "SELECT system_classification,system_explanation FROM activities WHERE id=$1", [before!.id],
+    );
+    assert.equal(after?.system_classification, "long_run");
+    assert.equal(after?.system_explanation, "marker");
+  } finally { await server.close(); }
+});
+
 test("FIT ZIP import is unavailable without authentication", async () => {
   const server = await startTestServer();
   try {

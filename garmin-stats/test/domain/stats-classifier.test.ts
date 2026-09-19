@@ -64,6 +64,20 @@ test("Long run — the day's clear distance/duration outlier, regardless of pace
   assert.equal(r.classification, "long_run");
 });
 
+test("HRA-395 regression — a configured long-run target of 5km resolves a 12km run to long_run, not a stale tapasciata", () => {
+  // A shorter configured target must win over the generic 15km fallback
+  // (rule 3), the same evidence an explicit reclassification recomputes
+  // from — the activity's *previous* stored classification plays no part in
+  // this pure function's decision.
+  const r = classifyByStatistics(summary({
+    distanceM: 12000,
+    durationSec: 12000 * 6 / 1000 * 60, // 6:00/km — squarely mid-range pace, not a distinct pattern on its own
+    paceStdDevMinKm: 0.15,
+    splits: splits([6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6]),
+  }), { ...FULL_METRICS, currentLongRunTargetM: 5000 });
+  assert.equal(r.classification, "long_run");
+});
+
 test("Easy/Recovery — average pace in the slowest third of the athlete's easy..race range", () => {
   const r = classifyByStatistics(summary({
     distanceM: 5000,

@@ -51,6 +51,21 @@ export function formatAthleteMetrics(metrics: AthleteMetrics, units: ResolvedUni
   };
 }
 
+// Shared by every surface that warns about an incomplete classification
+// profile (ClassificationCard, ClassifySection, ClassificationImportWarning)
+// so the three checks stay in exactly one place (HRA-395).
+export function missingAthleteMetricLabels(
+  metrics: AthleteMetrics | null | undefined,
+  t: (key: string, defaultValue: string) => string,
+): string[] {
+  if (!metrics) return [];
+  return [
+    metrics.current_easy_pace_sec_per_km == null ? t("settings.trainingMetrics.easyPace", "Current easy pace") : null,
+    metrics.current_race_pace_sec_per_km == null ? t("settings.trainingMetrics.racePace", "Current race pace") : null,
+    metrics.current_long_run_target_m == null ? t("settings.trainingMetrics.longRunTarget", "Current long-run target") : null,
+  ].filter((value): value is string => value != null);
+}
+
 export function parseAthleteMetrics(form: AthleteMetricsForm, units: ResolvedUnitSystem): AthleteMetrics | undefined {
   const easy = parsePaceInput(form.easyPace, units);
   const race = parsePaceInput(form.racePace, units);
