@@ -119,8 +119,8 @@ export function ActivityRow({ activity: a, expanded, expandIndicator, onClick, o
   // + localized label, same registry ClassificationCard/ClassifySection use.
   const effectiveClass = a.sport === "running" ? effectiveClassification(a) as ActualRunningClassification | null : null;
   const ClassificationIcon = effectiveClass ? ACTUAL_RUNNING_CATEGORY_ICONS[effectiveClass] : null;
-  const [classificationLabelKey, classificationLabelFallback] = effectiveClass ? ACTUAL_RUNNING_CLASSIFICATION_KEY[effectiveClass] : [null, null];
-  const classificationLabel = classificationLabelKey ? t(classificationLabelKey, classificationLabelFallback!) : null;
+  const classificationKeyPair = effectiveClass ? ACTUAL_RUNNING_CLASSIFICATION_KEY[effectiveClass] : undefined;
+  const classificationLabel = classificationKeyPair ? t(classificationKeyPair[0], classificationKeyPair[1]) : null;
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
